@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -163,7 +162,7 @@ fn sqlite_vec_candidate_paths(data_dir: &Path) -> Vec<PathBuf> {
 }
 
 fn load_migrations(conn: &Connection) -> Result<(), String> {
-    let sql = include_str!("../../../../db/0001_init.sql");
+    let sql = include_str!("../../../../db/migrations/0001_init.sql");
     match conn.execute_batch(sql) {
         Ok(()) => Ok(()),
         Err(err) => {
@@ -226,7 +225,7 @@ fn try_load_sqlite_vec(conn: &Connection) {
         }
     }
 
-    let _ = unsafe { conn.load_extension_disable() };
+    let _ = conn.load_extension_disable();
 }
 
 fn init_db() -> Result<Pool, String> {
@@ -680,7 +679,7 @@ fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, 
 fn sanitize_import_filename(name: &str) -> (String, bool) {
     let mut changed = false;
     let mut segments = Vec::new();
-    for segment in name.split(|c| c == '/' || c == '\\') {
+    for segment in name.split(|c| ['/', '\\'].contains(&c)) {
         if segment.is_empty() || segment == "." {
             if !segment.is_empty() {
                 changed = true;

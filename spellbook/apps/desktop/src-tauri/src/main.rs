@@ -1,15 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use wait_timeout::ChildExt;
 
 use rusqlite::LoadExtension;
 
@@ -210,11 +213,40 @@ fn sidecar_path() -> Result<PathBuf, String> {
 }
 
 fn call_sidecar(method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    fn read_pipe<R: Read>(mut pipe: Option<R>) -> Result<Vec<u8>, String> {
+        let mut buffer = Vec::new();
+        if let Some(ref mut stream) = pipe {
+            stream.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+        }
+        Ok(buffer)
+    }
+
+    fn spawn_reader<R: Read + Send + 'static>(
+        pipe: Option<R>,
+    ) -> std::thread::JoinHandle<Result<Vec<u8>, String>> {
+        std::thread::spawn(move || read_pipe(pipe))
+    }
+
+    fn stderr_snippet(stderr: &[u8]) -> String {
+        let text = String::from_utf8_lossy(stderr);
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return "<empty>".to_string();
+        }
+        let snippet: String = trimmed.chars().take(400).collect();
+        if trimmed.chars().count() > 400 {
+            format!("{snippet}…")
+        } else {
+            snippet
+        }
+    }
+
     let script = sidecar_path()?;
     let mut child = Command::new("python3")
         .arg(script)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| e.to_string())?;
     let request = json!({
@@ -223,23 +255,70 @@ fn call_sidecar(method: &str, params: serde_json::Value) -> Result<serde_json::V
         "method": method,
         "params": params
     });
-    if let Some(stdin) = child.stdin.as_mut() {
+    if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
-        stdin.write_all(request.to_string().as_bytes()).map_err(|e| e.to_string())?;
-        stdin.write_all(b"\n").map_err(|e| e.to_string())?;
+        stdin
+            .write_all(request.to_string().as_bytes())
+            .map_err(|e| format!("sidecar {method} failed to write request: {e}"))?;
+        stdin
+            .write_all(b"\n")
+            .map_err(|e| format!("sidecar {method} failed to write request: {e}"))?;
     }
-    let output = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Err("sidecar failed".into());
+
+    let stdout_handle = spawn_reader(child.stdout.take());
+    let stderr_handle = spawn_reader(child.stderr.take());
+    let timeout = Duration::from_secs(30);
+    let status = child
+        .wait_timeout(timeout)
+        .map_err(|e| format!("sidecar {method} wait failed: {e}"))?;
+    let status = match status {
+        Some(status) => status,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _stdout = stdout_handle
+                .join()
+                .map_err(|_| format!("sidecar {method} failed to join stdout reader"))??;
+            let stderr = stderr_handle
+                .join()
+                .map_err(|_| format!("sidecar {method} failed to join stderr reader"))??;
+            return Err(format!(
+                "sidecar {method} timed out after {}s. stderr: {}",
+                timeout.as_secs(),
+                stderr_snippet(&stderr)
+            ));
+        }
+    };
+    let stdout = stdout_handle
+        .join()
+        .map_err(|_| format!("sidecar {method} failed to join stdout reader"))??;
+    let stderr = stderr_handle
+        .join()
+        .map_err(|_| format!("sidecar {method} failed to join stderr reader"))??;
+    if !status.success() {
+        return Err(format!(
+            "sidecar {method} failed with status {status}. stderr: {}",
+            stderr_snippet(&stderr)
+        ));
     }
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?;
+    let response: serde_json::Value = serde_json::from_slice(&stdout).map_err(|e| {
+        format!(
+            "sidecar {method} failed to parse response: {e}. stderr: {}",
+            stderr_snippet(&stderr)
+        )
+    })?;
     if let Some(err) = response.get("error") {
-        return Err(err.to_string());
+        return Err(format!(
+            "sidecar {method} returned error: {err}. stderr: {}",
+            stderr_snippet(&stderr)
+        ));
     }
-    response
-        .get("result")
-        .cloned()
-        .ok_or_else(|| "missing result".to_string())
+    response.get("result").cloned().ok_or_else(|| {
+        format!(
+            "sidecar {method} missing result. stderr: {}",
+            stderr_snippet(&stderr)
+        )
+    })
 }
 
 #[tauri::command]

@@ -104,10 +104,7 @@ fn ping() -> String {
 }
 
 #[tauri::command]
-fn search_keyword(
-    state: tauri::State<'_, Arc<Pool>>,
-    query: String,
-) -> Result<Vec<Spell>, String> {
+fn search_keyword(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<Vec<Spell>, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare("SELECT id, name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license, created_at, updated_at FROM spell_fts f JOIN spell s ON s.id=f.rowid WHERE f MATCH ? ORDER BY bm25(f) LIMIT 50")
         .map_err(|e| e.to_string())?;
@@ -349,10 +346,7 @@ fn get_spell(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<Spell, Strin
 }
 
 #[tauri::command]
-fn create_spell(
-    state: tauri::State<'_, Arc<Pool>>,
-    spell: SpellInput,
-) -> Result<i64, String> {
+fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellInput) -> Result<i64, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
@@ -629,7 +623,9 @@ fn list_characters(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<Character>,
 }
 
 fn app_data_dir() -> Result<std::path::PathBuf, String> {
-    let dir = system_data_dir().ok_or("no data dir")?.join("SpellbookVault");
+    let dir = system_data_dir()
+        .ok_or("no data dir")?
+        .join("SpellbookVault");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }

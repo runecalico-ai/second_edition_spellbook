@@ -62,6 +62,12 @@ cargo fmt -- --check
 
 ```bash
 cd apps/desktop/src-tauri
+# Rust dependencies (linux)
+sudo apt-get install -y \
+  libglib2.0-dev \
+  libgtk-3-dev \
+  libsoup-3.0-dev \
+  libwebkit2gtk-4.1-dev
 cargo clippy -- -D warnings
 ```
 

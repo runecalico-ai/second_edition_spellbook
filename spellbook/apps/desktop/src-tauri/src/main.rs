@@ -144,7 +144,9 @@ fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<()
 }
 
 fn app_data_dir() -> Result<PathBuf, String> {
-    let dir = system_data_dir().ok_or("no data dir")?.join("SpellbookVault");
+    let dir = system_data_dir()
+        .ok_or("no data dir")?
+        .join("SpellbookVault");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
@@ -174,8 +176,7 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
                 eprintln!(
                     "sqlite-vec: vec0 module unavailable; falling back to blob-backed spell_vec table."
                 );
-                conn.execute_batch(&fallback)
-                    .map_err(|e| e.to_string())?;
+                conn.execute_batch(&fallback).map_err(|e| e.to_string())?;
                 Ok(())
             } else {
                 Err(message)
@@ -185,31 +186,19 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
 }
 
 fn try_load_sqlite_vec(conn: &Connection) {
-    let _ = unsafe { conn.load_extension_enable() };
-    if let Ok(dir) = app_data_dir() {
-        let candidates = [
-            dir.join("sqlite-vec"),
-            dir.join("sqlite-vec.dll"),
-            dir.join("libsqlite-vec.dylib"),
-            dir.join("libsqlite-vec.so"),
-        ];
-        for candidate in candidates {
-            if candidate.exists() {
-                let _ = unsafe { conn.load_extension(candidate, None) };
-                break;
-    if conn.load_extension_enable().is_err() {
+    if unsafe { conn.load_extension_enable() }.is_err() {
         eprintln!("sqlite-vec: unable to enable SQLite extension loading.");
         return;
     }
 
     let mut loaded = false;
-    match data_dir() {
+    match app_data_dir() {
         Ok(dir) => {
             for candidate in sqlite_vec_candidate_paths(&dir) {
                 if !candidate.exists() {
                     continue;
                 }
-                match conn.load_extension(&candidate, None) {
+                match unsafe { conn.load_extension(&candidate, None) } {
                     Ok(()) => {
                         eprintln!("sqlite-vec: loaded extension from {}", candidate.display());
                         loaded = true;
@@ -237,7 +226,7 @@ fn try_load_sqlite_vec(conn: &Connection) {
         }
     }
 
-    let _ = conn.load_extension_disable();
+    let _ = unsafe { conn.load_extension_disable() };
 }
 
 fn init_db() -> Result<Pool, String> {
@@ -246,7 +235,8 @@ fn init_db() -> Result<Pool, String> {
     let pool = r2d2::Pool::new(manager).map_err(|e| e.to_string())?;
     {
         let conn = pool.get().map_err(|e| e.to_string())?;
-        conn.execute_batch("PRAGMA foreign_keys=ON;").map_err(|e| e.to_string())?;
+        conn.execute_batch("PRAGMA foreign_keys=ON;")
+            .map_err(|e| e.to_string())?;
         try_load_sqlite_vec(&conn);
         load_migrations(&conn)?;
     }
@@ -384,7 +374,10 @@ fn ping() -> String {
 }
 
 #[tauri::command]
-fn search_keyword(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<Vec<SpellSummary>, String> {
+fn search_keyword(
+    state: tauri::State<'_, Arc<Pool>>,
+    query: String,
+) -> Result<Vec<SpellSummary>, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let trimmed = query.trim();
     let mut results = vec![];
@@ -436,7 +429,10 @@ fn search_keyword(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<V
 }
 
 #[tauri::command]
-fn search_semantic(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<Vec<SpellSummary>, String> {
+fn search_semantic(
+    state: tauri::State<'_, Arc<Pool>>,
+    query: String,
+) -> Result<Vec<SpellSummary>, String> {
     search_keyword(state, query)
 }
 
@@ -444,24 +440,40 @@ fn search_semantic(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<
 fn list_facets(state: tauri::State<'_, Arc<Pool>>) -> Result<Facets, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut schools = vec![];
-    let mut stmt = conn.prepare("SELECT DISTINCT school FROM spell WHERE school IS NOT NULL ORDER BY school").map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT school FROM spell WHERE school IS NOT NULL ORDER BY school")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
     for value in rows.flatten() {
         schools.push(value);
     }
     let mut sources = vec![];
-    let mut stmt = conn.prepare("SELECT DISTINCT source FROM spell WHERE source IS NOT NULL ORDER BY source").map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT source FROM spell WHERE source IS NOT NULL ORDER BY source")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
     for value in rows.flatten() {
         sources.push(value);
     }
     let mut levels = vec![];
-    let mut stmt = conn.prepare("SELECT DISTINCT level FROM spell ORDER BY level").map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT level FROM spell ORDER BY level")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
     for value in rows.flatten() {
         levels.push(value);
     }
-    Ok(Facets { schools, sources, levels })
+    Ok(Facets {
+        schools,
+        sources,
+        levels,
+    })
 }
 
 fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>, String> {
@@ -710,7 +722,10 @@ fn sanitize_import_filename(name: &str) -> (String, bool) {
 }
 
 #[tauri::command]
-fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> Result<ImportResult, String> {
+fn import_files(
+    state: tauri::State<'_, Arc<Pool>>,
+    files: Vec<ImportFile>,
+) -> Result<ImportResult, String> {
     let dir = app_data_dir()?.join("imports");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut paths = vec![];
@@ -718,15 +733,19 @@ fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> R
     for file in files {
         let (safe_name, changed) = sanitize_import_filename(&file.name);
         if changed {
-            warnings.push(format!("Sanitized import file name '{}' to '{}'.", file.name, safe_name));
+            warnings.push(format!(
+                "Sanitized import file name '{}' to '{}'.",
+                file.name, safe_name
+            ));
         }
         let path = dir.join(&safe_name);
         fs::write(&path, file.content).map_err(|e| e.to_string())?;
         paths.push(path);
     }
     let result = call_sidecar("import", json!({"files": paths}))?;
-    let spells: Vec<SpellDetail> = serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
-        .map_err(|e| e.to_string())?;
+    let spells: Vec<SpellDetail> =
+        serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
+            .map_err(|e| e.to_string())?;
     let artifacts = result.get("artifacts").cloned().unwrap_or(json!([]));
     let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
 
@@ -768,7 +787,11 @@ fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> R
 }
 
 #[tauri::command]
-fn export_spells(state: tauri::State<'_, Arc<Pool>>, ids: Vec<i64>, format: String) -> Result<String, String> {
+fn export_spells(
+    state: tauri::State<'_, Arc<Pool>>,
+    ids: Vec<i64>,
+    format: String,
+) -> Result<String, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut spells = vec![];
     for id in ids {
@@ -777,7 +800,10 @@ fn export_spells(state: tauri::State<'_, Arc<Pool>>, ids: Vec<i64>, format: Stri
         }
     }
     let output_dir = app_data_dir()?.join("exports");
-    let result = call_sidecar("export", json!({"spells": spells, "format": format, "output_dir": output_dir}))?;
+    let result = call_sidecar(
+        "export",
+        json!({"spells": spells, "format": format, "output_dir": output_dir}),
+    )?;
     Ok(result
         .get("path")
         .and_then(|v| v.as_str())

@@ -40,6 +40,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install system dependencies (Rust)
+        run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev
+
       - name: Format check (Rust)
         working-directory: apps/desktop/src-tauri
         run: cargo fmt -- --check

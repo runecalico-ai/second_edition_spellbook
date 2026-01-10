@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
@@ -149,6 +149,17 @@ fn data_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+fn sqlite_vec_candidate_paths(data_dir: &Path) -> Vec<PathBuf> {
+    let names = if cfg!(target_os = "windows") {
+        vec!["vec0.dll", "sqlite-vec.dll", "sqlite-vec"]
+    } else if cfg!(target_os = "macos") {
+        vec!["vec0.dylib", "libsqlite-vec.dylib", "sqlite-vec"]
+    } else {
+        vec!["vec0.so", "libsqlite-vec.so", "sqlite-vec"]
+    };
+    names.into_iter().map(|name| data_dir.join(name)).collect()
+}
+
 fn load_migrations(conn: &Connection) -> Result<(), String> {
     let sql = include_str!("../../../db/migrations/0001_init.sql");
     match conn.execute_batch(sql) {
@@ -159,6 +170,9 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
                 let fallback = sql.replace(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS spell_vec USING vec0(\n  rowid INTEGER PRIMARY KEY,\n  v float[384]\n);\n",
                     "CREATE TABLE IF NOT EXISTS spell_vec (rowid INTEGER PRIMARY KEY, v BLOB);\n",
+                );
+                eprintln!(
+                    "sqlite-vec: vec0 module unavailable; falling back to blob-backed spell_vec table."
                 );
                 conn.execute_batch(&fallback)
                     .map_err(|e| e.to_string())?;
@@ -171,21 +185,46 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
 }
 
 fn try_load_sqlite_vec(conn: &Connection) {
-    let _ = conn.load_extension_enable();
-    if let Ok(dir) = data_dir() {
-        let candidates = [
-            dir.join("sqlite-vec"),
-            dir.join("sqlite-vec.dll"),
-            dir.join("libsqlite-vec.dylib"),
-            dir.join("libsqlite-vec.so"),
-        ];
-        for candidate in candidates {
-            if candidate.exists() {
-                let _ = conn.load_extension(candidate, None);
-                break;
+    if conn.load_extension_enable().is_err() {
+        eprintln!("sqlite-vec: unable to enable SQLite extension loading.");
+        return;
+    }
+
+    let mut loaded = false;
+    match data_dir() {
+        Ok(dir) => {
+            for candidate in sqlite_vec_candidate_paths(&dir) {
+                if !candidate.exists() {
+                    continue;
+                }
+                match conn.load_extension(&candidate, None) {
+                    Ok(()) => {
+                        eprintln!("sqlite-vec: loaded extension from {}", candidate.display());
+                        loaded = true;
+                        break;
+                    }
+                    Err(err) => {
+                        eprintln!(
+                            "sqlite-vec: failed to load extension from {}: {}",
+                            candidate.display(),
+                            err
+                        );
+                    }
+                }
+            }
+
+            if !loaded {
+                eprintln!(
+                    "sqlite-vec: extension not loaded. Install vec0 into {} (e.g. run scripts/install_sqlite_vec.sh).",
+                    dir.display()
+                );
             }
         }
+        Err(err) => {
+            eprintln!("sqlite-vec: unable to resolve data directory: {err}");
+        }
     }
+
     let _ = conn.load_extension_disable();
 }
 

@@ -15,7 +15,7 @@ except ImportError:
     extract_pdf_text = None
 
 try:
-    from docx import Document # type: ignore
+    from docx import Document  # type: ignore
 except ImportError:
     Document = None
 
@@ -117,7 +117,7 @@ def _spell_from_pdf(path: Path) -> Dict[str, Any]:
         "name": path.stem.replace("_", " ").title(),
         "level": level,
         "description": text.strip(),
-        "source": "PDF Import"
+        "source": "PDF Import",
     }
 
 
@@ -127,7 +127,7 @@ def _spell_from_docx(path: Path) -> Dict[str, Any]:
     doc = Document(str(path))
     text_chunks = [p.text for p in doc.paragraphs]
     text = "\n\n".join(text_chunks)
-    
+
     level = 0
     level_match = re.search(r"(?:Level|Lvl)[:\s]*(\d+)", text, re.IGNORECASE)
     if level_match:
@@ -137,7 +137,7 @@ def _spell_from_docx(path: Path) -> Dict[str, Any]:
         "name": path.stem.replace("_", " ").title(),
         "level": level,
         "description": text.strip(),
-        "source": "DOCX Import"
+        "source": "DOCX Import",
     }
 
 
@@ -165,11 +165,11 @@ def handle_import(params: Dict[str, Any]) -> Dict[str, Any]:
         if not path.exists():
             conflicts.append({"path": file_path, "reason": "missing"})
             continue
-        
+
         ext = path.suffix.lower()
         file_hash = _compute_hash(path)
         spell: Dict[str, Any] = {}
-        
+
         try:
             if ext == ".md":
                 spell = _spell_from_markdown(path)

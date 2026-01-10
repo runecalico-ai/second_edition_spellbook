@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import spellbook_sidecar
 
+
 class TestParsers(unittest.TestCase):
     def test_spell_from_markdown(self):
         # Mock Path
@@ -22,7 +23,7 @@ source: PHB
 A bright streak flashes from your pointing finger...
 """
         p.stem = "fireball"
-        
+
         result = spellbook_sidecar._spell_from_markdown(p)
         self.assertEqual(result["name"], "Fireball")
         self.assertEqual(result["level"], 3)
@@ -33,7 +34,7 @@ A bright streak flashes from your pointing finger...
         mock_extract.return_value = "Fireball\nLevel 3\nDescription..."
         p = MagicMock(spec=Path)
         p.stem = "fireball"
-        
+
         result = spellbook_sidecar._spell_from_pdf(p)
         self.assertEqual(result["name"], "Fireball")
         self.assertEqual(result["source"], "PDF Import")
@@ -47,14 +48,15 @@ A bright streak flashes from your pointing finger...
         p2.text = "Description text"
         mock_doc.paragraphs = [p1, p2]
         mock_document_cls.return_value = mock_doc
-        
+
         p = MagicMock(spec=Path)
         p.stem = "fireball"
-        
+
         result = spellbook_sidecar._spell_from_docx(p)
         self.assertEqual(result["name"], "Fireball")
         self.assertEqual(result["source"], "DOCX Import")
         self.assertTrue("Fireball" in result["description"])
+
 
 if __name__ == "__main__":
     unittest.main()

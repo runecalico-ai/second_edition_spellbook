@@ -5,7 +5,9 @@ from pathlib import Path
 def test_migration_creates_tables(tmp_path: Path):
     db_path = tmp_path / "spellbook.sqlite3"
     conn = sqlite3.connect(db_path)
-    sql = (Path(__file__).resolve().parents[1] / "0001_init.sql").read_text(encoding="utf-8")
+    sql = (Path(__file__).resolve().parents[1] / "migrations" / "0001_init.sql").read_text(
+        encoding="utf-8"
+    )
     try:
         conn.executescript(sql)
     except sqlite3.OperationalError as exc:

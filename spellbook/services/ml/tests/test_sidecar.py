@@ -20,7 +20,14 @@ def _run_sidecar(payload: dict) -> dict:
 
 
 def test_embed_returns_vectors():
-    response = _run_sidecar({"jsonrpc": "2.0", "id": 1, "method": "embed", "params": {"texts": ["alpha", "beta"]}})
+    response = _run_sidecar(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "embed",
+            "params": {"texts": ["alpha", "beta"]},
+        }
+    )
     assert "result" in response
     vectors = response["result"]["vectors"]
     assert len(vectors) == 2
@@ -29,8 +36,17 @@ def test_embed_returns_vectors():
 
 def test_import_markdown(tmp_path: Path):
     sample = tmp_path / "spell.md"
-    sample.write_text("---\nname: Test Spell\nlevel: 1\n---\nDescription here.", encoding="utf-8")
-    response = _run_sidecar({"jsonrpc": "2.0", "id": 2, "method": "import", "params": {"files": [str(sample)]}})
+    sample.write_text(
+        "---\nname: Test Spell\nlevel: 1\n---\nDescription here.", encoding="utf-8"
+    )
+    response = _run_sidecar(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "import",
+            "params": {"files": [str(sample)]},
+        }
+    )
     spells = response["result"]["spells"]
     assert spells
     assert spells[0]["name"] == "Test Spell"

@@ -27,6 +27,53 @@ struct SpellSummary {
     source: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct SpellCreate {
+    name: String,
+    school: Option<String>,
+    sphere: Option<String>,
+    class_list: Option<String>,
+    level: i64,
+    range: Option<String>,
+    components: Option<String>,
+    material_components: Option<String>,
+    casting_time: Option<String>,
+    duration: Option<String>,
+    area: Option<String>,
+    saving_throw: Option<String>,
+    reversible: Option<i64>,
+    description: String,
+    tags: Option<String>,
+    source: Option<String>,
+    edition: Option<String>,
+    author: Option<String>,
+    license: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SpellUpdate {
+    id: i64,
+    name: String,
+    school: Option<String>,
+    sphere: Option<String>,
+    class_list: Option<String>,
+    level: i64,
+    range: Option<String>,
+    components: Option<String>,
+    material_components: Option<String>,
+    casting_time: Option<String>,
+    duration: Option<String>,
+    area: Option<String>,
+    saving_throw: Option<String>,
+    reversible: Option<i64>,
+    description: String,
+    tags: Option<String>,
+    source: Option<String>,
+    edition: Option<String>,
+    author: Option<String>,
+    license: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SpellDetail {
     id: Option<i64>,
@@ -76,6 +123,19 @@ struct ChatResponse {
     answer: String,
     citations: Vec<String>,
     meta: serde_json::Value,
+}
+
+fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("name is required".into());
+    }
+    if level < 0 {
+        return Err("level must be 0 or greater".into());
+    }
+    if description.trim().is_empty() {
+        return Err("description is required".into());
+    }
+    Ok(())
 }
 
 fn data_dir() -> Result<PathBuf, String> {
@@ -375,6 +435,107 @@ async fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) ->
 }
 
 #[tauri::command]
+async fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) -> Result<i64, String> {
+    validate_spell_fields(&spell.name, spell.level, &spell.description)?;
+    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            spell.name,
+            spell.school,
+            spell.sphere,
+            spell.class_list,
+            spell.level,
+            spell.range,
+            spell.components,
+            spell.material_components,
+            spell.casting_time,
+            spell.duration,
+            spell.area,
+            spell.saving_throw,
+            spell.reversible.unwrap_or(0),
+            spell.description,
+            spell.tags,
+            spell.source,
+            spell.edition,
+            spell.author,
+            spell.license,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+async fn update_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellUpdate) -> Result<i64, String> {
+    validate_spell_fields(&spell.name, spell.level, &spell.description)?;
+    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, author=?, license=?, updated_at=? WHERE id=?",
+        params![
+            spell.name,
+            spell.school,
+            spell.sphere,
+            spell.class_list,
+            spell.level,
+            spell.range,
+            spell.components,
+            spell.material_components,
+            spell.casting_time,
+            spell.duration,
+            spell.area,
+            spell.saving_throw,
+            spell.reversible.unwrap_or(0),
+            spell.description,
+            spell.tags,
+            spell.source,
+            spell.edition,
+            spell.author,
+            spell.license,
+            Utc::now().to_rfc3339(),
+            spell.id,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(spell.id)
+}
+
+#[tauri::command]
+async fn delete_spell(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<(), String> {
+    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM spell WHERE id = ?", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, String> {
+    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, name, school, level, class_list, components, duration, source FROM spell ORDER BY name")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(SpellSummary {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                school: row.get(2)?,
+                level: row.get(3)?,
+                class_list: row.get(4)?,
+                components: row.get(5)?,
+                duration: row.get(6)?,
+                source: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = vec![];
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
 async fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> Result<ImportResult, String> {
     let dir = data_dir()?.join("imports");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -463,6 +624,10 @@ fn main() {
             list_facets,
             get_spell,
             upsert_spell,
+            create_spell,
+            update_spell,
+            delete_spell,
+            list_spells,
             import_files,
             export_spells,
             chat_answer

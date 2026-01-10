@@ -42,6 +42,16 @@ pnpm format:check
 - Expand the import pipeline to use PDF/DOCX/Markdown parsers in the sidecar.
 - Tune search performance and hybrid ranking once vector search is enabled.
 
+## Backup and restore
+
+The desktop app exposes Tauri commands for backing up and restoring the local vault:
+
+- `backup_vault(destination_path: String)`: creates a ZIP archive of the `SpellbookVault`
+  directory at the provided file path.
+- `restore_vault(backup_path: String, allow_overwrite: bool)`: restores the ZIP archive into
+  `SpellbookVault`. If the vault directory is not empty, set `allow_overwrite` to `true` to
+  replace the existing vault data.
+
 ## Project layout
 
 ```

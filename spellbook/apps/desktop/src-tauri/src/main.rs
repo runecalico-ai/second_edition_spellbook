@@ -1,15 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use wait_timeout::ChildExt;
 
 use dirs::data_dir as system_data_dir;
 
@@ -116,6 +120,7 @@ struct ImportResult {
     spells: Vec<SpellDetail>,
     artifacts: Vec<serde_json::Value>,
     conflicts: Vec<serde_json::Value>,
+    warnings: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -144,6 +149,17 @@ fn app_data_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+fn sqlite_vec_candidate_paths(data_dir: &Path) -> Vec<PathBuf> {
+    let names = if cfg!(target_os = "windows") {
+        vec!["vec0.dll", "sqlite-vec.dll", "sqlite-vec"]
+    } else if cfg!(target_os = "macos") {
+        vec!["vec0.dylib", "libsqlite-vec.dylib", "sqlite-vec"]
+    } else {
+        vec!["vec0.so", "libsqlite-vec.so", "sqlite-vec"]
+    };
+    names.into_iter().map(|name| data_dir.join(name)).collect()
+}
+
 fn load_migrations(conn: &Connection) -> Result<(), String> {
     let sql = include_str!("../../../../db/0001_init.sql");
     match conn.execute_batch(sql) {
@@ -151,7 +167,14 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
         Err(err) => {
             let message = err.to_string();
             if message.contains("no such module: vec0") {
-                conn.execute_batch("CREATE TABLE IF NOT EXISTS spell_vec (rowid INTEGER PRIMARY KEY, v BLOB);")
+                let fallback = sql.replace(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS spell_vec USING vec0(\n  rowid INTEGER PRIMARY KEY,\n  v float[384]\n);\n",
+                    "CREATE TABLE IF NOT EXISTS spell_vec (rowid INTEGER PRIMARY KEY, v BLOB);\n",
+                );
+                eprintln!(
+                    "sqlite-vec: vec0 module unavailable; falling back to blob-backed spell_vec table."
+                );
+                conn.execute_batch(&fallback)
                     .map_err(|e| e.to_string())?;
                 Ok(())
             } else {
@@ -174,9 +197,46 @@ fn try_load_sqlite_vec(conn: &Connection) {
             if candidate.exists() {
                 let _ = unsafe { conn.load_extension(candidate, None) };
                 break;
+    if conn.load_extension_enable().is_err() {
+        eprintln!("sqlite-vec: unable to enable SQLite extension loading.");
+        return;
+    }
+
+    let mut loaded = false;
+    match data_dir() {
+        Ok(dir) => {
+            for candidate in sqlite_vec_candidate_paths(&dir) {
+                if !candidate.exists() {
+                    continue;
+                }
+                match conn.load_extension(&candidate, None) {
+                    Ok(()) => {
+                        eprintln!("sqlite-vec: loaded extension from {}", candidate.display());
+                        loaded = true;
+                        break;
+                    }
+                    Err(err) => {
+                        eprintln!(
+                            "sqlite-vec: failed to load extension from {}: {}",
+                            candidate.display(),
+                            err
+                        );
+                    }
+                }
+            }
+
+            if !loaded {
+                eprintln!(
+                    "sqlite-vec: extension not loaded. Install vec0 into {} (e.g. run scripts/install_sqlite_vec.sh).",
+                    dir.display()
+                );
             }
         }
+        Err(err) => {
+            eprintln!("sqlite-vec: unable to resolve data directory: {err}");
+        }
     }
+
     let _ = conn.load_extension_disable();
 }
 
@@ -210,11 +270,40 @@ fn sidecar_path() -> Result<PathBuf, String> {
 }
 
 fn call_sidecar(method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    fn read_pipe<R: Read>(mut pipe: Option<R>) -> Result<Vec<u8>, String> {
+        let mut buffer = Vec::new();
+        if let Some(ref mut stream) = pipe {
+            stream.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+        }
+        Ok(buffer)
+    }
+
+    fn spawn_reader<R: Read + Send + 'static>(
+        pipe: Option<R>,
+    ) -> std::thread::JoinHandle<Result<Vec<u8>, String>> {
+        std::thread::spawn(move || read_pipe(pipe))
+    }
+
+    fn stderr_snippet(stderr: &[u8]) -> String {
+        let text = String::from_utf8_lossy(stderr);
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return "<empty>".to_string();
+        }
+        let snippet: String = trimmed.chars().take(400).collect();
+        if trimmed.chars().count() > 400 {
+            format!("{snippet}…")
+        } else {
+            snippet
+        }
+    }
+
     let script = sidecar_path()?;
     let mut child = Command::new("python3")
         .arg(script)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| e.to_string())?;
     let request = json!({
@@ -223,23 +312,70 @@ fn call_sidecar(method: &str, params: serde_json::Value) -> Result<serde_json::V
         "method": method,
         "params": params
     });
-    if let Some(stdin) = child.stdin.as_mut() {
+    if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
-        stdin.write_all(request.to_string().as_bytes()).map_err(|e| e.to_string())?;
-        stdin.write_all(b"\n").map_err(|e| e.to_string())?;
+        stdin
+            .write_all(request.to_string().as_bytes())
+            .map_err(|e| format!("sidecar {method} failed to write request: {e}"))?;
+        stdin
+            .write_all(b"\n")
+            .map_err(|e| format!("sidecar {method} failed to write request: {e}"))?;
     }
-    let output = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        return Err("sidecar failed".into());
+
+    let stdout_handle = spawn_reader(child.stdout.take());
+    let stderr_handle = spawn_reader(child.stderr.take());
+    let timeout = Duration::from_secs(30);
+    let status = child
+        .wait_timeout(timeout)
+        .map_err(|e| format!("sidecar {method} wait failed: {e}"))?;
+    let status = match status {
+        Some(status) => status,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _stdout = stdout_handle
+                .join()
+                .map_err(|_| format!("sidecar {method} failed to join stdout reader"))??;
+            let stderr = stderr_handle
+                .join()
+                .map_err(|_| format!("sidecar {method} failed to join stderr reader"))??;
+            return Err(format!(
+                "sidecar {method} timed out after {}s. stderr: {}",
+                timeout.as_secs(),
+                stderr_snippet(&stderr)
+            ));
+        }
+    };
+    let stdout = stdout_handle
+        .join()
+        .map_err(|_| format!("sidecar {method} failed to join stdout reader"))??;
+    let stderr = stderr_handle
+        .join()
+        .map_err(|_| format!("sidecar {method} failed to join stderr reader"))??;
+    if !status.success() {
+        return Err(format!(
+            "sidecar {method} failed with status {status}. stderr: {}",
+            stderr_snippet(&stderr)
+        ));
     }
-    let response: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())?;
+    let response: serde_json::Value = serde_json::from_slice(&stdout).map_err(|e| {
+        format!(
+            "sidecar {method} failed to parse response: {e}. stderr: {}",
+            stderr_snippet(&stderr)
+        )
+    })?;
     if let Some(err) = response.get("error") {
-        return Err(err.to_string());
+        return Err(format!(
+            "sidecar {method} returned error: {err}. stderr: {}",
+            stderr_snippet(&stderr)
+        ));
     }
-    response
-        .get("result")
-        .cloned()
-        .ok_or_else(|| "missing result".to_string())
+    response.get("result").cloned().ok_or_else(|| {
+        format!(
+            "sidecar {method} missing result. stderr: {}",
+            stderr_snippet(&stderr)
+        )
+    })
 }
 
 #[tauri::command]
@@ -529,13 +665,62 @@ fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, 
     Ok(out)
 }
 
+fn sanitize_import_filename(name: &str) -> (String, bool) {
+    let mut changed = false;
+    let mut segments = Vec::new();
+    for segment in name.split(|c| c == '/' || c == '\\') {
+        if segment.is_empty() || segment == "." {
+            if !segment.is_empty() {
+                changed = true;
+            }
+            continue;
+        }
+        if segment == ".." {
+            changed = true;
+            continue;
+        }
+        segments.push(segment);
+    }
+    if name.contains('/') || name.contains('\\') {
+        changed = true;
+    }
+    let basename = segments.last().copied().unwrap_or("");
+    if basename != name {
+        changed = true;
+    }
+    let mut sanitized = String::new();
+    for ch in basename.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+            sanitized.push(ch);
+        } else if ch.is_whitespace() {
+            sanitized.push('_');
+            changed = true;
+        } else {
+            changed = true;
+        }
+    }
+    if sanitized.is_empty() {
+        sanitized = "import".to_string();
+        changed = true;
+    }
+    if sanitized != basename {
+        changed = true;
+    }
+    (sanitized, changed)
+}
+
 #[tauri::command]
 fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> Result<ImportResult, String> {
     let dir = app_data_dir()?.join("imports");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut paths = vec![];
+    let mut warnings = vec![];
     for file in files {
-        let path = dir.join(&file.name);
+        let (safe_name, changed) = sanitize_import_filename(&file.name);
+        if changed {
+            warnings.push(format!("Sanitized import file name '{}' to '{}'.", file.name, safe_name));
+        }
+        let path = dir.join(&safe_name);
         fs::write(&path, file.content).map_err(|e| e.to_string())?;
         paths.push(path);
     }
@@ -578,6 +763,7 @@ fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> R
         spells,
         artifacts: artifacts.as_array().cloned().unwrap_or_default(),
         conflicts: conflicts.as_array().cloned().unwrap_or_default(),
+        warnings,
     })
 }
 
@@ -628,4 +814,27 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_migrations_creates_core_tables() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        load_migrations(&conn).expect("load migrations");
+
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
+            .expect("prepare table lookup");
+        let names: HashSet<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query table names")
+            .filter_map(Result::ok)
+            .collect();
+
+        assert!(names.contains("spell"));
+        assert!(names.contains("spell_fts"));
+    }
 }

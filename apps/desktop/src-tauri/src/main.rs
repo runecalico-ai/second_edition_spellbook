@@ -1,11 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use dirs::data_dir as system_data_dir;
+use std::fs::File;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::types::Value;
 use rusqlite::{params, params_from_iter};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use zip::write::FileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 type Pool = r2d2::Pool<SqliteConnectionManager>;
 
@@ -734,9 +740,103 @@ fn chat_answer(prompt: String) -> Result<String, String> {
     Ok(format!("(stub) You asked: {}", prompt))
 }
 
+fn vault_dir() -> Result<PathBuf, String> {
+    let data_dir = tauri::api::path::data_dir().ok_or("no data dir")?;
+    let vault_dir = data_dir.join("SpellbookVault");
+    std::fs::create_dir_all(&vault_dir).map_err(|e| e.to_string())?;
+    Ok(vault_dir)
+}
+
+fn add_directory_to_zip(
+    writer: &mut ZipWriter<File>,
+    root: &Path,
+    current: &Path,
+    options: FileOptions,
+) -> Result<(), String> {
+    for entry in std::fs::read_dir(current).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let relative = path.strip_prefix(root).map_err(|e| e.to_string())?;
+        let mut name = relative.to_string_lossy().replace('\\', "/");
+        if path.is_dir() {
+            if !name.is_empty() {
+                if !name.ends_with('/') {
+                    name.push('/');
+                }
+                writer.add_directory(name, options).map_err(|e| e.to_string())?;
+            }
+            add_directory_to_zip(writer, root, &path, options)?;
+        } else {
+            let mut file = File::open(&path).map_err(|e| e.to_string())?;
+            writer.start_file(name, options).map_err(|e| e.to_string())?;
+            io::copy(&mut file, writer).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn backup_vault(destination_path: String) -> Result<(), String> {
+    let vault_dir = vault_dir()?;
+    let destination = PathBuf::from(destination_path);
+    if destination.is_dir() {
+        return Err("destination path must be a file path".into());
+    }
+    if let Some(parent) = destination.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+    }
+    let file = File::create(&destination).map_err(|e| e.to_string())?;
+    let mut writer = ZipWriter::new(file);
+    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+    add_directory_to_zip(&mut writer, &vault_dir, &vault_dir, options)?;
+    writer.finish().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn restore_vault(backup_path: String, allow_overwrite: bool) -> Result<(), String> {
+    let vault_dir = vault_dir()?;
+    if vault_dir.exists() {
+        let mut entries = std::fs::read_dir(&vault_dir).map_err(|e| e.to_string())?;
+        let is_empty = entries.next().is_none();
+        if !is_empty && !allow_overwrite {
+            return Err("vault directory is not empty; set allow_overwrite to true to restore".into());
+        }
+        if allow_overwrite {
+            std::fs::remove_dir_all(&vault_dir).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(&vault_dir).map_err(|e| e.to_string())?;
+        }
+    }
+    let file = File::open(backup_path).map_err(|e| e.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|e| e.to_string())?;
+    for i in 0..archive.len() {
+        let mut zipped = archive.by_index(i).map_err(|e| e.to_string())?;
+        let entry_path = zipped
+            .enclosed_name()
+            .ok_or("invalid zip entry path")?
+            .to_owned();
+        let out_path = vault_dir.join(entry_path);
+        if zipped.name().ends_with('/') {
+            std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut outfile = File::create(&out_path).map_err(|e| e.to_string())?;
+            io::copy(&mut zipped, &mut outfile).map_err(|e| e.to_string())?;
+            outfile.flush().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 fn init_db() -> Result<Pool, String> {
     let data_dir = app_data_dir()?;
     let db_path = data_dir.join("spellbook.sqlite3");
+    let vault_dir = vault_dir()?;
+    let db_path = vault_dir.join("spellbook.sqlite3");
     let manager = SqliteConnectionManager::file(&db_path);
     let pool = r2d2::Pool::new(manager).map_err(|e| e.to_string())?;
     {
@@ -771,7 +871,9 @@ fn main() {
             list_spellbook_entries,
             upsert_spellbook_entry,
             delete_spellbook_entry,
-            chat_answer
+            chat_answer,
+            backup_vault,
+            restore_vault
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

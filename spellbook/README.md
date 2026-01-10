@@ -7,7 +7,7 @@ This repository houses the local-only AD&D 2e spellbook app. The desktop client 
 ## Quickstart
 
 1) Install prerequisites
-- Node 18+, pnpm or npm
+- Node 24+, pnpm or npm
 - Rust toolchain (stable)
 - Python 3.14 (for the `services/ml` sidecar)
 - Tauri 2 CLI: `npm i -g @tauri-apps/cli@latest` (or use npx)

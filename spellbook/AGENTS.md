@@ -10,7 +10,7 @@
 
 ## Desktop app workflow
 
-**Prereqs:** Node 18+, pnpm or npm, Rust toolchain, Tauri CLI.
+**Prereqs:** Node 24+, pnpm or npm, Rust toolchain, Tauri CLI.
 
 ```bash
 cd spellbook/apps/desktop

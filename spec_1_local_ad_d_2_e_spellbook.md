@@ -305,6 +305,7 @@ spellbook/
 
 ### Packaging & Updates
 - Produce `.msi` (Win), `.dmg`/`.app` (macOS, notarization optional for local), `.AppImage`/`.deb` (Linux). All assets (extensions, ML models) stored inside app data dir with checksum verification.
+- Produce portable `.zip` (win), `.tar.gz` (macOS/Linux). All assets (extensions, ML models) stored inside app data dir
 - Optional “model installer” screen to copy pre-downloaded models from a folder/USB.
 
 ### Backups
@@ -355,7 +356,7 @@ spellbook/
 
 **M6 – Polish & Packaging (1 week)**
 - Theming (light/dark), keyboard shortcuts, high-contrast mode.
-- Installers: Windows MSI, macOS DMG/App, Linux AppImage/Deb.
+- Installers: Windows MSI, macOS DMG/App, Linux AppImage/Deb. Portable: Windows .zip, macOS/Linux .tar.gz
 - Smoke tests across OSes; vault export/import UX.
 
 **M7 – Beta & Feedback (ongoing)**

@@ -106,8 +106,9 @@ export default function Library() {
         if (!active) return
         setError(String(err))
       } finally {
-        if (!active) return
-        setLoading(false)
+        if (active) {
+          setLoading(false)
+        }
       }
     }
     fetchSpells()

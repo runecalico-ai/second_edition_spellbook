@@ -48,8 +48,8 @@ jobs:
           python-version: '3.14'
           cache: 'pip'
           cache-dependency-path: |
-            services/ml/requirements*.txt
-            services/ml/pyproject.toml
+            spellbook/services/ml/requirements*.txt
+            spellbook/services/ml/pyproject.toml
 
       - name: Install Python dependencies (dev)
         working-directory: spellbook/services/ml

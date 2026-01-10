@@ -14,6 +14,11 @@ r2d2_sqlite = "0.24"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 wait-timeout = "0.2"
+walkdir = "2.5"
+zip = "2.2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+[dev-dependencies]
+tempfile = "3.10"

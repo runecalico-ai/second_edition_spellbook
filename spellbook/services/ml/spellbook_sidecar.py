@@ -77,6 +77,20 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
             description = parts[2].strip()
     name = meta.get("name") or path.stem.replace("_", " ").title()
     level = int(meta.get("level") or 0)
+    
+    # Confidence scoring: 1.0 if field is in metadata, lower if heuristic/fallback
+    confidence: Dict[str, float] = {}
+    confidence["name"] = 1.0 if meta.get("name") else 0.3
+    confidence["level"] = 1.0 if meta.get("level") else 0.2
+    confidence["school"] = 1.0 if meta.get("school") else 0.0
+    confidence["description"] = 0.9 if description else 0.1
+    confidence["source"] = 1.0 if meta.get("source") else 0.0
+    confidence["sphere"] = 1.0 if meta.get("sphere") else 0.0
+    confidence["class_list"] = 1.0 if meta.get("class_list") or meta.get("classes") else 0.0
+    confidence["range"] = 1.0 if meta.get("range") else 0.0
+    confidence["components"] = 1.0 if meta.get("components") else 0.0
+    confidence["duration"] = 1.0 if meta.get("duration") else 0.0
+    
     return {
         "name": name,
         "school": meta.get("school"),
@@ -99,6 +113,9 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
         "edition": meta.get("edition"),
         "author": meta.get("author"),
         "license": meta.get("license"),
+        "_confidence": confidence,
+        "_raw_text": text,
+        "_source_file": str(path),
     }
 
 
@@ -113,11 +130,25 @@ def _spell_from_pdf(path: Path) -> Dict[str, Any]:
     if level_match:
         level = int(level_match.group(1))
 
+    # Confidence scoring: PDF parsing is less reliable
+    confidence: Dict[str, float] = {
+        "name": 0.3,  # Derived from filename
+        "level": 0.6 if level_match else 0.1,
+        "description": 0.7 if text.strip() else 0.1,
+        "source": 0.5,
+        "school": 0.0,
+        "sphere": 0.0,
+        "class_list": 0.0,
+    }
+
     return {
         "name": path.stem.replace("_", " ").title(),
         "level": level,
         "description": text.strip(),
         "source": "PDF Import",
+        "_confidence": confidence,
+        "_raw_text": text,
+        "_source_file": str(path),
     }
 
 
@@ -133,11 +164,25 @@ def _spell_from_docx(path: Path) -> Dict[str, Any]:
     if level_match:
         level = int(level_match.group(1))
 
+    # Confidence scoring: DOCX parsing is less reliable
+    confidence: Dict[str, float] = {
+        "name": 0.3,  # Derived from filename
+        "level": 0.6 if level_match else 0.1,
+        "description": 0.7 if text.strip() else 0.1,
+        "source": 0.5,
+        "school": 0.0,
+        "sphere": 0.0,
+        "class_list": 0.0,
+    }
+
     return {
         "name": path.stem.replace("_", " ").title(),
         "level": level,
         "description": text.strip(),
         "source": "DOCX Import",
+        "_confidence": confidence,
+        "_raw_text": text,
+        "_source_file": str(path),
     }
 
 

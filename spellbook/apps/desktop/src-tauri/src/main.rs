@@ -139,6 +139,67 @@ struct ImportResult {
     skipped: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct PreviewSpell {
+    name: String,
+    level: i64,
+    school: Option<String>,
+    sphere: Option<String>,
+    class_list: Option<String>,
+    range: Option<String>,
+    components: Option<String>,
+    material_components: Option<String>,
+    casting_time: Option<String>,
+    duration: Option<String>,
+    area: Option<String>,
+    saving_throw: Option<String>,
+    reversible: Option<i64>,
+    description: String,
+    tags: Option<String>,
+    source: Option<String>,
+    edition: Option<String>,
+    author: Option<String>,
+    license: Option<String>,
+    #[serde(rename = "_confidence")]
+    confidence: std::collections::HashMap<String, f32>,
+    #[serde(rename = "_raw_text")]
+    raw_text: Option<String>,
+    #[serde(rename = "_source_file")]
+    source_file: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct PreviewResult {
+    spells: Vec<PreviewSpell>,
+    conflicts: Vec<serde_json::Value>,
+}
+
+/// Preview import without saving to database - returns parsed spells with confidence scores
+#[tauri::command]
+fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, String> {
+    let dir = app_data_dir()?.join("imports");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    
+    let mut paths = vec![];
+    for file in files {
+        let (safe_name, _) = sanitize_import_filename(&file.name);
+        let path = dir.join(&safe_name);
+        fs::write(&path, &file.content).map_err(|e| e.to_string())?;
+        paths.push(path);
+    }
+    
+    let result = call_sidecar("import", json!({"files": paths}))?;
+    let spells: Vec<PreviewSpell> =
+        serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
+            .map_err(|e| format!("Failed to parse preview spells: {}", e))?;
+    let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
+    
+    Ok(PreviewResult {
+        spells,
+        conflicts: conflicts.as_array().cloned().unwrap_or_default(),
+    })
+}
+
 #[tauri::command]
 fn import_files(
     state: tauri::State<'_, Arc<Pool>>,
@@ -1466,6 +1527,117 @@ fn update_character_spell(
     Ok(())
 }
 
+#[tauri::command]
+fn reparse_artifact(
+    state: tauri::State<'_, Arc<Pool>>,
+    artifact_id: i64,
+) -> Result<SpellDetail, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+
+    // 1. Query artifact table for path and spell_id
+    let (spell_id, artifact_path): (i64, String) = conn
+        .query_row(
+            "SELECT spell_id, path FROM artifact WHERE id = ?",
+            [artifact_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Artifact not found: {}", e))?;
+
+    // Verify the file still exists
+    let path = std::path::Path::new(&artifact_path);
+    if !path.exists() {
+        return Err(format!(
+            "Artifact file no longer exists at: {}",
+            artifact_path
+        ));
+    }
+
+    // 2. Fetch original spell for diff comparison
+    let original_spell = get_spell_from_conn(&conn, spell_id)?
+        .ok_or_else(|| "Original spell not found".to_string())?;
+
+    // 3. Call Python sidecar to re-parse the file
+    let result = call_sidecar("import", json!({"files": [artifact_path]}))?;
+    let spells: Vec<SpellDetail> =
+        serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
+            .map_err(|e| format!("Failed to parse sidecar response: {}", e))?;
+
+    let parsed_spell = spells
+        .into_iter()
+        .next()
+        .ok_or_else(|| "Sidecar did not return any parsed spells".to_string())?;
+
+    // 4. Update spell record with new data
+    conn.execute(
+        "UPDATE spell SET 
+            school=?, sphere=?, class_list=?, range=?, components=?, 
+            material_components=?, casting_time=?, duration=?, area=?, 
+            saving_throw=?, reversible=?, description=?, tags=?, 
+            edition=?, author=?, license=?, updated_at=? 
+         WHERE id=?",
+        params![
+            parsed_spell.school,
+            parsed_spell.sphere,
+            parsed_spell.class_list,
+            parsed_spell.range,
+            parsed_spell.components,
+            parsed_spell.material_components,
+            parsed_spell.casting_time,
+            parsed_spell.duration,
+            parsed_spell.area,
+            parsed_spell.saving_throw,
+            parsed_spell.reversible.unwrap_or(0),
+            parsed_spell.description,
+            parsed_spell.tags,
+            parsed_spell.edition,
+            parsed_spell.author,
+            parsed_spell.license,
+            Utc::now().to_rfc3339(),
+            spell_id,
+        ],
+    )
+    .map_err(|e| format!("Failed to update spell: {}", e))?;
+
+    // 5. Log changes to change_log
+    let update_for_diff = SpellUpdate {
+        id: spell_id,
+        name: parsed_spell.name.clone(),
+        school: parsed_spell.school.clone(),
+        sphere: parsed_spell.sphere.clone(),
+        class_list: parsed_spell.class_list.clone(),
+        level: parsed_spell.level,
+        range: parsed_spell.range.clone(),
+        components: parsed_spell.components.clone(),
+        material_components: parsed_spell.material_components.clone(),
+        casting_time: parsed_spell.casting_time.clone(),
+        duration: parsed_spell.duration.clone(),
+        area: parsed_spell.area.clone(),
+        saving_throw: parsed_spell.saving_throw.clone(),
+        reversible: parsed_spell.reversible,
+        description: parsed_spell.description.clone(),
+        tags: parsed_spell.tags.clone(),
+        source: parsed_spell.source.clone(),
+        edition: parsed_spell.edition.clone(),
+        author: parsed_spell.author.clone(),
+        license: parsed_spell.license.clone(),
+    };
+    let changes = diff_spells(&original_spell, &update_for_diff);
+    if !changes.is_empty() {
+        log_changes(&conn, spell_id, changes)?;
+    }
+
+    // 6. Update artifact's imported_at timestamp
+    conn.execute(
+        "UPDATE artifact SET imported_at = ? WHERE id = ?",
+        params![Utc::now().to_rfc3339(), artifact_id],
+    )
+    .map_err(|e| format!("Failed to update artifact timestamp: {}", e))?;
+
+    // 7. Return updated spell
+    get_spell_from_conn(&conn, spell_id)?
+        .ok_or_else(|| "Failed to fetch updated spell".to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -1497,7 +1669,9 @@ fn main() {
             create_character,
             list_characters,
             get_character_spellbook,
-            update_character_spell
+            update_character_spell,
+            reparse_artifact,
+            preview_import
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1592,6 +1766,7 @@ mod tests {
             edition: None,
             author: None,
             license: None,
+            artifacts: None,
         };
         let new = SpellUpdate {
             id: 1,

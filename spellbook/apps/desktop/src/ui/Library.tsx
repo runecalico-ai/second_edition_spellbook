@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 type SpellSummary = {
@@ -26,32 +26,43 @@ type SearchFilters = {
   source?: string | null;
 };
 
+type Character = {
+  id: number;
+  name: string;
+};
+
 export default function Library() {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"keyword" | "semantic">("keyword");
   const [spells, setSpells] = useState<SpellSummary[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
   const [facets, setFacets] = useState<Facets>({ schools: [], sources: [], levels: [] });
   const [schoolFilter, setSchoolFilter] = useState("");
   const [levelFilter, setLevelFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
 
-  const loadFacets = async () => {
+  const loadFacets = useCallback(async () => {
     const data = await invoke<Facets>("list_facets");
     setFacets(data);
-  };
+  }, []);
+
+  const loadCharacters = useCallback(async () => {
+    try {
+      const list = await invoke<Character[]>("list_characters");
+      setCharacters(list);
+    } catch (e) {
+      console.error("Failed to load characters", e);
+    }
+  }, []);
 
   const search = useCallback(async () => {
     const filters: SearchFilters = {
       school: schoolFilter || null,
-      level: levelFilter ? parseInt(levelFilter) : null,
+      level: levelFilter ? Number.parseInt(levelFilter) : null,
       source: sourceFilter || null,
     };
 
     if (mode === "semantic") {
-      // Semantic search currently doesn't support filters in MVP backend signature (passed as None)
-      // Implementation plan said to focus on keyword filters first.
-      // We'll call keyword search if filters are present, or warn user?
-      // For now, semantic search ignores filters.
       const results = await invoke<SpellSummary[]>("search_semantic", { query });
       setSpells(results);
       return;
@@ -62,23 +73,87 @@ export default function Library() {
 
   useEffect(() => {
     loadFacets();
+    loadCharacters();
     search();
-  }, []);
+  }, [loadFacets, loadCharacters, search]);
 
-  // Trigger search when filters change? Or just wait for button?
-  // Let's wait for button/enter for query, but maybe auto-update for filters?
-  // Let's do auto-update for filters for better UX.
   useEffect(() => {
     search();
-  }, [schoolFilter, levelFilter, sourceFilter, mode]);
+  }, [search]);
+
+  const handleBackup = async () => {
+    const path = prompt("Enter full path for backup (e.g. C:\\Backup\\spellbook.zip):");
+    if (!path) return;
+    try {
+      const result = await invoke("backup_vault", { destinationPath: path });
+      alert(`Backup created at: ${result}`);
+    } catch (e) {
+      alert(`Backup failed: ${e}`);
+    }
+  };
+
+  const handleRestore = async () => {
+    const path = prompt("Enter full path to restore from:");
+    if (!path) return;
+    if (!confirm("This will OVERWRITE your current database. Are you sure?")) return;
+    try {
+      await invoke("restore_vault", { backupPath: path, allowOverwrite: true });
+      alert("Restore complete. Please restart the app or reload.");
+      window.location.reload();
+    } catch (e) {
+      alert(`Restore failed: ${e}`);
+    }
+  };
+
+  const addToCharacter = async (spellId: number, charIdStr: string) => {
+    if (!charIdStr) return;
+    const charId = Number.parseInt(charIdStr);
+    try {
+      await invoke("update_character_spell", {
+        characterId: charId,
+        spellId: spellId,
+        prepared: 0,
+        known: 1,
+        notes: "",
+      });
+      alert("Spell added to character!");
+    } catch (e) {
+      alert(`Failed to add spell: ${e}`);
+    }
+  };
 
   return (
     <div className="space-y-3 h-full flex flex-col">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Library</h2>
-        <div className="space-x-2">
-          <Link to="/character" className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700">Characters</Link>
-          <Link to="/edit/new" className="px-3 py-2 bg-blue-700 text-white rounded-md hover:bg-blue-600">Add Spell</Link>
+        <div className="space-x-2 flex items-center">
+          <button
+            type="button"
+            onClick={handleBackup}
+            className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+          >
+            Backup
+          </button>
+          <button
+            type="button"
+            onClick={handleRestore}
+            className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+          >
+            Restore
+          </button>
+          <div className="w-px h-4 bg-neutral-700 mx-2" />
+          <Link
+            to="/character"
+            className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
+          >
+            Characters
+          </Link>
+          <Link
+            to="/edit/new"
+            className="px-3 py-2 bg-blue-700 text-white rounded-md hover:bg-blue-600"
+          >
+            Add Spell
+          </Link>
         </div>
       </div>
 
@@ -98,7 +173,11 @@ export default function Library() {
           <option value="keyword">Keyword</option>
           <option value="semantic">Semantic</option>
         </select>
-        <button className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700" onClick={search} type="button">
+        <button
+          className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
+          onClick={search}
+          type="button"
+        >
           Search
         </button>
       </div>
@@ -156,10 +235,22 @@ export default function Library() {
           <tbody>
             {spells.map((s) => (
               <tr key={s.id} className="border-b border-neutral-800/50 hover:bg-neutral-800 group">
-                <td className="p-2 space-x-2">
-                  <Link to={`/edit/${s.id}`} className="text-blue-400 hover:underline">{s.name}</Link>
-                  {/* Placeholder for Add to Character M2, but let's add a log/alert link for now or just visually link it */}
-                  <button onClick={() => alert("Add to Character coming in M2 (use Character view to see known spells)")} className="text-xs px-2 py-0.5 bg-neutral-800 rounded text-neutral-400 hover:text-white">+</button>
+                <td className="p-2 space-x-2 flex items-center">
+                  <Link to={`/edit/${s.id}`} className="text-blue-400 hover:underline">
+                    {s.name}
+                  </Link>
+                  <select
+                    className="ml-2 w-4 h-4 text-xs bg-neutral-800 text-transparent hover:text-white rounded focus:w-auto focus:text-white transition-all"
+                    onChange={(e) => addToCharacter(s.id, e.target.value)}
+                    value=""
+                  >
+                    <option value="">+</option>
+                    {characters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="p-2">{s.school}</td>
                 <td className="p-2 text-center">{s.level}</td>

@@ -1,6 +1,4 @@
-sentence-transformers==2.6.1
-ctranslate2==4.6.3
-pdfminer.six==20231228
-PyMuPDF==1.26.7
-python-docx==1.1.2
-pypandoc==1.13
+pdfminer.six>=20231228
+python-docx>=1.1.0
+pytest>=8.3.4
+

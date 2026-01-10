@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 
 type ChatResponse = {
   answer: string;
@@ -19,7 +19,11 @@ export default function Chat() {
 
   return (
     <div className="space-y-3">
+      <label htmlFor="chat-input" className="sr-only">
+        Query
+      </label>
       <textarea
+        id="chat-input"
         className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-2"
         rows={4}
         value={q}

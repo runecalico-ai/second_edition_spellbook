@@ -81,7 +81,37 @@ python -m ruff check .
 python -m pytest
 ```
 
-Linting uses `ruff`; keep it offline-friendly by installing from local wheels or cached packages.
+### End-to-End (E2E) Testing
+
+Location: `spellbook/apps/desktop/tests/e2e.spec.ts`.
+
+These tests use **Playwright** to drive the packaged Tauri application. They require the app to be built in debug mode.
+
+**Prerequisites:**
+1. Build the desktop app in debug mode:
+   ```bash
+   cd spellbook/apps/desktop/src-tauri
+   cargo build
+   ```
+2. Ensure dependencies are installed:
+   ```bash
+   cd spellbook/apps/desktop
+   npm install
+   ```
+
+**Running Tests:**
+```bash
+cd spellbook/apps/desktop
+npx playwright test
+```
+
+**Best Practices for E2E Tests:**
+- **Locator Strategy**: Prefer user-facing locators like `page.getByRole()`, `page.getByPlaceholder()`, or `page.getByLabel()`.
+- **Test Steps**: Use `test.step('Step Name', ...)` to organize logical phases within a test.
+- **Unique Content**: Use timestamps or random strings in test data (e.g., spell names) to avoid collisions with existing data in the SQLite database.
+- **Wait for Visibility**: Always expect elements to be visible before interacting.
+
+### Linting uses `ruff`; keep it offline-friendly by installing from local wheels or cached packages.
 
 ## Development Workflow
 

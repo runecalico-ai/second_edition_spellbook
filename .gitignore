@@ -28,3 +28,4 @@ spellbook/services/ml/*.egg-info/
 spellbook/services/ml/.pytest_cache/
 spellbook/services/ml/models/
 spellbook/services/ml/output/
+test-results/

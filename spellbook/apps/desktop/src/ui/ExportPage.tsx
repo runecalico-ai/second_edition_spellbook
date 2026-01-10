@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 
 export default function ExportPage() {
   const [ids, setIds] = useState("");
@@ -19,7 +19,11 @@ export default function ExportPage() {
   return (
     <div className="space-y-3">
       <p>Select spells or a character’s spellbook and export to Markdown or PDF.</p>
+      <label htmlFor="export-ids" className="sr-only">
+        Spell IDs
+      </label>
       <input
+        id="export-ids"
         className="w-full bg-neutral-900 border border-neutral-700 rounded-md px-3 py-2"
         placeholder="Spell IDs (comma-separated)"
         value={ids}

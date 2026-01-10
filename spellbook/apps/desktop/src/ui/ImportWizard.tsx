@@ -9,6 +9,7 @@ type ImportFile = {
 type ImportResult = {
   spells: { name: string; level: number; school?: string }[]
   conflicts: { path: string; reason: string }[]
+  warnings: string[]
 }
 
 export default function ImportWizard(){
@@ -40,6 +41,16 @@ export default function ImportWizard(){
       {result && (
         <div className='text-sm space-y-2'>
           <div>Imported spells: {result.spells.length}</div>
+          {result.warnings.length > 0 && (
+            <div className='bg-neutral-950 border border-neutral-800 rounded-md p-2'>
+              <div className='font-semibold'>Warnings</div>
+              <ul className='list-disc pl-4'>
+                {result.warnings.map((warning, idx) => (
+                  <li key={idx}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {result.conflicts.length > 0 && (
             <div className='bg-neutral-950 border border-neutral-800 rounded-md p-2'>
               <div className='font-semibold'>Conflicts</div>

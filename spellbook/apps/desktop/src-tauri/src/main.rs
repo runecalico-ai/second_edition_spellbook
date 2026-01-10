@@ -116,6 +116,7 @@ struct ImportResult {
     spells: Vec<SpellDetail>,
     artifacts: Vec<serde_json::Value>,
     conflicts: Vec<serde_json::Value>,
+    warnings: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -535,13 +536,62 @@ async fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSumm
     Ok(out)
 }
 
+fn sanitize_import_filename(name: &str) -> (String, bool) {
+    let mut changed = false;
+    let mut segments = Vec::new();
+    for segment in name.split(|c| c == '/' || c == '\\') {
+        if segment.is_empty() || segment == "." {
+            if !segment.is_empty() {
+                changed = true;
+            }
+            continue;
+        }
+        if segment == ".." {
+            changed = true;
+            continue;
+        }
+        segments.push(segment);
+    }
+    if name.contains('/') || name.contains('\\') {
+        changed = true;
+    }
+    let basename = segments.last().copied().unwrap_or("");
+    if basename != name {
+        changed = true;
+    }
+    let mut sanitized = String::new();
+    for ch in basename.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+            sanitized.push(ch);
+        } else if ch.is_whitespace() {
+            sanitized.push('_');
+            changed = true;
+        } else {
+            changed = true;
+        }
+    }
+    if sanitized.is_empty() {
+        sanitized = "import".to_string();
+        changed = true;
+    }
+    if sanitized != basename {
+        changed = true;
+    }
+    (sanitized, changed)
+}
+
 #[tauri::command]
 async fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> Result<ImportResult, String> {
     let dir = data_dir()?.join("imports");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut paths = vec![];
+    let mut warnings = vec![];
     for file in files {
-        let path = dir.join(&file.name);
+        let (safe_name, changed) = sanitize_import_filename(&file.name);
+        if changed {
+            warnings.push(format!("Sanitized import file name '{}' to '{}'.", file.name, safe_name));
+        }
+        let path = dir.join(&safe_name);
         fs::write(&path, file.content).map_err(|e| e.to_string())?;
         paths.push(path);
     }
@@ -584,6 +634,7 @@ async fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>
         spells,
         artifacts: artifacts.as_array().cloned().unwrap_or_default(),
         conflicts: conflicts.as_array().cloned().unwrap_or_default(),
+        warnings,
     })
 }
 

@@ -12,6 +12,6 @@ EOF
 
 ## Environment
 
-The MVP is designed to run fully offline. When you are ready to enable real models, install the
-optional dependencies from `requirements.txt` and place models in a local folder. The sidecar
-will be extended to load those models without any network access.
+Requires Python 3.14. The MVP is designed to run fully offline. When you are ready to enable real
+models, install the optional dependencies from `requirements.txt` and place models in a local
+folder. The sidecar will be extended to load those models without any network access.

@@ -244,7 +244,7 @@ FE <- RC: import report + conflicts
 ### Tech Stack (Pinned for MVP)
 - **Shell**: Tauri 2 (Rust backend + WebView UI), React 18 + TypeScript + Vite.
 - **DB**: SQLite 3 with FTS5 enabled; `sqlite-vec` extension for vector search.
-- **ML sidecar (Python 3.11)**: `sentence-transformers` (MiniLM-L6-v2) for embeddings; `CTranslate2` for FLAN‑T5‑small int8 inference; `pdfminer.six`, `PyMuPDF`, `python-docx`, `pypandoc` (or external Pandoc) for import/export.
+- **ML sidecar (Python 3.14)**: `sentence-transformers` (MiniLM-L6-v2) for embeddings; `CTranslate2` for FLAN‑T5‑small int8 inference; `pdfminer.six`, `PyMuPDF`, `python-docx`, `pypandoc` (or external Pandoc) for import/export.
 - **Styling/UI**: TailwindCSS + Radix UI. State: Zustand. Diagram rendering in exports via fenced PlantUML blocks (optional).
 
 ### Project Layout
@@ -425,4 +425,3 @@ Notes:
 - UI calls are mocked; replace with `invoke('search_keyword', { query })` etc., once DB is wired.
 - `main.rs` includes `search_keyword` using FTS5; add migrations at startup to create tables.
 - You can copy the **seed bundle** SQL (`0001_init.sql`) into the app and execute it on first run.
-

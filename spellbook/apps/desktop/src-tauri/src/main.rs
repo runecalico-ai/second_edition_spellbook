@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -152,7 +153,11 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
         Err(err) => {
             let message = err.to_string();
             if message.contains("no such module: vec0") {
-                conn.execute_batch("CREATE TABLE IF NOT EXISTS spell_vec (rowid INTEGER PRIMARY KEY, v BLOB);")
+                let fallback = sql.replace(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS spell_vec USING vec0(\n  rowid INTEGER PRIMARY KEY,\n  v float[384]\n);\n",
+                    "CREATE TABLE IF NOT EXISTS spell_vec (rowid INTEGER PRIMARY KEY, v BLOB);\n",
+                );
+                conn.execute_batch(&fallback)
                     .map_err(|e| e.to_string())?;
                 Ok(())
             } else {
@@ -685,4 +690,27 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_migrations_creates_core_tables() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        load_migrations(&conn).expect("load migrations");
+
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
+            .expect("prepare table lookup");
+        let names: HashSet<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query table names")
+            .filter_map(Result::ok)
+            .collect();
+
+        assert!(names.contains("spell"));
+        assert!(names.contains("spell_fts"));
+    }
 }

@@ -188,10 +188,12 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
         Err(err) => {
             let message = err.to_string();
             if message.contains("no such module: vec0") {
-                let fallback = sql.replace(
-                    "CREATE VIRTUAL TABLE IF NOT EXISTS spell_vec USING vec0(\n  rowid INTEGER PRIMARY KEY,\n  v float[384]\n);\n",
-                    "CREATE TABLE IF NOT EXISTS spell_vec (rowid INTEGER PRIMARY KEY, v BLOB);\n",
-                );
+                let fallback = sql
+                    .replace(
+                        "VIRTUAL TABLE IF NOT EXISTS spell_vec USING vec0",
+                        "TABLE IF NOT EXISTS spell_vec",
+                    )
+                    .replace("v float[384]", "v BLOB");
                 eprintln!(
                     "sqlite-vec: vec0 module unavailable; falling back to blob-backed spell_vec table."
                 );
@@ -311,6 +313,14 @@ fn sidecar_path() -> Result<PathBuf, String> {
     Err("spellbook_sidecar.py not found".into())
 }
 
+fn python_command() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "python"
+    } else {
+        "python3"
+    }
+}
+
 fn call_sidecar(method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
     fn read_pipe<R: Read>(mut pipe: Option<R>) -> Result<Vec<u8>, String> {
         let mut buffer = Vec::new();
@@ -341,7 +351,7 @@ fn call_sidecar(method: &str, params: serde_json::Value) -> Result<serde_json::V
     }
 
     let script = sidecar_path()?;
-    let mut child = Command::new("python3")
+    let mut child = Command::new(python_command())
         .arg(script)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1091,14 +1101,15 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir");
         let vault_dir = temp_dir.path().join("SpellbookVault");
         env::set_var("SPELLBOOK_DATA_DIR", &vault_dir);
-        let pool = init_db(None).expect("init db");
-
-        fs::create_dir_all(vault_dir.join("nested")).expect("create vault dirs");
-        fs::write(vault_dir.join("nested/spell.txt"), "magic").expect("write spell");
-
         let backup_path = temp_dir.path().join("backup.zip");
-        backup_vault_with_pool(&pool, backup_path.to_string_lossy().to_string())
-            .expect("backup vault");
+        {
+            let pool = init_db(None).expect("init db");
+            fs::create_dir_all(vault_dir.join("nested")).expect("create vault dirs");
+            fs::write(vault_dir.join("nested/spell.txt"), "magic").expect("write spell");
+
+            backup_vault_with_pool(&pool, backup_path.to_string_lossy().to_string())
+                .expect("backup vault");
+        }
 
         fs::remove_dir_all(&vault_dir).expect("remove vault");
         restore_vault(backup_path.to_string_lossy().to_string(), true).expect("restore vault");

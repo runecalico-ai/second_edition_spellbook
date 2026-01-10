@@ -107,11 +107,20 @@ Unless the repository explicitly documents an exception.
 3. Treat similarly named packages as malicious until proven otherwise.
 
 **Required practices**
+- **Mandatory Virtual Environments**: All Python commands (installations, scripts, tools) must be run within a dedicated virtual environment.
 - Respect existing dependency tooling (Poetry, uv, requirements files).
 - Preserve lockfiles and pinned versions.
 - Prefer hash-verified installs where applicable.
 
+**Virtual Environment Setup**
+If a virtual environment does not exist (e.g., a `.venv` directory), create and activate one before proceeding:
+1. **Create**: `python -m venv .venv`
+2. **Activate**:
+   - Windows: `.venv\Scripts\activate`
+   - macOS/Linux: `source .venv/bin/activate`
+
 **Prohibited**
+- Running pip or python commands against the system or global user environment.
 - Guessing PyPI names from import paths.
 - Replacing constraints with looser versions.
 - Installing directly from VCS or URLs without approval.

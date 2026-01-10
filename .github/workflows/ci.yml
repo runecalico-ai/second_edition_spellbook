@@ -13,26 +13,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: spellbook/apps/desktop/pnpm-lock.yaml
+
       - name: Install JS dependencies
-        working-directory: apps/desktop
+        working-directory: spellbook/apps/desktop
         run: pnpm install --frozen-lockfile
 
       - name: Lint (JS)
-        working-directory: apps/desktop
+        working-directory: spellbook/apps/desktop
         run: pnpm lint
 
       - name: Format check (JS)
-        working-directory: apps/desktop
+        working-directory: spellbook/apps/desktop
         run: pnpm format:check
 
       - name: Set up Rust
@@ -44,6 +46,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+          cache: 'pip'
+          cache-dependency-path: |
+            spellbook/services/ml/requirements*.txt
+            spellbook/services/ml/pyproject.toml
 
       - name: Install Python dependencies (dev)
         working-directory: spellbook/services/ml
@@ -53,6 +59,17 @@ jobs:
         working-directory: spellbook/services/ml
         run: python -m ruff check .
 
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            spellbook/apps/desktop/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('spellbook/apps/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+              
       - name: Format check (Python)
         working-directory: spellbook/services/ml
         run: python -m ruff format --check .
@@ -67,9 +84,9 @@ jobs:
             libwebkit2gtk-4.1-dev
 
       - name: Format check (Rust)
-        working-directory: apps/desktop/src-tauri
+        working-directory: spellbook/apps/desktop/src-tauri
         run: cargo fmt -- --check
 
       - name: Clippy (Rust)
-        working-directory: apps/desktop/src-tauri
+        working-directory: spellbook/apps/desktop/src-tauri
         run: cargo clippy -- -D warnings

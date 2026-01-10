@@ -1,8 +1,8 @@
 # Spellbook Desktop App (Tauri + React)
 
 This repository houses the local-only AD&D 2e spellbook app. The desktop client lives under
-`apps/desktop`, the Python ML/import sidecar under `services/ml`, and the SQLite migrations under
-`db/migrations`.
+`spellbook/apps/desktop`, the Python ML/import sidecar under `spellbook/services/ml`, and the SQLite migrations under
+`spellbook/db/migrations`.
 
 ## Quickstart
 
@@ -14,7 +14,7 @@ This repository houses the local-only AD&D 2e spellbook app. The desktop client 
 
 2) Install JS deps
 ```bash
-cd apps/desktop
+cd spellbook/apps/desktop
 pnpm install   # or npm install
 ```
 
@@ -30,7 +30,7 @@ pnpm dev
 
 ## Linting and formatting
 
-From `apps/desktop`, run:
+From `spellbook/apps/desktop`, run:
 
 ```bash
 pnpm lint
@@ -39,7 +39,7 @@ pnpm format:check
 ```
 
 ## Next steps
-- Add models + dependencies to `services/ml` for embeddings and local chat.
+- Add models + dependencies to `spellbook/services/ml` for embeddings and local chat.
 - Expand the import pipeline to use PDF/DOCX/Markdown parsers in the sidecar.
 - Tune search performance and hybrid ranking once vector search is enabled.
 

@@ -83,6 +83,17 @@ python -m pytest
 
 Linting uses `ruff`; keep it offline-friendly by installing from local wheels or cached packages.
 
+## Development Workflow
+
+Always run the following before completing work:
+
+- JavaScript formatting.
+- Rust formatting.
+- Python formatting.
+- JavaScript linting.
+- Rust linting.
+- Python linting.
+
 ## Notes
 
 - Keep instructions offline-friendly since the sidecar is designed to run without network access.

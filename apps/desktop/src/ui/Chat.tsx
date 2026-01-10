@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export default function Chat(){
+export default function Chat() {
   const [q, setQ] = useState('How many missiles at level 5?')
   const [a, setA] = useState<string>('(Answer will appear here)')
 
@@ -10,10 +10,17 @@ export default function Chat(){
   }
 
   return (
-    <div className='space-y-3'>
-      <textarea className='w-full bg-neutral-900 border border-neutral-700 rounded-md p-2' rows={4} value={q} onChange={e=>setQ(e.target.value)} />
-      <button className='px-3 py-2 bg-neutral-800 rounded-md' onClick={ask}>Ask</button>
-      <div className='bg-neutral-900 border border-neutral-800 rounded-md p-3 text-sm whitespace-pre-wrap'>{a}</div>
+    <div className="space-y-3">
+      <textarea
+        className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-2"
+        rows={4}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      <button className="px-3 py-2 bg-neutral-800 rounded-md" onClick={ask}>
+        Ask
+      </button>
+      <div className="bg-neutral-900 border border-neutral-800 rounded-md p-3 text-sm whitespace-pre-wrap">{a}</div>
     </div>
   )
 }

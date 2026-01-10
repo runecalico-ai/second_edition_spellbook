@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use rusqlite::LoadExtension;
+use dirs::data_dir as system_data_dir;
 
 type Pool = r2d2::Pool<SqliteConnectionManager>;
 
@@ -138,14 +138,14 @@ fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<()
     Ok(())
 }
 
-fn data_dir() -> Result<PathBuf, String> {
-    let dir = tauri::api::path::data_dir().ok_or("no data dir")?.join("SpellbookVault");
+fn app_data_dir() -> Result<PathBuf, String> {
+    let dir = system_data_dir().ok_or("no data dir")?.join("SpellbookVault");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
 fn load_migrations(conn: &Connection) -> Result<(), String> {
-    let sql = include_str!("../../../db/migrations/0001_init.sql");
+    let sql = include_str!("../../../../db/0001_init.sql");
     match conn.execute_batch(sql) {
         Ok(()) => Ok(()),
         Err(err) => {
@@ -162,8 +162,8 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
 }
 
 fn try_load_sqlite_vec(conn: &Connection) {
-    let _ = conn.load_extension_enable();
-    if let Ok(dir) = data_dir() {
+    let _ = unsafe { conn.load_extension_enable() };
+    if let Ok(dir) = app_data_dir() {
         let candidates = [
             dir.join("sqlite-vec"),
             dir.join("sqlite-vec.dll"),
@@ -172,7 +172,7 @@ fn try_load_sqlite_vec(conn: &Connection) {
         ];
         for candidate in candidates {
             if candidate.exists() {
-                let _ = conn.load_extension(candidate, None);
+                let _ = unsafe { conn.load_extension(candidate, None) };
                 break;
             }
         }
@@ -181,7 +181,7 @@ fn try_load_sqlite_vec(conn: &Connection) {
 }
 
 fn init_db() -> Result<Pool, String> {
-    let db_path = data_dir()?.join("spellbook.sqlite3");
+    let db_path = app_data_dir()?.join("spellbook.sqlite3");
     let manager = SqliteConnectionManager::file(&db_path);
     let pool = r2d2::Pool::new(manager).map_err(|e| e.to_string())?;
     {
@@ -243,13 +243,13 @@ fn call_sidecar(method: &str, params: serde_json::Value) -> Result<serde_json::V
 }
 
 #[tauri::command]
-async fn ping() -> String {
+fn ping() -> String {
     "pong".into()
 }
 
 #[tauri::command]
-async fn search_keyword(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<Vec<SpellSummary>, String> {
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+fn search_keyword(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<Vec<SpellSummary>, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     let trimmed = query.trim();
     let mut results = vec![];
     if trimmed.is_empty() {
@@ -300,36 +300,30 @@ async fn search_keyword(state: tauri::State<'_, Arc<Pool>>, query: String) -> Re
 }
 
 #[tauri::command]
-async fn search_semantic(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<Vec<SpellSummary>, String> {
-    search_keyword(state, query).await
+fn search_semantic(state: tauri::State<'_, Arc<Pool>>, query: String) -> Result<Vec<SpellSummary>, String> {
+    search_keyword(state, query)
 }
 
 #[tauri::command]
-async fn list_facets(state: tauri::State<'_, Arc<Pool>>) -> Result<Facets, String> {
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+fn list_facets(state: tauri::State<'_, Arc<Pool>>) -> Result<Facets, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut schools = vec![];
     let mut stmt = conn.prepare("SELECT DISTINCT school FROM spell WHERE school IS NOT NULL ORDER BY school").map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
-    for row in rows {
-        if let Ok(value) = row {
-            schools.push(value);
-        }
+    for value in rows.flatten() {
+        schools.push(value);
     }
     let mut sources = vec![];
     let mut stmt = conn.prepare("SELECT DISTINCT source FROM spell WHERE source IS NOT NULL ORDER BY source").map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
-    for row in rows {
-        if let Ok(value) = row {
-            sources.push(value);
-        }
+    for value in rows.flatten() {
+        sources.push(value);
     }
     let mut levels = vec![];
     let mut stmt = conn.prepare("SELECT DISTINCT level FROM spell ORDER BY level").map_err(|e| e.to_string())?;
     let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
-    for row in rows {
-        if let Ok(value) = row {
-            levels.push(value);
-        }
+    for value in rows.flatten() {
+        levels.push(value);
     }
     Ok(Facets { schools, sources, levels })
 }
@@ -368,14 +362,14 @@ fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>
 }
 
 #[tauri::command]
-async fn get_spell(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<Option<SpellDetail>, String> {
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+fn get_spell(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<Option<SpellDetail>, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     get_spell_from_conn(&conn, id)
 }
 
 #[tauri::command]
-async fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) -> Result<i64, String> {
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) -> Result<i64, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     if let Some(id) = spell.id {
         conn.execute(
             "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, author=?, license=?, updated_at=? WHERE id=?",
@@ -435,9 +429,9 @@ async fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) ->
 }
 
 #[tauri::command]
-async fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) -> Result<i64, String> {
+fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) -> Result<i64, String> {
     validate_spell_fields(&spell.name, spell.level, &spell.description)?;
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
@@ -467,9 +461,9 @@ async fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) ->
 }
 
 #[tauri::command]
-async fn update_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellUpdate) -> Result<i64, String> {
+fn update_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellUpdate) -> Result<i64, String> {
     validate_spell_fields(&spell.name, spell.level, &spell.description)?;
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, author=?, license=?, updated_at=? WHERE id=?",
         params![
@@ -501,16 +495,16 @@ async fn update_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellUpdate) ->
 }
 
 #[tauri::command]
-async fn delete_spell(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<(), String> {
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+fn delete_spell(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<(), String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM spell WHERE id = ?", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-async fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, String> {
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare("SELECT id, name, school, level, class_list, components, duration, source FROM spell ORDER BY name")
         .map_err(|e| e.to_string())?;
@@ -536,8 +530,8 @@ async fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSumm
 }
 
 #[tauri::command]
-async fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> Result<ImportResult, String> {
-    let dir = data_dir()?.join("imports");
+fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>) -> Result<ImportResult, String> {
+    let dir = app_data_dir()?.join("imports");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut paths = vec![];
     for file in files {
@@ -551,7 +545,7 @@ async fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>
     let artifacts = result.get("artifacts").cloned().unwrap_or(json!([]));
     let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
 
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     for spell in &spells {
         conn.execute(
             "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -588,15 +582,15 @@ async fn import_files(state: tauri::State<'_, Arc<Pool>>, files: Vec<ImportFile>
 }
 
 #[tauri::command]
-async fn export_spells(state: tauri::State<'_, Arc<Pool>>, ids: Vec<i64>, format: String) -> Result<String, String> {
-    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+fn export_spells(state: tauri::State<'_, Arc<Pool>>, ids: Vec<i64>, format: String) -> Result<String, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut spells = vec![];
     for id in ids {
         if let Some(spell) = get_spell_from_conn(&conn, id)? {
             spells.push(spell);
         }
     }
-    let output_dir = data_dir()?.join("exports");
+    let output_dir = app_data_dir()?.join("exports");
     let result = call_sidecar("export", json!({"spells": spells, "format": format, "output_dir": output_dir}))?;
     Ok(result
         .get("path")
@@ -606,7 +600,7 @@ async fn export_spells(state: tauri::State<'_, Arc<Pool>>, ids: Vec<i64>, format
 }
 
 #[tauri::command]
-async fn chat_answer(prompt: String) -> Result<ChatResponse, String> {
+fn chat_answer(prompt: String) -> Result<ChatResponse, String> {
     let result = call_sidecar("llm_answer", json!({"query": prompt, "contexts": []}))?;
     serde_json::from_value(result).map_err(|e| e.to_string())
 }

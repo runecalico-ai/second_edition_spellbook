@@ -9,6 +9,9 @@
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
+  "bundle": {
+    "resources": ["resources/sqlite-vec/*"]
+  },
   "app": {
     "windows": [
       {

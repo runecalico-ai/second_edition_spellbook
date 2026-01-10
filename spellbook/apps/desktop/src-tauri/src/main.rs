@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -12,7 +12,12 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tauri::Manager;
 use wait_timeout::ChildExt;
+use walkdir::WalkDir;
+use zip::write::SimpleFileOptions;
+use zip::ZipArchive;
+use zip::ZipWriter;
 
 use dirs::data_dir as system_data_dir;
 
@@ -143,11 +148,26 @@ fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<()
 }
 
 fn app_data_dir() -> Result<PathBuf, String> {
+    if let Ok(override_dir) = std::env::var("SPELLBOOK_DATA_DIR") {
+        let dir = PathBuf::from(override_dir);
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        return Ok(dir);
+    }
     let dir = system_data_dir()
         .ok_or("no data dir")?
         .join("SpellbookVault");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
+}
+
+fn sqlite_vec_library_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "vec0.dll"
+    } else if cfg!(target_os = "macos") {
+        "vec0.dylib"
+    } else {
+        "vec0.so"
+    }
 }
 
 fn sqlite_vec_candidate_paths(data_dir: &Path) -> Vec<PathBuf> {
@@ -184,59 +204,92 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
     }
 }
 
-fn try_load_sqlite_vec(conn: &Connection) {
+fn install_sqlite_vec_if_needed(
+    data_dir: &Path,
+    resource_dir: Option<&Path>,
+) -> Result<Option<PathBuf>, String> {
+    let destination = data_dir.join(sqlite_vec_library_name());
+    if destination.exists() {
+        return Ok(Some(destination));
+    }
+
+    let resource_dir = match resource_dir {
+        Some(dir) => dir,
+        None => return Ok(None),
+    };
+    let candidate = resource_dir
+        .join("sqlite-vec")
+        .join(sqlite_vec_library_name());
+    if !candidate.exists() {
+        return Ok(None);
+    }
+
+    fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
+    fs::copy(&candidate, &destination).map_err(|e| {
+        format!(
+            "sqlite-vec: failed to copy {} to {}: {}",
+            candidate.display(),
+            destination.display(),
+            e
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = fs::Permissions::from_mode(0o755);
+        fs::set_permissions(&destination, perms).map_err(|e| e.to_string())?;
+    }
+    Ok(Some(destination))
+}
+
+fn try_load_sqlite_vec(conn: &Connection, data_dir: &Path) {
     if unsafe { conn.load_extension_enable() }.is_err() {
         eprintln!("sqlite-vec: unable to enable SQLite extension loading.");
         return;
     }
 
     let mut loaded = false;
-    match app_data_dir() {
-        Ok(dir) => {
-            for candidate in sqlite_vec_candidate_paths(&dir) {
-                if !candidate.exists() {
-                    continue;
-                }
-                match unsafe { conn.load_extension(&candidate, None) } {
-                    Ok(()) => {
-                        eprintln!("sqlite-vec: loaded extension from {}", candidate.display());
-                        loaded = true;
-                        break;
-                    }
-                    Err(err) => {
-                        eprintln!(
-                            "sqlite-vec: failed to load extension from {}: {}",
-                            candidate.display(),
-                            err
-                        );
-                    }
-                }
+    for candidate in sqlite_vec_candidate_paths(data_dir) {
+        if !candidate.exists() {
+            continue;
+        }
+        match unsafe { conn.load_extension(&candidate, None) } {
+            Ok(()) => {
+                eprintln!("sqlite-vec: loaded extension from {}", candidate.display());
+                loaded = true;
+                break;
             }
-
-            if !loaded {
+            Err(err) => {
                 eprintln!(
-                    "sqlite-vec: extension not loaded. Install vec0 into {} (e.g. run scripts/install_sqlite_vec.sh).",
-                    dir.display()
+                    "sqlite-vec: failed to load extension from {}: {}",
+                    candidate.display(),
+                    err
                 );
             }
         }
-        Err(err) => {
-            eprintln!("sqlite-vec: unable to resolve data directory: {err}");
-        }
+    }
+
+    if !loaded {
+        eprintln!(
+            "sqlite-vec: extension not loaded. Ensure vec0 is bundled into {}.",
+            data_dir.display()
+        );
     }
 
     let _ = conn.load_extension_disable();
 }
 
-fn init_db() -> Result<Pool, String> {
-    let db_path = app_data_dir()?.join("spellbook.sqlite3");
+fn init_db(resource_dir: Option<&Path>) -> Result<Pool, String> {
+    let data_dir = app_data_dir()?;
+    let _ = install_sqlite_vec_if_needed(&data_dir, resource_dir)?;
+    let db_path = data_dir.join("spellbook.sqlite3");
     let manager = SqliteConnectionManager::file(&db_path);
     let pool = r2d2::Pool::new(manager).map_err(|e| e.to_string())?;
     {
         let conn = pool.get().map_err(|e| e.to_string())?;
         conn.execute_batch("PRAGMA foreign_keys=ON;")
             .map_err(|e| e.to_string())?;
-        try_load_sqlite_vec(&conn);
+        try_load_sqlite_vec(&conn, &data_dir);
         load_migrations(&conn)?;
     }
     Ok(pool)
@@ -786,6 +839,102 @@ fn import_files(
 }
 
 #[tauri::command]
+fn backup_vault(destination_path: String) -> Result<String, String> {
+    let vault_dir = app_data_dir()?;
+    let destination = PathBuf::from(destination_path);
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let file = fs::File::create(&destination).map_err(|e| e.to_string())?;
+    let destination_abs = if destination.is_absolute() {
+        destination.clone()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| e.to_string())?
+            .join(&destination)
+    };
+    let destination_abs = destination_abs
+        .canonicalize()
+        .unwrap_or_else(|_| destination_abs.clone());
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o644);
+
+    for entry in WalkDir::new(&vault_dir) {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            continue;
+        }
+        if path == destination_abs {
+            continue;
+        }
+        let relative = path.strip_prefix(&vault_dir).map_err(|e| e.to_string())?;
+        let archive_path = relative.to_str().ok_or("non-utf8 path in vault")?;
+        zip.start_file(archive_path, options)
+            .map_err(|e| e.to_string())?;
+        let mut source = fs::File::open(path).map_err(|e| e.to_string())?;
+        let mut buffer = Vec::new();
+        source.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+        zip.write_all(&buffer).map_err(|e| e.to_string())?;
+    }
+
+    zip.finish().map_err(|e| e.to_string())?;
+    Ok(destination.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn restore_vault(backup_path: String, allow_overwrite: bool) -> Result<(), String> {
+    let vault_dir = app_data_dir()?;
+    if vault_dir.exists() {
+        let has_contents = fs::read_dir(&vault_dir)
+            .map_err(|e| e.to_string())?
+            .next()
+            .is_some();
+        if has_contents {
+            if !allow_overwrite {
+                return Err("vault directory is not empty".into());
+            }
+            fs::remove_dir_all(&vault_dir).map_err(|e| e.to_string())?;
+            fs::create_dir_all(&vault_dir).map_err(|e| e.to_string())?;
+        }
+    }
+
+    let file = fs::File::open(&backup_path).map_err(|e| e.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|e| e.to_string())?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let mut entry_path = match entry.enclosed_name() {
+            Some(path) => path.to_path_buf(),
+            None => continue,
+        };
+        if entry_path
+            .components()
+            .next()
+            .is_some_and(|component| component.as_os_str() == "SpellbookVault")
+        {
+            entry_path = entry_path.components().skip(1).collect::<PathBuf>();
+        }
+        if entry_path.as_os_str().is_empty() {
+            continue;
+        }
+        let out_path = vault_dir.join(entry_path);
+        if entry.is_dir() {
+            fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn export_spells(
     state: tauri::State<'_, Arc<Pool>>,
     ids: Vec<i64>,
@@ -817,11 +966,17 @@ fn chat_answer(prompt: String) -> Result<ChatResponse, String> {
 }
 
 fn main() {
-    let pool = init_db().expect("db");
-    let shared = Arc::new(pool);
-
     tauri::Builder::default()
-        .manage(shared)
+        .setup(|app| {
+            let resource_dir_override = std::env::var("SPELLBOOK_SQLITE_VEC_RESOURCE_DIR").ok();
+            let resource_dir = resource_dir_override
+                .as_deref()
+                .map(PathBuf::from)
+                .or_else(|| app.path().resource_dir().ok());
+            let pool = init_db(resource_dir.as_deref())?;
+            app.manage(Arc::new(pool));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ping,
             search_keyword,
@@ -834,6 +989,8 @@ fn main() {
             delete_spell,
             list_spells,
             import_files,
+            backup_vault,
+            restore_vault,
             export_spells,
             chat_answer
         ])
@@ -844,6 +1001,9 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+    use std::env;
+    use tempfile::TempDir;
 
     #[test]
     fn load_migrations_creates_core_tables() {
@@ -861,5 +1021,43 @@ mod tests {
 
         assert!(names.contains("spell"));
         assert!(names.contains("spell_fts"));
+    }
+
+    #[test]
+    fn backup_restore_roundtrip() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let vault_dir = temp_dir.path().join("SpellbookVault");
+        env::set_var("SPELLBOOK_DATA_DIR", &vault_dir);
+
+        fs::create_dir_all(vault_dir.join("nested")).expect("create vault dirs");
+        fs::write(vault_dir.join("nested/spell.txt"), "magic").expect("write spell");
+
+        let backup_path = temp_dir.path().join("backup.zip");
+        backup_vault(backup_path.to_string_lossy().to_string()).expect("backup vault");
+
+        fs::remove_dir_all(&vault_dir).expect("remove vault");
+        restore_vault(backup_path.to_string_lossy().to_string(), true).expect("restore vault");
+
+        let restored =
+            fs::read_to_string(vault_dir.join("nested/spell.txt")).expect("read restored");
+        assert_eq!(restored, "magic");
+
+        env::remove_var("SPELLBOOK_DATA_DIR");
+    }
+
+    #[test]
+    fn installs_sqlite_vec_from_resource_dir() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let data_dir = temp_dir.path().join("SpellbookVault");
+        let resource_dir = temp_dir.path().join("resources");
+        let sqlite_vec_dir = resource_dir.join("sqlite-vec");
+        fs::create_dir_all(&sqlite_vec_dir).expect("create sqlite-vec dir");
+
+        let library_path = sqlite_vec_dir.join(sqlite_vec_library_name());
+        fs::write(&library_path, b"sqlite-vec").expect("write fake sqlite-vec");
+
+        install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir)).expect("install sqlite-vec");
+
+        assert!(data_dir.join(sqlite_vec_library_name()).exists());
     }
 }

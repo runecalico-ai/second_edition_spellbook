@@ -2,9 +2,22 @@ import json
 import os
 import sys
 import uuid
+import hashlib
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
+
+# Optional imports for parsers (dependencies should be installed)
+try:
+    from pdfminer.high_level import extract_text as extract_pdf_text
+except ImportError:
+    extract_pdf_text = None
+
+try:
+    from docx import Document # type: ignore
+except ImportError:
+    Document = None
 
 
 def _now_iso() -> str:
@@ -25,6 +38,17 @@ def _write_response(payload: Dict[str, Any]) -> None:
 
 def _zero_vector(size: int = 384) -> List[float]:
     return [0.0] * size
+
+
+def _compute_hash(path: Path) -> str:
+    sha256 = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            sha256.update(chunk)
+    return sha256.hexdigest()
 
 
 def _parse_front_matter(text: str) -> Dict[str, Any]:
@@ -78,6 +102,45 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
     }
 
 
+def _spell_from_pdf(path: Path) -> Dict[str, Any]:
+    if not extract_pdf_text:
+        raise ImportError("pdfminer.six not installed")
+    text = extract_pdf_text(str(path))
+    # Heuristic: First line is name? Or filename fallback.
+    # Level extraction heuristic
+    level = 0
+    level_match = re.search(r"(?:Level|Lvl)[:\s]*(\d+)", text, re.IGNORECASE)
+    if level_match:
+        level = int(level_match.group(1))
+
+    return {
+        "name": path.stem.replace("_", " ").title(),
+        "level": level,
+        "description": text.strip(),
+        "source": "PDF Import"
+    }
+
+
+def _spell_from_docx(path: Path) -> Dict[str, Any]:
+    if not Document:
+        raise ImportError("python-docx not installed")
+    doc = Document(str(path))
+    text_chunks = [p.text for p in doc.paragraphs]
+    text = "\n\n".join(text_chunks)
+    
+    level = 0
+    level_match = re.search(r"(?:Level|Lvl)[:\s]*(\d+)", text, re.IGNORECASE)
+    if level_match:
+        level = int(level_match.group(1))
+
+    return {
+        "name": path.stem.replace("_", " ").title(),
+        "level": level,
+        "description": text.strip(),
+        "source": "DOCX Import"
+    }
+
+
 def handle_embed(params: Dict[str, Any]) -> Dict[str, Any]:
     texts = params.get("texts") or []
     return {"vectors": [_zero_vector() for _ in texts]}
@@ -102,23 +165,31 @@ def handle_import(params: Dict[str, Any]) -> Dict[str, Any]:
         if not path.exists():
             conflicts.append({"path": file_path, "reason": "missing"})
             continue
+        
         ext = path.suffix.lower()
-        spell: Dict[str, Any]
-        if ext == ".md":
-            spell = _spell_from_markdown(path)
-        else:
-            spell = {
-                "name": path.stem.replace("_", " ").title(),
-                "level": 0,
-                "description": path.read_text(encoding="utf-8", errors="ignore"),
-            }
-            conflicts.append({"path": str(path), "reason": "unsupported_extension"})
+        file_hash = _compute_hash(path)
+        spell: Dict[str, Any] = {}
+        
+        try:
+            if ext == ".md":
+                spell = _spell_from_markdown(path)
+            elif ext == ".pdf":
+                spell = _spell_from_pdf(path)
+            elif ext == ".docx":
+                spell = _spell_from_docx(path)
+            else:
+                conflicts.append({"path": str(path), "reason": "unsupported_extension"})
+                continue
+        except Exception as e:
+            conflicts.append({"path": str(path), "reason": f"parsing_error: {str(e)}"})
+            continue
+
         spells.append(spell)
         artifacts.append(
             {
                 "type": ext.lstrip("."),
                 "path": str(path),
-                "hash": "",
+                "hash": file_hash,
                 "imported_at": _now_iso(),
             }
         )

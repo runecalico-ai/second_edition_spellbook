@@ -24,6 +24,13 @@ type SpellDetail = {
     edition?: string;
     author?: string;
     license?: string;
+    artifacts?: {
+        id: number;
+        type: string;
+        path: string;
+        hash: string;
+        imported_at: string;
+    }[];
 };
 
 // Mirrors SpellCreate struct
@@ -96,7 +103,7 @@ export default function SpellEditor() {
                 <div className="space-x-2">
                     {!isNew && <button onClick={handleDelete} className="px-3 py-2 text-red-400 hover:bg-neutral-800 rounded">Delete</button>}
                     <button onClick={() => navigate("/")} className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded">Cancel</button>
-                    <button onClick={save} className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold">Save</button>
+                    <button onClick={save} className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold">Save Spell</button>
                 </div>
             </div>
 
@@ -105,6 +112,7 @@ export default function SpellEditor() {
                     <label className="block text-sm text-neutral-400">Name</label>
                     <input
                         className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+                        placeholder="Spell Name"
                         value={form.name}
                         onChange={e => handleChange("name", e.target.value)}
                     />
@@ -114,6 +122,7 @@ export default function SpellEditor() {
                     <input
                         type="number"
                         className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+                        placeholder="Level"
                         value={form.level}
                         onChange={e => handleChange("level", parseInt(e.target.value))}
                     />
@@ -165,6 +174,22 @@ export default function SpellEditor() {
                     onChange={e => handleChange("description", e.target.value)}
                 />
             </div>
+
+            {form.artifacts && form.artifacts.length > 0 && (
+                <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
+                    <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
+                    {form.artifacts.map((art) => (
+                        <div key={art.id} className="text-xs space-y-1 text-neutral-500">
+                            <div className="flex justify-between">
+                                <span className="font-semibold text-neutral-400">Type: {art.type.toUpperCase()}</span>
+                                <span>Imported: {new Date(art.imported_at).toLocaleString()}</span>
+                            </div>
+                            <div className="truncate">Path: {art.path}</div>
+                            <div className="font-mono text-[10px] opacity-70">SHA256: {art.hash}</div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

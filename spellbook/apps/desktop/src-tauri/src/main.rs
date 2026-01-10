@@ -104,6 +104,17 @@ struct SpellDetail {
     edition: Option<String>,
     author: Option<String>,
     license: Option<String>,
+    artifacts: Option<Vec<SpellArtifact>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct SpellArtifact {
+    id: i64,
+    spell_id: i64,
+    r#type: String,
+    path: String,
+    hash: String,
+    imported_at: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -116,7 +127,7 @@ struct Facets {
 #[derive(Serialize, Deserialize)]
 struct ImportFile {
     name: String,
-    content: String,
+    content: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -125,6 +136,135 @@ struct ImportResult {
     artifacts: Vec<serde_json::Value>,
     conflicts: Vec<serde_json::Value>,
     warnings: Vec<String>,
+    skipped: Vec<String>,
+}
+
+#[tauri::command]
+fn import_files(
+    state: tauri::State<'_, Arc<Pool>>,
+    files: Vec<ImportFile>,
+    allow_overwrite: bool,
+) -> Result<ImportResult, String> {
+    let dir = app_data_dir()?.join("imports");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut paths = vec![];
+    let mut warnings = vec![];
+    for file in files {
+        let (safe_name, changed) = sanitize_import_filename(&file.name);
+        if changed {
+            warnings.push(format!(
+                "Sanitized import file name '{}' to '{}'.",
+                file.name, safe_name
+            ));
+        }
+        let path = dir.join(&safe_name);
+        fs::write(&path, file.content).map_err(|e| e.to_string())?;
+        paths.push(path);
+    }
+    let result = call_sidecar("import", json!({"files": paths}))?;
+    let spells: Vec<SpellDetail> =
+        serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
+            .map_err(|e| e.to_string())?;
+    let artifacts = result.get("artifacts").cloned().unwrap_or(json!([]));
+    let artifacts_vec = artifacts.as_array().ok_or("artifacts is not an array")?;
+    let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
+
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let mut skipped = vec![];
+    
+    for (i, spell) in spells.iter().enumerate() {
+        // Deduplication check
+        let existing_id: Option<i64> = conn.query_row(
+            "SELECT id FROM spell WHERE name = ? AND level = ? AND source = ?",
+            params![spell.name, spell.level, spell.source],
+            |row| row.get(0),
+        ).optional().unwrap_or(None);
+
+        let spell_id = if let Some(id) = existing_id {
+            if !allow_overwrite {
+                skipped.push(spell.name.clone());
+                continue;
+            }
+            // Update existing spell
+            conn.execute(
+                "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, edition=?, author=?, license=?, updated_at=? WHERE id=?",
+                params![
+                    spell.school,
+                    spell.sphere,
+                    spell.class_list,
+                    spell.range,
+                    spell.components,
+                    spell.material_components,
+                    spell.casting_time,
+                    spell.duration,
+                    spell.area,
+                    spell.saving_throw,
+                    spell.reversible.unwrap_or(0),
+                    spell.description,
+                    spell.tags,
+                    spell.edition,
+                    spell.author,
+                    spell.license,
+                    Utc::now().to_rfc3339(),
+                    id,
+                ],
+            ).map_err(|e| e.to_string())?;
+            id
+        } else {
+            // Insert new spell
+            conn.execute(
+                "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![
+                    spell.name,
+                    spell.school,
+                    spell.sphere,
+                    spell.class_list,
+                    spell.level,
+                    spell.range,
+                    spell.components,
+                    spell.material_components,
+                    spell.casting_time,
+                    spell.duration,
+                    spell.area,
+                    spell.saving_throw,
+                    spell.reversible.unwrap_or(0),
+                    spell.description,
+                    spell.tags,
+                    spell.source,
+                    spell.edition,
+                    spell.author,
+                    spell.license,
+                ],
+            ).map_err(|e| e.to_string())?;
+            conn.last_insert_rowid()
+        };
+
+        // Persist or Update Artifact
+        if let Some(artifact_val) = artifacts_vec.get(i) {
+            if let Some(artifact_obj) = artifact_val.as_object() {
+                let type_str = artifact_obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                let path_str = artifact_obj.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let hash_str = artifact_obj.get("hash").and_then(|v| v.as_str()).unwrap_or("");
+                let imported_at = artifact_obj.get("imported_at").and_then(|v| v.as_str()).unwrap_or("");
+                
+                if let Err(e) = conn.execute(
+                    "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
+                     ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
+                    params![spell_id, type_str, path_str, hash_str, imported_at]
+                ) {
+                    warnings.push(format!("Artifact error for {}: {}", spell.name, e));
+                }
+            }
+        }
+    }
+
+    Ok(ImportResult {
+        spells,
+        artifacts: artifacts.as_array().cloned().unwrap_or_default(),
+        conflicts: conflicts.as_array().cloned().unwrap_or_default(),
+        warnings,
+        skipped,
+    })
 }
 
 #[derive(Serialize, Deserialize)]
@@ -580,7 +720,7 @@ fn list_facets(state: tauri::State<'_, Arc<Pool>>) -> Result<Facets, String> {
 }
 
 fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>, String> {
-    conn.query_row(
+    let mut spell: SpellDetail = conn.query_row(
         "SELECT id, name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license FROM spell WHERE id = ?",
         [id],
         |row| {
@@ -605,11 +745,34 @@ fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>
                 edition: row.get(17)?,
                 author: row.get(18)?,
                 license: row.get(19)?,
+                artifacts: None,
             })
         },
     )
     .optional()
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Spell not found".to_string())?;
+
+    let mut stmt = conn.prepare("SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?")
+        .map_err(|e| e.to_string())?;
+    let artifact_rows = stmt.query_map([id], |row| {
+        Ok(SpellArtifact {
+            id: row.get(0)?,
+            spell_id: row.get(1)?,
+            r#type: row.get(2)?,
+            path: row.get(3)?,
+            hash: row.get(4)?,
+            imported_at: row.get(5)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut artifacts = vec![];
+    for artifact in artifact_rows {
+        artifacts.push(artifact.map_err(|e| e.to_string())?);
+    }
+    spell.artifacts = Some(artifacts);
+
+    Ok(Some(spell))
 }
 
 #[tauri::command]
@@ -831,70 +994,7 @@ fn sanitize_import_filename(name: &str) -> (String, bool) {
     (sanitized, changed)
 }
 
-#[tauri::command]
-fn import_files(
-    state: tauri::State<'_, Arc<Pool>>,
-    files: Vec<ImportFile>,
-) -> Result<ImportResult, String> {
-    let dir = app_data_dir()?.join("imports");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let mut paths = vec![];
-    let mut warnings = vec![];
-    for file in files {
-        let (safe_name, changed) = sanitize_import_filename(&file.name);
-        if changed {
-            warnings.push(format!(
-                "Sanitized import file name '{}' to '{}'.",
-                file.name, safe_name
-            ));
-        }
-        let path = dir.join(&safe_name);
-        fs::write(&path, file.content).map_err(|e| e.to_string())?;
-        paths.push(path);
-    }
-    let result = call_sidecar("import", json!({"files": paths}))?;
-    let spells: Vec<SpellDetail> =
-        serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
-            .map_err(|e| e.to_string())?;
-    let artifacts = result.get("artifacts").cloned().unwrap_or(json!([]));
-    let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
 
-    let conn = state.inner().get().map_err(|e| e.to_string())?;
-    for spell in &spells {
-        conn.execute(
-            "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![
-                spell.name,
-                spell.school,
-                spell.sphere,
-                spell.class_list,
-                spell.level,
-                spell.range,
-                spell.components,
-                spell.material_components,
-                spell.casting_time,
-                spell.duration,
-                spell.area,
-                spell.saving_throw,
-                spell.reversible.unwrap_or(0),
-                spell.description,
-                spell.tags,
-                spell.source,
-                spell.edition,
-                spell.author,
-                spell.license,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    Ok(ImportResult {
-        spells,
-        artifacts: artifacts.as_array().cloned().unwrap_or_default(),
-        conflicts: conflicts.as_array().cloned().unwrap_or_default(),
-        warnings,
-    })
-}
 
 fn backup_vault_with_pool(pool: &Pool, destination_path: String) -> Result<String, String> {
     let vault_dir = app_data_dir()?;

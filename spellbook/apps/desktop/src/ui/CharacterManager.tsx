@@ -134,13 +134,33 @@ export default function CharacterManager() {
                                         <td className="p-2">{s.name}</td>
                                         <td className="p-2">{s.level}</td>
                                         <td className="p-2">{s.school}</td>
-                                        <td className="p-2 text-neutral-500 italic">{s.notes}</td>
+                                        <td className="p-2">
+                                            <input
+                                                className="w-full bg-transparent border-none p-0 text-neutral-300 placeholder-neutral-600 focus:ring-0"
+                                                value={s.notes || ""}
+                                                placeholder="Add notes…"
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setSpellbook(prev => prev.map(p => p.spell_id === s.spell_id ? { ...p, notes: val } : p));
+                                                }}
+                                                onBlur={async () => {
+                                                    if (!selectedChar) return;
+                                                    await invoke("update_character_spell", {
+                                                        characterId: selectedChar.id,
+                                                        spellId: s.spell_id,
+                                                        prepared: s.prepared,
+                                                        known: s.known,
+                                                        notes: s.notes
+                                                    });
+                                                }}
+                                            />
+                                        </td>
                                     </tr>
                                 ))}
                                 {spellbook.length === 0 && (
                                     <tr>
                                         <td colSpan={5} className="p-8 text-center text-neutral-500">
-                                            No spells added. Go to Library and "Add to Character" (Coming Soon in M2).
+                                            No spells added. Go to Library and use the "+" menu to add spells.
                                         </td>
                                     </tr>
                                 )}

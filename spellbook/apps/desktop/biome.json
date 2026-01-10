@@ -6,6 +6,7 @@
       "**/dist/**",
       "**/pnpm-lock.yaml",
       "**/target/**",
+      "**/gen/**",
       "**/*.sqlite3*",
       "**/*.zip"
     ]

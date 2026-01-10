@@ -134,6 +134,14 @@ struct ChatResponse {
     meta: serde_json::Value,
 }
 
+#[derive(Deserialize, Debug)]
+struct SearchFilters {
+    school: Option<String>,
+    level: Option<i64>,
+    class_list: Option<String>,
+    source: Option<String>,
+}
+
 fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("name is required".into());
@@ -439,39 +447,72 @@ fn ping() -> String {
 fn search_keyword(
     state: tauri::State<'_, Arc<Pool>>,
     query: String,
+    filters: Option<SearchFilters>,
 ) -> Result<Vec<SpellSummary>, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let trimmed = query.trim();
     let mut results = vec![];
-    if trimmed.is_empty() {
-        let mut stmt = conn
-            .prepare("SELECT id, name, school, level, class_list, components, duration, source FROM spell ORDER BY name LIMIT 50")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok(SpellSummary {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    school: row.get(2)?,
-                    level: row.get(3)?,
-                    class_list: row.get(4)?,
-                    components: row.get(5)?,
-                    duration: row.get(6)?,
-                    source: row.get(7)?,
-                })
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            results.push(row.map_err(|e| e.to_string())?);
-        }
-        return Ok(results);
+
+    let mut where_clauses = Vec::new();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if !trimmed.is_empty() {
+        where_clauses.push("f MATCH ?".to_string());
+        params.push(Box::new(trimmed.to_string()));
     }
 
-    let mut stmt = conn
-        .prepare("SELECT id, name, school, level, class_list, components, duration, source FROM spell_fts f JOIN spell s ON s.id=f.rowid WHERE f MATCH ? ORDER BY bm25(f) LIMIT 50")
-        .map_err(|e| e.to_string())?;
+    if let Some(f) = filters {
+        if let Some(school) = f.school {
+            if !school.is_empty() {
+                where_clauses.push("s.school = ?".to_string());
+                params.push(Box::new(school));
+            }
+        }
+        if let Some(level) = f.level {
+            where_clauses.push("s.level = ?".to_string());
+            params.push(Box::new(level));
+        }
+        if let Some(source) = f.source {
+             if !source.is_empty() {
+                where_clauses.push("s.source = ?".to_string());
+                params.push(Box::new(source));
+            }
+        }
+        if let Some(class) = f.class_list {
+             if !class.is_empty() {
+                // simple LIKE for MVP; ideally exact match on JSON array or normalized table
+                where_clauses.push("s.class_list LIKE ?".to_string());
+                params.push(Box::new(format!("%{}%", class)));
+            }
+        }
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    let sql = if !trimmed.is_empty() {
+        // use FTS join
+        format!("SELECT id, name, school, level, class_list, components, duration, source FROM spell_fts f JOIN spell s ON s.id=f.rowid {} ORDER BY bm25(f) LIMIT 50", where_sql)
+    } else {
+         // normal table select
+         // Note: if filters exist but no query, we query `spell` directly.
+         // But `where_clauses` uses `s.` prefix which works for both IF we alias `spell` as `s` in the second case.
+         // Or we just handle prefixing carefully.
+         // In 'spell_fts f JOIN spell s', 's.school' is valid.
+         // In 'spell', 'school' is valid.
+         // Let's aliasing spell as s in the standard query too.
+         format!("SELECT id, name, school, level, class_list, components, duration, source FROM spell s {} ORDER BY name LIMIT 50", where_sql)
+    };
+    
+    // We need to construct params ref slice
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([trimmed], |row| {
+        .query_map(params_refs.as_slice(), |row| {
             Ok(SpellSummary {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -484,8 +525,8 @@ fn search_keyword(
             })
         })
         .map_err(|e| e.to_string())?;
-    for r in rows {
-        results.push(r.map_err(|e| e.to_string())?)
+    for row in rows {
+        results.push(row.map_err(|e| e.to_string())?);
     }
     Ok(results)
 }
@@ -495,7 +536,7 @@ fn search_semantic(
     state: tauri::State<'_, Arc<Pool>>,
     query: String,
 ) -> Result<Vec<SpellSummary>, String> {
-    search_keyword(state, query)
+    search_keyword(state, query, None)
 }
 
 #[tauri::command]
@@ -674,6 +715,13 @@ fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) -> Resul
 fn update_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellUpdate) -> Result<i64, String> {
     validate_spell_fields(&spell.name, spell.level, &spell.description)?;
     let conn = state.inner().get().map_err(|e| e.to_string())?;
+    
+    // Change log logic
+    if let Some(old_spell) = get_spell_from_conn(&conn, spell.id)? {
+        let changes = diff_spells(&old_spell, &spell);
+        log_changes(&conn, spell.id, changes)?;
+    }
+
     conn.execute(
         "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, author=?, license=?, updated_at=? WHERE id=?",
         params![
@@ -1038,6 +1086,156 @@ fn chat_answer(prompt: String) -> Result<ChatResponse, String> {
     serde_json::from_value(result).map_err(|e| e.to_string())
 }
 
+fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, String)> {
+    let mut changes = vec![];
+    if old.name != new.name { changes.push(("name".into(), old.name.clone(), new.name.clone())); }
+    if old.school != new.school { changes.push(("school".into(), old.school.clone().unwrap_or_default(), new.school.clone().unwrap_or_default())); }
+    if old.sphere != new.sphere { changes.push(("sphere".into(), old.sphere.clone().unwrap_or_default(), new.sphere.clone().unwrap_or_default())); }
+    if old.class_list != new.class_list { changes.push(("class_list".into(), old.class_list.clone().unwrap_or_default(), new.class_list.clone().unwrap_or_default())); }
+    if old.level != new.level { changes.push(("level".into(), old.level.to_string(), new.level.to_string())); }
+    if old.range != new.range { changes.push(("range".into(), old.range.clone().unwrap_or_default(), new.range.clone().unwrap_or_default())); }
+    if old.components != new.components { changes.push(("components".into(), old.components.clone().unwrap_or_default(), new.components.clone().unwrap_or_default())); }
+    if old.material_components != new.material_components { changes.push(("material_components".into(), old.material_components.clone().unwrap_or_default(), new.material_components.clone().unwrap_or_default())); }
+    if old.casting_time != new.casting_time { changes.push(("casting_time".into(), old.casting_time.clone().unwrap_or_default(), new.casting_time.clone().unwrap_or_default())); }
+    if old.duration != new.duration { changes.push(("duration".into(), old.duration.clone().unwrap_or_default(), new.duration.clone().unwrap_or_default())); }
+    if old.area != new.area { changes.push(("area".into(), old.area.clone().unwrap_or_default(), new.area.clone().unwrap_or_default())); }
+    if old.saving_throw != new.saving_throw { changes.push(("saving_throw".into(), old.saving_throw.clone().unwrap_or_default(), new.saving_throw.clone().unwrap_or_default())); }
+    match (old.reversible, new.reversible) {
+        (Some(o), Some(n)) if o != n => changes.push(("reversible".into(), o.to_string(), n.to_string())),
+        (Some(o), None) => changes.push(("reversible".into(), o.to_string(), "0".to_string())), // assuming default 0
+        (None, Some(n)) if n != 0 => changes.push(("reversible".into(), "0".to_string(), n.to_string())),
+        _ => {}
+    }
+    if old.description != new.description { changes.push(("description".into(), old.description.clone(), new.description.clone())); }
+    if old.tags != new.tags { changes.push(("tags".into(), old.tags.clone().unwrap_or_default(), new.tags.clone().unwrap_or_default())); }
+    if old.source != new.source { changes.push(("source".into(), old.source.clone().unwrap_or_default(), new.source.clone().unwrap_or_default())); }
+    if old.edition != new.edition { changes.push(("edition".into(), old.edition.clone().unwrap_or_default(), new.edition.clone().unwrap_or_default())); }
+    if old.author != new.author { changes.push(("author".into(), old.author.clone().unwrap_or_default(), new.author.clone().unwrap_or_default())); }
+    if old.license != new.license { changes.push(("license".into(), old.license.clone().unwrap_or_default(), new.license.clone().unwrap_or_default())); }
+    changes
+}
+
+fn log_changes(conn: &Connection, spell_id: i64, changes: Vec<(String, String, String)>) -> Result<(), String> {
+    for (field, old_val, new_val) in changes {
+        conn.execute(
+            "INSERT INTO change_log (spell_id, field, old_value, new_value) VALUES (?, ?, ?, ?)",
+            params![spell_id, field, old_val, new_val],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+struct Character {
+    id: i64,
+    name: String,
+    notes: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CharacterSpellbookEntry {
+    spell_id: i64,
+    name: String,
+    level: i64,
+    school: Option<String>,
+    prepared: i64,
+    known: i64,
+    notes: Option<String>,
+}
+
+#[tauri::command]
+fn create_character(state: tauri::State<'_, Arc<Pool>>, name: String, notes: Option<String>) -> Result<i64, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO \"character\" (name, notes) VALUES (?, ?)",
+        params![name, notes],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+fn list_characters(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<Character>, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, name, notes FROM \"character\" ORDER BY name")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(Character {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                notes: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = vec![];
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn get_character_spellbook(
+    state: tauri::State<'_, Arc<Pool>>,
+    character_id: i64,
+) -> Result<Vec<CharacterSpellbookEntry>, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.id, s.name, s.level, s.school, sb.prepared, sb.known, sb.notes 
+             FROM spellbook sb 
+             JOIN spell s ON s.id = sb.spell_id 
+             WHERE sb.character_id = ? 
+             ORDER BY s.level, s.name"
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([character_id], |row| {
+            Ok(CharacterSpellbookEntry {
+                spell_id: row.get(0)?,
+                name: row.get(1)?,
+                level: row.get(2)?,
+                school: row.get(3)?,
+                prepared: row.get(4)?,
+                known: row.get(5)?,
+                notes: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = vec![];
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn update_character_spell(
+    state: tauri::State<'_, Arc<Pool>>,
+    character_id: i64,
+    spell_id: i64,
+    prepared: i64,
+    known: i64,
+    notes: Option<String>,
+) -> Result<(), String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    // upsert
+    conn.execute(
+        "INSERT INTO spellbook (character_id, spell_id, prepared, known, notes) 
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(character_id, spell_id) DO UPDATE SET 
+            prepared=excluded.prepared, 
+            known=excluded.known, 
+            notes=excluded.notes",
+        params![character_id, spell_id, prepared, known, notes],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -1065,7 +1263,11 @@ fn main() {
             backup_vault,
             restore_vault,
             export_spells,
-            chat_answer
+            chat_answer,
+            create_character,
+            list_characters,
+            get_character_spellbook,
+            update_character_spell
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1135,5 +1337,34 @@ mod tests {
         install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir)).expect("install sqlite-vec");
 
         assert!(data_dir.join(sqlite_vec_library_name()).exists());
+    }
+
+    #[test]
+    fn test_diff_spells_logic() {
+        let old = SpellDetail {
+            id: Some(1),
+            name: "Fireball".to_string(),
+            level: 3,
+            school: Some("Evocation".to_string()),
+            description: "Boom".to_string(),
+            sphere: None, class_list: None, range: None, components: None, material_components: None,
+            casting_time: None, duration: None, area: None, saving_throw: None, reversible: None,
+            tags: None, source: None, edition: None, author: None, license: None,
+        };
+        let new = SpellUpdate {
+            id: 1,
+            name: "Fireball II".to_string(),
+            level: 3,
+            school: Some("Evocation".to_string()),
+            description: "Boom".to_string(),
+            sphere: None, class_list: None, range: None, components: None, material_components: None,
+            casting_time: None, duration: None, area: None, saving_throw: None, reversible: None,
+            tags: None, source: None, edition: None, author: None, license: None,
+        };
+        let changes = diff_spells(&old, &new);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].0, "name");
+        assert_eq!(changes[0].1, "Fireball");
+        assert_eq!(changes[0].2, "Fireball II");
     }
 }

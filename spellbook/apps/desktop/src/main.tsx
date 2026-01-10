@@ -7,6 +7,8 @@ import Library from "./ui/Library";
 import ImportWizard from "./ui/ImportWizard";
 import Chat from "./ui/Chat";
 import ExportPage from "./ui/ExportPage";
+import SpellEditor from "./ui/SpellEditor";
+import CharacterManager from "./ui/CharacterManager";
 
 const router = createBrowserRouter([
   {
@@ -17,6 +19,8 @@ const router = createBrowserRouter([
       { path: "import", element: <ImportWizard /> },
       { path: "chat", element: <Chat /> },
       { path: "export", element: <ExportPage /> },
+      { path: "edit/:id", element: <SpellEditor /> },
+      { path: "character", element: <CharacterManager /> },
     ],
   },
 ]);

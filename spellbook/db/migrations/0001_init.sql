@@ -75,13 +75,13 @@ CREATE TABLE IF NOT EXISTS change_log (
 );
 
 -- Characters & spellbooks
-CREATE TABLE IF NOT EXISTS character (
+CREATE TABLE IF NOT EXISTS "character" (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   notes TEXT
 );
 CREATE TABLE IF NOT EXISTS spellbook (
-  character_id INTEGER REFERENCES character(id) ON DELETE CASCADE,
+  character_id INTEGER REFERENCES "character"(id) ON DELETE CASCADE,
   spell_id INTEGER REFERENCES spell(id) ON DELETE CASCADE,
   prepared INTEGER DEFAULT 0,
   known INTEGER DEFAULT 1,

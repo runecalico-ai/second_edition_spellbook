@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::params;
+use rusqlite::{params, params_from_iter};
+use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
 
 type Pool = r2d2::Pool<SqliteConnectionManager>;
@@ -67,6 +68,17 @@ struct SpellHistoryEntry {
 }
 
 #[derive(Serialize, Deserialize)]
+struct FilterInput {
+    search_keyword: Option<String>,
+    level: Option<i64>,
+    school: Option<String>,
+    class_list: Option<String>,
+    components: Option<String>,
+    tags: Option<String>,
+    source: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
 struct Character {
     id: Option<i64>,
     name: String,
@@ -96,6 +108,95 @@ async fn search_keyword(state: tauri::State<'_, Arc<Pool>>, query: String) -> Re
     let mut stmt = conn.prepare("SELECT id, name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license, created_at, updated_at FROM spell_fts f JOIN spell s ON s.id=f.rowid WHERE f MATCH ? ORDER BY bm25(f) LIMIT 50")
         .map_err(|e| e.to_string())?;
     let rows = stmt.query_map([query], |row| {
+        Ok(Spell {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            school: row.get(2)?,
+            sphere: row.get(3)?,
+            class_list: row.get(4)?,
+            level: row.get(5)?,
+            range: row.get(6)?,
+            components: row.get(7)?,
+            material_components: row.get(8)?,
+            casting_time: row.get(9)?,
+            duration: row.get(10)?,
+            area: row.get(11)?,
+            saving_throw: row.get(12)?,
+            reversible: row.get::<_, i64>(13)? == 1,
+            description: row.get(14)?,
+            tags: row.get(15)?,
+            source: row.get(16)?,
+            edition: row.get(17)?,
+            author: row.get(18)?,
+            license: row.get(19)?,
+            created_at: row.get(20)?,
+            updated_at: row.get(21)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    let mut out = vec![];
+    for r in rows { out.push(r.map_err(|e| e.to_string())?) }
+    Ok(out)
+}
+
+#[tauri::command]
+async fn list_spells_filtered(state: tauri::State<'_, Arc<Pool>>, filters: FilterInput) -> Result<Vec<Spell>, String> {
+    let conn = state.get().map_err(|e| e.to_string())?.get().map_err(|e| e.to_string())?;
+    let mut conditions: Vec<String> = Vec::new();
+    let mut params: Vec<Value> = Vec::new();
+    let mut uses_fts = false;
+
+    if let Some(search_keyword) = filters.search_keyword.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        uses_fts = true;
+        conditions.push("f MATCH ?".to_string());
+        params.push(Value::from(search_keyword.to_string()));
+    }
+
+    if let Some(level) = filters.level {
+        conditions.push("s.level = ?".to_string());
+        params.push(Value::from(level));
+    }
+
+    if let Some(school) = filters.school.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        conditions.push("LOWER(s.school) = LOWER(?)".to_string());
+        params.push(Value::from(school.to_string()));
+    }
+
+    if let Some(class_list) = filters.class_list.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        conditions.push("LOWER(s.class_list) LIKE LOWER(?)".to_string());
+        params.push(Value::from(format!("%{}%", class_list)));
+    }
+
+    if let Some(components) = filters.components.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        conditions.push("LOWER(s.components) LIKE LOWER(?)".to_string());
+        params.push(Value::from(format!("%{}%", components)));
+    }
+
+    if let Some(tags) = filters.tags.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        conditions.push("LOWER(s.tags) LIKE LOWER(?)".to_string());
+        params.push(Value::from(format!("%{}%", tags)));
+    }
+
+    if let Some(source) = filters.source.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        conditions.push("LOWER(s.source) = LOWER(?)".to_string());
+        params.push(Value::from(source.to_string()));
+    }
+
+    let mut sql = String::from("SELECT s.id, s.name, s.school, s.sphere, s.class_list, s.level, s.range, s.components, s.material_components, s.casting_time, s.duration, s.area, s.saving_throw, s.reversible, s.description, s.tags, s.source, s.edition, s.author, s.license, s.created_at, s.updated_at FROM spell s");
+    if uses_fts {
+        sql.push_str(" JOIN spell_fts f ON s.id = f.rowid");
+    }
+    if !conditions.is_empty() {
+        sql.push_str(" WHERE ");
+        sql.push_str(&conditions.join(" AND "));
+    }
+    if uses_fts {
+        sql.push_str(" ORDER BY bm25(f) LIMIT 50");
+    } else {
+        sql.push_str(" ORDER BY s.name");
+    }
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(params_from_iter(params), |row| {
         Ok(Spell {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -453,6 +554,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             ping,
             search_keyword,
+            list_spells_filtered,
             list_spells,
             get_spell,
             create_spell,

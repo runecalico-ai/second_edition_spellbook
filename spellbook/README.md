@@ -27,6 +27,16 @@ If you want to run just the web UI for quick iteration:
 pnpm dev
 ```
 
+## Linting and formatting
+
+From `apps/desktop`, run:
+
+```bash
+pnpm lint
+pnpm format
+pnpm format:check
+```
+
 ## Next steps
 - Add models + dependencies to `services/ml` for embeddings and local chat.
 - Expand the import pipeline to use PDF/DOCX/Markdown parsers in the sidecar.

@@ -11,9 +11,7 @@
     "devUrl": "http://localhost:5173"
   },
   "bundle": {
-    "resources": [
-      "resources/sqlite-vec/*"
-    ]
+    "resources": ["resources/sqlite-vec/*"]
   },
   "app": {
     "windows": [

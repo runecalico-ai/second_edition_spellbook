@@ -1,14 +1,14 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import "./index.css";
 import App from "./ui/App";
-import Library from "./ui/Library";
-import ImportWizard from "./ui/ImportWizard";
+import CharacterManager from "./ui/CharacterManager";
 import Chat from "./ui/Chat";
 import ExportPage from "./ui/ExportPage";
+import ImportWizard from "./ui/ImportWizard";
+import Library from "./ui/Library";
 import SpellEditor from "./ui/SpellEditor";
-import CharacterManager from "./ui/CharacterManager";
 
 const router = createBrowserRouter([
   {

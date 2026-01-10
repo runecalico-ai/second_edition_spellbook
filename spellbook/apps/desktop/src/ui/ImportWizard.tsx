@@ -1,15 +1,53 @@
-import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 
 type ImportFile = {
   name: string;
   content: string;
 };
 
+type SpellArtifact = {
+  id: number;
+  spell_id: number;
+  type: string;
+  path: string;
+  hash: string;
+  imported_at: string;
+};
+
+type SpellDetail = {
+  id?: number;
+  name: string;
+  school?: string;
+  sphere?: string;
+  class_list?: string;
+  level: number;
+  range?: string;
+  components?: string;
+  material_components?: string;
+  casting_time?: string;
+  duration?: string;
+  area?: string;
+  saving_throw?: string;
+  reversible?: number;
+  description: string;
+  tags?: string;
+  source?: string;
+  edition?: string;
+  author?: string;
+  license?: string;
+  artifacts?: SpellArtifact[];
+};
+
+type ImportConflict = {
+  path: string;
+  reason: string;
+};
+
 type ImportResult = {
-  spells: any[];
-  artifacts: any[];
-  conflicts: any[];
+  spells: SpellDetail[];
+  artifacts: SpellArtifact[];
+  conflicts: ImportConflict[];
   warnings: string[];
   skipped: string[];
 };
@@ -40,16 +78,16 @@ export default function ImportWizard() {
             name: f.name,
             content: content,
           };
-        })
+        }),
       );
       const response = await invoke<ImportResult>("import_files", {
         files: filePayloads,
-        allowOverwrite
+        allowOverwrite,
       });
       setResult(response);
     } catch (e) {
       console.error("Import failed:", e);
-      alert("Import failed: " + e);
+      alert(`Import failed: ${e}`);
     } finally {
       setImporting(false);
     }
@@ -77,10 +115,10 @@ export default function ImportWizard() {
       </div>
 
       <button
+        type="button"
         className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700 disabled:opacity-50"
         onClick={doImport}
         disabled={files.length === 0 || importing}
-        type="button"
       >
         {importing ? "Importing…" : "Start Import"}
       </button>
@@ -104,7 +142,9 @@ export default function ImportWizard() {
               <details>
                 <summary className="cursor-pointer text-xs opacity-70">View Names</summary>
                 <ul className="list-disc pl-4 text-xs mt-1">
-                  {result.skipped.slice(0, 10).map(name => <li key={name}>{name}</li>)}
+                  {result.skipped.slice(0, 10).map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
                   {result.skipped.length > 10 && <li>...and {result.skipped.length - 10} more</li>}
                 </ul>
               </details>
@@ -115,8 +155,8 @@ export default function ImportWizard() {
             <div className="bg-neutral-900/50 border border-neutral-800 rounded-md p-2 text-neutral-400">
               <div className="font-semibold">Warnings</div>
               <ul className="list-disc pl-4 text-xs">
-                {result.warnings.map((warning, i) => (
-                  <li key={i}>{warning}</li>
+                {result.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
                 ))}
               </ul>
             </div>
@@ -126,8 +166,8 @@ export default function ImportWizard() {
             <div className="bg-red-900/20 border border-red-900 rounded-md p-2 text-red-400">
               <div className="font-semibold">Conflicts/Errors</div>
               <ul className="list-disc pl-4 text-xs">
-                {result.conflicts.map((c, i) => (
-                  <li key={i}>
+                {result.conflicts.map((c) => (
+                  <li key={`${c.path}-${c.reason}`}>
                     {c.path}: {c.reason}
                   </li>
                 ))}

@@ -171,14 +171,17 @@ fn import_files(
 
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut skipped = vec![];
-    
+
     for (i, spell) in spells.iter().enumerate() {
         // Deduplication check
-        let existing_id: Option<i64> = conn.query_row(
-            "SELECT id FROM spell WHERE name = ? AND level = ? AND source = ?",
-            params![spell.name, spell.level, spell.source],
-            |row| row.get(0),
-        ).optional().unwrap_or(None);
+        let existing_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM spell WHERE name = ? AND level = ? AND source = ?",
+                params![spell.name, spell.level, spell.source],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap_or(None);
 
         let spell_id = if let Some(id) = existing_id {
             if !allow_overwrite {
@@ -242,11 +245,23 @@ fn import_files(
         // Persist or Update Artifact
         if let Some(artifact_val) = artifacts_vec.get(i) {
             if let Some(artifact_obj) = artifact_val.as_object() {
-                let type_str = artifact_obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                let path_str = artifact_obj.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                let hash_str = artifact_obj.get("hash").and_then(|v| v.as_str()).unwrap_or("");
-                let imported_at = artifact_obj.get("imported_at").and_then(|v| v.as_str()).unwrap_or("");
-                
+                let type_str = artifact_obj
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let path_str = artifact_obj
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let hash_str = artifact_obj
+                    .get("hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let imported_at = artifact_obj
+                    .get("imported_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
                 if let Err(e) = conn.execute(
                     "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
                      ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
@@ -613,13 +628,13 @@ fn search_keyword(
             params.push(Box::new(level));
         }
         if let Some(source) = f.source {
-             if !source.is_empty() {
+            if !source.is_empty() {
                 where_clauses.push("s.source = ?".to_string());
                 params.push(Box::new(source));
             }
         }
         if let Some(class) = f.class_list {
-             if !class.is_empty() {
+            if !class.is_empty() {
                 // simple LIKE for MVP; ideally exact match on JSON array or normalized table
                 where_clauses.push("s.class_list LIKE ?".to_string());
                 params.push(Box::new(format!("%{}%", class)));
@@ -637,16 +652,16 @@ fn search_keyword(
         // use FTS join
         format!("SELECT id, name, school, level, class_list, components, duration, source FROM spell_fts f JOIN spell s ON s.id=f.rowid {} ORDER BY bm25(f) LIMIT 50", where_sql)
     } else {
-         // normal table select
-         // Note: if filters exist but no query, we query `spell` directly.
-         // But `where_clauses` uses `s.` prefix which works for both IF we alias `spell` as `s` in the second case.
-         // Or we just handle prefixing carefully.
-         // In 'spell_fts f JOIN spell s', 's.school' is valid.
-         // In 'spell', 'school' is valid.
-         // Let's aliasing spell as s in the standard query too.
-         format!("SELECT id, name, school, level, class_list, components, duration, source FROM spell s {} ORDER BY name LIMIT 50", where_sql)
+        // normal table select
+        // Note: if filters exist but no query, we query `spell` directly.
+        // But `where_clauses` uses `s.` prefix which works for both IF we alias `spell` as `s` in the second case.
+        // Or we just handle prefixing carefully.
+        // In 'spell_fts f JOIN spell s', 's.school' is valid.
+        // In 'spell', 'school' is valid.
+        // Let's aliasing spell as s in the standard query too.
+        format!("SELECT id, name, school, level, class_list, components, duration, source FROM spell s {} ORDER BY name LIMIT 50", where_sql)
     };
-    
+
     // We need to construct params ref slice
     let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
@@ -753,18 +768,23 @@ fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "Spell not found".to_string())?;
 
-    let mut stmt = conn.prepare("SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?")
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
+        )
         .map_err(|e| e.to_string())?;
-    let artifact_rows = stmt.query_map([id], |row| {
-        Ok(SpellArtifact {
-            id: row.get(0)?,
-            spell_id: row.get(1)?,
-            r#type: row.get(2)?,
-            path: row.get(3)?,
-            hash: row.get(4)?,
-            imported_at: row.get(5)?,
+    let artifact_rows = stmt
+        .query_map([id], |row| {
+            Ok(SpellArtifact {
+                id: row.get(0)?,
+                spell_id: row.get(1)?,
+                r#type: row.get(2)?,
+                path: row.get(3)?,
+                hash: row.get(4)?,
+                imported_at: row.get(5)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let mut artifacts = vec![];
     for artifact in artifact_rows {
@@ -878,7 +898,7 @@ fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) -> Resul
 fn update_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellUpdate) -> Result<i64, String> {
     validate_spell_fields(&spell.name, spell.level, &spell.description)?;
     let conn = state.inner().get().map_err(|e| e.to_string())?;
-    
+
     // Change log logic
     if let Some(old_spell) = get_spell_from_conn(&conn, spell.id)? {
         let changes = diff_spells(&old_spell, &spell);
@@ -993,8 +1013,6 @@ fn sanitize_import_filename(name: &str) -> (String, bool) {
     }
     (sanitized, changed)
 }
-
-
 
 fn backup_vault_with_pool(pool: &Pool, destination_path: String) -> Result<String, String> {
     let vault_dir = app_data_dir()?;
@@ -1188,34 +1206,142 @@ fn chat_answer(prompt: String) -> Result<ChatResponse, String> {
 
 fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, String)> {
     let mut changes = vec![];
-    if old.name != new.name { changes.push(("name".into(), old.name.clone(), new.name.clone())); }
-    if old.school != new.school { changes.push(("school".into(), old.school.clone().unwrap_or_default(), new.school.clone().unwrap_or_default())); }
-    if old.sphere != new.sphere { changes.push(("sphere".into(), old.sphere.clone().unwrap_or_default(), new.sphere.clone().unwrap_or_default())); }
-    if old.class_list != new.class_list { changes.push(("class_list".into(), old.class_list.clone().unwrap_or_default(), new.class_list.clone().unwrap_or_default())); }
-    if old.level != new.level { changes.push(("level".into(), old.level.to_string(), new.level.to_string())); }
-    if old.range != new.range { changes.push(("range".into(), old.range.clone().unwrap_or_default(), new.range.clone().unwrap_or_default())); }
-    if old.components != new.components { changes.push(("components".into(), old.components.clone().unwrap_or_default(), new.components.clone().unwrap_or_default())); }
-    if old.material_components != new.material_components { changes.push(("material_components".into(), old.material_components.clone().unwrap_or_default(), new.material_components.clone().unwrap_or_default())); }
-    if old.casting_time != new.casting_time { changes.push(("casting_time".into(), old.casting_time.clone().unwrap_or_default(), new.casting_time.clone().unwrap_or_default())); }
-    if old.duration != new.duration { changes.push(("duration".into(), old.duration.clone().unwrap_or_default(), new.duration.clone().unwrap_or_default())); }
-    if old.area != new.area { changes.push(("area".into(), old.area.clone().unwrap_or_default(), new.area.clone().unwrap_or_default())); }
-    if old.saving_throw != new.saving_throw { changes.push(("saving_throw".into(), old.saving_throw.clone().unwrap_or_default(), new.saving_throw.clone().unwrap_or_default())); }
+    if old.name != new.name {
+        changes.push(("name".into(), old.name.clone(), new.name.clone()));
+    }
+    if old.school != new.school {
+        changes.push((
+            "school".into(),
+            old.school.clone().unwrap_or_default(),
+            new.school.clone().unwrap_or_default(),
+        ));
+    }
+    if old.sphere != new.sphere {
+        changes.push((
+            "sphere".into(),
+            old.sphere.clone().unwrap_or_default(),
+            new.sphere.clone().unwrap_or_default(),
+        ));
+    }
+    if old.class_list != new.class_list {
+        changes.push((
+            "class_list".into(),
+            old.class_list.clone().unwrap_or_default(),
+            new.class_list.clone().unwrap_or_default(),
+        ));
+    }
+    if old.level != new.level {
+        changes.push(("level".into(), old.level.to_string(), new.level.to_string()));
+    }
+    if old.range != new.range {
+        changes.push((
+            "range".into(),
+            old.range.clone().unwrap_or_default(),
+            new.range.clone().unwrap_or_default(),
+        ));
+    }
+    if old.components != new.components {
+        changes.push((
+            "components".into(),
+            old.components.clone().unwrap_or_default(),
+            new.components.clone().unwrap_or_default(),
+        ));
+    }
+    if old.material_components != new.material_components {
+        changes.push((
+            "material_components".into(),
+            old.material_components.clone().unwrap_or_default(),
+            new.material_components.clone().unwrap_or_default(),
+        ));
+    }
+    if old.casting_time != new.casting_time {
+        changes.push((
+            "casting_time".into(),
+            old.casting_time.clone().unwrap_or_default(),
+            new.casting_time.clone().unwrap_or_default(),
+        ));
+    }
+    if old.duration != new.duration {
+        changes.push((
+            "duration".into(),
+            old.duration.clone().unwrap_or_default(),
+            new.duration.clone().unwrap_or_default(),
+        ));
+    }
+    if old.area != new.area {
+        changes.push((
+            "area".into(),
+            old.area.clone().unwrap_or_default(),
+            new.area.clone().unwrap_or_default(),
+        ));
+    }
+    if old.saving_throw != new.saving_throw {
+        changes.push((
+            "saving_throw".into(),
+            old.saving_throw.clone().unwrap_or_default(),
+            new.saving_throw.clone().unwrap_or_default(),
+        ));
+    }
     match (old.reversible, new.reversible) {
-        (Some(o), Some(n)) if o != n => changes.push(("reversible".into(), o.to_string(), n.to_string())),
+        (Some(o), Some(n)) if o != n => {
+            changes.push(("reversible".into(), o.to_string(), n.to_string()))
+        }
         (Some(o), None) => changes.push(("reversible".into(), o.to_string(), "0".to_string())), // assuming default 0
-        (None, Some(n)) if n != 0 => changes.push(("reversible".into(), "0".to_string(), n.to_string())),
+        (None, Some(n)) if n != 0 => {
+            changes.push(("reversible".into(), "0".to_string(), n.to_string()))
+        }
         _ => {}
     }
-    if old.description != new.description { changes.push(("description".into(), old.description.clone(), new.description.clone())); }
-    if old.tags != new.tags { changes.push(("tags".into(), old.tags.clone().unwrap_or_default(), new.tags.clone().unwrap_or_default())); }
-    if old.source != new.source { changes.push(("source".into(), old.source.clone().unwrap_or_default(), new.source.clone().unwrap_or_default())); }
-    if old.edition != new.edition { changes.push(("edition".into(), old.edition.clone().unwrap_or_default(), new.edition.clone().unwrap_or_default())); }
-    if old.author != new.author { changes.push(("author".into(), old.author.clone().unwrap_or_default(), new.author.clone().unwrap_or_default())); }
-    if old.license != new.license { changes.push(("license".into(), old.license.clone().unwrap_or_default(), new.license.clone().unwrap_or_default())); }
+    if old.description != new.description {
+        changes.push((
+            "description".into(),
+            old.description.clone(),
+            new.description.clone(),
+        ));
+    }
+    if old.tags != new.tags {
+        changes.push((
+            "tags".into(),
+            old.tags.clone().unwrap_or_default(),
+            new.tags.clone().unwrap_or_default(),
+        ));
+    }
+    if old.source != new.source {
+        changes.push((
+            "source".into(),
+            old.source.clone().unwrap_or_default(),
+            new.source.clone().unwrap_or_default(),
+        ));
+    }
+    if old.edition != new.edition {
+        changes.push((
+            "edition".into(),
+            old.edition.clone().unwrap_or_default(),
+            new.edition.clone().unwrap_or_default(),
+        ));
+    }
+    if old.author != new.author {
+        changes.push((
+            "author".into(),
+            old.author.clone().unwrap_or_default(),
+            new.author.clone().unwrap_or_default(),
+        ));
+    }
+    if old.license != new.license {
+        changes.push((
+            "license".into(),
+            old.license.clone().unwrap_or_default(),
+            new.license.clone().unwrap_or_default(),
+        ));
+    }
     changes
 }
 
-fn log_changes(conn: &Connection, spell_id: i64, changes: Vec<(String, String, String)>) -> Result<(), String> {
+fn log_changes(
+    conn: &Connection,
+    spell_id: i64,
+    changes: Vec<(String, String, String)>,
+) -> Result<(), String> {
     for (field, old_val, new_val) in changes {
         conn.execute(
             "INSERT INTO change_log (spell_id, field, old_value, new_value) VALUES (?, ?, ?, ?)",
@@ -1245,7 +1371,11 @@ struct CharacterSpellbookEntry {
 }
 
 #[tauri::command]
-fn create_character(state: tauri::State<'_, Arc<Pool>>, name: String, notes: Option<String>) -> Result<i64, String> {
+fn create_character(
+    state: tauri::State<'_, Arc<Pool>>,
+    name: String,
+    notes: Option<String>,
+) -> Result<i64, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO \"character\" (name, notes) VALUES (?, ?)",
@@ -1289,7 +1419,7 @@ fn get_character_spellbook(
              FROM spellbook sb 
              JOIN spell s ON s.id = sb.spell_id 
              WHERE sb.character_id = ? 
-             ORDER BY s.level, s.name"
+             ORDER BY s.level, s.name",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -1447,9 +1577,21 @@ mod tests {
             level: 3,
             school: Some("Evocation".to_string()),
             description: "Boom".to_string(),
-            sphere: None, class_list: None, range: None, components: None, material_components: None,
-            casting_time: None, duration: None, area: None, saving_throw: None, reversible: None,
-            tags: None, source: None, edition: None, author: None, license: None,
+            sphere: None,
+            class_list: None,
+            range: None,
+            components: None,
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            saving_throw: None,
+            reversible: None,
+            tags: None,
+            source: None,
+            edition: None,
+            author: None,
+            license: None,
         };
         let new = SpellUpdate {
             id: 1,
@@ -1457,9 +1599,21 @@ mod tests {
             level: 3,
             school: Some("Evocation".to_string()),
             description: "Boom".to_string(),
-            sphere: None, class_list: None, range: None, components: None, material_components: None,
-            casting_time: None, duration: None, area: None, saving_throw: None, reversible: None,
-            tags: None, source: None, edition: None, author: None, license: None,
+            sphere: None,
+            class_list: None,
+            range: None,
+            components: None,
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            saving_throw: None,
+            reversible: None,
+            tags: None,
+            source: None,
+            edition: None,
+            author: None,
+            license: None,
         };
         let changes = diff_spells(&old, &new);
         assert_eq!(changes.len(), 1);

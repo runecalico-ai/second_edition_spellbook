@@ -23,18 +23,18 @@ jobs:
         with:
           node-version: 20
           cache: 'pnpm'
-          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+          cache-dependency-path: spellbook/apps/desktop/pnpm-lock.yaml
 
       - name: Install JS dependencies
-        working-directory: apps/desktop
+        working-directory: spellbook/apps/desktop
         run: pnpm install --frozen-lockfile
 
       - name: Lint (JS)
-        working-directory: apps/desktop
+        working-directory: spellbook/apps/desktop
         run: pnpm lint
 
       - name: Format check (JS)
-        working-directory: apps/desktop
+        working-directory: spellbook/apps/desktop
         run: pnpm format:check
 
       - name: Set up Rust
@@ -65,8 +65,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            apps/desktop/src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+            spellbook/apps/desktop/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('spellbook/apps/desktop/src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
               
@@ -84,9 +84,9 @@ jobs:
             libwebkit2gtk-4.1-dev
 
       - name: Format check (Rust)
-        working-directory: apps/desktop/src-tauri
+        working-directory: spellbook/apps/desktop/src-tauri
         run: cargo fmt -- --check
 
       - name: Clippy (Rust)
-        working-directory: apps/desktop/src-tauri
+        working-directory: spellbook/apps/desktop/src-tauri
         run: cargo clippy -- -D warnings

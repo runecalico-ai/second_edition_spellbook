@@ -39,14 +39,43 @@ python3 spellbook_sidecar.py <<EOF
 EOF
 ```
 
+## Linting, formatting, and checks
+
+Desktop app:
+
+```bash
+cd apps/desktop
+pnpm lint
+```
+
+```bash
+cd apps/desktop
+pnpm format:check
+```
+
+Rust (run from `apps/desktop/src-tauri`):
+
+```bash
+cd apps/desktop/src-tauri
+cargo fmt -- --check
+```
+
+```bash
+cd apps/desktop/src-tauri
+cargo clippy -- -D warnings
+```
+
 ## Testing guidance
 
 Tests live in `services/ml/tests`. When needed:
 
 ```bash
 cd services/ml
+python -m ruff check .
 python -m pytest
 ```
+
+Linting uses `ruff`; keep it offline-friendly by installing from local wheels or cached packages.
 
 ## Notes
 

@@ -838,9 +838,9 @@ fn import_files(
     })
 }
 
-#[tauri::command]
-fn backup_vault(destination_path: String) -> Result<String, String> {
+fn backup_vault_with_pool(pool: &Pool, destination_path: String) -> Result<String, String> {
     let vault_dir = app_data_dir()?;
+    let conn = pool.get().map_err(|e| e.to_string())?;
     let destination = PathBuf::from(destination_path);
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -862,13 +862,32 @@ fn backup_vault(destination_path: String) -> Result<String, String> {
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o644);
 
+    let db_path = vault_dir.join("spellbook.sqlite3");
+    let snapshot_path = vault_dir.join("spellbook.sqlite3.backup");
+    let mut snapshot_exists = false;
+    if db_path.exists() {
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "VACUUM INTO ?",
+            [snapshot_path.to_str().ok_or("non-utf8 backup path")?],
+        )
+        .map_err(|e| e.to_string())?;
+        snapshot_exists = true;
+    }
+
     for entry in WalkDir::new(&vault_dir) {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         if path.is_dir() {
             continue;
         }
-        if path == destination_abs {
+        if path == db_path
+            || path == snapshot_path
+            || path == destination_abs
+            || path == db_path.with_extension("sqlite3-wal")
+            || path == db_path.with_extension("sqlite3-shm")
+        {
             continue;
         }
         let relative = path.strip_prefix(&vault_dir).map_err(|e| e.to_string())?;
@@ -881,13 +900,33 @@ fn backup_vault(destination_path: String) -> Result<String, String> {
         zip.write_all(&buffer).map_err(|e| e.to_string())?;
     }
 
+    if snapshot_exists {
+        zip.start_file("spellbook.sqlite3", options)
+            .map_err(|e| e.to_string())?;
+        let mut source = fs::File::open(&snapshot_path).map_err(|e| e.to_string())?;
+        let mut buffer = Vec::new();
+        source.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+        zip.write_all(&buffer).map_err(|e| e.to_string())?;
+        let _ = fs::remove_file(&snapshot_path);
+    }
+
     zip.finish().map_err(|e| e.to_string())?;
     Ok(destination.to_string_lossy().to_string())
 }
 
 #[tauri::command]
+fn backup_vault(
+    state: tauri::State<'_, Arc<Pool>>,
+    destination_path: String,
+) -> Result<String, String> {
+    backup_vault_with_pool(state.inner(), destination_path)
+}
+
+#[tauri::command]
 fn restore_vault(backup_path: String, allow_overwrite: bool) -> Result<(), String> {
     let vault_dir = app_data_dir()?;
+    let mut backup_path = PathBuf::from(backup_path);
+    let mut using_temp_backup = false;
     if vault_dir.exists() {
         let has_contents = fs::read_dir(&vault_dir)
             .map_err(|e| e.to_string())?
@@ -896,6 +935,27 @@ fn restore_vault(backup_path: String, allow_overwrite: bool) -> Result<(), Strin
         if has_contents {
             if !allow_overwrite {
                 return Err("vault directory is not empty".into());
+            }
+            let backup_abs = if backup_path.is_absolute() {
+                backup_path.clone()
+            } else {
+                std::env::current_dir()
+                    .map_err(|e| e.to_string())?
+                    .join(&backup_path)
+            };
+            let backup_abs = backup_abs
+                .canonicalize()
+                .unwrap_or_else(|_| backup_abs.clone());
+            if backup_abs.starts_with(&vault_dir) {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|e| e.to_string())?
+                    .as_nanos();
+                let temp_path =
+                    std::env::temp_dir().join(format!("spellbook_vault_restore_{timestamp}.zip"));
+                fs::copy(&backup_abs, &temp_path).map_err(|e| e.to_string())?;
+                backup_path = temp_path;
+                using_temp_backup = true;
             }
             fs::remove_dir_all(&vault_dir).map_err(|e| e.to_string())?;
             fs::create_dir_all(&vault_dir).map_err(|e| e.to_string())?;
@@ -930,6 +990,9 @@ fn restore_vault(backup_path: String, allow_overwrite: bool) -> Result<(), Strin
             let mut outfile = fs::File::create(&out_path).map_err(|e| e.to_string())?;
             std::io::copy(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
         }
+    }
+    if using_temp_backup {
+        let _ = fs::remove_file(&backup_path);
     }
     Ok(())
 }
@@ -1028,12 +1091,14 @@ mod tests {
         let temp_dir = TempDir::new().expect("temp dir");
         let vault_dir = temp_dir.path().join("SpellbookVault");
         env::set_var("SPELLBOOK_DATA_DIR", &vault_dir);
+        let pool = init_db(None).expect("init db");
 
         fs::create_dir_all(vault_dir.join("nested")).expect("create vault dirs");
         fs::write(vault_dir.join("nested/spell.txt"), "magic").expect("write spell");
 
         let backup_path = temp_dir.path().join("backup.zip");
-        backup_vault(backup_path.to_string_lossy().to_string()).expect("backup vault");
+        backup_vault_with_pool(&pool, backup_path.to_string_lossy().to_string())
+            .expect("backup vault");
 
         fs::remove_dir_all(&vault_dir).expect("remove vault");
         restore_vault(backup_path.to_string_lossy().to_string(), true).expect("restore vault");

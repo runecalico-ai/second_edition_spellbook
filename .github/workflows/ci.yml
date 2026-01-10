@@ -40,6 +40,23 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies (dev)
+        working-directory: spellbook/services/ml
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lint (Python)
+        working-directory: spellbook/services/ml
+        run: python -m ruff check .
+
+      - name: Format check (Python)
+        working-directory: spellbook/services/ml
+        run: python -m ruff format --check .
+
       - name: Install system dependencies (Rust)
         run: |
           sudo apt-get update

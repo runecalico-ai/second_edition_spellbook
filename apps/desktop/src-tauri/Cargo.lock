@@ -3085,6 +3085,7 @@ name = "spellbook-desktop"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dirs",
  "r2d2",
  "r2d2_sqlite",
  "rusqlite",

@@ -167,13 +167,19 @@ async fn import_files(state: tauri::State<'_, Arc<Pool>>, request: ImportRequest
                     }
                 }
                 Some("keep_existing") => {
+                    if !request.dry_run {
+                        if let Some(existing_id) = existing.id {
+                            attach_artifact(&tx, existing_id, &spell.source_path)?;
+                        }
+                    }
                     continue;
                 }
                 Some("merge") => {
                     if !request.dry_run {
-                        merge_spell(&tx, existing.id.unwrap_or_default(), &spell)?;
-                        attach_artifact(&tx, existing.id.unwrap_or_default(), &spell.source_path)?;
-                        imported.push(summary_from_parsed(&spell, existing.id));
+                        let existing_id = existing.id.ok_or("Missing existing spell id")?;
+                        merge_spell(&tx, existing_id, &spell)?;
+                        attach_artifact(&tx, existing_id, &spell.source_path)?;
+                        imported.push(summary_from_parsed(&spell, Some(existing_id)));
                     }
                 }
                 _ => {

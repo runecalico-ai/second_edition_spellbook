@@ -21,6 +21,8 @@ type ImportConflict = {
   incoming: SpellSummary
 }
 
+type ConflictAction = 'keep_existing' | 'keep_new' | 'merge'
+
 type ImportResult = {
   preview: SpellSummary[]
   imported: SpellSummary[]
@@ -62,6 +64,7 @@ export default function ImportWizard(){
   const [preview, setPreview] = useState<SpellSummary[]>([])
   const [conflicts, setConflicts] = useState<ImportConflict[]>([])
   const [imported, setImported] = useState<SpellSummary[]>([])
+  const [conflictActions, setConflictActions] = useState<Record<string, ConflictAction>>({})
   const [mapping, setMapping] = useState<ImportMapping>({ field_map: {}, defaults: { source: '', edition: 'AD&D 2e' } })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,8 +76,6 @@ export default function ImportWizard(){
       return withPath.path ?? file.name
     })
   }, [files])
-
-  const canNext = step === 0 ? filePaths.length > 0 : step === 1 ? preview.length > 0 || conflicts.length > 0 : true
 
   const fieldMapRows = useMemo(() => {
     return DEFAULT_MAP_KEYS.map((key) => ({
@@ -97,6 +98,7 @@ export default function ImportWizard(){
       })
       setPreview(result.preview)
       setConflicts(result.conflicts)
+      setConflictActions({})
       setStep(1)
     } catch (err) {
       setError(String(err))
@@ -119,6 +121,7 @@ export default function ImportWizard(){
       })
       setImported(result.imported)
       setConflicts(result.conflicts)
+      setConflictActions({})
       setStep(result.conflicts.length ? 2 : 2)
     } catch (err) {
       setError(String(err))
@@ -127,13 +130,24 @@ export default function ImportWizard(){
     }
   }
 
+  const conflictKey = (conflict: ImportConflict) => (
+    `${conflict.key.name_normalized}-${conflict.key.class_key}-${conflict.key.level}-${conflict.key.source}`
+  )
+
+  const updateConflictAction = (conflict: ImportConflict, action: ConflictAction) => {
+    setConflictActions((prev) => ({
+      ...prev,
+      [conflictKey(conflict)]: action,
+    }))
+  }
+
   const handleResolveConflicts = async () => {
     setError(null)
     setLoading(true)
     try {
       const resolutions = conflicts.map((conflict) => ({
         key: conflict.key,
-        action: conflict.incoming?.description ? 'merge' : 'keep_existing',
+        action: conflictActions[conflictKey(conflict)] ?? 'merge',
       }))
       const result = await invoke<ImportResult>('import_files', {
         request: {
@@ -145,6 +159,7 @@ export default function ImportWizard(){
       })
       setImported(result.imported)
       setConflicts(result.conflicts)
+      setConflictActions({})
       setStep(2)
     } catch (err) {
       setError(String(err))
@@ -281,10 +296,10 @@ export default function ImportWizard(){
         <h3 className='font-semibold'>Deduplication & Results</h3>
         {conflicts.length > 0 && (
           <div className='space-y-2'>
-            <p className='text-sm text-amber-300'>Conflicts detected ({conflicts.length}). Resolve to continue.</p>
+            <p className='text-sm text-amber-300'>Conflicts detected ({conflicts.length}). Choose how to resolve each spell.</p>
             <div className='space-y-3'>
               {conflicts.map((conflict) => (
-                <div key={`${conflict.key.name_normalized}-${conflict.key.level}-${conflict.key.source}`} className='border border-neutral-800 rounded-md p-3 space-y-2'>
+                <div key={conflictKey(conflict)} className='border border-neutral-800 rounded-md p-3 space-y-2'>
                   <div className='text-sm font-semibold'>{conflict.incoming.name}</div>
                   <div className='grid grid-cols-1 md:grid-cols-2 gap-2 text-xs'>
                     <div className='bg-neutral-950 p-2 rounded-md'>
@@ -300,7 +315,19 @@ export default function ImportWizard(){
                       <div>{conflict.incoming.source ?? '-'}</div>
                     </div>
                   </div>
-                  <div className='text-xs text-neutral-400'>Default action: merge fields where missing.</div>
+                  <div className='flex flex-wrap gap-3 text-xs text-neutral-300'>
+                    {(['merge', 'keep_existing', 'keep_new'] as ConflictAction[]).map((action) => (
+                      <label key={action} className='flex items-center gap-1'>
+                        <input
+                          type='radio'
+                          name={conflictKey(conflict)}
+                          checked={(conflictActions[conflictKey(conflict)] ?? 'merge') === action}
+                          onChange={() => updateConflictAction(conflict, action)}
+                        />
+                        {action === 'merge' ? 'Merge fields' : action === 'keep_existing' ? 'Keep existing' : 'Keep new'}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

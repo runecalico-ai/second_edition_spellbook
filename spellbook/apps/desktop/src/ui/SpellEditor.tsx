@@ -245,7 +245,30 @@ export default function SpellEditor() {
 
       {form.artifacts && form.artifacts.length > 0 && (
         <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
-          <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!form.artifacts || form.artifacts.length === 0) return;
+                const artifactId = form.artifacts[0].id;
+                if (!confirm("Re-parse this spell from the original artifact file?")) return;
+                try {
+                  setLoading(true);
+                  const updated = await invoke<SpellDetail>("reparse_artifact", { artifactId });
+                  setForm(updated);
+                  alert("Spell re-parsed successfully!");
+                } catch (e) {
+                  alert(`Reparse failed: ${e}`);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+            >
+              Reparse
+            </button>
+          </div>
           {form.artifacts.map((art) => (
             <div key={art.id} className="text-xs space-y-1 text-neutral-500">
               <div className="flex justify-between">

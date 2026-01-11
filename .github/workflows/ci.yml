@@ -51,13 +51,17 @@ jobs:
             spellbook/services/ml/requirements*.txt
             spellbook/services/ml/pyproject.toml
 
+      - name: Create Python virtualenv
+        working-directory: spellbook/services/ml
+        run: python -m venv .venv
+
       - name: Install Python dependencies (dev)
         working-directory: spellbook/services/ml
-        run: python -m pip install -r requirements-dev.txt
+        run: .venv/bin/python -m pip install -r requirements-dev.txt
 
       - name: Lint (Python)
         working-directory: spellbook/services/ml
-        run: python -m ruff check .
+        run: .venv/bin/python -m ruff check .
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -72,7 +76,11 @@ jobs:
               
       - name: Format check (Python)
         working-directory: spellbook/services/ml
-        run: python -m ruff format --check .
+        run: .venv/bin/python -m ruff format --check .
+
+      - name: Unit tests (Python)
+        working-directory: spellbook/services/ml
+        run: .venv/bin/python -m pytest
 
       - name: Install system dependencies (Rust)
         run: |

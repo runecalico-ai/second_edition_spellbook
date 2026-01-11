@@ -166,10 +166,9 @@ export default function ImportWizard() {
         {(Object.keys(STEP_TITLES) as ImportStep[]).map((s) => (
           <div
             key={s}
-            className={`px-2 py-1 rounded ${s === step
-              ? "bg-blue-600 text-white"
-              : "bg-neutral-800 text-neutral-500"
-              }`}
+            className={`px-2 py-1 rounded ${
+              s === step ? "bg-blue-600 text-white" : "bg-neutral-800 text-neutral-500"
+            }`}
           >
             {STEP_TITLES[s]}
           </div>
@@ -191,9 +190,7 @@ export default function ImportWizard() {
               <pre className="text-xs bg-neutral-950 p-2 rounded-md border border-neutral-800 text-neutral-500 max-h-32 overflow-auto">
                 {files.map((f) => f.name).join("\n")}
               </pre>
-              <div className="text-sm text-neutral-400">
-                {files.length} file(s) selected
-              </div>
+              <div className="text-sm text-neutral-400">{files.length} file(s) selected</div>
               <button
                 type="button"
                 onClick={goToPreview}
@@ -211,9 +208,7 @@ export default function ImportWizard() {
       {step === "preview" && (
         <div className="space-y-4">
           <div className="p-3 bg-neutral-900/50 border border-neutral-800 rounded">
-            <div className="text-sm font-semibold">
-              Parsed {previewSpells.length} spell(s)
-            </div>
+            <div className="text-sm font-semibold">Parsed {previewSpells.length} spell(s)</div>
             {previewConflicts.length > 0 && (
               <div className="text-xs text-red-400 mt-1">
                 {previewConflicts.length} file(s) could not be parsed
@@ -223,8 +218,8 @@ export default function ImportWizard() {
 
           {hasLowConfidence(previewSpells) && (
             <div className="p-3 bg-yellow-900/20 border border-yellow-900 rounded text-yellow-400 text-sm">
-              ⚠️ Some spells have low-confidence field extraction.
-              We recommend reviewing them before import.
+              ⚠️ Some spells have low-confidence field extraction. We recommend reviewing them before
+              import.
             </div>
           )}
 
@@ -244,18 +239,22 @@ export default function ImportWizard() {
                     Object.values(spell._confidence || {}).reduce((a, b) => a + b, 0) /
                     Math.max(Object.keys(spell._confidence || {}).length, 1);
                   return (
-                    <tr key={`${spell._source_file}-${spell.name}`} className="border-t border-neutral-800/50">
+                    <tr
+                      key={`${spell._source_file}-${spell.name}`}
+                      className="border-t border-neutral-800/50"
+                    >
                       <td className="p-1 text-neutral-300">{spell.name}</td>
                       <td className="p-1">{spell.level}</td>
                       <td className="p-1">{spell.source || "-"}</td>
                       <td className="p-1">
                         <span
-                          className={`px-1 rounded text-[10px] ${avgConf > 0.7
-                            ? "bg-green-900/50 text-green-400"
-                            : avgConf > 0.4
-                              ? "bg-yellow-900/50 text-yellow-400"
-                              : "bg-red-900/50 text-red-400"
-                            }`}
+                          className={`px-1 rounded text-[10px] ${
+                            avgConf > 0.7
+                              ? "bg-green-900/50 text-green-400"
+                              : avgConf > 0.4
+                                ? "bg-yellow-900/50 text-yellow-400"
+                                : "bg-red-900/50 text-red-400"
+                          }`}
                         >
                           {Math.round(avgConf * 100)}%
                         </span>
@@ -360,7 +359,9 @@ export default function ImportWizard() {
 
           {result.skipped && result.skipped.length > 0 && (
             <div className="p-3 bg-yellow-900/20 border border-yellow-900 rounded text-yellow-400">
-              <div className="font-semibold">{result.skipped.length} spells skipped (duplicates)</div>
+              <div className="font-semibold">
+                {result.skipped.length} spells skipped (duplicates)
+              </div>
               <details>
                 <summary className="cursor-pointer text-xs opacity-70">View Names</summary>
                 <ul className="list-disc pl-4 text-xs mt-1">

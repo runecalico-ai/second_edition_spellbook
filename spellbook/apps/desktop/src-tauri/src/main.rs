@@ -179,7 +179,7 @@ struct PreviewResult {
 fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, String> {
     let dir = app_data_dir()?.join("imports");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    
+
     let mut paths = vec![];
     for file in files {
         let (safe_name, _) = sanitize_import_filename(&file.name);
@@ -187,13 +187,13 @@ fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, String> {
         fs::write(&path, &file.content).map_err(|e| e.to_string())?;
         paths.push(path);
     }
-    
+
     let result = call_sidecar("import", json!({"files": paths}))?;
     let spells: Vec<PreviewSpell> =
         serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
             .map_err(|e| format!("Failed to parse preview spells: {}", e))?;
     let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
-    
+
     Ok(PreviewResult {
         spells,
         conflicts: conflicts.as_array().cloned().unwrap_or_default(),
@@ -1634,8 +1634,7 @@ fn reparse_artifact(
     .map_err(|e| format!("Failed to update artifact timestamp: {}", e))?;
 
     // 7. Return updated spell
-    get_spell_from_conn(&conn, spell_id)?
-        .ok_or_else(|| "Failed to fetch updated spell".to_string())
+    get_spell_from_conn(&conn, spell_id)?.ok_or_else(|| "Failed to fetch updated spell".to_string())
 }
 
 fn main() {

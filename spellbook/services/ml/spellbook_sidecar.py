@@ -77,7 +77,7 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
             description = parts[2].strip()
     name = meta.get("name") or path.stem.replace("_", " ").title()
     level = int(meta.get("level") or 0)
-    
+
     # Confidence scoring: 1.0 if field is in metadata, lower if heuristic/fallback
     confidence: Dict[str, float] = {}
     confidence["name"] = 1.0 if meta.get("name") else 0.3
@@ -86,11 +86,13 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
     confidence["description"] = 0.9 if description else 0.1
     confidence["source"] = 1.0 if meta.get("source") else 0.0
     confidence["sphere"] = 1.0 if meta.get("sphere") else 0.0
-    confidence["class_list"] = 1.0 if meta.get("class_list") or meta.get("classes") else 0.0
+    confidence["class_list"] = (
+        1.0 if meta.get("class_list") or meta.get("classes") else 0.0
+    )
     confidence["range"] = 1.0 if meta.get("range") else 0.0
     confidence["components"] = 1.0 if meta.get("components") else 0.0
     confidence["duration"] = 1.0 if meta.get("duration") else 0.0
-    
+
     return {
         "name": name,
         "school": meta.get("school"),

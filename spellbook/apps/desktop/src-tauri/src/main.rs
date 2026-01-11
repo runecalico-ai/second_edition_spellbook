@@ -157,6 +157,9 @@ struct Facets {
     schools: Vec<String>,
     sources: Vec<String>,
     levels: Vec<i64>,
+    class_list: Vec<String>,
+    components: Vec<String>,
+    tags: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -486,6 +489,8 @@ struct SearchFilters {
     level: Option<i64>,
     class_list: Option<String>,
     source: Option<String>,
+    components: Option<String>,
+    tags: Option<String>,
 }
 
 fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<(), String> {
@@ -796,6 +801,14 @@ fn search_keyword(
     filters: Option<SearchFilters>,
 ) -> Result<Vec<SpellSummary>, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
+    search_keyword_with_conn(&conn, &query, filters)
+}
+
+fn search_keyword_with_conn(
+    conn: &Connection,
+    query: &str,
+    filters: Option<SearchFilters>,
+) -> Result<Vec<SpellSummary>, String> {
     let trimmed = query.trim();
     let mut results = vec![];
 
@@ -829,6 +842,18 @@ fn search_keyword(
                 // simple LIKE for MVP; ideally exact match on JSON array or normalized table
                 where_clauses.push("s.class_list LIKE ?".to_string());
                 params.push(Box::new(format!("%{}%", class)));
+            }
+        }
+        if let Some(components) = f.components {
+            if !components.is_empty() {
+                where_clauses.push("s.components LIKE ?".to_string());
+                params.push(Box::new(format!("%{}%", components)));
+            }
+        }
+        if let Some(tags) = f.tags {
+            if !tags.is_empty() {
+                where_clauses.push("s.tags LIKE ?".to_string());
+                params.push(Box::new(format!("%{}%", tags)));
             }
         }
     }
@@ -918,11 +943,60 @@ fn list_facets(state: tauri::State<'_, Arc<Pool>>) -> Result<Facets, String> {
     for value in rows.flatten() {
         levels.push(value);
     }
+    let class_list = collect_facet_entries(
+        &conn,
+        "SELECT class_list FROM spell WHERE class_list IS NOT NULL",
+    )?;
+    let components = collect_facet_entries(
+        &conn,
+        "SELECT components FROM spell WHERE components IS NOT NULL",
+    )?;
+    let tags = collect_facet_entries(&conn, "SELECT tags FROM spell WHERE tags IS NOT NULL")?;
     Ok(Facets {
         schools,
         sources,
         levels,
+        class_list,
+        components,
+        tags,
     })
+}
+
+fn collect_facet_entries(conn: &Connection, sql: &str) -> Result<Vec<String>, String> {
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    let mut entries = std::collections::HashSet::new();
+    for value in rows.flatten() {
+        for entry in parse_facet_entries(&value) {
+            entries.insert(entry);
+        }
+    }
+    let mut entries: Vec<String> = entries.into_iter().collect();
+    entries.sort();
+    Ok(entries)
+}
+
+fn parse_facet_entries(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+    if trimmed.starts_with('[') {
+        if let Ok(values) = serde_json::from_str::<Vec<String>>(trimmed) {
+            return values
+                .into_iter()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .collect();
+        }
+    }
+    trimmed
+        .split(',')
+        .map(|value| value.trim().trim_matches('"').to_string())
+        .filter(|value| !value.is_empty())
+        .collect()
 }
 
 fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>, String> {
@@ -1927,5 +2001,68 @@ mod tests {
         assert_eq!(changes[0].0, "name");
         assert_eq!(changes[0].1, "Fireball");
         assert_eq!(changes[0].2, "Fireball II");
+    }
+
+    #[test]
+    fn search_keyword_filters_components_and_tags() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        load_migrations(&conn).expect("load migrations");
+
+        conn.execute(
+            "INSERT INTO spell (name, level, description, components, tags, class_list) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                "Mage Armor",
+                1,
+                "Protective ward",
+                "V,S,M",
+                "[\"abjuration\",\"armor\"]",
+                "[\"Wizard\"]"
+            ],
+        )
+        .expect("insert mage armor");
+        conn.execute(
+            "INSERT INTO spell (name, level, description, components, tags, class_list) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                "Cure Light Wounds",
+                1,
+                "Heal a target",
+                "V,S",
+                "[\"healing\"]",
+                "[\"Cleric\"]"
+            ],
+        )
+        .expect("insert cure light wounds");
+
+        let component_results = search_keyword_with_conn(
+            &conn,
+            "",
+            Some(SearchFilters {
+                school: None,
+                level: None,
+                class_list: None,
+                source: None,
+                components: Some("M".to_string()),
+                tags: None,
+            }),
+        )
+        .expect("search by components");
+        assert_eq!(component_results.len(), 1);
+        assert_eq!(component_results[0].name, "Mage Armor");
+
+        let tag_results = search_keyword_with_conn(
+            &conn,
+            "",
+            Some(SearchFilters {
+                school: None,
+                level: None,
+                class_list: None,
+                source: None,
+                components: None,
+                tags: Some("healing".to_string()),
+            }),
+        )
+        .expect("search by tags");
+        assert_eq!(tag_results.len(), 1);
+        assert_eq!(tag_results[0].name, "Cure Light Wounds");
     }
 }

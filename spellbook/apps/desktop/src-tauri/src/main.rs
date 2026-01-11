@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -108,6 +109,40 @@ struct SpellDetail {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+struct ImportSpell {
+    name: String,
+    school: Option<String>,
+    sphere: Option<String>,
+    class_list: Option<String>,
+    level: i64,
+    range: Option<String>,
+    components: Option<String>,
+    material_components: Option<String>,
+    casting_time: Option<String>,
+    duration: Option<String>,
+    area: Option<String>,
+    saving_throw: Option<String>,
+    reversible: Option<i64>,
+    description: String,
+    tags: Option<String>,
+    source: Option<String>,
+    edition: Option<String>,
+    author: Option<String>,
+    license: Option<String>,
+    #[serde(rename = "_source_file")]
+    source_file: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ImportArtifact {
+    #[serde(rename = "type")]
+    r#type: String,
+    path: String,
+    hash: String,
+    imported_at: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct SpellArtifact {
     id: i64,
     spell_id: i64,
@@ -171,6 +206,7 @@ struct PreviewSpell {
 #[derive(Serialize, Deserialize)]
 struct PreviewResult {
     spells: Vec<PreviewSpell>,
+    artifacts: Vec<ImportArtifact>,
     conflicts: Vec<serde_json::Value>,
 }
 
@@ -192,10 +228,14 @@ fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, String> {
     let spells: Vec<PreviewSpell> =
         serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
             .map_err(|e| format!("Failed to parse preview spells: {}", e))?;
+    let artifacts: Vec<ImportArtifact> =
+        serde_json::from_value(result.get("artifacts").cloned().unwrap_or(json!([])))
+            .map_err(|e| format!("Failed to parse preview artifacts: {}", e))?;
     let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
 
     Ok(PreviewResult {
         spells,
+        artifacts,
         conflicts: conflicts.as_array().cloned().unwrap_or_default(),
     })
 }
@@ -205,6 +245,9 @@ fn import_files(
     state: tauri::State<'_, Arc<Pool>>,
     files: Vec<ImportFile>,
     allow_overwrite: bool,
+    spells: Option<Vec<ImportSpell>>,
+    artifacts: Option<Vec<ImportArtifact>>,
+    conflicts: Option<Vec<serde_json::Value>>,
 ) -> Result<ImportResult, String> {
     let dir = app_data_dir()?.join("imports");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -222,18 +265,103 @@ fn import_files(
         fs::write(&path, file.content).map_err(|e| e.to_string())?;
         paths.push(path);
     }
-    let result = call_sidecar("import", json!({"files": paths}))?;
-    let spells: Vec<SpellDetail> =
-        serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
-            .map_err(|e| e.to_string())?;
-    let artifacts = result.get("artifacts").cloned().unwrap_or(json!([]));
-    let artifacts_vec = artifacts.as_array().ok_or("artifacts is not an array")?;
-    let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
+    let needs_spells = spells.is_none();
+    let needs_artifacts = artifacts
+        .as_ref()
+        .map(|items| items.is_empty())
+        .unwrap_or(true);
+    let needs_conflicts = conflicts
+        .as_ref()
+        .map(|items| items.is_empty())
+        .unwrap_or(true);
+    let needs_sidecar = needs_spells || needs_artifacts || needs_conflicts;
+
+    let mut parsed_spells: Vec<SpellDetail> = vec![];
+    let mut artifacts_vec: Vec<ImportArtifact> = vec![];
+    let mut conflicts_vec: Vec<serde_json::Value> = vec![];
+
+    if needs_sidecar {
+        let result = call_sidecar("import", json!({"files": paths}))?;
+        if needs_spells {
+            parsed_spells =
+                serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
+                    .map_err(|e| e.to_string())?;
+        }
+        if needs_artifacts {
+            artifacts_vec =
+                serde_json::from_value(result.get("artifacts").cloned().unwrap_or(json!([])))
+                    .map_err(|e| format!("Failed to parse artifacts: {}", e))?;
+        }
+        if needs_conflicts {
+            let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
+            conflicts_vec = conflicts.as_array().cloned().unwrap_or_default();
+        }
+    }
+
+    if let Some(override_artifacts) = artifacts {
+        if !override_artifacts.is_empty() {
+            artifacts_vec = override_artifacts;
+        }
+    }
+
+    if let Some(override_conflicts) = conflicts {
+        if !override_conflicts.is_empty() {
+            conflicts_vec = override_conflicts;
+        }
+    }
+
+    let mut artifacts_by_path = HashMap::new();
+    for artifact in &artifacts_vec {
+        artifacts_by_path.insert(artifact.path.clone(), artifact.clone());
+    }
+
+    let (spells_to_import, spell_sources, using_override) = match spells {
+        Some(override_spells) => {
+            let sources: Vec<Option<String>> = override_spells
+                .iter()
+                .map(|spell| spell.source_file.clone())
+                .collect();
+            let mapped_spells = override_spells
+                .into_iter()
+                .map(|spell| SpellDetail {
+                    id: None,
+                    name: spell.name,
+                    school: spell.school,
+                    sphere: spell.sphere,
+                    class_list: spell.class_list,
+                    level: spell.level,
+                    range: spell.range,
+                    components: spell.components,
+                    material_components: spell.material_components,
+                    casting_time: spell.casting_time,
+                    duration: spell.duration,
+                    area: spell.area,
+                    saving_throw: spell.saving_throw,
+                    reversible: spell.reversible,
+                    description: spell.description,
+                    tags: spell.tags,
+                    source: spell.source,
+                    edition: spell.edition,
+                    author: spell.author,
+                    license: spell.license,
+                    artifacts: None,
+                })
+                .collect();
+            (mapped_spells, sources, true)
+        }
+        None => {
+            let sources: Vec<Option<String>> = artifacts_vec
+                .iter()
+                .map(|artifact| Some(artifact.path.clone()))
+                .collect();
+            (parsed_spells, sources, false)
+        }
+    };
 
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut skipped = vec![];
 
-    for (i, spell) in spells.iter().enumerate() {
+    for (i, spell) in spells_to_import.iter().enumerate() {
         // Deduplication check
         let existing_id: Option<i64> = conn
             .query_row(
@@ -304,40 +432,42 @@ fn import_files(
         };
 
         // Persist or Update Artifact
-        if let Some(artifact_val) = artifacts_vec.get(i) {
-            if let Some(artifact_obj) = artifact_val.as_object() {
-                let type_str = artifact_obj
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let path_str = artifact_obj
-                    .get("path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let hash_str = artifact_obj
-                    .get("hash")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let imported_at = artifact_obj
-                    .get("imported_at")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                if let Err(e) = conn.execute(
-                    "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
-                     ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
-                    params![spell_id, type_str, path_str, hash_str, imported_at]
-                ) {
-                    warnings.push(format!("Artifact error for {}: {}", spell.name, e));
-                }
+        let artifact_val = if using_override {
+            spell_sources
+                .get(i)
+                .and_then(|source| source.as_ref())
+                .and_then(|source| artifacts_by_path.get(source))
+        } else {
+            spell_sources
+                .get(i)
+                .and_then(|source| source.as_ref())
+                .and_then(|source| artifacts_by_path.get(source))
+                .or_else(|| artifacts_vec.get(i))
+        };
+        if let Some(artifact_val) = artifact_val {
+            if let Err(e) = conn.execute(
+                "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
+                params![
+                    spell_id,
+                    artifact_val.r#type,
+                    artifact_val.path,
+                    artifact_val.hash,
+                    artifact_val.imported_at
+                ]
+            ) {
+                warnings.push(format!("Artifact error for {}: {}", spell.name, e));
             }
         }
     }
 
+    let artifacts_value =
+        serde_json::to_value(&artifacts_vec).map_err(|e| format!("Bad artifacts: {}", e))?;
+
     Ok(ImportResult {
-        spells,
-        artifacts: artifacts.as_array().cloned().unwrap_or_default(),
-        conflicts: conflicts.as_array().cloned().unwrap_or_default(),
+        spells: spells_to_import,
+        artifacts: artifacts_value.as_array().cloned().unwrap_or_default(),
+        conflicts: conflicts_vec,
         warnings,
         skipped,
     })
@@ -1570,12 +1700,15 @@ fn reparse_artifact(
     // 4. Update spell record with new data
     conn.execute(
         "UPDATE spell SET 
-            school=?, sphere=?, class_list=?, range=?, components=?, 
+            name=?, level=?, source=?, school=?, sphere=?, class_list=?, range=?, components=?, 
             material_components=?, casting_time=?, duration=?, area=?, 
             saving_throw=?, reversible=?, description=?, tags=?, 
             edition=?, author=?, license=?, updated_at=? 
          WHERE id=?",
         params![
+            parsed_spell.name,
+            parsed_spell.level,
+            parsed_spell.source,
             parsed_spell.school,
             parsed_spell.sphere,
             parsed_spell.class_list,

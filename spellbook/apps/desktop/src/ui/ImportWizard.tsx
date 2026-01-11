@@ -16,6 +16,13 @@ type SpellArtifact = {
   imported_at: string;
 };
 
+type ImportArtifact = {
+  type: string;
+  path: string;
+  hash: string;
+  imported_at: string;
+};
+
 type SpellDetail = {
   id?: number;
   name: string;
@@ -55,6 +62,7 @@ type ImportResult = {
 
 type PreviewResult = {
   spells: ParsedSpell[];
+  artifacts: ImportArtifact[];
   conflicts: ImportConflict[];
 };
 
@@ -75,6 +83,7 @@ export default function ImportWizard() {
   const [previewSpells, setPreviewSpells] = useState<ParsedSpell[]>([]);
   const [mappedSpells, setMappedSpells] = useState<ParsedSpell[]>([]);
   const [previewConflicts, setPreviewConflicts] = useState<ImportConflict[]>([]);
+  const [previewArtifacts, setPreviewArtifacts] = useState<ImportArtifact[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [allowOverwrite, setAllowOverwrite] = useState(false);
@@ -108,6 +117,7 @@ export default function ImportWizard() {
 
       const response = await invoke<PreviewResult>("preview_import", { files: payloads });
       setPreviewSpells(response.spells);
+      setPreviewArtifacts(response.artifacts);
       setPreviewConflicts(response.conflicts);
       setStep("preview");
     } catch (e) {
@@ -138,6 +148,9 @@ export default function ImportWizard() {
       const response = await invoke<ImportResult>("import_files", {
         files: filePayloads,
         allowOverwrite,
+        spells: mappedSpells,
+        artifacts: previewArtifacts,
+        conflicts: previewConflicts,
       });
       setResult(response);
       setStep("result");
@@ -156,6 +169,7 @@ export default function ImportWizard() {
     setPreviewSpells([]);
     setMappedSpells([]);
     setPreviewConflicts([]);
+    setPreviewArtifacts([]);
     setResult(null);
   };
 

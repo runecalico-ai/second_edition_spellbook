@@ -265,10 +265,7 @@ fn import_files(
         fs::write(&path, file.content).map_err(|e| e.to_string())?;
         paths.push(path);
     }
-    let needs_spells = spells
-        .as_ref()
-        .map(|override_spells| override_spells.is_empty())
-        .unwrap_or(true);
+    let needs_spells = spells.is_none();
     let needs_artifacts = artifacts
         .as_ref()
         .map(|items| items.is_empty())
@@ -319,7 +316,7 @@ fn import_files(
     }
 
     let (spells_to_import, spell_sources, using_override) = match spells {
-        Some(override_spells) if !override_spells.is_empty() => {
+        Some(override_spells) => {
             let sources: Vec<Option<String>> = override_spells
                 .iter()
                 .map(|spell| spell.source_file.clone())
@@ -352,7 +349,7 @@ fn import_files(
                 .collect();
             (mapped_spells, sources, true)
         }
-        _ => {
+        None => {
             let sources: Vec<Option<String>> = artifacts_vec
                 .iter()
                 .map(|artifact| Some(artifact.path.clone()))

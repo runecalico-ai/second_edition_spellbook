@@ -275,11 +275,14 @@ spellbook/
   - `export(spell_ids[], fmt: 'md'|'pdf', options) -> path`
 
 ### UI Flows
-- **Library**: table + filters (school, level, class, components, tags, source); search box with `keyword | semantic` toggle.
-- **Spell editor**: form for all fields, provenance display, history view, attachments panel.
-- **Import wizard**: file pick → preview + field mapper → dedupe resolution → import report.
-- **Chat**: side panel; shows retrieved spells (top‑K), final answer, and clickable citations.
-- **Export**: select spells or a character’s spellbook → choose Markdown/PDF → options (size, theme, include notes) → generate.
+- **Library**: table + filters (level, school, class, components, tags, source); search box with `keyword | semantic` toggle.
+- **Spell editor**: form for all fields, provenance display, history view, attachments panel; **Add/Update** existing or new spells; **Print** single-spell sheet.
+- **Spellbook Builder (PC/NPC)**: create multiple named spellbooks per character; pick **schools & level ranges** to filter; drag‑add/remove spells; mark **Prepared/Known**; add per-spell notes; **Print** spellbook pack (prepared/known subsets) with compact or full stat‑block layouts.
+- **Robust Search**: match on **name, description, material components, tags, source, author**; advanced filter chips for **school(s)** (multi-select) and **level range**; save common filters.
+-  **Import wizard**: file pick → preview + field mapper → dedupe resolution → import report; supports **spells** and **spellbooks** (JSON/Markdown bundle) import.
+- **Export**: select spells or a character/NPC spellbook → **Markdown** or **PDF**; options: A4/Letter, compact/full layout, include notes, include provenance; export **spellbooks** as shareable JSON/MD bundle.
+- **Chat**: side panel; shows retrieved spells (top-K), final answer, and clickable citations.
+
 
 ### Query Patterns (Rust)
 - **Keyword**: `SELECT s.* FROM spell_fts f JOIN spell s ON s.id=f.rowid WHERE f MATCH ? ORDER BY bm25(f) LIMIT ?;`
@@ -292,10 +295,11 @@ spellbook/
 - **Normalization**: rule-based regex + heuristics mapping common 2e stat-block headings (Name, School, Level, Range, Components, Casting Time, Duration, Area/Target, Saving Throw, Description, Reversible, Source, Class/Level).
 - **Dedup**: canonical key `(name_normalized, class, level, source)`; show diff UI when collision.
 - **Provenance**: store artifact path+hash; keep original text for reparse.
-
+- **Spellbook Import/Export Format**: JSON manifest with spell IDs or canonical keys + optional inline spell data; Markdown bundle as folder with `spellbook.yml` + MD files.
+  
 ### Export Details
-- **Markdown**: deterministic template that mirrors DB fields, including YAML front‑matter for metadata.
-- **PDF**: default HTML→print with system viewer for simplicity; if Pandoc is installed, prefer `pandoc` route for better typography (LaTeX engine selectable), with a bundled CSS.
+- **Markdown**: deterministic template that mirrors DB fields, including YAML front-matter for metadata; spellbooks export to a folder bundle.
+- **PDF**: default Pandoc (LaTeX) route for high quality; HTML-print fallback; presets for **Compact**, **Stat‑Block**, and **List** layouts; includes per‑spell notes and prepared/known markers.
 
 ### Local Chat (RAG) Wiring
 - **Retriever**: top 8 by vector similarity + top 8 by keyword; dedupe and cap context tokens.
@@ -341,27 +345,38 @@ spellbook/
 - Batch import tests on 1000 mixed files; error reports.
 - E2E UI tests using playwright
 
-**M3 – Semantic Search (1 week)**
+**M2.5 – Spellbook Builder & Printing (1 week)**
+- UI to create **custom PC/NPC spellbooks** per character; add/remove spells; prepared/known toggles; notes.
+- **Filters by school(s) and level range** baked into the picker.
+- **Print single spell** and **print spellbook pack** (compact + stat‑block layouts) via Pandoc/HTML-print.
+
+**M3 – Robust Search & Facets (1 week)**
+- Keyword across name, description, material components, tags, source, author.
+- Multi-select **school** filter and **level** range slider; saved searches.
+
+**M4 – Semantic Search (1 week)**
 - Python sidecar with embeddings endpoint; background embedding job.
 - Vector table and hybrid ranking (keyword+semantic) with latency budgets.
 - Search UI toggle (keyword/semantic) + facets.
 - E2E UI Tests in CI
 
-**M4 – Local Chat (RAG) (1–2 weeks)**
+**M5 – Local Chat (RAG) (1–2 weeks)**
 - Retriever (top-K vec + FTS union) and prompt assembly with citations.
 - **FLAN-T5-small (int8 via CTranslate2)** inference endpoint; streaming UI panel.
 - Guardrails: out-of-scope detection; show sources; copy-to-clipboard.
 
-**M5 – Export (1 week)**
+**M6 – Import/Export of Spellbooks (1 week)**
 - Markdown export (YAML front-matter). Pandoc-based PDF export (A4/Letter), HTML-print fallback.
 - Spellbook pack generator (selected character, prepared/known flags, notes).
+- Export spellbooks to **Markdown/JSON bundle**; import from bundle; collision/dedup handling.
+- Print-friendly options (A4/Letter, compact/full), include per-spell notes and prepared/known markers.
 
-**M6 – Polish & Packaging (1 week)**
+**M7 – Polish & Packaging (1 week)**
 - Theming (light/dark), keyboard shortcuts, high-contrast mode.
 - Installers: Windows MSI, macOS DMG/App, Linux AppImage/Deb. Portable: Windows .zip, macOS/Linux .tar.gz
 - Smoke tests across OSes; vault export/import UX.
 
-**M7 – Beta & Feedback (ongoing)**
+**M8 – Beta & Feedback (ongoing)**
 - Dogfood with a 2e corpus; address parsing edge cases; stabilize.
 
 ## Gathering Results
@@ -422,3 +437,40 @@ Notes:
 - UI calls are mocked; replace with `invoke('search_keyword', { query })` etc., once DB is wired.
 - `main.rs` includes `search_keyword` using FTS5; add migrations at startup to create tables.
 - You can copy the **seed bundle** SQL (`0001_init.sql`) into the app and execute it on first run.
+
+### Appendix C — Import/Export Bundle Formats
+
+**Two supported formats** for sharing spells and full spellbooks:
+
+1. **JSON Bundle**: a single `spellbook.json` following `spellbook.schema.json` (refs `spell.schema.json`).
+
+   * Each entry can be a **reference key** `{ name, class, level, source? }` or an **inline spell object**.
+   * Designed for easiest programmatic interchange.
+
+2. **Markdown Bundle**: a folder with `spellbook.yml` manifest and `spells/*.md` files.
+
+   * Each spell file uses YAML front-matter for fields and Markdown body for description.
+   * Human-editable, great for version control.
+
+**Dedupe Key**: `(name_normalized, class, level, source)`; collisions trigger a merge dialog and preserve the original artifact.
+
+**Versioning**: `format_version` starts at `1.0.0`; accept `<2.0.0` for backward compatibility.
+
+**Printing**: Compact / Stat-Block / List layouts; include prepared/known markers and notes.
+
+**Sample Bundles & Schemas**: Download `spellbook_bundle_examples.zip` attached to this spec; contents:
+
+```
+spellbook_bundle_examples.zip
+├─ CONTRACT.md
+├─ schemas/
+│  ├─ spell.schema.json
+│  └─ spellbook.schema.json
+├─ json_bundle/
+│  └─ spellbook.json
+└─ md_bundle/
+   ├─ spellbook.yml
+   └─ spells/
+      ├─ magic_missile.md
+      └─ detect_magic.md
+```

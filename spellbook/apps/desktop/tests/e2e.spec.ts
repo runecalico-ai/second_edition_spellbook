@@ -79,6 +79,9 @@ test("Milestone Verification Flow", async () => {
   const context = browser.contexts()[0];
   const page = context.pages()[0];
   const app = new SpellbookApp(page);
+  const runId = Date.now();
+  const uniqueSpellName = `POM Known Spell ${runId}`;
+  const characterName = `POM Character ${runId}`;
 
   await test.step("Milestone 0: Backup UI", async () => {
     const backupBtn = page.getByRole("button", { name: "Backup" });
@@ -88,7 +91,7 @@ test("Milestone Verification Flow", async () => {
   });
 
   await test.step("Setup: Create Spell", async () => {
-    await app.createSpell("POM Test Fireball", "3", "Cleanly created via helper.");
+    await app.createSpell(uniqueSpellName, "3", "Cleanly created via helper.");
   });
 
   await test.step("Milestone 1: Character Linkage", async () => {
@@ -102,6 +105,44 @@ test("Milestone Verification Flow", async () => {
     await expect(page).toHaveURL(/\/$/);
     const select = page.locator("tbody tr").first().locator("select").first();
     await expect(select).toBeVisible();
+  });
+
+  await test.step("Milestone 1b: Known toggles persist", async () => {
+    await app.navigate("Characters");
+    await expect(page.getByRole("heading", { name: "Characters" })).toBeVisible();
+
+    await page.getByPlaceholder("New Name").fill(characterName);
+    await page.getByRole("button", { name: "+" }).click();
+    const characterButton = page.getByRole("button", { name: characterName });
+    await expect(characterButton).toBeVisible();
+    await characterButton.click();
+
+    await app.navigate("Library");
+    const spellRow = page.getByRole("row", { name: new RegExp(uniqueSpellName) });
+    await expect(spellRow).toBeVisible();
+    const addDialog = page.waitForEvent("dialog");
+    await spellRow.getByRole("combobox").selectOption({ label: characterName });
+    await (await addDialog).accept();
+
+    await app.navigate("Characters");
+    await expect(characterButton).toBeVisible();
+    await characterButton.click();
+    const knownCheckbox = page
+      .getByRole("row", { name: new RegExp(uniqueSpellName) })
+      .getByRole("checkbox")
+      .nth(1);
+    await expect(knownCheckbox).toBeVisible();
+    await knownCheckbox.setChecked(false);
+
+    await app.navigate("Library");
+    await app.navigate("Characters");
+    await expect(characterButton).toBeVisible();
+    await characterButton.click();
+    const knownCheckboxAfter = page
+      .getByRole("row", { name: new RegExp(uniqueSpellName) })
+      .getByRole("checkbox")
+      .nth(1);
+    await expect(knownCheckboxAfter).not.toBeChecked();
   });
 
   await test.step("Milestone 2: Import Wizard & Provenance", async () => {

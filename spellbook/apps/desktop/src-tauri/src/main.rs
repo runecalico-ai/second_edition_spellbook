@@ -1678,6 +1678,26 @@ fn get_character_spellbook(
     character_id: i64,
 ) -> Result<Vec<CharacterSpellbookEntry>, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
+    get_character_spellbook_with_conn(&conn, character_id)
+}
+
+#[tauri::command]
+fn update_character_spell(
+    state: tauri::State<'_, Arc<Pool>>,
+    character_id: i64,
+    spell_id: i64,
+    prepared: i64,
+    known: i64,
+    notes: Option<String>,
+) -> Result<(), String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    update_character_spell_with_conn(&conn, character_id, spell_id, prepared, known, notes)
+}
+
+fn get_character_spellbook_with_conn(
+    conn: &Connection,
+    character_id: i64,
+) -> Result<Vec<CharacterSpellbookEntry>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT s.id, s.name, s.level, s.school, sb.prepared, sb.known, sb.notes 
@@ -1707,16 +1727,14 @@ fn get_character_spellbook(
     Ok(out)
 }
 
-#[tauri::command]
-fn update_character_spell(
-    state: tauri::State<'_, Arc<Pool>>,
+fn update_character_spell_with_conn(
+    conn: &Connection,
     character_id: i64,
     spell_id: i64,
     prepared: i64,
     known: i64,
     notes: Option<String>,
 ) -> Result<(), String> {
-    let conn = state.inner().get().map_err(|e| e.to_string())?;
     // upsert
     conn.execute(
         "INSERT INTO spellbook (character_id, spell_id, prepared, known, notes) 
@@ -2064,5 +2082,39 @@ mod tests {
         .expect("search by tags");
         assert_eq!(tag_results.len(), 1);
         assert_eq!(tag_results[0].name, "Cure Light Wounds");
+    }
+
+    #[test]
+    fn update_character_spell_updates_known_flag() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        load_migrations(&conn).expect("load migrations");
+
+        conn.execute(
+            "INSERT INTO \"character\" (name, notes) VALUES (?1, ?2)",
+            params!["Known Test", Option::<String>::None],
+        )
+        .expect("insert character");
+        let character_id = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO spell (name, level, description) VALUES (?1, ?2, ?3)",
+            params!["Known Spell", 1, "Testing known"],
+        )
+        .expect("insert spell");
+        let spell_id = conn.last_insert_rowid();
+
+        update_character_spell_with_conn(&conn, character_id, spell_id, 0, 0, None)
+            .expect("set known false");
+        let entries =
+            get_character_spellbook_with_conn(&conn, character_id).expect("load spellbook");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].known, 0);
+
+        update_character_spell_with_conn(&conn, character_id, spell_id, 0, 1, None)
+            .expect("set known true");
+        let updated_entries =
+            get_character_spellbook_with_conn(&conn, character_id).expect("reload spellbook");
+        assert_eq!(updated_entries.len(), 1);
+        assert_eq!(updated_entries[0].known, 1);
     }
 }

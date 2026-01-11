@@ -81,30 +81,6 @@ export default function Library() {
     search();
   }, [search]);
 
-  const handleBackup = async () => {
-    const path = prompt("Enter full path for backup (e.g. C:\\Backup\\spellbook.zip):");
-    if (!path) return;
-    try {
-      const result = await invoke("backup_vault", { destinationPath: path });
-      alert(`Backup created at: ${result}`);
-    } catch (e) {
-      alert(`Backup failed: ${e}`);
-    }
-  };
-
-  const handleRestore = async () => {
-    const path = prompt("Enter full path to restore from:");
-    if (!path) return;
-    if (!confirm("This will OVERWRITE your current database. Are you sure?")) return;
-    try {
-      await invoke("restore_vault", { backupPath: path, allowOverwrite: true });
-      alert("Restore complete. Please restart the app or reload.");
-      window.location.reload();
-    } catch (e) {
-      alert(`Restore failed: ${e}`);
-    }
-  };
-
   const addToCharacter = async (spellId: number, charIdStr: string) => {
     if (!charIdStr) return;
     const charId = Number.parseInt(charIdStr);
@@ -127,21 +103,6 @@ export default function Library() {
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">Library</h2>
         <div className="space-x-2 flex items-center">
-          <button
-            type="button"
-            onClick={handleBackup}
-            className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
-          >
-            Backup
-          </button>
-          <button
-            type="button"
-            onClick={handleRestore}
-            className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
-          >
-            Restore
-          </button>
-          <div className="w-px h-4 bg-neutral-700 mx-2" />
           <Link
             to="/character"
             className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"

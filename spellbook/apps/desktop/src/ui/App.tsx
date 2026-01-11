@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import clsx from "classnames";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
@@ -16,16 +17,59 @@ export default function App() {
       {label}
     </Link>
   );
+
+  const handleBackup = async () => {
+    const path = prompt("Enter full path for backup (e.g. C:\\Backup\\spellbook.zip):");
+    if (!path) return;
+    try {
+      const result = await invoke("backup_vault", { destinationPath: path });
+      alert(`Backup created at: ${result}`);
+    } catch (e) {
+      alert(`Backup failed: ${e}`);
+    }
+  };
+
+  const handleRestore = async () => {
+    const path = prompt("Enter full path to restore from:");
+    if (!path) return;
+    if (!confirm("This will OVERWRITE your current database. Are you sure?")) return;
+    try {
+      await invoke("restore_vault", { backupPath: path, allowOverwrite: true });
+      alert("Restore complete. Please restart the app or reload.");
+      window.location.reload();
+    } catch (e) {
+      alert(`Restore failed: ${e}`);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-4">
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Spellbook</h1>
-        <nav className="space-x-2">
-          <Tab to="/" label="Library" />
-          <Tab to="/import" label="Import" />
-          <Tab to="/chat" label="Chat" />
-          <Tab to="/export" label="Export" />
-        </nav>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleBackup}
+              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+            >
+              Backup
+            </button>
+            <button
+              type="button"
+              onClick={handleRestore}
+              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+            >
+              Restore
+            </button>
+          </div>
+          <nav className="space-x-2">
+            <Tab to="/" label="Library" />
+            <Tab to="/import" label="Import" />
+            <Tab to="/chat" label="Chat" />
+            <Tab to="/export" label="Export" />
+          </nav>
+        </div>
       </header>
       <Outlet />
     </div>

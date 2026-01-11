@@ -338,12 +338,14 @@ spellbook/
 **M2 – Importers (2 weeks)**
 - Import wizard for MD/DOCX/PDF; mapping UI; dedupe resolution.
 - Provenance storage (artifact table, hashes); reparse-from-artifact command.
-- Batch import tests on 1k mixed files; error reports.
+- Batch import tests on 1000 mixed files; error reports.
+- E2E UI tests using playwright
 
 **M3 – Semantic Search (1 week)**
 - Python sidecar with embeddings endpoint; background embedding job.
 - Vector table and hybrid ranking (keyword+semantic) with latency budgets.
 - Search UI toggle (keyword/semantic) + facets.
+- E2E UI Tests in CI
 
 **M4 – Local Chat (RAG) (1–2 weeks)**
 - Retriever (top-K vec + FTS union) and prompt assembly with citations.
@@ -378,11 +380,6 @@ spellbook/
 **User Acceptance**
 - Session usability checklist (find X in ≤ 10s; print y-level pack in ≤ 3 clicks).
 - Performance logged locally (no telemetry) and shown in a diagnostics panel.
-
-## Need Professional Help in Developing Your Architecture?
-
-Please contact me at [sammuti.com](https://sammuti.com) :)
-
 
 ### Appendix A — Seed Bundle Contents
 

@@ -193,6 +193,42 @@ test("Milestone Verification Flow", async () => {
     await expect(page.getByText(/SHA256: [a-f0-9]{64}/)).toBeVisible();
   });
 
+  await test.step("Milestone 3: Library filters for components and tags", async () => {
+    const filterRunId = Date.now();
+    const taggedSpellName = `Filter Spell ${filterRunId}`;
+    const taggedSpellPath = path.resolve(__dirname, `filter-${filterRunId}.md`);
+    fs.writeFileSync(
+      taggedSpellPath,
+      `---\nname: ${taggedSpellName}\nlevel: 2\ncomponents: V,S,M\ntags: alpha, beta\n---\nFilter test spell.`,
+    );
+    const decoySpellName = `Filter Decoy ${filterRunId}`;
+    const decoySpellPath = path.resolve(__dirname, `filter-decoy-${filterRunId}.md`);
+    fs.writeFileSync(
+      decoySpellPath,
+      `---\nname: ${decoySpellName}\nlevel: 2\ncomponents: V,S\ntags: delta\n---\nDecoy spell for filters.`,
+    );
+
+    await app.importFile(taggedSpellPath, false);
+    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: 10000 });
+    await app.importFile(decoySpellPath, false);
+    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: 10000 });
+
+    await app.navigate("Library");
+
+    const componentSelect = page.locator("select", {
+      has: page.getByRole("option", { name: "All components" }),
+    });
+    await componentSelect.selectOption({ label: "M" });
+    const tagSelect = page.locator("select", {
+      has: page.getByRole("option", { name: "All tags" }),
+    });
+    await tagSelect.selectOption({ label: "alpha" });
+    await page.getByRole("button", { name: "Search" }).click();
+
+    await expect(page.getByRole("row", { name: new RegExp(taggedSpellName) })).toBeVisible();
+    await expect(page.getByRole("row", { name: new RegExp(decoySpellName) })).toHaveCount(0);
+  });
+
   await browser.close();
 });
 

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 type Character = {
@@ -75,6 +75,21 @@ export default function CharacterManager() {
     );
   };
 
+  const toggleKnown = async (entry: CharacterSpellbookEntry) => {
+    if (!selectedChar) return;
+    const newKnown = entry.known ? 0 : 1;
+    await invoke("update_character_spell", {
+      characterId: selectedChar.id,
+      spellId: entry.spell_id,
+      prepared: entry.prepared,
+      known: newKnown,
+      notes: entry.notes,
+    });
+    setSpellbook((prev) =>
+      prev.map((p) => (p.spell_id === entry.spell_id ? { ...p, known: newKnown } : p)),
+    );
+  };
+
   return (
     <div className="flex h-full gap-4">
       <div className="w-64 border-r border-neutral-800 p-4 space-y-4">
@@ -125,6 +140,7 @@ export default function CharacterManager() {
               <thead className="text-neutral-400 border-b border-neutral-800">
                 <tr>
                   <th className="p-2 w-10 text-center">Prep</th>
+                  <th className="p-2 w-10 text-center">Known</th>
                   <th className="p-2">Name</th>
                   <th className="p-2">Level</th>
                   <th className="p-2">School</th>
@@ -142,6 +158,16 @@ export default function CharacterManager() {
                         type="checkbox"
                         checked={!!s.prepared}
                         onChange={() => togglePrepared(s)}
+                        aria-label={`Prepared ${s.name}`}
+                        className="rounded bg-neutral-900 border-neutral-700"
+                      />
+                    </td>
+                    <td className="p-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={!!s.known}
+                        onChange={() => toggleKnown(s)}
+                        aria-label={`Known ${s.name}`}
                         className="rounded bg-neutral-900 border-neutral-700"
                       />
                     </td>
@@ -175,7 +201,7 @@ export default function CharacterManager() {
                 ))}
                 {spellbook.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-neutral-500">
+                    <td colSpan={6} className="p-8 text-center text-neutral-500">
                       No spells added. Go to Library and use the "+" menu to add spells.
                     </td>
                   </tr>

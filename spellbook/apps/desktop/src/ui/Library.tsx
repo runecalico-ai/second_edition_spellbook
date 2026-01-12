@@ -17,6 +17,9 @@ type Facets = {
   schools: string[];
   sources: string[];
   levels: number[];
+  class_list: string[];
+  components: string[];
+  tags: string[];
 };
 
 type SearchFilters = {
@@ -24,6 +27,8 @@ type SearchFilters = {
   level?: number | null;
   class_list?: string | null;
   source?: string | null;
+  components?: string | null;
+  tags?: string | null;
 };
 
 type Character = {
@@ -36,10 +41,20 @@ export default function Library() {
   const [mode, setMode] = useState<"keyword" | "semantic">("keyword");
   const [spells, setSpells] = useState<SpellSummary[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [facets, setFacets] = useState<Facets>({ schools: [], sources: [], levels: [] });
+  const [facets, setFacets] = useState<Facets>({
+    schools: [],
+    sources: [],
+    levels: [],
+    class_list: [],
+    components: [],
+    tags: [],
+  });
   const [schoolFilter, setSchoolFilter] = useState("");
   const [levelFilter, setLevelFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [classListFilter, setClassListFilter] = useState("");
+  const [componentFilter, setComponentFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
 
   const loadFacets = useCallback(async () => {
     const data = await invoke<Facets>("list_facets");
@@ -60,6 +75,9 @@ export default function Library() {
       school: schoolFilter || null,
       level: levelFilter ? Number.parseInt(levelFilter) : null,
       source: sourceFilter || null,
+      class_list: classListFilter || null,
+      components: componentFilter || null,
+      tags: tagFilter || null,
     };
 
     if (mode === "semantic") {
@@ -69,7 +87,16 @@ export default function Library() {
     }
     const results = await invoke<SpellSummary[]>("search_keyword", { query, filters });
     setSpells(results);
-  }, [query, mode, schoolFilter, levelFilter, sourceFilter]);
+  }, [
+    query,
+    mode,
+    schoolFilter,
+    levelFilter,
+    sourceFilter,
+    classListFilter,
+    componentFilter,
+    tagFilter,
+  ]);
 
   useEffect(() => {
     loadFacets();
@@ -177,6 +204,42 @@ export default function Library() {
           {facets.sources.map((source) => (
             <option key={source} value={source}>
               {source}
+            </option>
+          ))}
+        </select>
+        <select
+          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+          value={classListFilter}
+          onChange={(e) => setClassListFilter(e.target.value)}
+        >
+          <option value="">All classes</option>
+          {facets.class_list.map((className) => (
+            <option key={className} value={className}>
+              {className}
+            </option>
+          ))}
+        </select>
+        <select
+          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+          value={componentFilter}
+          onChange={(e) => setComponentFilter(e.target.value)}
+        >
+          <option value="">All components</option>
+          {facets.components.map((component) => (
+            <option key={component} value={component}>
+              {component}
+            </option>
+          ))}
+        </select>
+        <select
+          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+          value={tagFilter}
+          onChange={(e) => setTagFilter(e.target.value)}
+        >
+          <option value="">All tags</option>
+          {facets.tags.map((tag) => (
+            <option key={tag} value={tag}>
+              {tag}
             </option>
           ))}
         </select>

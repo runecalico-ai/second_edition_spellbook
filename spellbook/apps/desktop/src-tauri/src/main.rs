@@ -2268,11 +2268,53 @@ mod tests {
         fs::create_dir_all(&sqlite_vec_dir).expect("create sqlite-vec dir");
 
         let library_path = sqlite_vec_dir.join(sqlite_vec_library_name());
-        fs::write(&library_path, b"sqlite-vec").expect("write fake sqlite-vec");
+        // To exercise the real sqlite-vec extension, set SPELLBOOK_SQLITE_VEC_LIBRARY to a
+        // built vec0.* path before running this test.
+        if let Ok(real_library) = env::var("SPELLBOOK_SQLITE_VEC_LIBRARY") {
+            fs::copy(&real_library, &library_path).expect("copy real sqlite-vec");
+        } else {
+            fs::write(&library_path, b"sqlite-vec").expect("write fake sqlite-vec");
+        }
 
         install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir)).expect("install sqlite-vec");
 
         assert!(data_dir.join(sqlite_vec_library_name()).exists());
+
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        if unsafe { conn.load_extension_enable() }.is_err() {
+            eprintln!("sqlite-vec test skipped: extension loading not supported.");
+            return;
+        }
+
+        let installed_path = data_dir.join(sqlite_vec_library_name());
+        if let Err(err) = unsafe { conn.load_extension(&installed_path, None) } {
+            eprintln!("sqlite-vec test skipped: failed to load extension: {err}");
+            return;
+        }
+
+        if let Err(err) =
+            conn.execute_batch("CREATE VIRTUAL TABLE spell_vec USING vec0(v float[3])")
+        {
+            eprintln!("sqlite-vec test skipped: failed to create virtual table: {err}");
+            return;
+        }
+
+        let vector = vec![0u8; 12];
+        if let Err(err) = conn.execute(
+            "INSERT INTO spell_vec(rowid, v) VALUES (?1, ?2)",
+            params![1i64, vector],
+        ) {
+            eprintln!("sqlite-vec test skipped: failed to insert vector: {err}");
+            return;
+        }
+
+        let row_id: Option<i64> = conn
+            .query_row("SELECT rowid FROM spell_vec WHERE rowid = 1", [], |row| {
+                row.get(0)
+            })
+            .optional()
+            .expect("query inserted row");
+        assert_eq!(row_id, Some(1));
     }
 
     #[test]

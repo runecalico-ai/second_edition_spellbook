@@ -2205,6 +2205,7 @@ mod tests {
     use std::collections::HashSet;
     use std::env;
     use std::sync::{Mutex, OnceLock};
+    use tauri::test::{mock_builder, mock_context, noop_assets};
     use tempfile::TempDir;
 
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -2472,6 +2473,71 @@ mod tests {
         .expect("search by tags");
         assert_eq!(tag_results.len(), 1);
         assert_eq!(tag_results[0].name, "Cure Light Wounds");
+    }
+
+    #[test]
+    fn search_keyword_populates_fts_and_returns_results() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let db_path = temp_dir.path().join("spellbook.db");
+        let manager = SqliteConnectionManager::file(&db_path);
+        let pool = Arc::new(Pool::new(manager).expect("create pool"));
+        let conn = pool.get().expect("db connection");
+        load_migrations(&conn).expect("load migrations");
+
+        conn.execute(
+            "INSERT INTO spell (name, level, description, source) VALUES (?1, ?2, ?3, ?4)",
+            params!["Fireball", 3, "A roaring blast of fire.", "Core"],
+        )
+        .expect("insert fireball");
+        conn.execute(
+            "INSERT INTO spell (name, level, description, source) VALUES (?1, ?2, ?3, ?4)",
+            params!["Ice Storm", 4, "Shards of ice rain down.", "Core"],
+        )
+        .expect("insert ice storm");
+
+        let fts_rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell_fts", [], |row| row.get(0))
+            .expect("count fts rows");
+        assert_eq!(fts_rows, 2);
+
+        let app = mock_builder()
+            .manage(Arc::clone(&pool))
+            .build(mock_context(noop_assets()))
+            .expect("build app");
+        let results = search_keyword(app.state::<Arc<Pool>>(), "fireball".to_string(), None)
+            .expect("fts search");
+        assert!(!results.is_empty());
+        assert_eq!(results[0].name, "Fireball");
+    }
+
+    #[test]
+    fn search_keyword_orders_by_bm25_score() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let db_path = temp_dir.path().join("spellbook.db");
+        let manager = SqliteConnectionManager::file(&db_path);
+        let pool = Arc::new(Pool::new(manager).expect("create pool"));
+        let conn = pool.get().expect("db connection");
+        load_migrations(&conn).expect("load migrations");
+
+        conn.execute(
+            "INSERT INTO spell (name, level, description) VALUES (?1, ?2, ?3)",
+            params!["Fire Bolt", 1, "fire fire fire bolt"],
+        )
+        .expect("insert fire bolt");
+        conn.execute(
+            "INSERT INTO spell (name, level, description) VALUES (?1, ?2, ?3)",
+            params!["Chill Touch", 1, "fire"],
+        )
+        .expect("insert chill touch");
+
+        let app = mock_builder()
+            .manage(Arc::clone(&pool))
+            .build(mock_context(noop_assets()))
+            .expect("build app");
+        let results = search_keyword(app.state::<Arc<Pool>>(), "fire".to_string(), None)
+            .expect("bm25 search");
+        assert!(results.len() >= 2);
+        assert_eq!(results[0].name, "Fire Bolt");
     }
 
     #[test]

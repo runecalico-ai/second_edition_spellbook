@@ -16,6 +16,7 @@ dirs = "6"
 wait-timeout = "0.2"
 walkdir = "2.5"
 zip = "2.2"
+sqlite-vec = "0.1.6"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

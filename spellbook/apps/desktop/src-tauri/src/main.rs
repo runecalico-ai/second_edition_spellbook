@@ -143,6 +143,34 @@ struct ImportArtifact {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+struct ImportConflictField {
+    field: String,
+    existing: Option<String>,
+    incoming: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ImportConflict {
+    Parse {
+        path: String,
+        reason: String,
+    },
+    Spell {
+        existing: Box<SpellDetail>,
+        incoming: Box<SpellDetail>,
+        fields: Vec<ImportConflictField>,
+        artifact: Option<ImportArtifact>,
+    },
+}
+
+#[derive(Deserialize)]
+struct ParseConflict {
+    path: String,
+    reason: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct SpellArtifact {
     id: i64,
     spell_id: i64,
@@ -172,9 +200,24 @@ struct ImportFile {
 struct ImportResult {
     spells: Vec<SpellDetail>,
     artifacts: Vec<serde_json::Value>,
-    conflicts: Vec<serde_json::Value>,
+    conflicts: Vec<ImportConflict>,
     warnings: Vec<String>,
     skipped: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ImportConflictResolution {
+    action: String,
+    existing_id: i64,
+    spell: Option<SpellUpdate>,
+    artifact: Option<ImportArtifact>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ResolveImportResult {
+    resolved: Vec<String>,
+    skipped: Vec<String>,
+    warnings: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -210,7 +253,7 @@ struct PreviewSpell {
 struct PreviewResult {
     spells: Vec<PreviewSpell>,
     artifacts: Vec<ImportArtifact>,
-    conflicts: Vec<serde_json::Value>,
+    conflicts: Vec<ImportConflict>,
 }
 
 /// Preview import without saving to database - returns parsed spells with confidence scores
@@ -234,12 +277,21 @@ fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, String> {
     let artifacts: Vec<ImportArtifact> =
         serde_json::from_value(result.get("artifacts").cloned().unwrap_or(json!([])))
             .map_err(|e| format!("Failed to parse preview artifacts: {}", e))?;
-    let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
+    let parse_conflicts: Vec<ParseConflict> =
+        serde_json::from_value(result.get("conflicts").cloned().unwrap_or(json!([])))
+            .map_err(|e| format!("Failed to parse preview conflicts: {}", e))?;
+    let conflicts = parse_conflicts
+        .into_iter()
+        .map(|conflict| ImportConflict::Parse {
+            path: conflict.path,
+            reason: conflict.reason,
+        })
+        .collect();
 
     Ok(PreviewResult {
         spells,
         artifacts,
-        conflicts: conflicts.as_array().cloned().unwrap_or_default(),
+        conflicts,
     })
 }
 
@@ -250,7 +302,25 @@ fn import_files(
     allow_overwrite: bool,
     spells: Option<Vec<ImportSpell>>,
     artifacts: Option<Vec<ImportArtifact>>,
-    conflicts: Option<Vec<serde_json::Value>>,
+    conflicts: Option<Vec<ImportConflict>>,
+) -> Result<ImportResult, String> {
+    import_files_with_pool(
+        state.inner(),
+        files,
+        allow_overwrite,
+        spells,
+        artifacts,
+        conflicts,
+    )
+}
+
+fn import_files_with_pool(
+    pool: &Pool,
+    files: Vec<ImportFile>,
+    allow_overwrite: bool,
+    spells: Option<Vec<ImportSpell>>,
+    artifacts: Option<Vec<ImportArtifact>>,
+    conflicts: Option<Vec<ImportConflict>>,
 ) -> Result<ImportResult, String> {
     let dir = app_data_dir()?.join("imports");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -273,15 +343,12 @@ fn import_files(
         .as_ref()
         .map(|items| items.is_empty())
         .unwrap_or(true);
-    let needs_conflicts = conflicts
-        .as_ref()
-        .map(|items| items.is_empty())
-        .unwrap_or(true);
+    let needs_conflicts = conflicts.is_none();
     let needs_sidecar = needs_spells || needs_artifacts || needs_conflicts;
 
     let mut parsed_spells: Vec<SpellDetail> = vec![];
     let mut artifacts_vec: Vec<ImportArtifact> = vec![];
-    let mut conflicts_vec: Vec<serde_json::Value> = vec![];
+    let mut conflicts_vec: Vec<ImportConflict> = vec![];
 
     if needs_sidecar {
         let result = call_sidecar("import", json!({"files": paths}))?;
@@ -296,8 +363,16 @@ fn import_files(
                     .map_err(|e| format!("Failed to parse artifacts: {}", e))?;
         }
         if needs_conflicts {
-            let conflicts = result.get("conflicts").cloned().unwrap_or(json!([]));
-            conflicts_vec = conflicts.as_array().cloned().unwrap_or_default();
+            let parse_conflicts: Vec<ParseConflict> =
+                serde_json::from_value(result.get("conflicts").cloned().unwrap_or(json!([])))
+                    .map_err(|e| format!("Failed to parse conflicts: {}", e))?;
+            conflicts_vec = parse_conflicts
+                .into_iter()
+                .map(|conflict| ImportConflict::Parse {
+                    path: conflict.path,
+                    reason: conflict.reason,
+                })
+                .collect();
         }
     }
 
@@ -308,9 +383,7 @@ fn import_files(
     }
 
     if let Some(override_conflicts) = conflicts {
-        if !override_conflicts.is_empty() {
-            conflicts_vec = override_conflicts;
-        }
+        conflicts_vec = override_conflicts;
     }
 
     let mut artifacts_by_path = HashMap::new();
@@ -361,8 +434,9 @@ fn import_files(
         }
     };
 
-    let conn = state.inner().get().map_err(|e| e.to_string())?;
-    let mut skipped = vec![];
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    let skipped = vec![];
+    let mut imported_spells = vec![];
 
     for (i, spell) in spells_to_import.iter().enumerate() {
         // Deduplication check
@@ -377,7 +451,29 @@ fn import_files(
 
         let spell_id = if let Some(id) = existing_id {
             if !allow_overwrite {
-                skipped.push(spell.name.clone());
+                let existing_spell = get_spell_from_conn(&conn, id)?
+                    .ok_or_else(|| "Failed to fetch existing spell".to_string())?;
+                let artifact = if using_override {
+                    spell_sources
+                        .get(i)
+                        .and_then(|source| source.as_ref())
+                        .and_then(|source| artifacts_by_path.get(source))
+                        .cloned()
+                } else {
+                    spell_sources
+                        .get(i)
+                        .and_then(|source| source.as_ref())
+                        .and_then(|source| artifacts_by_path.get(source))
+                        .cloned()
+                        .or_else(|| artifacts_vec.get(i).cloned())
+                };
+                let fields = build_conflict_fields(&existing_spell, spell);
+                conflicts_vec.push(ImportConflict::Spell {
+                    existing: Box::new(existing_spell),
+                    incoming: Box::new(spell.clone()),
+                    fields,
+                    artifact,
+                });
                 continue;
             }
             // Update existing spell
@@ -434,6 +530,8 @@ fn import_files(
             conn.last_insert_rowid()
         };
 
+        imported_spells.push(spell.clone());
+
         // Persist or Update Artifact
         let artifact_val = if using_override {
             spell_sources
@@ -468,11 +566,70 @@ fn import_files(
         serde_json::to_value(&artifacts_vec).map_err(|e| format!("Bad artifacts: {}", e))?;
 
     Ok(ImportResult {
-        spells: spells_to_import,
+        spells: imported_spells,
         artifacts: artifacts_value.as_array().cloned().unwrap_or_default(),
         conflicts: conflicts_vec,
         warnings,
         skipped,
+    })
+}
+
+#[tauri::command]
+fn resolve_import_conflicts(
+    state: tauri::State<'_, Arc<Pool>>,
+    resolutions: Vec<ImportConflictResolution>,
+) -> Result<ResolveImportResult, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let mut resolved = Vec::new();
+    let mut skipped = Vec::new();
+    let mut warnings = Vec::new();
+
+    for resolution in resolutions {
+        match resolution.action.as_str() {
+            "skip" => {
+                if let Some(existing_spell) = get_spell_from_conn(&conn, resolution.existing_id)? {
+                    skipped.push(existing_spell.name);
+                }
+            }
+            "overwrite" | "merge" => {
+                let spell = resolution
+                    .spell
+                    .ok_or_else(|| "missing spell for conflict resolution".to_string())?;
+                if spell.id != resolution.existing_id {
+                    return Err("conflict resolution id mismatch".into());
+                }
+                apply_spell_update_with_conn(&conn, &spell)?;
+                resolved.push(spell.name.clone());
+
+                if let Some(artifact) = resolution.artifact {
+                    if let Err(e) = conn.execute(
+                        "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
+                         ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
+                        params![
+                            spell.id,
+                            artifact.r#type,
+                            artifact.path,
+                            artifact.hash,
+                            artifact.imported_at
+                        ],
+                    ) {
+                        warnings.push(format!("Artifact error for {}: {}", spell.name, e));
+                    }
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "Unknown conflict resolution action: {}",
+                    resolution.action
+                ))
+            }
+        }
+    }
+
+    Ok(ResolveImportResult {
+        resolved,
+        skipped,
+        warnings,
     })
 }
 
@@ -1161,13 +1318,16 @@ fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) -> Resul
 
 #[tauri::command]
 fn update_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellUpdate) -> Result<i64, String> {
-    validate_spell_fields(&spell.name, spell.level, &spell.description)?;
     let conn = state.inner().get().map_err(|e| e.to_string())?;
+    apply_spell_update_with_conn(&conn, &spell)
+}
 
-    // Change log logic
-    if let Some(old_spell) = get_spell_from_conn(&conn, spell.id)? {
-        let changes = diff_spells(&old_spell, &spell);
-        log_changes(&conn, spell.id, changes)?;
+fn apply_spell_update_with_conn(conn: &Connection, spell: &SpellUpdate) -> Result<i64, String> {
+    validate_spell_fields(&spell.name, spell.level, &spell.description)?;
+
+    if let Some(old_spell) = get_spell_from_conn(conn, spell.id)? {
+        let changes = diff_spells(&old_spell, spell);
+        log_changes(conn, spell.id, changes)?;
     }
 
     conn.execute(
@@ -1602,6 +1762,143 @@ fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, Str
     changes
 }
 
+fn build_conflict_fields(
+    existing: &SpellDetail,
+    incoming: &SpellDetail,
+) -> Vec<ImportConflictField> {
+    fn push_conflict(
+        fields: &mut Vec<ImportConflictField>,
+        field: &str,
+        existing: Option<String>,
+        incoming: Option<String>,
+    ) {
+        if existing != incoming {
+            fields.push(ImportConflictField {
+                field: field.to_string(),
+                existing,
+                incoming,
+            });
+        }
+    }
+
+    let mut fields = Vec::new();
+    push_conflict(
+        &mut fields,
+        "name",
+        Some(existing.name.clone()),
+        Some(incoming.name.clone()),
+    );
+    push_conflict(
+        &mut fields,
+        "school",
+        existing.school.clone(),
+        incoming.school.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "sphere",
+        existing.sphere.clone(),
+        incoming.sphere.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "class_list",
+        existing.class_list.clone(),
+        incoming.class_list.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "level",
+        Some(existing.level.to_string()),
+        Some(incoming.level.to_string()),
+    );
+    push_conflict(
+        &mut fields,
+        "range",
+        existing.range.clone(),
+        incoming.range.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "components",
+        existing.components.clone(),
+        incoming.components.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "material_components",
+        existing.material_components.clone(),
+        incoming.material_components.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "casting_time",
+        existing.casting_time.clone(),
+        incoming.casting_time.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "duration",
+        existing.duration.clone(),
+        incoming.duration.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "area",
+        existing.area.clone(),
+        incoming.area.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "saving_throw",
+        existing.saving_throw.clone(),
+        incoming.saving_throw.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "reversible",
+        existing.reversible.map(|value| value.to_string()),
+        incoming.reversible.map(|value| value.to_string()),
+    );
+    push_conflict(
+        &mut fields,
+        "description",
+        Some(existing.description.clone()),
+        Some(incoming.description.clone()),
+    );
+    push_conflict(
+        &mut fields,
+        "tags",
+        existing.tags.clone(),
+        incoming.tags.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "source",
+        existing.source.clone(),
+        incoming.source.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "edition",
+        existing.edition.clone(),
+        incoming.edition.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "author",
+        existing.author.clone(),
+        incoming.author.clone(),
+    );
+    push_conflict(
+        &mut fields,
+        "license",
+        existing.license.clone(),
+        incoming.license.clone(),
+    );
+    fields
+}
+
 fn log_changes(
     conn: &Connection,
     spell_id: i64,
@@ -1886,6 +2183,7 @@ fn main() {
             delete_spell,
             list_spells,
             import_files,
+            resolve_import_conflicts,
             backup_vault,
             restore_vault,
             export_spells,
@@ -1906,7 +2204,15 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
     use std::env;
+    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
+    }
 
     #[test]
     fn load_migrations_creates_core_tables() {
@@ -1928,6 +2234,7 @@ mod tests {
 
     #[test]
     fn backup_restore_roundtrip() {
+        let _guard = env_lock();
         let temp_dir = TempDir::new().expect("temp dir");
         let vault_dir = temp_dir.path().join("SpellbookVault");
         env::set_var("SPELLBOOK_DATA_DIR", &vault_dir);
@@ -1965,6 +2272,89 @@ mod tests {
         install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir)).expect("install sqlite-vec");
 
         assert!(data_dir.join(sqlite_vec_library_name()).exists());
+    }
+
+    #[test]
+    fn import_files_returns_spell_conflicts() {
+        let _guard = env_lock();
+        let temp_dir = TempDir::new().expect("temp dir");
+        let data_dir = temp_dir.path().join("SpellbookVault");
+        env::set_var("SPELLBOOK_DATA_DIR", &data_dir);
+        let pool = init_db(None).expect("init db");
+        let conn = pool.get().expect("db connection");
+
+        conn.execute(
+            "INSERT INTO spell (name, level, description, source) VALUES (?1, ?2, ?3, ?4)",
+            params![
+                "Conflict Spell",
+                1,
+                "Original description",
+                "Conflict Source"
+            ],
+        )
+        .expect("insert existing spell");
+
+        let incoming_spell = ImportSpell {
+            name: "Conflict Spell".to_string(),
+            school: Some("Evocation".to_string()),
+            sphere: None,
+            class_list: None,
+            level: 1,
+            range: None,
+            components: None,
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            saving_throw: None,
+            reversible: None,
+            description: "Incoming description".to_string(),
+            tags: None,
+            source: Some("Conflict Source".to_string()),
+            edition: None,
+            author: None,
+            license: None,
+            source_file: Some("conflict.md".to_string()),
+        };
+
+        let artifact = ImportArtifact {
+            r#type: "md".to_string(),
+            path: "conflict.md".to_string(),
+            hash: "hash".to_string(),
+            imported_at: Utc::now().to_rfc3339(),
+        };
+
+        let result = import_files_with_pool(
+            &pool,
+            vec![],
+            false,
+            Some(vec![incoming_spell]),
+            Some(vec![artifact]),
+            Some(vec![]),
+        )
+        .expect("import files");
+
+        let conflict = result.conflicts.into_iter().find_map(|conflict| {
+            if let ImportConflict::Spell {
+                existing,
+                incoming,
+                fields,
+                ..
+            } = conflict
+            {
+                Some((existing, incoming, fields))
+            } else {
+                None
+            }
+        });
+
+        assert!(conflict.is_some());
+        let (existing, incoming, fields) = conflict.unwrap();
+        assert_eq!(existing.name, "Conflict Spell");
+        assert_eq!(incoming.description, "Incoming description");
+        assert!(fields.iter().any(|field| field.field == "description"));
+
+        env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]

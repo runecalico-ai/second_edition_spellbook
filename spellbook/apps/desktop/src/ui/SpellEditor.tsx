@@ -44,6 +44,7 @@ export default function SpellEditor() {
     name: "",
     level: 1,
     description: "",
+    reversible: 0,
   });
 
   const isNew = id === "new";
@@ -62,6 +63,10 @@ export default function SpellEditor() {
   const handleChange = (field: keyof SpellDetail, value: string | number) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  const isNameInvalid = !form.name.trim();
+  const isDescriptionInvalid = !form.description.trim();
+  const isLevelInvalid = Number.isNaN(form.level) || form.level < 0;
 
   const save = async () => {
     try {
@@ -134,11 +139,15 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-name"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            className={`w-full bg-neutral-900 border p-2 rounded ${
+              isNameInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
             placeholder="Spell Name"
             value={form.name}
             onChange={(e) => handleChange("name", e.target.value)}
+            required
           />
+          {isNameInvalid && <p className="text-xs text-red-400 mt-1">Name is required.</p>}
         </div>
         <div>
           <label htmlFor="spell-level" className="block text-sm text-neutral-400">
@@ -147,11 +156,18 @@ export default function SpellEditor() {
           <input
             id="spell-level"
             type="number"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            className={`w-full bg-neutral-900 border p-2 rounded ${
+              isLevelInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
             placeholder="Level"
             value={form.level}
             onChange={(e) => handleChange("level", Number.parseInt(e.target.value))}
+            min={0}
+            required
           />
+          {isLevelInvalid && (
+            <p className="text-xs text-red-400 mt-1">Level must be 0 or higher.</p>
+          )}
         </div>
         <div>
           <label htmlFor="spell-school" className="block text-sm text-neutral-400">
@@ -162,6 +178,17 @@ export default function SpellEditor() {
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.school || ""}
             onChange={(e) => handleChange("school", e.target.value)}
+          />
+        </div>
+        <div>
+          <label htmlFor="spell-sphere" className="block text-sm text-neutral-400">
+            Sphere
+          </label>
+          <input
+            id="spell-sphere"
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            value={form.sphere || ""}
+            onChange={(e) => handleChange("sphere", e.target.value)}
           />
         </div>
         <div>
@@ -187,6 +214,39 @@ export default function SpellEditor() {
             onChange={(e) => handleChange("source", e.target.value)}
           />
         </div>
+        <div>
+          <label htmlFor="spell-edition" className="block text-sm text-neutral-400">
+            Edition
+          </label>
+          <input
+            id="spell-edition"
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            value={form.edition || ""}
+            onChange={(e) => handleChange("edition", e.target.value)}
+          />
+        </div>
+        <div>
+          <label htmlFor="spell-author" className="block text-sm text-neutral-400">
+            Author
+          </label>
+          <input
+            id="spell-author"
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            value={form.author || ""}
+            onChange={(e) => handleChange("author", e.target.value)}
+          />
+        </div>
+        <div>
+          <label htmlFor="spell-license" className="block text-sm text-neutral-400">
+            License
+          </label>
+          <input
+            id="spell-license"
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            value={form.license || ""}
+            onChange={(e) => handleChange("license", e.target.value)}
+          />
+        </div>
       </div>
 
       <div>
@@ -204,6 +264,18 @@ export default function SpellEditor() {
             value={form.components || ""}
             onChange={(e) => handleChange("components", e.target.value)}
           />
+          <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700 p-2 rounded">
+            <input
+              id="spell-reversible"
+              type="checkbox"
+              className="h-4 w-4"
+              checked={Boolean(form.reversible)}
+              onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
+            />
+            <label htmlFor="spell-reversible" className="text-xs text-neutral-400">
+              Reversible
+            </label>
+          </div>
           <input
             placeholder="Duration"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
@@ -231,16 +303,47 @@ export default function SpellEditor() {
         </div>
       </div>
 
+      <div>
+        <label htmlFor="spell-material-components" className="block text-sm text-neutral-400">
+          Material Components
+        </label>
+        <textarea
+          id="spell-material-components"
+          className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
+          value={form.material_components || ""}
+          onChange={(e) => handleChange("material_components", e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label htmlFor="spell-tags" className="block text-sm text-neutral-400">
+          Tags
+        </label>
+        <textarea
+          id="spell-tags"
+          className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
+          placeholder="Comma-separated tags"
+          value={form.tags || ""}
+          onChange={(e) => handleChange("tags", e.target.value)}
+        />
+      </div>
+
       <div className="flex-1 flex flex-col">
         <label htmlFor="spell-description" className="block text-sm text-neutral-400">
           Description
         </label>
         <textarea
           id="spell-description"
-          className="w-full flex-1 bg-neutral-900 border border-neutral-700 p-2 rounded font-mono min-h-[200px]"
+          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
+            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
+          }`}
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
+          required
         />
+        {isDescriptionInvalid && (
+          <p className="text-xs text-red-400 mt-1">Description is required.</p>
+        )}
       </div>
 
       {form.artifacts && form.artifacts.length > 0 && (

@@ -2518,6 +2518,53 @@ mod tests {
     }
 
     #[test]
+    fn search_keyword_filters_components_and_tags_with_query() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let db_path = temp_dir.path().join("spellbook.db");
+        let conn = Connection::open(db_path).expect("open db");
+        load_migrations(&conn).expect("load migrations");
+
+        conn.execute(
+            "INSERT INTO spell (name, level, description, components, tags) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                "Arcane Ward",
+                2,
+                "A shimmering ward protects the caster.",
+                "V,S,M",
+                "alpha, beta"
+            ],
+        )
+        .expect("insert arcane ward");
+        conn.execute(
+            "INSERT INTO spell (name, level, description, components, tags) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                "Ward Off",
+                2,
+                "A warding pulse repels foes.",
+                "V,S",
+                "delta"
+            ],
+        )
+        .expect("insert ward off");
+
+        let results = search_keyword_with_conn(
+            &conn,
+            "ward",
+            Some(SearchFilters {
+                school: None,
+                level: None,
+                class_list: None,
+                source: None,
+                components: Some("M".to_string()),
+                tags: Some("alpha".to_string()),
+            }),
+        )
+        .expect("search with query and filters");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Arcane Ward");
+    }
+
+    #[test]
     fn search_keyword_populates_fts_and_returns_results() {
         let temp_dir = TempDir::new().expect("temp dir");
         let db_path = temp_dir.path().join("spellbook.db");

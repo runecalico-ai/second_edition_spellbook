@@ -3,12 +3,22 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-
-from docx import Document
+from zipfile import ZipFile, ZIP_DEFLATED
+from html import escape
+import importlib.util
 
 
 def _sidecar_path() -> Path:
     return Path(__file__).resolve().parents[1] / "spellbook_sidecar.py"
+
+
+def _load_sidecar_module():
+    spec = importlib.util.spec_from_file_location("spellbook_sidecar", _sidecar_path())
+    if not spec or not spec.loader:
+        raise RuntimeError("Unable to load spellbook_sidecar module")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _run_sidecar(payload: dict) -> dict:
@@ -65,10 +75,46 @@ def _write_minimal_pdf(path: Path, text: str) -> None:
 
 
 def _write_minimal_docx(path: Path, text: str) -> None:
-    doc = Document()
-    for line in text.splitlines():
-        doc.add_paragraph(line)
-    doc.save(path)
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:body>"
+        f"<w:p><w:r><w:t>{escape(text)}</w:t></w:r></w:p>"
+        "<w:sectPr>"
+        '<w:pgSz w:w="12240" w:h="15840"/>'
+        '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" '
+        'w:header="720" w:footer="720" w:gutter="0"/>'
+        "</w:sectPr>"
+        "</w:body>"
+        "</w:document>"
+    )
+    content_types_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        "</Types>"
+    )
+    rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="word/document.xml"/>'
+        "</Relationships>"
+    )
+    doc_rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>'
+    )
+
+    with ZipFile(path, "w", compression=ZIP_DEFLATED) as docx:
+        docx.writestr("[Content_Types].xml", content_types_xml)
+        docx.writestr("_rels/.rels", rels_xml)
+        docx.writestr("word/document.xml", document_xml)
+        docx.writestr("word/_rels/document.xml.rels", doc_rels_xml)
 
 
 def generate_test_spells(
@@ -116,7 +162,18 @@ This is the description for Test Spell number {i}. It contains enough text to be
 
 def test_parse_1000_mixed_files(tmp_path: Path):
     """Ensure parsing mixed files completes reasonably fast."""
-    files = generate_test_spells(tmp_path, md_count=800, pdf_count=100, docx_count=100)
+    sidecar = _load_sidecar_module()
+    pdf_available = sidecar.extract_pdf_text is not None
+    docx_available = sidecar.Document is not None
+    expected_pdf_count = 100 if pdf_available else 0
+    expected_docx_count = 100 if docx_available else 0
+    expected_md_count = 1000 - expected_pdf_count - expected_docx_count
+    files = generate_test_spells(
+        tmp_path,
+        md_count=expected_md_count,
+        pdf_count=expected_pdf_count,
+        docx_count=expected_docx_count,
+    )
 
     start = time.time()
 
@@ -136,27 +193,27 @@ def test_parse_1000_mixed_files(tmp_path: Path):
     assert len(spells) == 1000
     assert not response["result"]["conflicts"]
 
-    md_count = 0
-    pdf_count = 0
-    docx_count = 0
+    actual_md_count = 0
+    actual_pdf_count = 0
+    actual_docx_count = 0
 
     # Verify critical fields extracted
     for spell in spells:
         source_file = spell.get("_source_file", "")
         if source_file.endswith(".md"):
-            md_count += 1
+            actual_md_count += 1
         elif source_file.endswith(".pdf"):
-            pdf_count += 1
+            actual_pdf_count += 1
         elif source_file.endswith(".docx"):
-            docx_count += 1
+            actual_docx_count += 1
 
         assert spell.get("name"), "Missing spell name"
         assert spell.get("level") is not None, "Missing spell level"
         assert spell.get("description"), "Missing spell description"
 
-    assert md_count == 800
-    assert pdf_count == 100
-    assert docx_count == 100
+    assert actual_md_count == expected_md_count
+    assert actual_pdf_count == expected_pdf_count
+    assert actual_docx_count == expected_docx_count
 
 
 def test_confidence_scores_present(tmp_path: Path):

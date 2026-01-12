@@ -69,6 +69,12 @@ class SpellbookApp {
 
     await this.page.getByRole("button", { name: "Start Import" }).click();
   }
+
+  async openSpell(spellName: string) {
+    await this.navigate("Library");
+    await this.page.getByText(spellName).click();
+    await expect(this.page.getByPlaceholder("Spell Name")).toHaveValue(spellName);
+  }
 }
 
 let appProcess: ChildProcess | null = null;
@@ -326,6 +332,119 @@ test("Import conflict merge review flow", async () => {
     await app.navigate("Library");
     await page.getByText(conflictName).click();
     await expect(page.getByLabel("Description")).toHaveValue(incomingDescription);
+  });
+
+  await browser.close();
+});
+
+test("Spell editor persists extended fields", async () => {
+  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
+  const context = browser.contexts()[0];
+  const page = context.pages()[0];
+  const app = new SpellbookApp(page);
+  const runId = Date.now();
+
+  const importedName = `Extended Imported ${runId}`;
+  const importedPath = trackFile(path.resolve(__dirname, `extended-${runId}.md`));
+  fs.writeFileSync(
+    importedPath,
+    [
+      "---",
+      `name: ${importedName}`,
+      "level: 2",
+      "school: Illusion",
+      "sphere: Lesser",
+      "class_list: Mage, Cleric",
+      "range: 10 ft",
+      "components: V,S,M",
+      "material_components: a crystal lens",
+      "casting_time: 1 round",
+      "duration: 1 turn",
+      "area: 10-ft radius",
+      "saving_throw: Negates",
+      "reversible: 1",
+      "tags: illusion, test",
+      "source: Test Source",
+      "edition: 2e",
+      "author: Test Author",
+      "license: OGL",
+      "---",
+      "Imported description text.",
+    ].join("\n"),
+  );
+
+  await test.step("Load existing spell and confirm fields populate", async () => {
+    await app.importFile(importedPath, false);
+    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: 10000 });
+
+    await app.openSpell(importedName);
+    await expect(page.getByLabel("School")).toHaveValue("Illusion");
+    await expect(page.getByLabel("Sphere")).toHaveValue("Lesser");
+    await expect(page.getByLabel("Classes (e.g. Mage, Cleric)")).toHaveValue("Mage, Cleric");
+    await expect(page.getByLabel("Source")).toHaveValue("Test Source");
+    await expect(page.getByLabel("Edition")).toHaveValue("2e");
+    await expect(page.getByLabel("Author")).toHaveValue("Test Author");
+    await expect(page.getByLabel("License")).toHaveValue("OGL");
+    await expect(page.getByPlaceholder("Range")).toHaveValue("10 ft");
+    await expect(page.getByPlaceholder("Components (V,S,M)")).toHaveValue("V,S,M");
+    await expect(page.getByLabel("Reversible")).toBeChecked();
+    await expect(page.getByPlaceholder("Duration")).toHaveValue("1 turn");
+    await expect(page.getByPlaceholder("Casting Time")).toHaveValue("1 round");
+    await expect(page.getByPlaceholder("Area")).toHaveValue("10-ft radius");
+    await expect(page.getByPlaceholder("Save")).toHaveValue("Negates");
+    await expect(page.getByLabel("Material Components")).toHaveValue("a crystal lens");
+    await expect(page.getByLabel("Tags")).toHaveValue("illusion, test");
+    await expect(page.getByLabel("Description")).toHaveValue("Imported description text.");
+  });
+
+  await test.step("Update extended fields and confirm persistence", async () => {
+    await page.getByLabel("Sphere").fill("Greater");
+    await page.getByLabel("Author").fill("Updated Author");
+    await page.getByPlaceholder("Range").fill("20 ft");
+    await page.getByLabel("Reversible").uncheck();
+    await page.getByLabel("Tags").fill("updated, tags");
+    await page.getByRole("button", { name: "Save Spell" }).click();
+
+    await app.openSpell(importedName);
+    await expect(page.getByLabel("Sphere")).toHaveValue("Greater");
+    await expect(page.getByLabel("Author")).toHaveValue("Updated Author");
+    await expect(page.getByPlaceholder("Range")).toHaveValue("20 ft");
+    await expect(page.getByLabel("Reversible")).not.toBeChecked();
+    await expect(page.getByLabel("Tags")).toHaveValue("updated, tags");
+  });
+
+  await test.step("Create new spell with extended fields", async () => {
+    const createdName = `Extended Created ${runId}`;
+    await app.navigate("Add Spell");
+    await page.getByPlaceholder("Spell Name").fill(createdName);
+    await page.getByPlaceholder("Level").fill("4");
+    await page.getByLabel("School").fill("Evocation");
+    await page.getByLabel("Sphere").fill("Minor");
+    await page.getByLabel("Classes (e.g. Mage, Cleric)").fill("Mage");
+    await page.getByLabel("Source").fill("Created Source");
+    await page.getByLabel("Edition").fill("1e");
+    await page.getByLabel("Author").fill("Created Author");
+    await page.getByLabel("License").fill("CC-BY");
+    await page.getByPlaceholder("Range").fill("Self");
+    await page.getByPlaceholder("Components (V,S,M)").fill("V,S");
+    await page.getByLabel("Reversible").check();
+    await page.getByPlaceholder("Duration").fill("Instant");
+    await page.getByPlaceholder("Casting Time").fill("1 action");
+    await page.getByPlaceholder("Area").fill("Self");
+    await page.getByPlaceholder("Save").fill("None");
+    await page.getByLabel("Material Components").fill("a drop of water");
+    await page.getByLabel("Tags").fill("created, field");
+    await page.getByLabel("Description").fill("Created description text.");
+    await page.getByRole("button", { name: "Save Spell" }).click();
+
+    await app.openSpell(createdName);
+    await expect(page.getByLabel("Edition")).toHaveValue("1e");
+    await expect(page.getByLabel("Author")).toHaveValue("Created Author");
+    await expect(page.getByLabel("License")).toHaveValue("CC-BY");
+    await expect(page.getByLabel("Reversible")).toBeChecked();
+    await expect(page.getByLabel("Material Components")).toHaveValue("a drop of water");
+    await expect(page.getByLabel("Tags")).toHaveValue("created, field");
+    await expect(page.getByLabel("Description")).toHaveValue("Created description text.");
   });
 
   await browser.close();

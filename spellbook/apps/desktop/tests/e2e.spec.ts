@@ -6,7 +6,20 @@ import { type Page, chromium, expect, test } from "@playwright/test";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const TAURI_BIN = path.resolve(__dirname, "../src-tauri/target/debug/spellbook-desktop.exe");
+const TAURI_BIN = (() => {
+  if (process.platform === "win32") {
+    return path.resolve(__dirname, "../src-tauri/target/debug/spellbook-desktop.exe");
+  }
+  if (process.platform === "darwin") {
+    return path.resolve(
+      __dirname,
+      "../src-tauri/target/debug/spellbook-desktop.app/Contents/MacOS/spellbook-desktop",
+    );
+  }
+  return path.resolve(__dirname, "../src-tauri/target/debug/spellbook-desktop");
+})();
+
+test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 
 /**
  * Page Object Model / Helper class for the Spellbook application.
@@ -19,10 +32,11 @@ class SpellbookApp {
     await this.page.getByRole("link", { name, exact: true }).click();
   }
 
-  async createSpell(name: string, level: string, description: string) {
+  async createSpell(name: string, level: string, description: string, source = "") {
     await this.navigate("Add Spell");
     await this.page.getByPlaceholder("Spell Name").fill(name);
     await this.page.getByPlaceholder("Level").fill(level);
+    await this.page.getByLabel("Source").fill(source);
     await this.page.locator("textarea").fill(description);
     await this.page.getByRole("button", { name: "Save Spell" }).click();
     await this.navigate("Library");
@@ -34,6 +48,11 @@ class SpellbookApp {
     const fileInput = this.page.locator('input[type="file"]');
     await fileInput.setInputFiles(filePath);
     await expect(this.page.getByText(path.basename(filePath))).toBeVisible();
+
+    await this.page.getByRole("button", { name: "Preview →" }).click();
+    await expect(this.page.getByText(/Parsed \d+ spell/)).toBeVisible();
+    await this.page.getByRole("button", { name: "Skip Review →" }).click();
+    await expect(this.page.getByText(/Ready to import/)).toBeVisible();
 
     const overwriteCheckbox = this.page.getByLabel("Overwrite existing spells");
     if (allowOverwrite) {
@@ -172,6 +191,50 @@ test("Milestone Verification Flow", async () => {
     await expect(page.getByText("Provenance (Imports)")).toBeVisible();
     await expect(page.getByText("Type: MD")).toBeVisible();
     await expect(page.getByText(/SHA256: [a-f0-9]{64}/)).toBeVisible();
+  });
+
+  await browser.close();
+});
+
+test("Import conflict merge review flow", async () => {
+  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
+  const context = browser.contexts()[0];
+  const page = context.pages()[0];
+  const app = new SpellbookApp(page);
+  const runId = Date.now();
+  const conflictName = `Conflict Spell ${runId}`;
+  const conflictSource = `Conflict Source ${runId}`;
+  const originalDescription = "Original description";
+  const incomingDescription = "Incoming description";
+
+  await test.step("Setup: Create Existing Spell", async () => {
+    await app.createSpell(conflictName, "1", originalDescription, conflictSource);
+  });
+
+  await test.step("Trigger conflict import and resolve", async () => {
+    const samplePath = path.resolve(__dirname, `conflict-${runId}.md`);
+    fs.writeFileSync(
+      samplePath,
+      `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\n---\n${incomingDescription}`,
+    );
+
+    await app.navigate("Import");
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles(samplePath);
+    await page.getByRole("button", { name: "Preview →" }).click();
+    await page.getByRole("button", { name: "Skip Review →" }).click();
+    await page.getByRole("button", { name: "Start Import" }).click();
+
+    await expect(page.getByText("Resolve Conflicts")).toBeVisible();
+    await page.getByRole("button", { name: "Use Incoming" }).first().click();
+    await page.getByRole("button", { name: "Apply Resolutions" }).click();
+    await expect(page.getByText("Conflict resolutions")).toBeVisible({ timeout: 10000 });
+  });
+
+  await test.step("Verify updated spell", async () => {
+    await app.navigate("Library");
+    await page.getByText(conflictName).click();
+    await expect(page.getByLabel("Description")).toHaveValue(incomingDescription);
   });
 
   await browser.close();

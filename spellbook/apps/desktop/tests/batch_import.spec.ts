@@ -6,7 +6,20 @@ import { chromium, expect, test } from "@playwright/test";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const TAURI_BIN = path.resolve(__dirname, "../src-tauri/target/debug/spellbook-desktop.exe");
+const TAURI_BIN = (() => {
+  if (process.platform === "win32") {
+    return path.resolve(__dirname, "../src-tauri/target/debug/spellbook-desktop.exe");
+  }
+  if (process.platform === "darwin") {
+    return path.resolve(
+      __dirname,
+      "../src-tauri/target/debug/spellbook-desktop.app/Contents/MacOS/spellbook-desktop",
+    );
+  }
+  return path.resolve(__dirname, "../src-tauri/target/debug/spellbook-desktop");
+})();
+
+test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 
 /**
  * Generate sample markdown spell files for batch testing
@@ -86,6 +99,12 @@ test.describe("Batch Import Performance Tests", () => {
       // Verify files are listed
       await expect(page.getByText("spell_0000.md")).toBeVisible();
 
+      // Continue through wizard
+      await page.getByRole("button", { name: "Preview →" }).click();
+      await expect(page.getByText(/Parsed \d+ spell/)).toBeVisible();
+      await page.getByRole("button", { name: "Skip Review →" }).click();
+      await expect(page.getByText(/Ready to import/)).toBeVisible();
+
       // Start import
       await page.getByRole("button", { name: "Start Import" }).click();
 
@@ -144,6 +163,11 @@ This is a valid spell description.
       // Try to import both files
       const fileInput = page.locator('input[type="file"]');
       await fileInput.setInputFiles([mdFile, txtFile]);
+
+      await page.getByRole("button", { name: "Preview →" }).click();
+      await expect(page.getByText(/Parsed \d+ spell/)).toBeVisible();
+      await page.getByRole("button", { name: "Skip Review →" }).click();
+      await expect(page.getByText(/Ready to import/)).toBeVisible();
 
       await page.getByRole("button", { name: "Start Import" }).click();
 

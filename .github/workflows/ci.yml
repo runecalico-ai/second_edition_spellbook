@@ -55,9 +55,9 @@ jobs:
         working-directory: spellbook/services/ml
         run: python -m venv .venv
 
-      - name: Install Python dependencies (dev)
+      - name: Install Python dependencies
         working-directory: spellbook/services/ml
-        run: .venv/bin/python -m pip install -r requirements-dev.txt
+        run: .venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Lint (Python)
         working-directory: spellbook/services/ml

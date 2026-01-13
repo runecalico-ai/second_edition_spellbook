@@ -47,6 +47,7 @@ export default function SpellEditor() {
     reversible: 0,
   });
   const [printStatus, setPrintStatus] = useState("");
+  const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
 
   const isNew = id === "new";
 
@@ -104,7 +105,11 @@ export default function SpellEditor() {
     if (!form.id) return;
     setPrintStatus("Generating print…");
     try {
-      const path = await invoke<string>("print_spell", { spellId: form.id, layout });
+      const path = await invoke<string>("print_spell", {
+        spellId: form.id,
+        layout,
+        pageSize,
+      });
       setPrintStatus(path ? `Print ready: ${path}` : "No output returned");
     } catch (e) {
       setPrintStatus(`Print failed: ${e}`);
@@ -120,6 +125,14 @@ export default function SpellEditor() {
         <div className="space-x-2">
           {!isNew && (
             <>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
+                className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
+              >
+                <option value="letter">Letter</option>
+                <option value="a4">A4</option>
+              </select>
               <button
                 type="button"
                 onClick={() => printSpell("compact")}

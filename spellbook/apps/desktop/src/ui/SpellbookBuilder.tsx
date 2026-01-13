@@ -57,6 +57,7 @@ export default function SpellbookBuilder() {
   const [levelMax, setLevelMax] = useState("");
   const [spellbookLoaded, setSpellbookLoaded] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
 
   const spellIds = useMemo(() => new Set(spellbook.map((entry) => entry.spell_id)), [spellbook]);
 
@@ -184,6 +185,7 @@ export default function SpellbookBuilder() {
       const path = await invoke<string>("print_spellbook", {
         characterId: character.id,
         layout,
+        pageSize,
       });
       setStatusMessage(path ? `Print ready: ${path}` : "No output returned");
     } catch (e) {
@@ -237,6 +239,14 @@ export default function SpellbookBuilder() {
             Add Spells
           </button>
           <div className="flex gap-2">
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
+              className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
+            >
+              <option value="letter">Letter</option>
+              <option value="a4">A4</option>
+            </select>
             {PRINT_LAYOUTS.map((layout) => (
               <button
                 key={layout.id}

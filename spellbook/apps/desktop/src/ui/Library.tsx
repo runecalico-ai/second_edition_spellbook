@@ -23,8 +23,9 @@ type Facets = {
 };
 
 type SearchFilters = {
-  school?: string | null;
-  level?: number | null;
+  schools?: string[] | null;
+  levelMin?: number | null;
+  levelMax?: number | null;
   class_list?: string | null;
   source?: string | null;
   components?: string | null;
@@ -49,8 +50,9 @@ export default function Library() {
     components: [],
     tags: [],
   });
-  const [schoolFilter, setSchoolFilter] = useState("");
-  const [levelFilter, setLevelFilter] = useState("");
+  const [schoolFilters, setSchoolFilters] = useState<string[]>([]);
+  const [levelMin, setLevelMin] = useState("");
+  const [levelMax, setLevelMax] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [classListFilter, setClassListFilter] = useState("");
   const [componentFilter, setComponentFilter] = useState("");
@@ -71,9 +73,15 @@ export default function Library() {
   }, []);
 
   const search = useCallback(async () => {
+    let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
+    let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
+    if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
+      [parsedMin, parsedMax] = [parsedMax, parsedMin];
+    }
     const filters: SearchFilters = {
-      school: schoolFilter || null,
-      level: levelFilter ? Number.parseInt(levelFilter) : null,
+      schools: schoolFilters.length > 0 ? schoolFilters : null,
+      levelMin: parsedMin,
+      levelMax: parsedMax,
       source: sourceFilter || null,
       class_list: classListFilter || null,
       components: componentFilter || null,
@@ -90,8 +98,9 @@ export default function Library() {
   }, [
     query,
     mode,
-    schoolFilter,
-    levelFilter,
+    schoolFilters,
+    levelMin,
+    levelMax,
     sourceFilter,
     classListFilter,
     componentFilter,
@@ -171,30 +180,52 @@ export default function Library() {
       </div>
 
       <div className="flex flex-wrap gap-2 text-sm">
-        <select
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
-          value={schoolFilter}
-          onChange={(e) => setSchoolFilter(e.target.value)}
-        >
-          <option value="">All schools</option>
-          {facets.schools.map((school) => (
-            <option key={school} value={school}>
-              {school}
-            </option>
-          ))}
-        </select>
-        <select
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
-          value={levelFilter}
-          onChange={(e) => setLevelFilter(e.target.value)}
-        >
-          <option value="">All levels</option>
-          {facets.levels.map((level) => (
-            <option key={level} value={String(level)}>
-              {level}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-neutral-400">Schools</span>
+          <select
+            multiple
+            className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 min-w-[160px]"
+            value={schoolFilters}
+            onChange={(e) =>
+              setSchoolFilters(Array.from(e.target.selectedOptions).map((opt) => opt.value))
+            }
+          >
+            {facets.schools.map((school) => (
+              <option key={school} value={school}>
+                {school}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-neutral-400">Level range</span>
+          <div className="flex gap-2">
+            <select
+              className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+              value={levelMin}
+              onChange={(e) => setLevelMin(e.target.value)}
+            >
+              <option value="">Min</option>
+              {facets.levels.map((level) => (
+                <option key={`min-${level}`} value={String(level)}>
+                  {level}
+                </option>
+              ))}
+            </select>
+            <select
+              className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+              value={levelMax}
+              onChange={(e) => setLevelMax(e.target.value)}
+            >
+              <option value="">Max</option>
+              {facets.levels.map((level) => (
+                <option key={`max-${level}`} value={String(level)}>
+                  {level}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <select
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={sourceFilter}

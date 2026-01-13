@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 type Character = {
   id: number;
   name: string;
+  type: "PC" | "NPC";
   notes?: string;
 };
 
@@ -23,6 +24,8 @@ export default function CharacterManager() {
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [spellbook, setSpellbook] = useState<CharacterSpellbookEntry[]>([]);
   const [newCharName, setNewCharName] = useState("");
+  const [newCharType, setNewCharType] = useState<"PC" | "NPC">("PC");
+  const [statusMessage, setStatusMessage] = useState("");
 
   const loadCharacters = useCallback(async () => {
     const list = await invoke<Character[]>("list_characters");
@@ -43,20 +46,54 @@ export default function CharacterManager() {
   useEffect(() => {
     if (selectedChar) {
       loadSpellbook(selectedChar.id);
+      setStatusMessage("");
     } else {
       setSpellbook([]);
+      setStatusMessage("");
     }
   }, [selectedChar, loadSpellbook]);
 
   const createCharacter = async () => {
     if (!newCharName.trim()) return;
     try {
-      await invoke("create_character", { name: newCharName, notes: "" });
+      await invoke("create_character", {
+        name: newCharName,
+        characterType: newCharType,
+        notes: "",
+      });
       setNewCharName("");
+      setNewCharType("PC");
       loadCharacters();
     } catch (e) {
       console.error(e);
       alert(`Failed to create character: ${e}`);
+    }
+  };
+
+  const removeSpell = async (entry: CharacterSpellbookEntry) => {
+    if (!selectedChar) return;
+    try {
+      await invoke("remove_character_spell", {
+        characterId: selectedChar.id,
+        spellId: entry.spell_id,
+      });
+      setSpellbook((prev) => prev.filter((p) => p.spell_id !== entry.spell_id));
+    } catch (e) {
+      alert(`Failed to remove spell: ${e}`);
+    }
+  };
+
+  const printSpellbook = async (layout: "compact" | "stat-block") => {
+    if (!selectedChar) return;
+    setStatusMessage("Generating spellbook print…");
+    try {
+      const path = await invoke<string>("print_spellbook", {
+        characterId: selectedChar.id,
+        layout,
+      });
+      setStatusMessage(path ? `Print ready: ${path}` : "No output returned");
+    } catch (e) {
+      setStatusMessage(`Print failed: ${e}`);
     }
   };
 
@@ -101,6 +138,14 @@ export default function CharacterManager() {
             value={newCharName}
             onChange={(e) => setNewCharName(e.target.value)}
           />
+          <select
+            className="bg-neutral-900 border border-neutral-700 p-1 rounded text-sm"
+            value={newCharType}
+            onChange={(e) => setNewCharType(e.target.value as "PC" | "NPC")}
+          >
+            <option value="PC">PC</option>
+            <option value="NPC">NPC</option>
+          </select>
           <button type="button" onClick={createCharacter} className="px-2 bg-blue-600 rounded">
             +
           </button>
@@ -113,7 +158,10 @@ export default function CharacterManager() {
               onClick={() => setSelectedChar(c)}
               className={`block w-full text-left px-3 py-2 rounded ${selectedChar?.id === c.id ? "bg-neutral-800 text-white" : "text-neutral-400 hover:bg-neutral-800/50"}`}
             >
-              {c.name}
+              <span className="flex items-center justify-between">
+                <span>{c.name}</span>
+                <span className="text-xs text-neutral-500">{c.type}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -132,9 +180,31 @@ export default function CharacterManager() {
         ) : (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold">{selectedChar.name}</h2>
-              <span className="text-neutral-500">{spellbook.length} spells known</span>
+              <div>
+                <h2 className="text-2xl font-bold">{selectedChar.name}</h2>
+                <p className="text-xs text-neutral-500">{selectedChar.type} spellbook</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-neutral-500">{spellbook.length} spells known</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => printSpellbook("compact")}
+                    className="px-2 py-1 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                  >
+                    Print Compact
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => printSpellbook("stat-block")}
+                    className="px-2 py-1 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                  >
+                    Print Stat-block
+                  </button>
+                </div>
+              </div>
             </div>
+            {statusMessage && <div className="text-xs text-neutral-400">{statusMessage}</div>}
 
             <table className="w-full text-left text-sm border-collapse">
               <thead className="text-neutral-400 border-b border-neutral-800">
@@ -145,6 +215,7 @@ export default function CharacterManager() {
                   <th className="p-2">Level</th>
                   <th className="p-2">School</th>
                   <th className="p-2">Notes</th>
+                  <th className="p-2 w-20 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -197,11 +268,20 @@ export default function CharacterManager() {
                         }}
                       />
                     </td>
+                    <td className="p-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => removeSpell(s)}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {spellbook.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-neutral-500">
+                    <td colSpan={7} className="p-8 text-center text-neutral-500">
                       No spells added. Go to Library and use the "+" menu to add spells.
                     </td>
                   </tr>

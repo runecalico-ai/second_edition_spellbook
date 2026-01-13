@@ -642,8 +642,12 @@ struct ChatResponse {
 
 #[derive(Deserialize, Debug)]
 struct SearchFilters {
-    school: Option<String>,
-    level: Option<i64>,
+    #[serde(rename = "schools")]
+    schools: Option<Vec<String>>,
+    #[serde(rename = "levelMin")]
+    level_min: Option<i64>,
+    #[serde(rename = "levelMax")]
+    level_max: Option<i64>,
     class_list: Option<String>,
     source: Option<String>,
     components: Option<String>,
@@ -719,7 +723,10 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
                 Err(message)
             }
         }
-    }
+    }?;
+    let sql = include_str!("../../../../db/migrations/0002_add_character_type.sql");
+    conn.execute_batch(sql).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn install_sqlite_vec_if_needed(
@@ -978,15 +985,27 @@ fn search_keyword_with_conn(
     }
 
     if let Some(f) = filters {
-        if let Some(school) = f.school {
-            if !school.is_empty() {
-                where_clauses.push("s.school = ?".to_string());
-                params.push(Box::new(school));
+        if let Some(schools) = f.schools {
+            let schools: Vec<String> = schools
+                .into_iter()
+                .map(|school| school.trim().to_string())
+                .filter(|school| !school.is_empty())
+                .collect();
+            if !schools.is_empty() {
+                let placeholders = vec!["?"; schools.len()].join(", ");
+                where_clauses.push(format!("s.school IN ({placeholders})"));
+                for school in schools {
+                    params.push(Box::new(school));
+                }
             }
         }
-        if let Some(level) = f.level {
-            where_clauses.push("s.level = ?".to_string());
-            params.push(Box::new(level));
+        if let Some(level_min) = f.level_min {
+            where_clauses.push("s.level >= ?".to_string());
+            params.push(Box::new(level_min));
+        }
+        if let Some(level_max) = f.level_max {
+            where_clauses.push("s.level <= ?".to_string());
+            params.push(Box::new(level_max));
         }
         if let Some(source) = f.source {
             if !source.is_empty() {
@@ -1624,6 +1643,104 @@ fn export_spells(
 }
 
 #[tauri::command]
+fn print_spell(
+    state: tauri::State<'_, Arc<Pool>>,
+    spell_id: i64,
+    layout: String,
+) -> Result<String, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let spell =
+        get_spell_from_conn(&conn, spell_id)?.ok_or_else(|| "spell not found".to_string())?;
+    let output_dir = app_data_dir()?.join("prints");
+    let result = call_sidecar(
+        "export",
+        json!({
+            "mode": "single",
+            "spells": [spell],
+            "format": "pdf",
+            "layout": layout,
+            "output_dir": output_dir
+        }),
+    )?;
+    Ok(result
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string())
+}
+
+#[tauri::command]
+fn print_spellbook(
+    state: tauri::State<'_, Arc<Pool>>,
+    character_id: i64,
+    layout: String,
+) -> Result<String, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let character = conn
+        .query_row(
+            "SELECT name, type, notes FROM \"character\" WHERE id = ?",
+            [character_id],
+            |row| {
+                Ok(PrintableCharacter {
+                    name: row.get(0)?,
+                    character_type: row.get(1)?,
+                    notes: row.get(2)?,
+                })
+            },
+        )
+        .map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.id, s.name, s.level, s.school, s.class_list, s.range, s.components, s.duration, s.saving_throw, s.description, sb.prepared, sb.known, sb.notes
+             FROM spellbook sb
+             JOIN spell s ON s.id = sb.spell_id
+             WHERE sb.character_id = ?
+             ORDER BY s.level, s.name",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([character_id], |row| {
+            Ok(PrintableSpell {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                level: row.get(2)?,
+                school: row.get(3)?,
+                class_list: row.get(4)?,
+                range: row.get(5)?,
+                components: row.get(6)?,
+                duration: row.get(7)?,
+                saving_throw: row.get(8)?,
+                description: row.get(9)?,
+                prepared: row.get(10)?,
+                known: row.get(11)?,
+                notes: row.get(12)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut spells = vec![];
+    for row in rows {
+        spells.push(row.map_err(|e| e.to_string())?);
+    }
+    let output_dir = app_data_dir()?.join("prints");
+    let result = call_sidecar(
+        "export",
+        json!({
+            "mode": "spellbook",
+            "character": character,
+            "spells": spells,
+            "format": "pdf",
+            "layout": layout,
+            "output_dir": output_dir
+        }),
+    )?;
+    Ok(result
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string())
+}
+
+#[tauri::command]
 fn chat_answer(prompt: String) -> Result<ChatResponse, String> {
     let result = call_sidecar("llm_answer", json!({"query": prompt, "contexts": []}))?;
     serde_json::from_value(result).map_err(|e| e.to_string())
@@ -1918,6 +2035,8 @@ fn log_changes(
 struct Character {
     id: i64,
     name: String,
+    #[serde(rename = "type")]
+    character_type: String,
     notes: Option<String>,
 }
 
@@ -1932,16 +2051,47 @@ struct CharacterSpellbookEntry {
     notes: Option<String>,
 }
 
+#[derive(Serialize)]
+struct PrintableCharacter {
+    name: String,
+    #[serde(rename = "type")]
+    character_type: String,
+    notes: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PrintableSpell {
+    id: i64,
+    name: String,
+    level: i64,
+    school: Option<String>,
+    class_list: Option<String>,
+    range: Option<String>,
+    components: Option<String>,
+    duration: Option<String>,
+    saving_throw: Option<String>,
+    description: String,
+    prepared: i64,
+    known: i64,
+    notes: Option<String>,
+}
+
 #[tauri::command]
 fn create_character(
     state: tauri::State<'_, Arc<Pool>>,
     name: String,
+    character_type: String,
     notes: Option<String>,
 ) -> Result<i64, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let character_type = if character_type.trim().is_empty() {
+        "PC".to_string()
+    } else {
+        character_type
+    };
     conn.execute(
-        "INSERT INTO \"character\" (name, notes) VALUES (?, ?)",
-        params![name, notes],
+        "INSERT INTO \"character\" (name, type, notes) VALUES (?, ?, ?)",
+        params![name, character_type, notes],
     )
     .map_err(|e| e.to_string())?;
     Ok(conn.last_insert_rowid())
@@ -1951,14 +2101,15 @@ fn create_character(
 fn list_characters(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<Character>, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, name, notes FROM \"character\" ORDER BY name")
+        .prepare("SELECT id, name, type, notes FROM \"character\" ORDER BY name")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
             Ok(Character {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                notes: row.get(2)?,
+                character_type: row.get(2)?,
+                notes: row.get(3)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1989,6 +2140,21 @@ fn update_character_spell(
 ) -> Result<(), String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     update_character_spell_with_conn(&conn, character_id, spell_id, prepared, known, notes)
+}
+
+#[tauri::command]
+fn remove_character_spell(
+    state: tauri::State<'_, Arc<Pool>>,
+    character_id: i64,
+    spell_id: i64,
+) -> Result<(), String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM spellbook WHERE character_id = ? AND spell_id = ?",
+        params![character_id, spell_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn get_character_spellbook_with_conn(
@@ -2187,11 +2353,14 @@ fn main() {
             backup_vault,
             restore_vault,
             export_spells,
+            print_spell,
+            print_spellbook,
             chat_answer,
             create_character,
             list_characters,
             get_character_spellbook,
             update_character_spell,
+            remove_character_spell,
             reparse_artifact,
             preview_import
         ])

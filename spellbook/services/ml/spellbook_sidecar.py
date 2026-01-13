@@ -4,7 +4,9 @@ import sys
 import uuid
 import hashlib
 import re
+import subprocess
 from datetime import datetime
+from html import escape as html_escape
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -247,6 +249,9 @@ def handle_import(params: Dict[str, Any]) -> Dict[str, Any]:
 def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
     spells = params.get("spells") or []
     fmt = params.get("format") or "md"
+    mode = params.get("mode") or "list"
+    layout = params.get("layout") or "compact"
+    character = params.get("character") or {}
     output_dir = Path(params.get("output_dir") or os.getcwd())
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = f"spellbook_export_{uuid.uuid4().hex}.{fmt}"
@@ -260,10 +265,200 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
             lines.append(spell.get("description", "").strip())
             lines.append("")
         output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+    elif fmt == "pdf":
+        base_name = output_path.with_suffix("")
+        html_path = base_name.with_suffix(".html")
+        html = _render_print_html(spells, mode, layout, character)
+        html_path.write_text(html, encoding="utf-8")
+        _render_pdf_with_pandoc(html_path, output_path)
     else:
-        output_path.write_text("PDF export placeholder\n", encoding="utf-8")
+        raise ValueError(f"Unsupported export format: {fmt}")
 
     return {"path": str(output_path)}
+
+
+def _render_pdf_with_pandoc(html_path: Path, pdf_path: Path) -> None:
+    try:
+        subprocess.run(
+            ["pandoc", "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError("Pandoc is required to generate PDFs.") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(f"Pandoc check failed: {exc.stderr.strip()}") from exc
+
+    result = subprocess.run(
+        ["pandoc", str(html_path), "-o", str(pdf_path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"Pandoc failed: {result.stderr.strip()}")
+
+
+def _render_print_html(
+    spells: List[Dict[str, Any]],
+    mode: str,
+    layout: str,
+    character: Dict[str, Any],
+) -> str:
+    title = "Spellbook Print"
+    if mode == "single" and spells:
+        title = spells[0].get("name") or title
+    elif mode == "spellbook":
+        title = character.get("name") or title
+
+    body_parts: List[str] = []
+    if mode == "spellbook":
+        body_parts.append(_render_spellbook_header(character))
+    for spell in spells:
+        body_parts.append(_render_spell_block(spell, layout, mode))
+
+    body = "\n".join(body_parts)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{html_escape(title)}</title>
+  <style>
+    body {{
+      font-family: "Inter", "Segoe UI", sans-serif;
+      color: #111;
+      margin: 32px;
+    }}
+    h1, h2, h3 {{
+      margin: 0 0 8px 0;
+    }}
+    .meta {{
+      color: #555;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }}
+    .spell {{
+      border-bottom: 1px solid #ddd;
+      padding: 16px 0;
+      page-break-inside: avoid;
+    }}
+    .spell:last-child {{
+      border-bottom: none;
+    }}
+    .spell-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }}
+    .pill {{
+      display: inline-block;
+      background: #f2f2f2;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      margin-right: 6px;
+    }}
+    .details-table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }}
+    .details-table td {{
+      padding: 4px 6px;
+      border: 1px solid #e2e2e2;
+    }}
+    .notes {{
+      margin-top: 8px;
+      font-size: 12px;
+      color: #444;
+    }}
+  </style>
+</head>
+<body>
+  {body}
+</body>
+</html>
+"""
+
+
+def _render_spellbook_header(character: Dict[str, Any]) -> str:
+    name = html_escape(character.get("name") or "Spellbook")
+    character_type = html_escape(character.get("type") or "")
+    notes = html_escape(character.get("notes") or "")
+    meta = f"{character_type} Spellbook" if character_type else "Spellbook"
+    notes_block = f"<p class='meta'>{notes}</p>" if notes else ""
+    return f"<h1>{name}</h1><p class='meta'>{meta}</p>{notes_block}"
+
+
+def _render_spell_block(spell: Dict[str, Any], layout: str, mode: str) -> str:
+    name = html_escape(spell.get("name") or "Untitled")
+    school_raw = spell.get("school") or ""
+    level_raw = str(spell.get("level") or "")
+    school = html_escape(school_raw)
+    level = html_escape(level_raw)
+    description = html_escape(spell.get("description") or "").replace("\n", "<br/>")
+    class_list = html_escape(spell.get("class_list") or "")
+    range_text = html_escape(spell.get("range") or "")
+    components = html_escape(spell.get("components") or "")
+    duration = html_escape(spell.get("duration") or "")
+    saving_throw = html_escape(spell.get("saving_throw") or "")
+    prepared = spell.get("prepared")
+    known = spell.get("known")
+    notes = html_escape(spell.get("notes") or "")
+
+    status_bits = []
+    if mode == "spellbook":
+        if prepared is not None:
+            status_bits.append("Prepared" if prepared else "Unprepared")
+        if known is not None:
+            status_bits.append("Known" if known else "Unknown")
+    status_html = " • ".join(status_bits)
+    status_block = f"<div class='meta'>{status_html}</div>" if status_html else ""
+
+    if layout == "compact":
+        details = " ".join(filter(None, [school_raw, f"Level {level_raw}"]))
+        pill = f"<span class='pill'>{html_escape(details)}</span>" if details else ""
+        meta_line = " | ".join(
+            filter(None, [class_list, range_text, components, duration])
+        )
+        notes_block = (
+            f"<div class='notes'><strong>Notes:</strong> {notes}</div>" if notes else ""
+        )
+        return f"""
+<section class="spell">
+  <div class="spell-header">
+    <h2>{name}</h2>
+    {pill}
+  </div>
+  {status_block}
+  <div class="meta">{html_escape(meta_line)}</div>
+  <div>{description}</div>
+  {notes_block}
+</section>
+"""
+
+    notes_block = (
+        f"<div class='notes'><strong>Notes:</strong> {notes}</div>" if notes else ""
+    )
+    return f"""
+<section class="spell">
+  <div class="spell-header">
+    <h2>{name}</h2>
+    <span class="pill">{school} • Level {level}</span>
+  </div>
+  {status_block}
+  <table class="details-table">
+    <tr><td>Classes</td><td>{class_list}</td></tr>
+    <tr><td>Range</td><td>{range_text}</td></tr>
+    <tr><td>Components</td><td>{components}</td></tr>
+    <tr><td>Duration</td><td>{duration}</td></tr>
+    <tr><td>Saving Throw</td><td>{saving_throw}</td></tr>
+  </table>
+  <div style="margin-top: 10px;">{description}</div>
+  {notes_block}
+</section>
+"""
 
 
 def main() -> None:

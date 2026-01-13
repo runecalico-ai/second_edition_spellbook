@@ -55,6 +55,7 @@ export default function SpellbookBuilder() {
   const [schoolFilters, setSchoolFilters] = useState<string[]>([]);
   const [levelMin, setLevelMin] = useState("");
   const [levelMax, setLevelMax] = useState("");
+  const [spellbookLoaded, setSpellbookLoaded] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
 
   const spellIds = useMemo(() => new Set(spellbook.map((entry) => entry.spell_id)), [spellbook]);
@@ -68,10 +69,12 @@ export default function SpellbookBuilder() {
 
   const loadSpellbook = useCallback(async () => {
     if (!Number.isFinite(characterId)) return;
+    setSpellbookLoaded(false);
     const book = await invoke<CharacterSpellbookEntry[]>("get_character_spellbook", {
       characterId: characterId,
     });
     setSpellbook(book);
+    setSpellbookLoaded(true);
   }, [characterId]);
 
   const loadFacets = useCallback(async () => {
@@ -138,15 +141,27 @@ export default function SpellbookBuilder() {
     }
   };
 
-  const updateSpell = async (entry: CharacterSpellbookEntry) => {
+  const updateSpell = async (
+    entry: CharacterSpellbookEntry,
+    previousEntry?: CharacterSpellbookEntry,
+  ) => {
     if (!character) return;
-    await invoke("update_character_spell", {
-      characterId: character.id,
-      spellId: entry.spell_id,
-      prepared: entry.prepared,
-      known: entry.known,
-      notes: entry.notes,
-    });
+    try {
+      await invoke("update_character_spell", {
+        characterId: character.id,
+        spellId: entry.spell_id,
+        prepared: entry.prepared,
+        known: entry.known,
+        notes: entry.notes,
+      });
+    } catch (e) {
+      setStatusMessage(`Failed to update ${entry.name}: ${e}`);
+      if (previousEntry) {
+        setSpellbook((prev) =>
+          prev.map((spell) => (spell.spell_id === previousEntry.spell_id ? previousEntry : spell)),
+        );
+      }
+    }
   };
 
   const updateNotes = (spellId: number, notes: string) => {
@@ -271,7 +286,7 @@ export default function SpellbookBuilder() {
                     setSpellbook((prev) =>
                       prev.map((spell) => (spell.spell_id === entry.spell_id ? updated : spell)),
                     );
-                    updateSpell(updated);
+                    updateSpell(updated, entry);
                   }}
                   aria-label={`Prepared ${entry.name}`}
                   className="rounded bg-neutral-900 border-neutral-700"
@@ -287,7 +302,7 @@ export default function SpellbookBuilder() {
                     setSpellbook((prev) =>
                       prev.map((spell) => (spell.spell_id === entry.spell_id ? updated : spell)),
                     );
-                    updateSpell(updated);
+                    updateSpell(updated, entry);
                   }}
                   aria-label={`Known ${entry.name}`}
                   className="rounded bg-neutral-900 border-neutral-700"
@@ -318,10 +333,17 @@ export default function SpellbookBuilder() {
               </td>
             </tr>
           ))}
-          {spellbook.length === 0 && (
+          {spellbookLoaded && spellbook.length === 0 && (
             <tr>
               <td colSpan={7} className="p-8 text-center text-neutral-500">
                 No spells added yet. Use Add Spells to build the spellbook.
+              </td>
+            </tr>
+          )}
+          {!spellbookLoaded && (
+            <tr>
+              <td colSpan={7} className="p-8 text-center text-neutral-500">
+                Loading spellbook…
               </td>
             </tr>
           )}

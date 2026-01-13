@@ -255,7 +255,7 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
     character = params.get("character") or {}
     output_dir = Path(params.get("output_dir") or os.getcwd())
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     unique_id = uuid.uuid4().hex
     filename = f"spellbook_export_{unique_id}.{fmt}"
     output_path = output_dir / filename
@@ -274,7 +274,7 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
         html_path = output_dir / f"spellbook_export_{unique_id}.html"
         html = _render_print_html(spells, mode, layout, character)
         html_path.write_text(html, encoding="utf-8")
-        
+
         try:
             _render_pdf_with_pandoc(html_path, output_path, page_size)
             return {"path": str(output_path), "format": "pdf"}
@@ -283,7 +283,7 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "path": str(html_path),
                 "format": "html",
-                "warning": f"PDF generation failed, using HTML fallback: {str(e)}"
+                "warning": f"PDF generation failed, using HTML fallback: {str(e)}",
             }
 
     raise ValueError(f"Unsupported export format: {fmt}")
@@ -301,21 +301,15 @@ def _render_pdf_with_pandoc(html_path: Path, pdf_path: Path, page_size: str) -> 
         raise RuntimeError("Pandoc is not installed or not working correctly.") from exc
 
     paper_opt = "a4paper" if page_size.lower() == "a4" else "letterpaper"
-    
+
     # We use geometry to set paper size
     result = subprocess.run(
-        [
-            "pandoc", 
-            str(html_path), 
-            "-V", f"geometry:{paper_opt}",
-            "-o", str(pdf_path)
-        ],
+        ["pandoc", str(html_path), "-V", f"geometry:{paper_opt}", "-o", str(pdf_path)],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
         raise RuntimeError(f"Pandoc failed: {result.stderr.strip()}")
-
 
 
 def _render_print_html(

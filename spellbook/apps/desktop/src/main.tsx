@@ -9,6 +9,7 @@ import ExportPage from "./ui/ExportPage";
 import ImportWizard from "./ui/ImportWizard";
 import Library from "./ui/Library";
 import SpellEditor from "./ui/SpellEditor";
+import SpellbookBuilder from "./ui/SpellbookBuilder";
 
 const router = createBrowserRouter([
   {
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
       { path: "export", element: <ExportPage /> },
       { path: "edit/:id", element: <SpellEditor /> },
       { path: "character", element: <CharacterManager /> },
+      { path: "character/:id/builder", element: <SpellbookBuilder /> },
     ],
   },
 ]);

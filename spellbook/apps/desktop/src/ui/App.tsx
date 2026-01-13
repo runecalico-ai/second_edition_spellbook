@@ -65,6 +65,7 @@ export default function App() {
           </div>
           <nav className="space-x-2">
             <Tab to="/" label="Library" />
+            <Tab to="/character" label="Characters" />
             <Tab to="/import" label="Import" />
             <Tab to="/chat" label="Chat" />
             <Tab to="/export" label="Export" />

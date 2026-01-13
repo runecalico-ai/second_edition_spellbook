@@ -1647,6 +1647,7 @@ fn print_spell(
     state: tauri::State<'_, Arc<Pool>>,
     spell_id: i64,
     layout: String,
+    page_size: Option<String>,
 ) -> Result<String, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let spell =
@@ -1659,6 +1660,7 @@ fn print_spell(
             "spells": [spell],
             "format": "pdf",
             "layout": layout,
+            "page_size": page_size.unwrap_or_else(|| "letter".to_string()),
             "output_dir": output_dir
         }),
     )?;
@@ -1674,6 +1676,7 @@ fn print_spellbook(
     state: tauri::State<'_, Arc<Pool>>,
     character_id: i64,
     layout: String,
+    page_size: Option<String>,
 ) -> Result<String, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let character = conn
@@ -1730,6 +1733,7 @@ fn print_spellbook(
             "spells": spells,
             "format": "pdf",
             "layout": layout,
+            "page_size": page_size.unwrap_or_else(|| "letter".to_string()),
             "output_dir": output_dir
         }),
     )?;

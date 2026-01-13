@@ -251,10 +251,13 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
     fmt = params.get("format") or "md"
     mode = params.get("mode") or "list"
     layout = params.get("layout") or "compact"
+    page_size = params.get("page_size") or "letter"  # a4 or letter
     character = params.get("character") or {}
     output_dir = Path(params.get("output_dir") or os.getcwd())
     output_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"spellbook_export_{uuid.uuid4().hex}.{fmt}"
+    
+    unique_id = uuid.uuid4().hex
+    filename = f"spellbook_export_{unique_id}.{fmt}"
     output_path = output_dir / filename
 
     if fmt == "md":
@@ -265,19 +268,28 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
             lines.append(spell.get("description", "").strip())
             lines.append("")
         output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
-    elif fmt == "pdf":
-        base_name = output_path.with_suffix("")
-        html_path = base_name.with_suffix(".html")
+        return {"path": str(output_path), "format": "md"}
+
+    if fmt == "pdf":
+        html_path = output_dir / f"spellbook_export_{unique_id}.html"
         html = _render_print_html(spells, mode, layout, character)
         html_path.write_text(html, encoding="utf-8")
-        _render_pdf_with_pandoc(html_path, output_path)
-    else:
-        raise ValueError(f"Unsupported export format: {fmt}")
+        
+        try:
+            _render_pdf_with_pandoc(html_path, output_path, page_size)
+            return {"path": str(output_path), "format": "pdf"}
+        except Exception as e:
+            # Fallback to HTML if PDF generation fails
+            return {
+                "path": str(html_path),
+                "format": "html",
+                "warning": f"PDF generation failed, using HTML fallback: {str(e)}"
+            }
 
-    return {"path": str(output_path)}
+    raise ValueError(f"Unsupported export format: {fmt}")
 
 
-def _render_pdf_with_pandoc(html_path: Path, pdf_path: Path) -> None:
+def _render_pdf_with_pandoc(html_path: Path, pdf_path: Path, page_size: str) -> None:
     try:
         subprocess.run(
             ["pandoc", "--version"],
@@ -285,18 +297,25 @@ def _render_pdf_with_pandoc(html_path: Path, pdf_path: Path) -> None:
             capture_output=True,
             text=True,
         )
-    except FileNotFoundError as exc:
-        raise ValueError("Pandoc is required to generate PDFs.") from exc
-    except subprocess.CalledProcessError as exc:
-        raise ValueError(f"Pandoc check failed: {exc.stderr.strip()}") from exc
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError("Pandoc is not installed or not working correctly.") from exc
 
+    paper_opt = "a4paper" if page_size.lower() == "a4" else "letterpaper"
+    
+    # We use geometry to set paper size
     result = subprocess.run(
-        ["pandoc", str(html_path), "-o", str(pdf_path)],
+        [
+            "pandoc", 
+            str(html_path), 
+            "-V", f"geometry:{paper_opt}",
+            "-o", str(pdf_path)
+        ],
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        raise ValueError(f"Pandoc failed: {result.stderr.strip()}")
+        raise RuntimeError(f"Pandoc failed: {result.stderr.strip()}")
+
 
 
 def _render_print_html(

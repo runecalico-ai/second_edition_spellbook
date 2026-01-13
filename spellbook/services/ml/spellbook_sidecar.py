@@ -419,8 +419,12 @@ def _render_spell_block(spell: Dict[str, Any], layout: str, mode: str) -> str:
     if layout == "compact":
         details = " ".join(filter(None, [school_raw, f"Level {level_raw}"]))
         pill = f"<span class='pill'>{html_escape(details)}</span>" if details else ""
-        meta_line = " | ".join(filter(None, [class_list, range_text, components, duration]))
-        notes_block = f"<div class='notes'><strong>Notes:</strong> {notes}</div>" if notes else ""
+        meta_line = " | ".join(
+            filter(None, [class_list, range_text, components, duration])
+        )
+        notes_block = (
+            f"<div class='notes'><strong>Notes:</strong> {notes}</div>" if notes else ""
+        )
         return f"""
 <section class="spell">
   <div class="spell-header">
@@ -434,7 +438,9 @@ def _render_spell_block(spell: Dict[str, Any], layout: str, mode: str) -> str:
 </section>
 """
 
-    notes_block = f"<div class='notes'><strong>Notes:</strong> {notes}</div>" if notes else ""
+    notes_block = (
+        f"<div class='notes'><strong>Notes:</strong> {notes}</div>" if notes else ""
+    )
     return f"""
 <section class="spell">
   <div class="spell-header">

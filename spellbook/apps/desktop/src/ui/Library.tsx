@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import * as Slider from "@radix-ui/react-slider";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 type SpellSummary = {
@@ -68,6 +68,13 @@ export default function Library() {
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [newSearchName, setNewSearchName] = useState("");
+  const saveInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isSaving && saveInputRef.current) {
+      saveInputRef.current.focus();
+    }
+  }, [isSaving]);
 
   const loadFacets = useCallback(async () => {
     const data = await invoke<Facets>("list_facets");
@@ -371,9 +378,9 @@ export default function Library() {
           {isSaving ? (
             <div className="flex gap-1 animate-in slide-in-from-right-1 duration-200">
               <input
+                ref={saveInputRef}
                 className="bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-xs w-32"
                 placeholder="Name..."
-                autoFocus={true}
                 value={newSearchName}
                 onChange={(e) => setNewSearchName(e.target.value)}
                 onKeyDown={(e) => {

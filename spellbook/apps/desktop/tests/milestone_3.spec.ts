@@ -2,7 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Page, chromium, expect, test } from "@playwright/test";
+import { type Browser, type Page, chromium, expect, test } from "@playwright/test";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,7 +63,7 @@ test.slow();
 
 test("Milestone 3: Robust Search & Saved Searches", async () => {
   console.log("Connecting to browser...");
-  let browser;
+  let browser: Browser;
   for (let i = 0; i < 10; i++) {
     try {
       browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);

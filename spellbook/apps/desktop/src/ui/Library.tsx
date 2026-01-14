@@ -33,6 +33,12 @@ type SearchFilters = {
   tags?: string | null;
 };
 
+type SavedSearchPayload = {
+  query: string;
+  mode: "keyword" | "semantic";
+  filters: SearchFilters;
+};
+
 type Character = {
   id: number;
   name: string;
@@ -113,7 +119,12 @@ export default function Library() {
         components: componentFilter || null,
         tags: tagFilter || null,
       };
-      await invoke("save_search", { name: newSearchName, filters });
+      const payload: SavedSearchPayload = {
+        query,
+        mode,
+        filters,
+      };
+      await invoke("save_search", { name: newSearchName, payload });
       setNewSearchName("");
       setIsSaving(false);
       loadSavedSearches();
@@ -124,14 +135,33 @@ export default function Library() {
 
   const loadSearch = (saved: SavedSearch) => {
     try {
-      const filters: SearchFilters = JSON.parse(saved.filter_json);
-      setSchoolFilters(filters.schools || []);
-      setLevelMin(filters.levelMin !== null ? String(filters.levelMin) : "");
-      setLevelMax(filters.levelMax !== null ? String(filters.levelMax) : "");
-      setSourceFilter(filters.source || "");
-      setClassListFilter(filters.class_list || "");
-      setComponentFilter(filters.components || "");
-      setTagFilter(filters.tags || "");
+      const parsed = JSON.parse(saved.filter_json) as Partial<SavedSearchPayload & SearchFilters>;
+      const isPayload =
+        parsed && typeof parsed === "object" && "filters" in parsed && parsed.filters !== undefined;
+      if (isPayload) {
+        const payload = parsed as SavedSearchPayload;
+        setQuery(payload.query ?? "");
+        setMode(payload.mode ?? "keyword");
+        const filters = payload.filters ?? {};
+        setSchoolFilters(filters.schools || []);
+        setLevelMin(filters.levelMin != null ? String(filters.levelMin) : "");
+        setLevelMax(filters.levelMax != null ? String(filters.levelMax) : "");
+        setSourceFilter(filters.source || "");
+        setClassListFilter(filters.class_list || "");
+        setComponentFilter(filters.components || "");
+        setTagFilter(filters.tags || "");
+      } else {
+        const filters = parsed as SearchFilters;
+        setQuery("");
+        setMode("keyword");
+        setSchoolFilters(filters.schools || []);
+        setLevelMin(filters.levelMin != null ? String(filters.levelMin) : "");
+        setLevelMax(filters.levelMax != null ? String(filters.levelMax) : "");
+        setSourceFilter(filters.source || "");
+        setClassListFilter(filters.class_list || "");
+        setComponentFilter(filters.components || "");
+        setTagFilter(filters.tags || "");
+      }
     } catch (e) {
       console.error("Failed to parse saved search", e);
     }

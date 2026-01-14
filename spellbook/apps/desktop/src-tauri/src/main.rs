@@ -662,6 +662,20 @@ struct SearchFilters {
     tags: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum SearchMode {
+    Keyword,
+    Semantic,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SavedSearchPayload {
+    query: String,
+    mode: SearchMode,
+    filters: SearchFilters,
+}
+
 fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("name is required".into());
@@ -1450,10 +1464,10 @@ fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, 
 fn save_search(
     state: tauri::State<'_, Arc<Pool>>,
     name: String,
-    filters: SearchFilters,
+    payload: SavedSearchPayload,
 ) -> Result<i64, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
-    let filter_json = serde_json::to_string(&filters).map_err(|e| e.to_string())?;
+    let filter_json = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO saved_search (name, filter_json) VALUES (?, ?)",
         params![name, filter_json],
@@ -2774,6 +2788,54 @@ mod tests {
         .expect("search by tags");
         assert_eq!(tag_results.len(), 1);
         assert_eq!(tag_results[0].name, "Cure Light Wounds");
+    }
+
+    #[test]
+    fn save_search_stores_full_payload() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let db_path = temp_dir.path().join("spellbook.db");
+        let manager = SqliteConnectionManager::file(&db_path);
+        let pool = Arc::new(Pool::new(manager).expect("create pool"));
+        let conn = pool.get().expect("db connection");
+        load_migrations(&conn).expect("load migrations");
+
+        let app = mock_builder()
+            .manage(Arc::clone(&pool))
+            .build(mock_context(noop_assets()))
+            .expect("build app");
+
+        let payload = SavedSearchPayload {
+            query: "fire".to_string(),
+            mode: SearchMode::Keyword,
+            filters: SearchFilters {
+                schools: Some(vec!["Evocation".to_string()]),
+                level_min: Some(1),
+                level_max: Some(5),
+                class_list: None,
+                source: None,
+                components: None,
+                tags: None,
+            },
+        };
+
+        save_search(app.state::<Arc<Pool>>(), "My Search".to_string(), payload)
+            .expect("save search");
+
+        let filter_json: String = conn
+            .query_row(
+                "SELECT filter_json FROM saved_search WHERE name = ?1",
+                params!["My Search"],
+                |row| row.get(0),
+            )
+            .expect("fetch saved search json");
+
+        let parsed: SavedSearchPayload =
+            serde_json::from_str(&filter_json).expect("parse saved search payload");
+        assert_eq!(parsed.query, "fire");
+        assert_eq!(parsed.mode, SearchMode::Keyword);
+        assert_eq!(parsed.filters.level_min, Some(1));
+        assert_eq!(parsed.filters.level_max, Some(5));
+        assert_eq!(parsed.filters.schools, Some(vec!["Evocation".to_string()]));
     }
 
     #[test]

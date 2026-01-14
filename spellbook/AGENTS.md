@@ -98,7 +98,7 @@ Tests live in `spellbook/services/ml/tests`. Use the root virtual environment:
 
 ### End-to-End (E2E) Testing
 
-Location: `spellbook/apps/desktop/tests/e2e.spec.ts`.
+Location: `spellbook/apps/desktop/tests/`.
 
 These tests use **Playwright** to drive the packaged Tauri application. They require the app to be built in debug mode.
 
@@ -115,7 +115,7 @@ These tests use **Playwright** to drive the packaged Tauri application. They req
    pnpm install
    ```
 
-**Running Tests:**
+**Running E2E Tests:**
 ```bash
 cd spellbook/apps/desktop
 # Windows/Unix

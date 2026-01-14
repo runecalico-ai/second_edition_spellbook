@@ -213,6 +213,14 @@ struct ImportConflictResolution {
     artifact: Option<ImportArtifact>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct SavedSearch {
+    id: i64,
+    name: String,
+    filter_json: String,
+    created_at: String,
+}
+
 #[derive(Serialize, Deserialize)]
 struct ResolveImportResult {
     resolved: Vec<String>,
@@ -640,7 +648,7 @@ struct ChatResponse {
     meta: serde_json::Value,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct SearchFilters {
     #[serde(rename = "schools")]
     schools: Option<Vec<String>>,
@@ -702,30 +710,48 @@ fn sqlite_vec_candidate_paths(data_dir: &Path) -> Vec<PathBuf> {
 }
 
 fn load_migrations(conn: &Connection) -> Result<(), String> {
-    let sql = include_str!("../../../../db/migrations/0001_init.sql");
-    match conn.execute_batch(sql) {
-        Ok(()) => Ok(()),
-        Err(err) => {
-            let message = err.to_string();
-            if message.contains("no such module: vec0") {
-                let fallback = sql
-                    .replace(
-                        "VIRTUAL TABLE IF NOT EXISTS spell_vec USING vec0",
-                        "TABLE IF NOT EXISTS spell_vec",
-                    )
-                    .replace("v float[384]", "v BLOB");
-                eprintln!(
-                    "sqlite-vec: vec0 module unavailable; falling back to blob-backed spell_vec table."
-                );
-                conn.execute_batch(&fallback).map_err(|e| e.to_string())?;
-                Ok(())
-            } else {
-                Err(message)
+    let version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    if version < 1 {
+        let sql = include_str!("../../../../db/migrations/0001_init.sql");
+        match conn.execute_batch(sql) {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                let message = err.to_string();
+                if message.contains("no such module: vec0") {
+                    let fallback = sql
+                        .replace(
+                            "VIRTUAL TABLE IF NOT EXISTS spell_vec USING vec0",
+                            "TABLE IF NOT EXISTS spell_vec",
+                        )
+                        .replace("v float[384]", "v BLOB");
+                    eprintln!(
+                        "sqlite-vec: vec0 module unavailable; falling back to blob-backed spell_vec table."
+                    );
+                    conn.execute_batch(&fallback).map_err(|e| e.to_string())?;
+                    Ok(())
+                } else {
+                    Err(message)
+                }
             }
-        }
-    }?;
-    let sql = include_str!("../../../../db/migrations/0002_add_character_type.sql");
-    conn.execute_batch(sql).map_err(|e| e.to_string())?;
+        }?;
+        conn.execute("PRAGMA user_version = 1", []).map_err(|e| e.to_string())?;
+    }
+
+    if version < 2 {
+        let sql = include_str!("../../../../db/migrations/0002_add_character_type.sql");
+        conn.execute_batch(sql).map_err(|e| e.to_string())?;
+        conn.execute("PRAGMA user_version = 2", []).map_err(|e| e.to_string())?;
+    }
+
+    if version < 3 {
+        let sql = include_str!("../../../../db/migrations/0003_milestone_3_updates.sql");
+        conn.execute_batch(sql).map_err(|e| e.to_string())?;
+        conn.execute("PRAGMA user_version = 3", []).map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -980,7 +1006,7 @@ fn search_keyword_with_conn(
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if !trimmed.is_empty() {
-        where_clauses.push("f MATCH ?".to_string());
+        where_clauses.push("spell_fts MATCH ?".to_string());
         params.push(Box::new(trimmed.to_string()));
     }
 
@@ -1042,7 +1068,10 @@ fn search_keyword_with_conn(
 
     let sql = if !trimmed.is_empty() {
         // use FTS join
-        format!("SELECT id, name, school, level, class_list, components, duration, source FROM spell_fts f JOIN spell s ON s.id=f.rowid {} ORDER BY bm25(f) LIMIT 50", where_sql)
+        format!(
+            "SELECT s.id, s.name, s.school, s.level, s.class_list, s.components, s.duration, s.source FROM spell_fts JOIN spell s ON s.id=spell_fts.rowid {} ORDER BY bm25(spell_fts) LIMIT 50",
+            where_sql
+        )
     } else {
         // normal table select
         // Note: if filters exist but no query, we query `spell` directly.
@@ -1412,6 +1441,53 @@ fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, 
         out.push(row.map_err(|e| e.to_string())?);
     }
     Ok(out)
+}
+
+#[tauri::command]
+fn save_search(
+    state: tauri::State<'_, Arc<Pool>>,
+    name: String,
+    filters: SearchFilters,
+) -> Result<i64, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let filter_json = serde_json::to_string(&filters).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO saved_search (name, filter_json) VALUES (?, ?)",
+        params![name, filter_json],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+fn list_saved_searches(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SavedSearch>, String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, name, filter_json, created_at FROM saved_search ORDER BY created_at DESC")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(SavedSearch {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                filter_json: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = vec![];
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn delete_saved_search(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<(), String> {
+    let conn = state.inner().get().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM saved_search WHERE id = ?", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn sanitize_import_filename(name: &str) -> (String, bool) {
@@ -2366,7 +2442,10 @@ fn main() {
             update_character_spell,
             remove_character_spell,
             reparse_artifact,
-            preview_import
+            preview_import,
+            save_search,
+            list_saved_searches,
+            delete_saved_search
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -2661,8 +2740,9 @@ mod tests {
             &conn,
             "",
             Some(SearchFilters {
-                school: None,
-                level: None,
+                schools: None,
+                level_min: None,
+                level_max: None,
                 class_list: None,
                 source: None,
                 components: Some("M".to_string()),
@@ -2677,8 +2757,9 @@ mod tests {
             &conn,
             "",
             Some(SearchFilters {
-                school: None,
-                level: None,
+                schools: None,
+                level_min: None,
+                level_max: None,
                 class_list: None,
                 source: None,
                 components: None,
@@ -2724,8 +2805,9 @@ mod tests {
             &conn,
             "ward",
             Some(SearchFilters {
-                school: None,
-                level: None,
+                schools: None,
+                level_min: None,
+                level_max: None,
                 class_list: None,
                 source: None,
                 components: Some("M".to_string()),
@@ -2770,6 +2852,39 @@ mod tests {
             .expect("fts search");
         assert!(!results.is_empty());
         assert_eq!(results[0].name, "Fireball");
+    }
+
+    #[test]
+    fn search_keyword_finds_author() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let db_path = temp_dir.path().join("spellbook.db");
+        let manager = SqliteConnectionManager::file(&db_path);
+        let pool = Arc::new(Pool::new(manager).expect("create pool"));
+        let conn = pool.get().expect("db connection");
+        load_migrations(&conn).expect("load migrations");
+
+        conn.execute(
+            "INSERT INTO spell (name, level, description, author) VALUES (?1, ?2, ?3, ?4)",
+            params!["Author Spell", 1, "Description", "Famous Author"],
+        )
+        .expect("insert spell with author");
+
+        let app = mock_builder()
+            .manage(Arc::clone(&pool))
+            .build(mock_context(noop_assets()))
+            .expect("build app");
+        
+        // Search by full author name
+        let results = search_keyword(app.state::<Arc<Pool>>(), "Famous Author".to_string(), None)
+            .expect("search by author");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Author Spell");
+
+        // Search by partial author name
+        let results = search_keyword(app.state::<Arc<Pool>>(), "Famous".to_string(), None)
+            .expect("search by partial author");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "Author Spell");
     }
 
     #[test]

@@ -265,7 +265,7 @@ However, to ensure levels 10-12 are always available as filter options even when
 
 ---
 
-#### Backend (Optional)
+#### Backend 
 
 ##### [MODIFY] [main.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/main.rs)
 

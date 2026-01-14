@@ -737,19 +737,22 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
                 }
             }
         }?;
-        conn.execute("PRAGMA user_version = 1", []).map_err(|e| e.to_string())?;
+        conn.execute("PRAGMA user_version = 1", [])
+            .map_err(|e| e.to_string())?;
     }
 
     if version < 2 {
         let sql = include_str!("../../../../db/migrations/0002_add_character_type.sql");
         conn.execute_batch(sql).map_err(|e| e.to_string())?;
-        conn.execute("PRAGMA user_version = 2", []).map_err(|e| e.to_string())?;
+        conn.execute("PRAGMA user_version = 2", [])
+            .map_err(|e| e.to_string())?;
     }
 
     if version < 3 {
         let sql = include_str!("../../../../db/migrations/0003_milestone_3_updates.sql");
         conn.execute_batch(sql).map_err(|e| e.to_string())?;
-        conn.execute("PRAGMA user_version = 3", []).map_err(|e| e.to_string())?;
+        conn.execute("PRAGMA user_version = 3", [])
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -1463,7 +1466,9 @@ fn save_search(
 fn list_saved_searches(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SavedSearch>, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, name, filter_json, created_at FROM saved_search ORDER BY created_at DESC")
+        .prepare(
+            "SELECT id, name, filter_json, created_at FROM saved_search ORDER BY created_at DESC",
+        )
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
@@ -2873,7 +2878,7 @@ mod tests {
             .manage(Arc::clone(&pool))
             .build(mock_context(noop_assets()))
             .expect("build app");
-        
+
         // Search by full author name
         let results = search_keyword(app.state::<Arc<Pool>>(), "Famous Author".to_string(), None)
             .expect("search by author");

@@ -1,13 +1,13 @@
-import unittest
-from unittest.mock import MagicMock, patch
-from pathlib import Path
-import sys
 import os
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 # Add parent dir to path to import spellbook_sidecar
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import spellbook_sidecar
+import spellbook_sidecar  # noqa: E402
 
 
 class TestParsers(unittest.TestCase):

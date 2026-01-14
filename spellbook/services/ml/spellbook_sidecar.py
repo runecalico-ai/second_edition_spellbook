@@ -1,10 +1,10 @@
+import hashlib
 import json
 import os
-import sys
-import uuid
-import hashlib
 import re
 import subprocess
+import sys
+import uuid
 from datetime import datetime
 from html import escape as html_escape
 from pathlib import Path
@@ -108,9 +108,9 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
         "duration": meta.get("duration"),
         "area": meta.get("area"),
         "saving_throw": meta.get("saving_throw"),
-        "reversible": 1
-        if str(meta.get("reversible", "0")).lower() in {"1", "true", "yes"}
-        else 0,
+        "reversible": (
+            1 if str(meta.get("reversible", "0")).lower() in {"1", "true", "yes"} else 0
+        ),
         "description": description or "",
         "tags": meta.get("tags"),
         "source": meta.get("source"),

@@ -1,11 +1,11 @@
-import time
+import importlib.util
 import json
 import subprocess
 import sys
-from pathlib import Path
-from zipfile import ZipFile, ZIP_DEFLATED
+import time
 from html import escape
-import importlib.util
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 
 def _sidecar_path() -> Path:

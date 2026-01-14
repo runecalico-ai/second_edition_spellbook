@@ -95,8 +95,8 @@ export default function Library() {
   const handleSaveSearch = async () => {
     if (!newSearchName) return;
     try {
-      let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
-      let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
+      const parsedMin = levelMin ? Number.parseInt(levelMin) : null;
+      const parsedMax = levelMax ? Number.parseInt(levelMax) : null;
       const filters: SearchFilters = {
         schools: schoolFilters.length > 0 ? schoolFilters : null,
         levelMin: parsedMin,
@@ -267,11 +267,16 @@ export default function Library() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-neutral-400 font-medium">Level range: {levelMin || 0} - {levelMax || 9}</span>
+          <span className="text-xs text-neutral-400 font-medium">
+            Level range: {levelMin || 0} - {levelMax || 9}
+          </span>
           <div className="pt-2 px-1">
             <Slider.Root
               className="relative flex items-center select-none touch-none w-32 h-5"
-              value={[levelMin ? Number.parseInt(levelMin) : 0, levelMax ? Number.parseInt(levelMax) : 9]}
+              value={[
+                levelMin ? Number.parseInt(levelMin) : 0,
+                levelMax ? Number.parseInt(levelMax) : 9,
+              ]}
               max={9}
               step={1}
               onValueChange={([min, max]) => {
@@ -349,14 +354,16 @@ export default function Library() {
             <select
               className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 text-xs"
               onChange={(e) => {
-                const saved = savedSearches.find(s => s.id === Number.parseInt(e.target.value));
+                const saved = savedSearches.find((s) => s.id === Number.parseInt(e.target.value));
                 if (saved) loadSearch(saved);
               }}
               value=""
             >
               <option value="">Saved Searches</option>
-              {savedSearches.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+              {savedSearches.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
               ))}
             </select>
           )}
@@ -366,21 +373,23 @@ export default function Library() {
               <input
                 className="bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-xs w-32"
                 placeholder="Name..."
-                autoFocus
+                autoFocus={true}
                 value={newSearchName}
-                onChange={e => setNewSearchName(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleSaveSearch();
-                  if (e.key === 'Escape') setIsSaving(false);
+                onChange={(e) => setNewSearchName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveSearch();
+                  if (e.key === "Escape") setIsSaving(false);
                 }}
               />
               <button
+                type="button"
                 className="px-2 py-1 bg-blue-700 text-white rounded text-xs"
                 onClick={handleSaveSearch}
               >
                 Save
               </button>
               <button
+                type="button"
                 className="px-2 py-1 bg-neutral-800 rounded text-xs"
                 onClick={() => setIsSaving(false)}
               >
@@ -389,6 +398,7 @@ export default function Library() {
             </div>
           ) : (
             <button
+              type="button"
               className="px-3 py-1 bg-neutral-800 border border-neutral-700 rounded-md text-xs hover:bg-neutral-700 transition-colors"
               onClick={() => setIsSaving(true)}
             >
@@ -398,9 +408,11 @@ export default function Library() {
 
           {savedSearches.length > 0 && (
             <button
+              type="button"
               className="text-xs text-neutral-500 hover:text-red-400 ml-1"
               onClick={() => {
-                const currentVal = (document.querySelector('select[value=""]') as HTMLSelectElement)?.value;
+                const currentVal = (document.querySelector('select[value=""]') as HTMLSelectElement)
+                  ?.value;
                 if (currentVal) handleDeleteSavedSearch(Number.parseInt(currentVal));
               }}
               title="Delete selected saved search"

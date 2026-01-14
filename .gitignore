@@ -30,3 +30,7 @@ spellbook/services/ml/models/
 spellbook/services/ml/output/
 test-results/
 .vscode
+venv/
+.venv/
+.ruff_cache/
+.pytest_cache/

@@ -55,34 +55,75 @@ Location: `spellbook/services/ml`.
   EOF
   ```
 
-## Linting, formatting, and checks
+## Linting and formatting
 
-Desktop app:
+### JavaScript (Desktop app)
+**spellbook/apps/desktop**
+- Format: `pnpm format`
+- Format check: `pnpm format:check`
+- Lint: `pnpm lint`
 
 ```bash
 cd spellbook/apps/desktop
 # Windows/Unix
-pnpm lint
+pnpm format # Format
+pnpm format:check # Format check
+pnpm lint # Lint
+```
+- Format check
+```bash
+cd spellbook/apps/desktop
+# Windows/Unix
 pnpm format:check
 ```
 
-Rust (from `spellbook/apps/desktop/src-tauri`):
+- Lint
+```bash
+cd spellbook/apps/desktop
+# Windows/Unix
+pnpm lint
+```
+### Rust (Dekstop Backend)
+**spellbook/apps/desktop/src-tauri**
+- Format check: `cargo fmt -- --check`
+- Clippy (lint): `cargo clippy -- -D warnings`
 
 ```bash
 cd spellbook/apps/desktop/src-tauri
 # Windows/Unix
-cargo fmt -- --check
-cargo clippy -- -D warnings
-
-# Linux System Dependencies
-# sudo apt-get install -y \
-#   libglib2.0-dev \
-#   libgtk-3-dev \
-#   libsoup-3.0-dev \
-#   libwebkit2gtk-4.1-dev
+cargo fmt -- --check # Format check
+# Linux Only (for clippy)
+sudo apt-get install -y \
+  libglib2.0-dev \
+  libgtk-3-dev \
+  libsoup-3.0-dev \
+  libwebkit2gtk-4.1-dev
+cargo clippy -- -D warnings # Clippy (lint)
 ```
 
-## Testing guidance
+### Python (ML services)
+
+Code lives in `spellbook/services/ml`. Use the root virtual environment:
+- Format check: `ruff format --check .`
+- Format: `ruff format .`
+- Lint: `ruff check .`
+
+```bash
+# In repository root
+# Active Virtual Environment (Windows)
+.\.venv\Scripts\Activate.ps1
+# Active Virtual Environment (Unix)
+source .venv/bin/activate
+cd spellbook/services/ml
+# Format check
+ruff format --check .
+# Format
+ruff format .
+# Lint
+ruff check .
+```
+
+## Testing guidance (ML services)
 
 Tests live in `spellbook/services/ml/tests`. Use the root virtual environment:
 
@@ -98,7 +139,7 @@ Tests live in `spellbook/services/ml/tests`. Use the root virtual environment:
 
 ### End-to-End (E2E) Testing
 
-Location: `spellbook/apps/desktop/tests/e2e.spec.ts`.
+Location: `spellbook/apps/desktop/tests/`.
 
 These tests use **Playwright** to drive the packaged Tauri application. They require the app to be built in debug mode.
 
@@ -115,7 +156,7 @@ These tests use **Playwright** to drive the packaged Tauri application. They req
    pnpm install
    ```
 
-**Running Tests:**
+**Running E2E Tests:**
 ```bash
 cd spellbook/apps/desktop
 # Windows/Unix
@@ -144,4 +185,3 @@ Always run the following before completing work:
 ## Notes
 
 - Keep instructions offline-friendly since the sidecar is designed to run without network access.
-- See `spellbook/README.md` for more details.

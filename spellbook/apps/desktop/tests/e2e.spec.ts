@@ -1,121 +1,36 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Page, chromium, expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
+import { TIMEOUTS } from "./fixtures/constants";
+import {
+  type TauriAppContext,
+  cleanupTauriApp,
+  createFileTracker,
+  launchTauriApp,
+} from "./fixtures/tauri-fixture";
+import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const createdFiles: string[] = [];
-const TAURI_BIN = (() => {
-  if (process.platform === "win32") {
-    return path.resolve(__dirname, "../src-tauri/target/debug/spellbook-desktop.exe");
-  }
-  if (process.platform === "darwin") {
-    return path.resolve(
-      __dirname,
-      "../src-tauri/target/debug/spellbook-desktop.app/Contents/MacOS/spellbook-desktop",
-    );
-  }
-  return path.resolve(__dirname, "../src-tauri/target/debug/spellbook-desktop");
-})();
-
-const trackFile = (filePath: string) => {
-  createdFiles.push(filePath);
-  return filePath;
-};
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 
-/**
- * Page Object Model / Helper class for the Spellbook application.
- * Encapsulates common UI interactions to keep test scripts clean.
- */
-class SpellbookApp {
-  constructor(public page: Page) {}
-
-  async navigate(name: string) {
-    await this.page.getByRole("link", { name, exact: true }).click();
-  }
-
-  async createSpell(name: string, level: string, description: string, source = "") {
-    await this.navigate("Add Spell");
-    await this.page.getByPlaceholder("Spell Name").fill(name);
-    await this.page.getByPlaceholder("Level").fill(level);
-    await this.page.getByLabel("Source").fill(source);
-    await this.page.locator("textarea").fill(description);
-    await this.page.getByRole("button", { name: "Save Spell" }).click();
-    await this.navigate("Library");
-  }
-
-  async importFile(filePath: string, allowOverwrite = false) {
-    await this.navigate("Import");
-
-    const fileInput = this.page.locator('input[type="file"]');
-    await fileInput.setInputFiles(filePath);
-    await expect(this.page.getByText(path.basename(filePath))).toBeVisible();
-
-    await this.page.getByRole("button", { name: "Preview →" }).click();
-    await expect(this.page.getByText(/Parsed \d+ spell/)).toBeVisible();
-    await this.page.getByRole("button", { name: "Skip Review →" }).click();
-    await expect(this.page.getByText(/Ready to import/)).toBeVisible();
-
-    const overwriteCheckbox = this.page.getByLabel("Overwrite existing spells");
-    if (allowOverwrite) {
-      await overwriteCheckbox.check();
-    } else {
-      await overwriteCheckbox.uncheck();
-    }
-
-    await this.page.getByRole("button", { name: "Start Import" }).click();
-  }
-
-  async openSpell(spellName: string) {
-    await this.navigate("Library");
-    await this.page.getByText(spellName).click();
-    await expect(this.page.getByPlaceholder("Spell Name")).toHaveValue(spellName);
-  }
-}
-
-let appProcess: ChildProcess | null = null;
-const cdpPort = 9222;
+let appContext: TauriAppContext | null = null;
+const fileTracker = createFileTracker();
 
 test.beforeAll(async () => {
-  if (!fs.existsSync(TAURI_BIN)) {
-    throw new Error(
-      `Tauri executable not found at ${TAURI_BIN}. Run 'cargo build' in src-tauri first.`,
-    );
-  }
-
-  // Launch with remote debugging
-  appProcess = spawn(TAURI_BIN, [], {
-    env: {
-      ...process.env,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
-    },
-    stdio: "ignore",
-    detached: false,
-    shell: false,
-  });
-
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  appContext = await launchTauriApp();
 });
 
 test.afterAll(() => {
-  if (appProcess) appProcess.kill();
-  for (const filePath of createdFiles) {
-    try {
-      fs.rmSync(filePath, { force: true });
-    } catch (error) {
-      console.warn(`Failed to remove test artifact ${filePath}:`, error);
-    }
-  }
+  cleanupTauriApp(appContext);
+  fileTracker.cleanup();
 });
 
 test("Milestone Verification Flow", async () => {
-  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
-  const context = browser.contexts()[0];
-  const page = context.pages()[0];
+  if (!appContext) throw new Error("App context not initialized");
+  const { page } = appContext;
   const app = new SpellbookApp(page);
   const runId = Date.now();
   const uniqueSpellName = `POM Known Spell ${runId}`;
@@ -129,14 +44,17 @@ test("Milestone Verification Flow", async () => {
   });
 
   await test.step("Setup: Create Spell", async () => {
-    await app.createSpell(uniqueSpellName, "3", "Cleanly created via helper.");
+    await app.createSpell({
+      name: uniqueSpellName,
+      level: "3",
+      description: "Cleanly created via helper.",
+    });
   });
 
   await test.step("Milestone 1: Character Linkage", async () => {
     const charLink = page.getByRole("link", { name: "Characters", exact: true });
     await expect(charLink).toBeVisible();
     await charLink.click();
-    console.log("URL after clicking Characters:", page.url());
     await expect(page).toHaveURL(/\/character/);
     await expect(page.getByRole("heading", { name: "Characters" })).toBeVisible();
     await app.navigate("Library");
@@ -156,7 +74,7 @@ test("Milestone Verification Flow", async () => {
     await characterButton.click();
 
     await app.navigate("Library");
-    const spellRow = page.getByRole("row", { name: new RegExp(uniqueSpellName) });
+    const spellRow = app.getSpellRow(uniqueSpellName);
     await expect(spellRow).toBeVisible();
     const addDialog = page.waitForEvent("dialog");
     await spellRow.getByRole("combobox").selectOption({ label: characterName });
@@ -186,7 +104,7 @@ test("Milestone Verification Flow", async () => {
 
   await test.step("Milestone 2: Import Wizard & Provenance", async () => {
     const uniqueName = `Import Test Spell ${Date.now()}`;
-    const samplePath = trackFile(path.resolve(__dirname, "sample.md"));
+    const samplePath = fileTracker.track(path.resolve(__dirname, "sample.md"));
     fs.writeFileSync(
       samplePath,
       `---\nname: ${uniqueName}\nlevel: 2\nsource: TestSource\n---\nImported description details.`,
@@ -194,7 +112,7 @@ test("Milestone Verification Flow", async () => {
 
     // Test First Import
     await app.importFile(samplePath, false);
-    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: TIMEOUTS.medium });
 
     // Test Skip Duplicate
     await app.importFile(samplePath, false);
@@ -216,7 +134,7 @@ test("Milestone Verification Flow", async () => {
   await test.step("Milestone 3: Library filters for components and tags", async () => {
     const filterRunId = Date.now();
     const taggedSpellName = `Filter Spell ${filterRunId}`;
-    const taggedSpellPath = trackFile(path.resolve(__dirname, `filter-${filterRunId}.md`));
+    const taggedSpellPath = fileTracker.track(path.resolve(__dirname, `filter-${filterRunId}.md`));
     fs.writeFileSync(
       taggedSpellPath,
       [
@@ -232,7 +150,9 @@ test("Milestone Verification Flow", async () => {
       ].join("\n"),
     );
     const decoySpellName = `Filter Decoy ${filterRunId}`;
-    const decoySpellPath = trackFile(path.resolve(__dirname, `filter-decoy-${filterRunId}.md`));
+    const decoySpellPath = fileTracker.track(
+      path.resolve(__dirname, `filter-decoy-${filterRunId}.md`),
+    );
     fs.writeFileSync(
       decoySpellPath,
       [
@@ -249,9 +169,9 @@ test("Milestone Verification Flow", async () => {
     );
 
     await app.importFile(taggedSpellPath, false);
-    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: TIMEOUTS.medium });
     await app.importFile(decoySpellPath, false);
-    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: TIMEOUTS.medium });
 
     await app.navigate("Library");
 
@@ -277,17 +197,14 @@ test("Milestone Verification Flow", async () => {
     await tagSelect.selectOption({ label: "alpha" });
     await page.getByRole("button", { name: "Search" }).click();
 
-    await expect(page.getByRole("row", { name: new RegExp(taggedSpellName) })).toBeVisible();
-    await expect(page.getByRole("row", { name: new RegExp(decoySpellName) })).toHaveCount(0);
+    await expect(app.getSpellRow(taggedSpellName)).toBeVisible();
+    await expect(app.getSpellRow(decoySpellName)).toHaveCount(0);
   });
-
-  await browser.close();
 });
 
 test("Import conflict merge review flow", async () => {
-  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
-  const context = browser.contexts()[0];
-  const page = context.pages()[0];
+  if (!appContext) throw new Error("App context not initialized");
+  const { page } = appContext;
   const app = new SpellbookApp(page);
   const runId = Date.now();
   const conflictName = `Conflict Spell ${runId}`;
@@ -296,11 +213,16 @@ test("Import conflict merge review flow", async () => {
   const incomingDescription = "Incoming description";
 
   await test.step("Setup: Create Existing Spell", async () => {
-    await app.createSpell(conflictName, "1", originalDescription, conflictSource);
+    await app.createSpell({
+      name: conflictName,
+      level: "1",
+      description: originalDescription,
+      source: conflictSource,
+    });
   });
 
   await test.step("Trigger conflict import and resolve", async () => {
-    const samplePath = trackFile(path.resolve(__dirname, `conflict-${runId}.md`));
+    const samplePath = fileTracker.track(path.resolve(__dirname, `conflict-${runId}.md`));
     fs.writeFileSync(
       samplePath,
       `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\n---\n${incomingDescription}`,
@@ -325,7 +247,7 @@ test("Import conflict merge review flow", async () => {
     await expect(page.getByLabel("Incoming")).toBeVisible();
     await page.getByRole("button", { name: "Use Incoming" }).first().click();
     await page.getByRole("button", { name: "Apply Resolutions" }).click();
-    await expect(page.getByText("Conflict resolutions")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Conflict resolutions")).toBeVisible({ timeout: TIMEOUTS.medium });
   });
 
   await test.step("Verify updated spell", async () => {
@@ -333,19 +255,16 @@ test("Import conflict merge review flow", async () => {
     await page.getByText(conflictName).click();
     await expect(page.getByLabel("Description")).toHaveValue(incomingDescription);
   });
-
-  await browser.close();
 });
 
 test("Spell editor persists extended fields", async () => {
-  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
-  const context = browser.contexts()[0];
-  const page = context.pages()[0];
+  if (!appContext) throw new Error("App context not initialized");
+  const { page } = appContext;
   const app = new SpellbookApp(page);
   const runId = Date.now();
 
   const importedName = `Extended Imported ${runId}`;
-  const importedPath = trackFile(path.resolve(__dirname, `extended-${runId}.md`));
+  const importedPath = fileTracker.track(path.resolve(__dirname, `extended-${runId}.md`));
   fs.writeFileSync(
     importedPath,
     [
@@ -375,7 +294,7 @@ test("Spell editor persists extended fields", async () => {
 
   await test.step("Load existing spell and confirm fields populate", async () => {
     await app.importFile(importedPath, false);
-    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Imported spells: 1")).toBeVisible({ timeout: TIMEOUTS.medium });
 
     await app.openSpell(importedName);
     await expect(page.getByLabel("School")).toHaveValue("Illusion");
@@ -446,6 +365,4 @@ test("Spell editor persists extended fields", async () => {
     await expect(page.getByLabel("Tags")).toHaveValue("created, field");
     await expect(page.getByLabel("Description")).toHaveValue("Created description text.");
   });
-
-  await browser.close();
 });

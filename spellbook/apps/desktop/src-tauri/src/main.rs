@@ -693,7 +693,7 @@ fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<()
     if name.trim().is_empty() {
         return Err("name is required".into());
     }
-    if level < 0 || level > 12 {
+    if !(0..=12).contains(&level) {
         return Err("level must be between 0 and 12".into());
     }
     if description.trim().is_empty() {

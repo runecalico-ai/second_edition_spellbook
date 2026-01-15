@@ -226,8 +226,9 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-name"
-            className={`w-full bg-neutral-900 border p-2 rounded ${isNameInvalid ? "border-red-500" : "border-neutral-700"
-              }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${
+              isNameInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
             placeholder="Spell Name"
             value={form.name}
             onChange={(e) => handleChange("name", e.target.value)}
@@ -241,8 +242,9 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-level"
-            className={`w-full bg-neutral-900 border p-2 rounded ${isLevelInvalid ? "border-red-500" : "border-neutral-700"
-              }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${
+              isLevelInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
             type="number"
             min={0}
             max={12}
@@ -266,12 +268,12 @@ export default function SpellEditor() {
                 onChange={(e) => handleChange("is_quest_spell", e.target.checked ? 1 : 0)}
                 className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
               />
-              <span className="text-sm text-neutral-400 group-hover:text-neutral-300">Quest Spell</span>
+              <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
+                Quest Spell
+              </span>
             </label>
           </div>
-          {isLevelInvalid && (
-            <p className="text-xs text-red-400 mt-1">Level must be 0-12.</p>
-          )}
+          {isLevelInvalid && <p className="text-xs text-red-400 mt-1">Level must be 0-12.</p>}
           {isEpicRestricted && (
             <p className="text-xs text-yellow-500 mt-1">Epic levels (10-12) are Arcane only.</p>
           )}
@@ -447,8 +449,9 @@ export default function SpellEditor() {
         </label>
         <textarea
           id="spell-description"
-          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
+            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
+          }`}
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
           required
@@ -458,48 +461,46 @@ export default function SpellEditor() {
         )}
       </div>
 
-      {
-        form.artifacts && form.artifacts.length > 0 && (
-          <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!form.artifacts || form.artifacts.length === 0) return;
-                  const artifactId = form.artifacts[0].id;
-                  if (!confirm("Re-parse this spell from the original artifact file?")) return;
-                  try {
-                    setLoading(true);
-                    const updated = await invoke<SpellDetail>("reparse_artifact", { artifactId });
-                    setForm(updated);
-                    alert("Spell re-parsed successfully!");
-                  } catch (e) {
-                    alert(`Reparse failed: ${e}`);
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
-              >
-                Reparse
-              </button>
-            </div>
-            {form.artifacts.map((art) => (
-              <div key={art.id} className="text-xs space-y-1 text-neutral-500">
-                <div className="flex justify-between">
-                  <span className="font-semibold text-neutral-400">
-                    Type: {art.type.toUpperCase()}
-                  </span>
-                  <span>Imported: {new Date(art.imported_at).toLocaleString()}</span>
-                </div>
-                <div className="truncate">Path: {art.path}</div>
-                <div className="font-mono text-[10px] opacity-70">SHA256: {art.hash}</div>
-              </div>
-            ))}
+      {form.artifacts && form.artifacts.length > 0 && (
+        <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!form.artifacts || form.artifacts.length === 0) return;
+                const artifactId = form.artifacts[0].id;
+                if (!confirm("Re-parse this spell from the original artifact file?")) return;
+                try {
+                  setLoading(true);
+                  const updated = await invoke<SpellDetail>("reparse_artifact", { artifactId });
+                  setForm(updated);
+                  alert("Spell re-parsed successfully!");
+                } catch (e) {
+                  alert(`Reparse failed: ${e}`);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+            >
+              Reparse
+            </button>
           </div>
-        )
-      }
-    </div >
+          {form.artifacts.map((art) => (
+            <div key={art.id} className="text-xs space-y-1 text-neutral-500">
+              <div className="flex justify-between">
+                <span className="font-semibold text-neutral-400">
+                  Type: {art.type.toUpperCase()}
+                </span>
+                <span>Imported: {new Date(art.imported_at).toLocaleString()}</span>
+              </div>
+              <div className="truncate">Path: {art.path}</div>
+              <div className="font-mono text-[10px] opacity-70">SHA256: {art.hash}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

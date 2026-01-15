@@ -70,6 +70,7 @@ pnpm format # Format
 pnpm format:check # Format check
 pnpm lint # Lint
 ```
+
 - Format check
 ```bash
 cd spellbook/apps/desktop

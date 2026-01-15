@@ -2,7 +2,7 @@ use crate::error::AppError;
 use serde_json::json;
 use std::path::PathBuf;
 use std::process::Stdio;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 fn sidecar_path() -> Result<PathBuf, AppError> {

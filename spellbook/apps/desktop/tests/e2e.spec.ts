@@ -52,7 +52,8 @@ test("Milestone Verification Flow", async () => {
   });
 
   await test.step("Milestone 1: Character Linkage", async () => {
-    const charLink = page.getByRole("link", { name: "Characters", exact: true });
+    // Use nav bar link specifically (there's also a Characters link in the Library page)
+    const charLink = page.locator("nav").getByRole("link", { name: "Characters", exact: true });
     await expect(charLink).toBeVisible();
     await charLink.click();
     await expect(page).toHaveURL(/\/character/);
@@ -69,9 +70,10 @@ test("Milestone Verification Flow", async () => {
 
     await page.getByPlaceholder("New Name").fill(characterName);
     await page.getByRole("button", { name: "+" }).click();
-    const characterButton = page.getByRole("button", { name: characterName });
-    await expect(characterButton).toBeVisible();
-    await characterButton.click();
+    // Characters are rendered as Link elements (role=link), not buttons
+    const characterLink = page.getByRole("link", { name: new RegExp(characterName) });
+    await expect(characterLink).toBeVisible({ timeout: TIMEOUTS.medium });
+    await characterLink.click();
 
     await app.navigate("Library");
     const spellRow = app.getSpellRow(uniqueSpellName);
@@ -81,8 +83,8 @@ test("Milestone Verification Flow", async () => {
     await (await addDialog).accept();
 
     await app.navigate("Characters");
-    await expect(characterButton).toBeVisible();
-    await characterButton.click();
+    await expect(characterLink).toBeVisible({ timeout: TIMEOUTS.medium });
+    await characterLink.click();
     const knownCheckbox = page.getByRole("checkbox", { name: `Known ${uniqueSpellName}` });
     await expect(knownCheckbox).toBeVisible();
     await knownCheckbox.setChecked(false);
@@ -92,8 +94,8 @@ test("Milestone Verification Flow", async () => {
 
     await app.navigate("Library");
     await app.navigate("Characters");
-    await expect(characterButton).toBeVisible();
-    await characterButton.click();
+    await expect(characterLink).toBeVisible({ timeout: TIMEOUTS.medium });
+    await characterLink.click();
     const knownCheckboxAfter = page.getByRole("checkbox", { name: `Known ${uniqueSpellName}` });
     await expect(knownCheckboxAfter).not.toBeChecked();
     const preparedCheckboxAfter = page.getByRole("checkbox", {

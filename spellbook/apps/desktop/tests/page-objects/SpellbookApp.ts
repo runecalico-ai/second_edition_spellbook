@@ -37,11 +37,17 @@ export interface CreateSpellOptions {
  * Page Object Model for the Spellbook application.
  */
 export class SpellbookApp {
-  constructor(public page: Page) {}
+  constructor(public page: Page) { }
 
-  /** Navigate to a page using the nav link */
+  /** Navigate to a page using the nav link (preferring nav bar links) */
   async navigate(name: string): Promise<void> {
-    await this.page.getByRole("link", { name, exact: true }).click();
+    // "Add Spell" isn't in the nav bar, it's in the Library page
+    if (name === "Add Spell") {
+      await this.page.getByRole("link", { name, exact: true }).click();
+    } else {
+      // All other navigation uses the nav bar
+      await this.page.locator("nav").getByRole("link", { name, exact: true }).click();
+    }
   }
 
   /** Wait for the Library heading to be visible */
@@ -78,7 +84,8 @@ export class SpellbookApp {
     if (isCantrip) {
       await this.page.locator(SELECTORS.cantripCheckbox).check();
     } else {
-      await this.page.getByPlaceholder("Level").fill(level);
+      // Use the id-based selector since level input has no placeholder
+      await this.page.locator("#spell-level").fill(level);
     }
 
     if (isQuest) {
@@ -90,15 +97,16 @@ export class SpellbookApp {
     }
 
     if (classes) {
-      await this.page.getByLabel("Classes").fill(classes);
+      await this.page.getByLabel("Classes (e.g. Mage, Cleric)").fill(classes);
     }
 
     if (source) {
       await this.page.getByLabel("Source").fill(source);
     }
 
+    // Fill description - use id-based selector
     if (description) {
-      await this.page.locator(SELECTORS.description).fill(description);
+      await this.page.locator("#spell-description").fill(description);
     }
 
     await this.page.getByRole("button", { name: "Save Spell" }).click();

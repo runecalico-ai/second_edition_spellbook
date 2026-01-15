@@ -6,8 +6,6 @@ pub struct Character {
     pub name: String,
     pub character_type: String,
     pub notes: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
 }
 
 #[derive(Serialize, Deserialize)]

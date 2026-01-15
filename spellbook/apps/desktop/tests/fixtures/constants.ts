@@ -15,7 +15,7 @@ export const TIMEOUTS = {
 } as const;
 
 /** Base CDP port - tests should use getAvailablePort() for parallel safety */
-export const BASE_CDP_PORT = 9222;
+export const BASE_CDP_PORT = 9333;
 
 /** Screenshot output directory name */
 export const SCREENSHOT_DIR = "screenshots";

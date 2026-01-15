@@ -2,7 +2,7 @@
 
 This document provides context for AI agents working on the Tauri/Rust backend.
 
-> **Note:** All paths in this document are relative to the repository root (`spellbook/`).
+> **Note:** All paths in this document are relative to the repository root (`spellbook/apps/desktop`).
 
 ## Project Structure
 

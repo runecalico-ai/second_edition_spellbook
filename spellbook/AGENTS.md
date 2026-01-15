@@ -86,6 +86,7 @@ pnpm lint
 ```
 ### Rust (Dekstop Backend)
 **spellbook/apps/desktop/src-tauri**
+- Format: `cargo fmt`
 - Format check: `cargo fmt -- --check`
 - Clippy (lint): `cargo clippy -- -D warnings`
 

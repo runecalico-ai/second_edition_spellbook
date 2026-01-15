@@ -492,7 +492,11 @@ fn import_files_with_pool(
                 continue;
             }
             // Update existing spell
-            validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
+            validate_epic_and_quest_spells(
+                spell.level,
+                &spell.class_list,
+                spell.is_quest_spell != 0,
+            )?;
             conn.execute(
                 "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, edition=?, author=?, license=?, is_quest_spell=?, updated_at=? WHERE id=?",
                 params![
@@ -520,7 +524,11 @@ fn import_files_with_pool(
             id
         } else {
             // Insert new spell
-            validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
+            validate_epic_and_quest_spells(
+                spell.level,
+                &spell.class_list,
+                spell.is_quest_spell != 0,
+            )?;
             conn.execute(
                 "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license, is_quest_spell) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![
@@ -708,13 +716,18 @@ fn validate_epic_and_quest_spells(
     is_quest_spell: bool,
 ) -> Result<(), String> {
     let divine_classes = ["priest", "cleric", "druid", "paladin", "ranger"];
-    let classes_lower = class_list.as_ref().map(|c| c.to_lowercase()).unwrap_or_default();
+    let classes_lower = class_list
+        .as_ref()
+        .map(|c| c.to_lowercase())
+        .unwrap_or_default();
 
     let has_divine = divine_classes.iter().any(|c| classes_lower.contains(c));
 
     // Epic spells (10+) are Arcane only
     if level >= 10 && has_divine {
-        return Err("Spell levels 10-12 are restricted to Arcane (Wizard/Mage) classes only".into());
+        return Err(
+            "Spell levels 10-12 are restricted to Arcane (Wizard/Mage) classes only".into(),
+        );
     }
 
     // Quest spells are Divine only

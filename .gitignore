@@ -34,3 +34,4 @@ venv/
 .venv/
 .ruff_cache/
 .pytest_cache/
+spellbook/apps/desktop/tests/screenshots/

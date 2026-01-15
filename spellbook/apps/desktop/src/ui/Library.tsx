@@ -12,6 +12,7 @@ type SpellSummary = {
   components?: string;
   duration?: string;
   source?: string;
+  is_quest_spell: number;
 };
 
 type Facets = {
@@ -31,6 +32,8 @@ type SearchFilters = {
   source?: string | null;
   components?: string | null;
   tags?: string | null;
+  is_quest_spell?: boolean | null;
+  is_cantrip?: boolean | null;
 };
 
 type SavedSearchPayload = {
@@ -71,6 +74,8 @@ export default function Library() {
   const [classListFilter, setClassListFilter] = useState("");
   const [componentFilter, setComponentFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
+  const [isQuestFilter, setIsQuestFilter] = useState(false);
+  const [isCantripFilter, setIsCantripFilter] = useState(false);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [newSearchName, setNewSearchName] = useState("");
@@ -118,6 +123,8 @@ export default function Library() {
         class_list: classListFilter || null,
         components: componentFilter || null,
         tags: tagFilter || null,
+        is_quest_spell: isQuestFilter,
+        is_cantrip: isCantripFilter,
       };
       const payload: SavedSearchPayload = {
         query,
@@ -150,6 +157,8 @@ export default function Library() {
         setClassListFilter(filters.class_list || "");
         setComponentFilter(filters.components || "");
         setTagFilter(filters.tags || "");
+        setIsQuestFilter(filters.is_quest_spell ?? false);
+        setIsCantripFilter(filters.is_cantrip ?? false);
       } else {
         const filters = parsed as SearchFilters;
         setQuery("");
@@ -161,6 +170,8 @@ export default function Library() {
         setClassListFilter(filters.class_list || "");
         setComponentFilter(filters.components || "");
         setTagFilter(filters.tags || "");
+        setIsQuestFilter(filters.is_quest_spell ?? false);
+        setIsCantripFilter(filters.is_cantrip ?? false);
       }
     } catch (e) {
       console.error("Failed to parse saved search", e);
@@ -191,6 +202,8 @@ export default function Library() {
       class_list: classListFilter || null,
       components: componentFilter || null,
       tags: tagFilter || null,
+      is_quest_spell: isQuestFilter || null,
+      is_cantrip: isCantripFilter || null,
     };
 
     if (mode === "semantic") {
@@ -210,6 +223,8 @@ export default function Library() {
     classListFilter,
     componentFilter,
     tagFilter,
+    isQuestFilter,
+    isCantripFilter,
   ]);
 
   useEffect(() => {
@@ -305,16 +320,16 @@ export default function Library() {
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-xs text-neutral-400 font-medium">
-            Level range: {levelMin || 0} - {levelMax || 9}
+            Level range: {levelMin || 0} - {levelMax || 12}
           </span>
           <div className="pt-2 px-1">
             <Slider.Root
               className="relative flex items-center select-none touch-none w-32 h-5"
               value={[
                 levelMin ? Number.parseInt(levelMin) : 0,
-                levelMax ? Number.parseInt(levelMax) : 9,
+                levelMax ? Number.parseInt(levelMax) : 12,
               ]}
-              max={9}
+              max={12}
               step={1}
               onValueChange={([min, max]) => {
                 setLevelMin(String(min));
@@ -383,6 +398,24 @@ export default function Library() {
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors">
+          <input
+            type="checkbox"
+            checked={isQuestFilter}
+            onChange={(e) => setIsQuestFilter(e.target.checked)}
+            className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-offset-neutral-900"
+          />
+          <span className="text-xs text-neutral-300">Quest Spells</span>
+        </label>
+        <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors">
+          <input
+            type="checkbox"
+            checked={isCantripFilter}
+            onChange={(e) => setIsCantripFilter(e.target.checked)}
+            className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-offset-neutral-900"
+          />
+          <span className="text-xs text-neutral-300">Cantrips Only</span>
+        </label>
 
         <div className="border-l border-neutral-800 mx-1 self-stretch" />
 
@@ -478,6 +511,21 @@ export default function Library() {
                   <Link to={`/edit/${s.id}`} className="text-blue-400 hover:underline">
                     {s.name}
                   </Link>
+                  {s.is_quest_spell === 1 && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
+                      Quest
+                    </span>
+                  )}
+                  {s.level >= 10 && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
+                      Epic
+                    </span>
+                  )}
+                  {s.level === 0 && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
+                      Cantrip
+                    </span>
+                  )}
                   <select
                     className="ml-2 w-4 h-4 text-xs bg-neutral-800 text-transparent hover:text-white rounded focus:w-auto focus:text-white transition-all"
                     onChange={(e) => addToCharacter(s.id, e.target.value)}

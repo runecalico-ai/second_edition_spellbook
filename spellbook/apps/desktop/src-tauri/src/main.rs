@@ -34,6 +34,7 @@ struct SpellSummary {
     components: Option<String>,
     duration: Option<String>,
     source: Option<String>,
+    is_quest_spell: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -57,6 +58,7 @@ struct SpellCreate {
     edition: Option<String>,
     author: Option<String>,
     license: Option<String>,
+    is_quest_spell: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -81,6 +83,7 @@ struct SpellUpdate {
     edition: Option<String>,
     author: Option<String>,
     license: Option<String>,
+    is_quest_spell: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -105,6 +108,7 @@ struct SpellDetail {
     edition: Option<String>,
     author: Option<String>,
     license: Option<String>,
+    is_quest_spell: i64,
     artifacts: Option<Vec<SpellArtifact>>,
 }
 
@@ -131,6 +135,7 @@ struct ImportSpell {
     license: Option<String>,
     #[serde(rename = "_source_file")]
     source_file: Option<String>,
+    is_quest_spell: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -255,6 +260,7 @@ struct PreviewSpell {
     raw_text: Option<String>,
     #[serde(rename = "_source_file")]
     source_file: String,
+    is_quest_spell: i64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -428,6 +434,7 @@ fn import_files_with_pool(
                     edition: spell.edition,
                     author: spell.author,
                     license: spell.license,
+                    is_quest_spell: spell.is_quest_spell,
                     artifacts: None,
                 })
                 .collect();
@@ -485,8 +492,9 @@ fn import_files_with_pool(
                 continue;
             }
             // Update existing spell
+            validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
             conn.execute(
-                "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, edition=?, author=?, license=?, updated_at=? WHERE id=?",
+                "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, edition=?, author=?, license=?, is_quest_spell=?, updated_at=? WHERE id=?",
                 params![
                     spell.school,
                     spell.sphere,
@@ -504,6 +512,7 @@ fn import_files_with_pool(
                     spell.edition,
                     spell.author,
                     spell.license,
+                    spell.is_quest_spell,
                     Utc::now().to_rfc3339(),
                     id,
                 ],
@@ -511,8 +520,9 @@ fn import_files_with_pool(
             id
         } else {
             // Insert new spell
+            validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
             conn.execute(
-                "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license, is_quest_spell) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![
                     spell.name,
                     spell.school,
@@ -533,6 +543,7 @@ fn import_files_with_pool(
                     spell.edition,
                     spell.author,
                     spell.license,
+                    spell.is_quest_spell,
                 ],
             ).map_err(|e| e.to_string())?;
             conn.last_insert_rowid()
@@ -660,6 +671,8 @@ struct SearchFilters {
     source: Option<String>,
     components: Option<String>,
     tags: Option<String>,
+    is_quest_spell: Option<bool>,
+    is_cantrip: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -680,12 +693,40 @@ fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<()
     if name.trim().is_empty() {
         return Err("name is required".into());
     }
-    if level < 0 {
-        return Err("level must be 0 or greater".into());
+    if level < 0 || level > 12 {
+        return Err("level must be between 0 and 12".into());
     }
     if description.trim().is_empty() {
         return Err("description is required".into());
     }
+    Ok(())
+}
+
+fn validate_epic_and_quest_spells(
+    level: i64,
+    class_list: &Option<String>,
+    is_quest_spell: bool,
+) -> Result<(), String> {
+    let divine_classes = ["priest", "cleric", "druid", "paladin", "ranger"];
+    let classes_lower = class_list.as_ref().map(|c| c.to_lowercase()).unwrap_or_default();
+
+    let has_divine = divine_classes.iter().any(|c| classes_lower.contains(c));
+
+    // Epic spells (10+) are Arcane only
+    if level >= 10 && has_divine {
+        return Err("Spell levels 10-12 are restricted to Arcane (Wizard/Mage) classes only".into());
+    }
+
+    // Quest spells are Divine only
+    if is_quest_spell && !has_divine {
+        return Err("Quest spells are restricted to Divine (Priest/Cleric) classes only".into());
+    }
+
+    // Cannot be both epic level and quest spell
+    if level >= 10 && is_quest_spell {
+        return Err("A spell cannot be both Epic (level 10+) and a Quest spell".into());
+    }
+
     Ok(())
 }
 
@@ -766,6 +807,13 @@ fn load_migrations(conn: &Connection) -> Result<(), String> {
         let sql = include_str!("../../../../db/migrations/0003_milestone_3_updates.sql");
         conn.execute_batch(sql).map_err(|e| e.to_string())?;
         conn.execute("PRAGMA user_version = 3", [])
+            .map_err(|e| e.to_string())?;
+    }
+
+    if version < 4 {
+        let sql = include_str!("../../../../db/migrations/0004_add_quest_spells.sql");
+        conn.execute_batch(sql).map_err(|e| e.to_string())?;
+        conn.execute("PRAGMA user_version = 4", [])
             .map_err(|e| e.to_string())?;
     }
 
@@ -1075,6 +1123,18 @@ fn search_keyword_with_conn(
                 params.push(Box::new(format!("%{}%", tags)));
             }
         }
+        if let Some(is_quest) = f.is_quest_spell {
+            if is_quest {
+                where_clauses.push("s.is_quest_spell = 1".to_string());
+            } else {
+                where_clauses.push("s.is_quest_spell = 0".to_string());
+            }
+        }
+        if let Some(is_cantrip) = f.is_cantrip {
+            if is_cantrip {
+                where_clauses.push("s.level = 0".to_string());
+            }
+        }
     }
 
     let where_sql = if where_clauses.is_empty() {
@@ -1086,7 +1146,7 @@ fn search_keyword_with_conn(
     let sql = if !trimmed.is_empty() {
         // use FTS join
         format!(
-            "SELECT s.id, s.name, s.school, s.level, s.class_list, s.components, s.duration, s.source FROM spell_fts JOIN spell s ON s.id=spell_fts.rowid {} ORDER BY bm25(spell_fts) LIMIT 50",
+            "SELECT s.id, s.name, s.school, s.level, s.class_list, s.components, s.duration, s.source, s.is_quest_spell FROM spell_fts JOIN spell s ON s.id=spell_fts.rowid {} ORDER BY bm25(spell_fts) LIMIT 50",
             where_sql
         )
     } else {
@@ -1097,7 +1157,7 @@ fn search_keyword_with_conn(
         // In 'spell_fts f JOIN spell s', 's.school' is valid.
         // In 'spell', 'school' is valid.
         // Let's aliasing spell as s in the standard query too.
-        format!("SELECT id, name, school, level, class_list, components, duration, source FROM spell s {} ORDER BY name LIMIT 50", where_sql)
+        format!("SELECT id, name, school, level, class_list, components, duration, source, is_quest_spell FROM spell s {} ORDER BY name LIMIT 50", where_sql)
     };
 
     // We need to construct params ref slice
@@ -1115,6 +1175,7 @@ fn search_keyword_with_conn(
                 components: row.get(5)?,
                 duration: row.get(6)?,
                 source: row.get(7)?,
+                is_quest_spell: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1223,7 +1284,7 @@ fn parse_facet_entries(raw: &str) -> Vec<String> {
 
 fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>, String> {
     let mut spell: SpellDetail = conn.query_row(
-        "SELECT id, name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license FROM spell WHERE id = ?",
+        "SELECT id, name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license, is_quest_spell FROM spell WHERE id = ?",
         [id],
         |row| {
             Ok(SpellDetail {
@@ -1247,6 +1308,7 @@ fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>
                 edition: row.get(17)?,
                 author: row.get(18)?,
                 license: row.get(19)?,
+                is_quest_spell: row.get(20)?,
                 artifacts: None,
             })
         },
@@ -1290,10 +1352,13 @@ fn get_spell(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<Option<Spell
 
 #[tauri::command]
 fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) -> Result<i64, String> {
+    validate_spell_fields(&spell.name, spell.level, &spell.description)?;
+    validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
+
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     if let Some(id) = spell.id {
         conn.execute(
-            "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, author=?, license=?, updated_at=? WHERE id=?",
+            "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, author=?, license=?, is_quest_spell=?, updated_at=? WHERE id=?",
             params![
                 spell.name,
                 spell.school,
@@ -1314,6 +1379,7 @@ fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) -> Resul
                 spell.edition,
                 spell.author,
                 spell.license,
+                spell.is_quest_spell,
                 Utc::now().to_rfc3339(),
                 id,
             ],
@@ -1322,7 +1388,7 @@ fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) -> Resul
         return Ok(id);
     }
     conn.execute(
-        "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license, is_quest_spell) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             spell.name,
             spell.school,
@@ -1343,6 +1409,7 @@ fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) -> Resul
             spell.edition,
             spell.author,
             spell.license,
+            spell.is_quest_spell,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -1352,9 +1419,11 @@ fn upsert_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellDetail) -> Resul
 #[tauri::command]
 fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) -> Result<i64, String> {
     validate_spell_fields(&spell.name, spell.level, &spell.description)?;
+    validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
+
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     conn.execute(
-        "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO spell (name, school, sphere, class_list, level, range, components, material_components, casting_time, duration, area, saving_throw, reversible, description, tags, source, edition, author, license, is_quest_spell) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             spell.name,
             spell.school,
@@ -1375,6 +1444,7 @@ fn create_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellCreate) -> Resul
             spell.edition,
             spell.author,
             spell.license,
+            spell.is_quest_spell,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -1389,6 +1459,7 @@ fn update_spell(state: tauri::State<'_, Arc<Pool>>, spell: SpellUpdate) -> Resul
 
 fn apply_spell_update_with_conn(conn: &Connection, spell: &SpellUpdate) -> Result<i64, String> {
     validate_spell_fields(&spell.name, spell.level, &spell.description)?;
+    validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
 
     if let Some(old_spell) = get_spell_from_conn(conn, spell.id)? {
         let changes = diff_spells(&old_spell, spell);
@@ -1396,7 +1467,7 @@ fn apply_spell_update_with_conn(conn: &Connection, spell: &SpellUpdate) -> Resul
     }
 
     conn.execute(
-        "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, author=?, license=?, updated_at=? WHERE id=?",
+        "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, components=?, material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, author=?, license=?, is_quest_spell=?, updated_at=? WHERE id=?",
         params![
             spell.name,
             spell.school,
@@ -1417,6 +1488,7 @@ fn apply_spell_update_with_conn(conn: &Connection, spell: &SpellUpdate) -> Resul
             spell.edition,
             spell.author,
             spell.license,
+            spell.is_quest_spell,
             Utc::now().to_rfc3339(),
             spell.id,
         ],
@@ -1437,7 +1509,7 @@ fn delete_spell(state: tauri::State<'_, Arc<Pool>>, id: i64) -> Result<(), Strin
 fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, String> {
     let conn = state.inner().get().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, name, school, level, class_list, components, duration, source FROM spell ORDER BY name")
+        .prepare("SELECT id, name, school, level, class_list, components, duration, source, is_quest_spell FROM spell ORDER BY name")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
@@ -1450,6 +1522,7 @@ fn list_spells(state: tauri::State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary>, 
                 components: row.get(5)?,
                 duration: row.get(6)?,
                 source: row.get(7)?,
+                is_quest_spell: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -2407,6 +2480,7 @@ fn reparse_artifact(
         edition: parsed_spell.edition.clone(),
         author: parsed_spell.author.clone(),
         license: parsed_spell.license.clone(),
+        is_quest_spell: parsed_spell.is_quest_spell,
     };
     let changes = diff_spells(&original_spell, &update_for_diff);
     if !changes.is_empty() {

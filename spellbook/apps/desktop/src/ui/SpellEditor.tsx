@@ -24,6 +24,7 @@ type SpellDetail = {
   edition?: string;
   author?: string;
   license?: string;
+  is_quest_spell: number;
   artifacts?: {
     id: number;
     type: string;
@@ -45,6 +46,7 @@ export default function SpellEditor() {
     level: 1,
     description: "",
     reversible: 0,
+    is_quest_spell: 0,
   });
   const [printStatus, setPrintStatus] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
@@ -68,10 +70,32 @@ export default function SpellEditor() {
 
   const isNameInvalid = !form.name.trim();
   const isDescriptionInvalid = !form.description.trim();
-  const isLevelInvalid = Number.isNaN(form.level) || form.level < 0;
+  const isLevelInvalid = Number.isNaN(form.level) || form.level < 0 || form.level > 12;
 
+  const divineClasses = ["priest", "cleric", "druid", "paladin", "ranger"];
+  const classesLower = form.class_list?.toLowerCase() || "";
+  const hasDivine = divineClasses.some((c) => classesLower.includes(c));
+
+  const isEpicRestricted = form.level >= 10 && hasDivine;
+  const isQuestRestricted = form.is_quest_spell === 1 && !hasDivine;
+  const isConflictRestricted = form.level >= 10 && form.is_quest_spell === 1;
+
+  const validationErrors = [
+    isNameInvalid && "Name is required",
+    isDescriptionInvalid && "Description is required",
+    isLevelInvalid && "Level must be between 0 and 12",
+    isEpicRestricted && "Levels 10-12 are Arcane (Wizard) only",
+    isQuestRestricted && "Quest spells are Divine (Priest) only",
+    isConflictRestricted && "A spell cannot be both Epic and Quest",
+  ].filter(Boolean) as string[];
+
+  const isInvalid = validationErrors.length > 0;
   const save = async () => {
     try {
+      if (isInvalid) {
+        alert(`Please fix validation errors:\n- ${validationErrors.join("\n- ")}`);
+        return;
+      }
       setLoading(true);
       if (isNew) {
         // create_spell expects SpellCreate
@@ -121,7 +145,26 @@ export default function SpellEditor() {
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4 overflow-auto h-full">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h2>
+          <div className="flex gap-2">
+            {form.is_quest_spell === 1 && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
+                Quest
+              </span>
+            )}
+            {form.level >= 10 && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
+                Epic
+              </span>
+            )}
+            {form.level === 0 && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
+                Cantrip
+              </span>
+            )}
+          </div>
+        </div>
         <div className="space-x-2">
           {!isNew && (
             <>
@@ -199,18 +242,46 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-level"
-            type="number"
             className={`w-full bg-neutral-900 border p-2 rounded ${
               isLevelInvalid ? "border-red-500" : "border-neutral-700"
             }`}
-            placeholder="Level"
-            value={form.level}
-            onChange={(e) => handleChange("level", Number.parseInt(e.target.value))}
+            type="number"
             min={0}
-            required
+            max={12}
+            value={form.level}
+            onChange={(e) => handleChange("level", Number.parseInt(e.target.value) || 0)}
           />
-          {isLevelInvalid && (
-            <p className="text-xs text-red-400 mt-1">Level must be 0 or higher.</p>
+          <div className="flex gap-4 mt-2">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={form.level === 0}
+                onChange={(e) => handleChange("level", e.target.checked ? 0 : 1)}
+                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
+              />
+              <span className="text-sm text-neutral-400 group-hover:text-neutral-300">Cantrip</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={form.is_quest_spell === 1}
+                onChange={(e) => handleChange("is_quest_spell", e.target.checked ? 1 : 0)}
+                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
+              />
+              <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
+                Quest Spell
+              </span>
+            </label>
+          </div>
+          {isLevelInvalid && <p className="text-xs text-red-400 mt-1">Level must be 0-12.</p>}
+          {isEpicRestricted && (
+            <p className="text-xs text-yellow-500 mt-1">Epic levels (10-12) are Arcane only.</p>
+          )}
+          {isQuestRestricted && (
+            <p className="text-xs text-yellow-500 mt-1">Quest spells are Divine only.</p>
+          )}
+          {isConflictRestricted && (
+            <p className="text-xs text-red-400 mt-1">Cannot be both Epic and Quest spell.</p>
           )}
         </div>
         <div>

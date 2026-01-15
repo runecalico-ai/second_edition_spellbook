@@ -29,6 +29,7 @@ type SpellSummary = {
   name: string;
   school?: string;
   level: number;
+  is_quest_spell: number;
 };
 
 type Facets = {
@@ -40,6 +41,8 @@ type SearchFilters = {
   schools?: string[] | null;
   levelMin?: number | null;
   levelMax?: number | null;
+  is_quest_spell?: boolean | null;
+  is_cantrip?: boolean | null;
 };
 
 export default function SpellbookBuilder() {
@@ -55,6 +58,8 @@ export default function SpellbookBuilder() {
   const [schoolFilters, setSchoolFilters] = useState<string[]>([]);
   const [levelMin, setLevelMin] = useState("");
   const [levelMax, setLevelMax] = useState("");
+  const [isQuestFilter, setIsQuestFilter] = useState(false);
+  const [isCantripFilter, setIsCantripFilter] = useState(false);
   const [spellbookLoaded, setSpellbookLoaded] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
@@ -93,13 +98,15 @@ export default function SpellbookBuilder() {
       schools: schoolFilters.length > 0 ? schoolFilters : null,
       levelMin: parsedMin,
       levelMax: parsedMax,
+      is_quest_spell: isQuestFilter || null,
+      is_cantrip: isCantripFilter || null,
     };
     const results = await invoke<SpellSummary[]>("search_keyword", {
       query: pickerQuery,
       filters,
     });
     setPickerResults(results);
-  }, [levelMin, levelMax, pickerQuery, schoolFilters]);
+  }, [levelMin, levelMax, pickerQuery, schoolFilters, isQuestFilter, isCantripFilter]);
 
   useEffect(() => {
     loadCharacter();
@@ -318,7 +325,21 @@ export default function SpellbookBuilder() {
                   className="rounded bg-neutral-900 border-neutral-700"
                 />
               </td>
-              <td className="p-2">{entry.name}</td>
+              <td className="p-2">
+                <div className="flex items-center gap-2">
+                  <span>{entry.name}</span>
+                  {entry.level >= 10 && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
+                      Epic
+                    </span>
+                  )}
+                  {entry.level === 0 && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
+                      Cantrip
+                    </span>
+                  )}
+                </div>
+              </td>
               <td className="p-2">{entry.level}</td>
               <td className="p-2">{entry.school}</td>
               <td className="p-2">
@@ -438,6 +459,28 @@ export default function SpellbookBuilder() {
                   </select>
                 </div>
               </div>
+              <div className="flex flex-col gap-1 justify-end">
+                <div className="flex gap-2 mb-1">
+                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-700 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isQuestFilter}
+                      onChange={(e) => setIsQuestFilter(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded border-neutral-600 bg-neutral-900 text-blue-600"
+                    />
+                    <span className="text-xs text-neutral-300">Quest</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-700 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isCantripFilter}
+                      onChange={(e) => setIsCantripFilter(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded border-neutral-600 bg-neutral-900 text-blue-600"
+                    />
+                    <span className="text-xs text-neutral-300">Cantrips Only</span>
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="max-h-[50vh] overflow-auto border border-neutral-800 rounded">
@@ -458,7 +501,26 @@ export default function SpellbookBuilder() {
                         key={spell.id}
                         className="border-b border-neutral-800/50 hover:bg-neutral-800"
                       >
-                        <td className="p-2">{spell.name}</td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-2">
+                            <span>{spell.name}</span>
+                            {spell.is_quest_spell === 1 && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
+                                Quest
+                              </span>
+                            )}
+                            {spell.level >= 10 && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
+                                Epic
+                              </span>
+                            )}
+                            {spell.level === 0 && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
+                                Cantrip
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-2">{spell.school}</td>
                         <td className="p-2 text-center">{spell.level}</td>
                         <td className="p-2 text-right">

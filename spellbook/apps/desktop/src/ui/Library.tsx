@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import * as Slider from "@radix-ui/react-slider";
+import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 

@@ -50,6 +50,8 @@ pub fn run() {
             export_spells,
             print_spell,
             print_spellbook,
+            backup_vault,
+            restore_vault,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

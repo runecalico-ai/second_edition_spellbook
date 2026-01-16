@@ -48,5 +48,11 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 4", [])?;
     }
 
+    if version < 5 {
+        let sql = include_str!("../../../../../db/migrations/0005_fts_add_author.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 5", [])?;
+    }
+
     Ok(())
 }

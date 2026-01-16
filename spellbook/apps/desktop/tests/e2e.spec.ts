@@ -319,3 +319,61 @@ test("Spell editor persists extended fields", async () => {
     await expect(page.getByLabel("Description")).toHaveValue("Created description text.");
   });
 });
+
+test("M3 FTS5 Search covers author and material_components", async () => {
+  if (!appContext) throw new Error("App context not initialized");
+  const { page } = appContext;
+  const app = new SpellbookApp(page);
+  const runId = Date.now();
+
+  const authorSpellName = `Author Search Spell ${runId}`;
+  const materialSpellName = `Material Search Spell ${runId}`;
+  const uniqueAuthor = `UniqueAuthorName${runId}`;
+  const uniqueMaterial = `raregem${runId}`;
+
+  await test.step("Create spell with unique author", async () => {
+    await app.navigate("Add Spell");
+    await page.getByLabel("Name").fill(authorSpellName);
+    await page.getByLabel("Level", { exact: true }).fill("3");
+    await page.getByLabel("Author").fill(uniqueAuthor);
+    await page.getByLabel("Description").fill("A spell with a unique author.");
+    await page.getByRole("button", { name: "Save Spell" }).click();
+    await app.waitForLibrary();
+  });
+
+  await test.step("Create spell with unique material component", async () => {
+    await app.navigate("Add Spell");
+    await page.getByLabel("Name").fill(materialSpellName);
+    await page.getByLabel("Level", { exact: true }).fill("4");
+    await page.getByLabel("Material Components").fill(uniqueMaterial);
+    await page.getByLabel("Description").fill("A spell with unique material.");
+    await page.getByRole("button", { name: "Save Spell" }).click();
+    await app.waitForLibrary();
+  });
+
+  await test.step("Search by author finds correct spell", async () => {
+    await app.navigate("Library");
+    await page.getByPlaceholder(/Search spells/i).fill(uniqueAuthor);
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+
+    await expect(page.getByText(authorSpellName)).toBeVisible({ timeout: TIMEOUTS.short });
+    await expect(page.getByText(materialSpellName)).not.toBeVisible();
+  });
+
+  await test.step("Search by material component finds correct spell", async () => {
+    await page.getByPlaceholder(/Search spells/i).clear();
+    await page.getByPlaceholder(/Search spells/i).fill(uniqueMaterial);
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+
+    await expect(page.getByText(materialSpellName)).toBeVisible({ timeout: TIMEOUTS.short });
+    await expect(page.getByText(authorSpellName)).not.toBeVisible();
+  });
+
+  await test.step("Clear search shows both spells", async () => {
+    await page.getByPlaceholder(/Search spells/i).clear();
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+
+    await expect(page.getByText(authorSpellName)).toBeVisible();
+    await expect(page.getByText(materialSpellName)).toBeVisible();
+  });
+});

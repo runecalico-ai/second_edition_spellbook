@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
 pub struct Character {
     pub id: i64,
@@ -9,7 +9,7 @@ pub struct Character {
     pub notes: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
 pub struct CharacterSpellbookEntry {
     pub character_id: i64,

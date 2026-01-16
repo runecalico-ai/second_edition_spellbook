@@ -1,5 +1,7 @@
 use super::spell::{SpellDetail, SpellUpdate};
-use serde::{Deserialize, Serialize};
+// No longer using direct imports here as they were unused or redundant with explicit paths in some places,
+// though clippy specifically complained about these being unused.
+
 use serde_json::Value;
 use std::collections::HashMap;
 

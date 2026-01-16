@@ -359,7 +359,12 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
 }
 
 /** Cleanup function for afterAll hooks */
-export function cleanupTauriApp(ctx: TauriAppContext | null): void {
+export async function cleanupTauriApp(ctx: TauriAppContext | null): Promise<void> {
+  if (ctx?.browser) {
+    console.log("Closing Playwright browser...");
+    await ctx.browser.close().catch((e) => console.warn(`Error closing browser: ${e}`));
+  }
+
   if (ctx?.process) {
     console.log(`Cleaning up Tauri app (PID: ${ctx.process.pid})...`);
     if (process.platform === "win32") {
@@ -371,6 +376,7 @@ export function cleanupTauriApp(ctx: TauriAppContext | null): void {
       ctx.process.kill();
     }
   }
+
   if (ctx?.viteProcess) {
     console.log(`Cleaning up Vite dev server (PID: ${ctx.viteProcess.pid})...`);
     if (process.platform === "win32") {
@@ -382,16 +388,29 @@ export function cleanupTauriApp(ctx: TauriAppContext | null): void {
       ctx.viteProcess.kill();
     }
   }
+
   if (ctx?.dataDir) {
     console.log(`Cleaning up data directory: ${ctx.dataDir}`);
-    // Wait a bit for file handles to be released
-    setTimeout(() => {
-      try {
+    // Wait a bit for file handles to be released by the OS and WebView2
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      if (fs.existsSync(ctx.dataDir)) {
         fs.rmSync(ctx.dataDir, { recursive: true, force: true });
-      } catch (e) {
-        console.warn(`Failed to cleanup data directory ${ctx.dataDir}: ${e}`);
+        console.log(`Successfully removed data directory: ${ctx.dataDir}`);
       }
-    }, 1000);
+    } catch (e) {
+      console.warn(`Failed to cleanup data directory ${ctx.dataDir}: ${e}`);
+      // Fallback: try one more time after a longer delay if it's a busy error
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      try {
+        if (fs.existsSync(ctx.dataDir)) {
+          fs.rmSync(ctx.dataDir, { recursive: true, force: true });
+          console.log(`Successfully removed data directory on second attempt: ${ctx.dataDir}`);
+        }
+      } catch (e2) {
+        console.warn(`Final attempt to cleanup data directory failed: ${e2}`);
+      }
+    }
   }
 }
 

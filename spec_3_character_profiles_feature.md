@@ -250,5 +250,5 @@ Two example bundles are attached for testing parsers/importers:
 - **JSON**: `character.json` — inline abilities, classes, and reference-style spells.
 - **Markdown**: `md_bundle/character.yml` + `md_bundle/spells/*.md` — human-editable variant.
 
-See local file: `character_bundle_examples.zip.
+See local file: `character_bundle_examples.zip`.
 

@@ -56,16 +56,22 @@ npx biome lint tests/fixtures tests/page-objects tests/utils tests/*.spec.ts
 ```
 
 ## Developing New Tests
+### 0. Data Isolation
+Always use the `SPELLBOOK_DATA_DIR` environment variable to isolate test data. This prevents tests from polluting your local development database.
+
+```typescript
+// Handled automatically by launchTauriApp() in tauri-fixture.ts
+```
 
 ### 1. Use Shared Fixtures
-
-Always use the shared infrastructure instead of duplicating setup code:
+Always use the shared infrastructure with explicit typing:
 
 ```typescript
 import { TIMEOUTS } from "./fixtures/constants";
 import { type TauriAppContext, cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
+// Use explicit typing instead of 'any'
 let appContext: TauriAppContext | null = null;
 
 test.beforeAll(async () => {
@@ -84,7 +90,13 @@ Prefer `SpellbookApp` methods over raw locators:
 ```typescript
 // Good
 const app = new SpellbookApp(page);
-await app.createSpell({ name: "Test Spell", level: "3", description: "Description" });
+await app.createSpell({
+  name: "Fireball",
+  level: "3",
+  description: "A bright streak flashes...",
+  components: "V, S, M",
+  tags: "Evocation, Fire"
+});
 await app.navigate("Library");
 await app.waitForLibrary();
 
@@ -142,10 +154,18 @@ cleanup(); // Remove handler at end
 
 Prefer user-facing locators in this order:
 1. `page.getByRole()` - Most accessible
-2. `page.getByLabel()` - Form fields
-3. `page.getByPlaceholder()` - Inputs
+2. `page.getByLabel()` - Form fields (e.g., `Tags`, `Description`)
+3. `page.getByPlaceholder()` - Inputs (e.g., `Components (V,S,M)`)
 4. `page.getByText()` - Static content
 5. `page.locator()` with CSS - Last resort
+
+### 6.1 Settlement Waits
+After navigation or complex UI switches (like opening the Spell Editor), use a short settlement wait (e.g., 500ms) to ensure React state has settled before interaction:
+
+```typescript
+await app.navigate("Library");
+await page.waitForTimeout(500); // Standard settlement wait
+```
 
 ### 7. Test Organization
 

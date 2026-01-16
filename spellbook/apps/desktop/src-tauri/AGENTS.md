@@ -30,8 +30,8 @@ src-tauri/
 │   │   ├── client.rs       # Async sidecar client
 │   │   └── mod.rs
 │   ├── error.rs       # AppError enum (thiserror)
-│   ├── lib.rs         # Library entry point
-│   └── main.rs        # Tauri bootstrap (~70 lines)
+│   ├── lib.rs         # Library entry point (app logic, command registry)
+│   └── main.rs        # Binary stub (calls lib::run())
 ├── Cargo.toml
 └── tauri.conf.json
 ```
@@ -79,9 +79,13 @@ let result = call_sidecar("action_name", json!({"key": value})).await?;
 4. Register in `main.rs` `invoke_handler`
 
 ### Models
-- Use `#[derive(Serialize, Deserialize)]` for frontend communication
-- Use `#[serde(rename = "camelCase")]` or `#[serde(rename_all = "camelCase")]` for JS conventions
-- Add to `models/mod.rs` re-exports
+- Use `#[derive(serde::Serialize, serde::Deserialize)]` for frontend communication.
+- **CRITICAL**: Always use `#[serde(crate = "serde")]` inside the `#[derive]` block to ensure macros resolve correctly in custom modules.
+- Use `#[serde(rename_all = "camelCase")]` for JS conventions.
+- Add to `models/mod.rs` re-exports.
+
+> [!CAUTION]
+> Avoid `ignore_unknown_fields` as a container attribute. Serde ignores unknown fields by default. Using invalid attributes can break macro expansion with cryptic "unsatisfied trait bound" errors.
 
 ## Database
 

@@ -315,7 +315,7 @@ pub async fn import_files(
     let pool = state.inner().clone();
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let skipped = vec![];
+        let mut skipped = vec![];
         let mut imported_spells = vec![];
         let mut artifacts_by_path = HashMap::new();
 
@@ -328,7 +328,7 @@ pub async fn import_files(
         for (i, spell) in spells_to_import.iter().enumerate() {
             let existing_id: Option<i64> = conn
                 .query_row(
-                    "SELECT id FROM spell WHERE name = ? AND level = ? AND source = ?",
+                    "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
                     params![spell.name, spell.level, spell.source],
                     |row| row.get(0),
                 )
@@ -344,35 +344,39 @@ pub async fn import_files(
                         .and_then(|source| artifacts_by_path.get(source))
                         .cloned();
                     let fields = build_conflict_fields(&existing_spell, spell);
-                    final_conflicts.push(ImportConflict::Spell {
-                        existing: Box::new(existing_spell),
-                        incoming: Box::new(SpellDetail {
-                            id: None,
-                            name: spell.name.clone(),
-                            school: spell.school.clone(),
-                            sphere: spell.sphere.clone(),
-                            class_list: spell.class_list.clone(),
-                            level: spell.level,
-                            range: spell.range.clone(),
-                            components: spell.components.clone(),
-                            material_components: spell.material_components.clone(),
-                            casting_time: spell.casting_time.clone(),
-                            duration: spell.duration.clone(),
-                            area: spell.area.clone(),
-                            saving_throw: spell.saving_throw.clone(),
-                            reversible: spell.reversible,
-                            description: spell.description.clone(),
-                            tags: spell.tags.clone(),
-                            source: spell.source.clone(),
-                            edition: spell.edition.clone(),
-                            author: spell.author.clone(),
-                            license: spell.license.clone(),
-                            is_quest_spell: spell.is_quest_spell,
-                            artifacts: None,
-                        }),
-                        fields,
-                        artifact,
-                    });
+                    if fields.is_empty() {
+                        skipped.push(spell.name.clone());
+                    } else {
+                        final_conflicts.push(ImportConflict::Spell {
+                            existing: Box::new(existing_spell),
+                            incoming: Box::new(SpellDetail {
+                                id: None,
+                                name: spell.name.clone(),
+                                school: spell.school.clone(),
+                                sphere: spell.sphere.clone(),
+                                class_list: spell.class_list.clone(),
+                                level: spell.level,
+                                range: spell.range.clone(),
+                                components: spell.components.clone(),
+                                material_components: spell.material_components.clone(),
+                                casting_time: spell.casting_time.clone(),
+                                duration: spell.duration.clone(),
+                                area: spell.area.clone(),
+                                saving_throw: spell.saving_throw.clone(),
+                                reversible: spell.reversible,
+                                description: spell.description.clone(),
+                                tags: spell.tags.clone(),
+                                source: spell.source.clone(),
+                                edition: spell.edition.clone(),
+                                author: spell.author.clone(),
+                                license: spell.license.clone(),
+                                is_quest_spell: spell.is_quest_spell,
+                                artifacts: None,
+                            }),
+                            fields,
+                            artifact,
+                        });
+                    }
                     continue;
                 }
                 conn.execute(

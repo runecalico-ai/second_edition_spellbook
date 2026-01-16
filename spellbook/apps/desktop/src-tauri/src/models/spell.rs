@@ -14,6 +14,7 @@ pub struct SpellSummary {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(ignore_unknown_fields)]
 pub struct SpellCreate {
     pub name: String,
     pub school: Option<String>,
@@ -38,6 +39,7 @@ pub struct SpellCreate {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(ignore_unknown_fields)]
 pub struct SpellUpdate {
     pub id: i64,
     pub name: String,
@@ -73,6 +75,7 @@ pub struct SpellArtifact {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(ignore_unknown_fields)]
 pub struct SpellDetail {
     pub id: Option<i64>,
     pub name: String,

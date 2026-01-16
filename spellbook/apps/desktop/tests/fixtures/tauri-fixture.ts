@@ -50,6 +50,22 @@ export async function killExistingProcesses(): Promise<void> {
       // Process may not exist, that's OK
     }
 
+    // Kill whatever is on port 5173 (likely orphaned Vite)
+    try {
+      const output = execSync("netstat -ano | findstr :5173").toString();
+      const lines = output.split("\n");
+      for (const line of lines) {
+        if (line.includes("LISTENING")) {
+          const pid = line.trim().split(/\s+/).pop();
+          if (pid) {
+            execSync(`taskkill /F /PID ${pid} 2>nul`, { stdio: "ignore" });
+          }
+        }
+      }
+    } catch {
+      // Process may not exist, that's OK
+    }
+
     // Wait for processes to fully terminate
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
@@ -126,6 +142,7 @@ export interface TauriAppContext {
   process: ChildProcess;
   cdpPort: number;
   viteProcess?: ChildProcess;
+  dataDir: string;
 }
 
 /**
@@ -144,8 +161,14 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
     throw new Error(`Tauri executable not found at ${TAURI_BIN}. Run 'cargo build' first.`);
   }
 
+  // Create a temporary data directory for isolation
+  const runId = Date.now();
+  const dataDir = path.resolve(__dirname, `../tmp/data-${runId}`);
+  fs.mkdirSync(dataDir, { recursive: true });
+
   console.log(`Tauri binary: ${TAURI_BIN}`);
   console.log(`CDP port: ${cdpPort}`);
+  console.log(`Data directory: ${dataDir}`);
 
   if (killExisting) {
     console.log("Killing existing processes...");
@@ -184,6 +207,7 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
     env: {
       ...process.env,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
+      SPELLBOOK_DATA_DIR: dataDir, // Force fresh database
     },
     stdio: debug ? "pipe" : "ignore",
     detached: false,
@@ -260,18 +284,38 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
     console.warn("Warning: Page is still about:blank - app may not have loaded properly");
   }
 
-  return { browser, context, page, process: appProcess, cdpPort, viteProcess };
+  return { browser, context, page, process: appProcess, cdpPort, viteProcess, dataDir };
 }
 
 /** Cleanup function for afterAll hooks */
 export function cleanupTauriApp(ctx: TauriAppContext | null): void {
   if (ctx?.process) {
     console.log("Cleaning up Tauri app...");
-    ctx.process.kill();
+    if (process.platform === "win32") {
+      try {
+        execSync(`taskkill /T /F /PID ${ctx.process.pid} 2>nul`, { stdio: "ignore" });
+      } catch (e) { }
+    } else {
+      ctx.process.kill();
+    }
   }
   if (ctx?.viteProcess) {
     console.log("Cleaning up Vite dev server...");
-    ctx.viteProcess.kill();
+    if (process.platform === "win32") {
+      try {
+        execSync(`taskkill /T /F /PID ${ctx.viteProcess.pid} 2>nul`, { stdio: "ignore" });
+      } catch (e) { }
+    } else {
+      ctx.viteProcess.kill();
+    }
+  }
+  if (ctx?.dataDir) {
+    console.log(`Cleaning up data directory: ${ctx.dataDir}`);
+    try {
+      fs.rmSync(ctx.dataDir, { recursive: true, force: true });
+    } catch (e) {
+      console.warn(`Failed to cleanup data directory: ${e}`);
+    }
   }
 }
 

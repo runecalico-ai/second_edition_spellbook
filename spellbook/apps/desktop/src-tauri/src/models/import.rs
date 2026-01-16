@@ -26,6 +26,7 @@ pub struct ImportSpell {
     pub license: Option<String>,
     #[serde(rename = "_source_file")]
     pub source_file: Option<String>,
+    #[serde(default)]
     pub is_quest_spell: i64,
 }
 
@@ -123,6 +124,7 @@ pub struct PreviewSpell {
     pub raw_text: Option<String>,
     #[serde(rename = "_source_file")]
     pub source_file: String,
+    #[serde(default)]
     pub is_quest_spell: i64,
 }
 

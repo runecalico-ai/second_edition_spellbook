@@ -14,8 +14,11 @@ export const TIMEOUTS = {
   batch: 60000,
 } as const;
 
-/** Base CDP port - tests should use getAvailablePort() for parallel safety */
-export const BASE_CDP_PORT = 9333;
+/** Base CDP port - workers will use offsets from this to avoid collisions */
+export const BASE_CDP_PORT = 9000;
+
+/** Base Vite port - workers will use offsets from this to avoid collisions */
+export const BASE_VITE_PORT = 5173;
 
 /** Screenshot output directory name */
 export const SCREENSHOT_DIR = "screenshots";

@@ -5,7 +5,6 @@ description: Expert in SQLite embedded database development for Tauri/desktop ap
 version: 1.0.0
 author: JARVIS AI Assistant
 tags: [database, sqlite, sql, embedded, migrations, fts, security]
-model: claude-sonnet-4-5-20250929
 ---
 
 # SQLite Database Expert

@@ -1,7 +1,6 @@
 ---
 name: tailwindcss
 description: Tailwind CSS utility-first styling for JARVIS UI components
-model: sonnet
 risk_level: LOW
 version: 1.1.0
 ---

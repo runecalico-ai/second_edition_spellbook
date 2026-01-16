@@ -131,16 +131,18 @@ The following components require updates to support levels 10-12:
 
 | Component | File | Current State | Required Changes |
 |-----------|------|---------------|------------------|
-| Validation | `main.rs` | Only validates level ≥ 0 | Add max validation (≤12) + Arcane-only check for 10+ |
-| Facets | `main.rs` | Dynamic from DB | No change needed |
-| Search Filters | `main.rs` | No max level limit | No change needed |
+| Validation | `src-tauri/src/commands/spells.rs` | Only validates level ≥ 0 | Add max validation (≤12) + Arcane-only check for 10+ inside `validate_spell_fields` and `validate_epic_and_quest_spells` |
+| Models | `src-tauri/src/models/spell.rs` | Structs lack `is_quest_spell` | Update `SpellSummary`, `SpellCreate`, `SpellUpdate`, `SpellDetail` structs |
+| Migrations | `src-tauri/src/db/migrations.rs` | Loads up to v3 | Add logic to load invalid v4 migration |
+| Facets | `src-tauri/src/commands/search.rs` | Dynamic from DB | No change needed |
+| Search Filters | `src-tauri/src/commands/search.rs` | No max level limit | No change needed |
 
 #### Database (SQLite)
 
 | Table | Column | Current State | Required Changes |
 |-------|--------|---------------|------------------|
 | spell | level | INTEGER, no constraints | No change needed |
-| spell | is_quest_spell | **NEW COLUMN** | Add `is_quest_spell INTEGER DEFAULT 0` |
+| spell | is_quest_spell | **NEW COLUMN** | Add `is_quest_spell INTEGER DEFAULT 0` via migration `0004_add_quest_spells.sql` |
 
 
 ### UI/UX Changes
@@ -267,59 +269,59 @@ However, to ensure levels 10-12 are always available as filter options even when
 
 #### Backend 
 
-##### [MODIFY] [main.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/main.rs)
+##### [MODIFY] [src-tauri/src/models/spell.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/models/spell.rs)
 
-1. **Lines 665-670**: Add max level validation and Arcane-only restriction
+1. Update `SpellSummary`, `SpellCreate`, `SpellUpdate`, and `SpellDetail` structs to include:
    ```rust
-   // Before
-   if level < 0 {
-       return Err("level must be 0 or greater".into());
-   }
-   // After
-   if level < 0 || level > 12 {
-       return Err("level must be between 0 and 12".into());
+   pub is_quest_spell: i64,
+   ```
+   (Note: Use `i64` for SQLite convenience, mapping 0/1 to boolean logic in frontend/validation).
+
+##### [MODIFY] [src-tauri/src/commands/spells.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/commands/spells.rs)
+
+1. **Update `validate_spell_fields`**:
+   ```rust
+   if !(0..=12).contains(&level) {
+       return Err(AppError::Validation("Spell level must be between 0 and 12".into()));
    }
    ```
 
-2. **New validation function**: Add Arcane-only check for levels 10+ and Divine-only for Quest
+2. **Add `validate_epic_and_quest_spells`**:
    ```rust
    fn validate_epic_and_quest_spells(
-       level: i64, 
+       level: i64,
        class_list: &Option<String>,
        is_quest_spell: bool
-   ) -> Result<(), String> {
-       let divine_classes = ["priest", "cleric", "druid", "paladin", "ranger"];
-       let classes_lower = class_list.as_ref()
-           .map(|c| c.to_lowercase())
-           .unwrap_or_default();
-       
-       let has_divine = divine_classes.iter().any(|c| classes_lower.contains(c));
-       
-       // Epic spells (10+) are Arcane only
-       if level >= 10 && has_divine {
-           return Err("Spell levels 10-12 are restricted to Arcane (Wizard/Mage) classes only".into());
-       }
-       
-       // Quest spells are Divine only
-       if is_quest_spell && !has_divine {
-           return Err("Quest spells are restricted to Divine (Priest/Cleric) classes only".into());
-       }
-       
-       // Cannot be both epic level and quest spell
-       if level >= 10 && is_quest_spell {
-           return Err("A spell cannot be both Epic (level 10+) and a Quest spell".into());
-       }
-       
-       Ok(())
+   ) -> Result<(), AppError> {
+       // Check for Level 10+ Arcane restriction
+       // Check for Quest Spell Divine restriction
+       // Check for Mutual Exclusivity (cannot be both Epic and Quest)
    }
    ```
 
-3. **Database Migration**: Add `is_quest_spell` column
-   ```sql
-   ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER DEFAULT 0;
-   ```
+3. **Update Commands**:
+   - `create_spell`: Call validation, include `is_quest_spell` in INSERT.
+   - `update_spell`: Call validation, include `is_quest_spell` in UPDATE.
+   - `upsert_spell`: Call validation, include `is_quest_spell` in INSERT/UPDATE.
+   - `list_spells`: Include `is_quest_spell` in SELECT.
+   - `get_spell`: Include `is_quest_spell` in SELECT.
 
----
+##### [NEW] [db/migrations/0004_add_quest_spells.sql](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/db/migrations/0004_add_quest_spells.sql)
+
+```sql
+ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER DEFAULT 0;
+```
+
+##### [MODIFY] [src-tauri/src/db/migrations.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/db/migrations.rs)
+
+1. Update `load_migrations` to handle version 4:
+   ```rust
+   if version < 4 {
+       let sql = include_str!("../../../../../db/migrations/0004_add_quest_spells.sql");
+       conn.execute_batch(sql)?;
+       conn.execute("PRAGMA user_version = 4", [])?;
+   }
+   ```
 
 ### Testing
 
@@ -360,7 +362,7 @@ Add tests for:
 
 ## Milestones
 
-**M2.6 – 12th Circle & Quest Spell Support (1-2 days)**
+**A1 – 12th Circle & Quest Spell Support**
 
 - [ ] Add `is_quest_spell` column to database schema
 - [ ] Update SpellDetail/SpellCreate types in frontend and backend

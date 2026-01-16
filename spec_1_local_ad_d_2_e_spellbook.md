@@ -1,5 +1,11 @@
 # SPEC-1-Local AD&D 2e Spellbook
 
+**Related Specifications**:
+- **[SPEC-2: 12th Circle & Quest Spells](spec_2_12th_circle_spells.md)**: Extends the data model for levels 10-12 (Arcane) and Quest spells (Divine).
+- **[SPEC-3: Character Profiles](spec_3_character_profiles_feature.md)**: Deepens character management with abilities (STR/DEX/etc), race, and multi-class support.
+- **[SPEC-4: Classes & Spell Lists](spec_4_classes_spell_lists_feature.md)**: Adds rigid class definitions, specialist school bans, and sphere access rules.
+
+
 ## Background
 
 You want a **locally run** application to manage a character’s spellbook for **AD&D 2nd Edition**, with the following drivers:
@@ -109,7 +115,7 @@ CREATE TABLE spell (
   name TEXT NOT NULL,
   school TEXT,             -- e.g., Alteration, Conjuration
   sphere TEXT,             -- cleric spheres
-  class_list TEXT,         -- CSV or JSON of classes (e.g., "Mage, Cleric")
+  class_list TEXT,         -- JSON array string of classes (e.g., ["Mage", "Cleric"])
   level INTEGER NOT NULL,
   range TEXT,
   components TEXT,         -- e.g., "V,S,M"
@@ -119,35 +125,36 @@ CREATE TABLE spell (
   area TEXT,
   saving_throw TEXT,
   reversible INTEGER DEFAULT 0,
-  description TEXT NOT NULL,
-  tags TEXT,               -- JSON array
+  description TEXT NOT NULL DEFAULT '',
+  tags TEXT,               -- JSON array string
   source TEXT,
   edition TEXT DEFAULT 'AD&D 2e',
   author TEXT,
   license TEXT,            -- OGL/homebrew/permission note
+  is_quest_spell INTEGER DEFAULT 0, -- 1 for Quest Spells (Tome of Magic)
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   updated_at TEXT
 );
 
 -- Full text index for keyword search
 CREATE VIRTUAL TABLE spell_fts USING fts5(
-  name, description, material_components, tags, source, content='spell', content_rowid='id'
+  name, description, material_components, tags, source, author, content='spell', content_rowid='id'
 );
 
 -- Triggers to keep FTS in sync
 CREATE TRIGGER spell_ai AFTER INSERT ON spell BEGIN
-  INSERT INTO spell_fts(rowid, name, description, material_components, tags, source)
-  VALUES (new.id, new.name, new.description, new.material_components, new.tags, new.source);
+  INSERT INTO spell_fts(rowid, name, description, material_components, tags, source, author)
+  VALUES (new.id, new.name, new.description, new.material_components, new.tags, new.source, new.author);
 END;
 CREATE TRIGGER spell_ad AFTER DELETE ON spell BEGIN
-  INSERT INTO spell_fts(spell_fts, rowid, name, description, material_components, tags, source)
-  VALUES('delete', old.id, '', '', '', '', '');
+  INSERT INTO spell_fts(spell_fts, rowid, name, description, material_components, tags, source, author)
+  VALUES('delete', old.id, '', '', '', '', '', '');
 END;
 CREATE TRIGGER spell_au AFTER UPDATE ON spell BEGIN
-  INSERT INTO spell_fts(spell_fts, rowid, name, description, material_components, tags, source)
-  VALUES('delete', old.id, '', '', '', '', '');
-  INSERT INTO spell_fts(rowid, name, description, material_components, tags, source)
-  VALUES (new.id, new.name, new.description, new.material_components, new.tags, new.source);
+  INSERT INTO spell_fts(spell_fts, rowid, name, description, material_components, tags, source, author)
+  VALUES('delete', old.id, '', '', '', '', '', '');
+  INSERT INTO spell_fts(rowid, name, description, material_components, tags, source, author)
+  VALUES (new.id, new.name, new.description, new.material_components, new.tags, new.source, new.author);
 END;
 
 -- Embeddings for semantic search (sqlite-vec)
@@ -163,14 +170,14 @@ CREATE TABLE artifact (
   type TEXT CHECK(type IN ('pdf','md','docx')),
   path TEXT,
   hash TEXT,
-  imported_at TEXT,
+  imported_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   UNIQUE(spell_id, path)
 );
 
 CREATE TABLE change_log (
   id INTEGER PRIMARY KEY,
   spell_id INTEGER REFERENCES spell(id) ON DELETE CASCADE,
-  changed_at TEXT,
+  changed_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   field TEXT,
   old_value TEXT,
   new_value TEXT,
@@ -181,6 +188,7 @@ CREATE TABLE change_log (
 CREATE TABLE character (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'PC', -- 'PC' or 'NPC'
   notes TEXT
 );
 CREATE TABLE spellbook (
@@ -190,6 +198,18 @@ CREATE TABLE spellbook (
   known INTEGER DEFAULT 1,
   notes TEXT,
   PRIMARY KEY(character_id, spell_id)
+);
+
+-- Note: SPEC-3 and SPEC-4 expand character and class tables significantly. 
+-- See those specs for the extended schema (character_ability, character_class, class_definition, spheres, etc).
+
+
+-- Saved Searches
+CREATE TABLE saved_search (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  filter_json TEXT NOT NULL,
+  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 ```
 
@@ -284,11 +304,42 @@ spellbook/
 - **Chat**: side panel; shows retrieved spells (top-K), final answer, and clickable citations.
 
 
-### Query Patterns (Rust)
-- **Keyword**: `SELECT s.* FROM spell_fts f JOIN spell s ON s.id=f.rowid WHERE f MATCH ? ORDER BY bm25(f) LIMIT ?;`
-- **Facets**: add `AND s.level BETWEEN ? AND ?` etc.; for classes/tags stored as JSON, expose helpers or use LIKE for MVP.
-- **Semantic**: compute query embedding via sidecar → `SELECT s.* FROM spell_vec v JOIN spell s ON s.id=v.rowid ORDER BY distance(v.v, ?) ASC LIMIT ?;`
-- **Hybrid ranking**: union keyword + semantic with normalized scores, favoring exact title matches.
+### API Commands (Rust)
+
+The Tauri backend exposes the following `snake_case` commands, using `AppError` for structured error handling.
+
+**Spells Module**
+- `get_spell(id: i64) -> Option<SpellDetail>`: Retrieve full spell details including artifacts.
+- `list_spells() -> Vec<SpellSummary>`: List all spells (summary view).
+- `create_spell(spell: SpellCreate) -> i64`: Create a new spell with validation.
+- `update_spell(spell: SpellUpdate) -> i64`: Update spell fields and log changes.
+- `delete_spell(id: i64)`: Soft delete or hard delete (currently hard delete).
+- `upsert_spell(spell: SpellDetail) -> i64`: Insert or Update based on ID presence (used by importers).
+
+**Search Module**
+- `search_keyword(query: String, filters: Option<SearchFilters>) -> Vec<SpellSummary>`: FTS5 keyword search with facet filters (school, level, class, source, tags, quest status).
+- `search_semantic(query: String) -> Vec<SpellSummary>`: Vector similarity search using `sqlite-vec`.
+- `list_facets() -> Facets`: Retrieve available facets for filtering (schools, sources, etc.).
+- `save_search(name: String, payload: SavedSearchPayload) -> i64`: Persist a search configuration.
+- `list_saved_searches() -> Vec<SavedSearch>`: Retrieve saved searches.
+- `delete_saved_search(id: i64)`: Remove a saved search.
+- `chat_answer(prompt: String) -> ChatResponse`: RAG-based chat response.
+
+**Characters Module**
+- `create_character(name: String, character_type: String, notes: Option<String>) -> i64`: Create a PC or NPC.
+- `list_characters() -> Vec<Character>`: List all characters.
+- `get_character_spellbook(character_id: i64) -> Vec<CharacterSpellbookEntry>`: Retrieve a character's spellbook.
+- `update_character_spell(character_id: i64, spell_id: i64, prepared: i64, known: i64, notes: Option<String>)`: Manage spell status (prepared/known).
+- `remove_character_spell(character_id: i64, spell_id: i64)`: Remove a spell from a character's book.
+
+**Import/Export Module**
+- `preview_import(files: Vec<ImportFile>) -> PreviewResult`: Parse files and show preview before committing.
+- `import_files(files: Vec<ImportFile>, allow_overwrite: bool, ...) -> ImportResult`: Execute import with optional artifact/conflict overrides.
+- `resolve_import_conflicts(resolutions: Vec<ImportConflictResolution>) -> ResolveImportResult`: Apply user choices for merge/skip.
+- `reparse_artifact(artifact_id: i64) -> SpellDetail`: Re-run parsing on an existing artifact.
+- `export_spells(ids: Vec<i64>, format: String) -> String`: Export selected spells to a bundle/file.
+- `print_spell(spell_id: i64, layout: String, page_size: Option<String>) -> String`: Generate a PDF for a single spell.
+- `print_spellbook(character_id: i64, layout: String, ...) -> String`: Generate a PDF spellbook pack.
 
 ### Import Details
 - **Detection**: sniff by extension; for PDFs try text extraction first (`pdfminer.six`); fallback to layout-aware blocks (PyMuPDF) when columns/tables present.
@@ -329,54 +380,72 @@ spellbook/
 
 ## Milestones
 
-**M0 – Project Bootstrap (1 week)**
+**M0 – Project Bootstrap**
 - Repo scaffold (Tauri+React+TS), CI, code formatting/linting.
 - SQLite schema & migrations in place; FTS5 verified; `sqlite-vec` loads on startup.
 - App data dir + backup/restore ZIP utilities.
 
-**M1 – Core CRUD & Library (1–2 weeks)**
+**M1 – Core CRUD & Library**
 - Spell list/table with filters (level, school, class, components, tags, source).
 - Create/Edit spell form with validation; FTS sync triggers; change log.
 - Character + Spellbook linkage UI (prepared/known toggles, notes).
 
-**M2 – Importers (2 weeks)**
+**M2 – Importers**
 - Import wizard for MD/DOCX/PDF; mapping UI; dedupe resolution.
 - Provenance storage (artifact table, hashes); reparse-from-artifact command.
 - Batch import tests on 1000 mixed files; error reports.
 - E2E UI tests using playwright
 
-**M2.5 – Spellbook Builder & Printing (1 week)**
+**M2.5 – Spellbook Builder & Printing**
 - UI to create **custom PC/NPC spellbooks** per character; add/remove spells; prepared/known toggles; notes.
 - **Filters by school(s) and level range** baked into the picker.
 - **Print single spell** and **print spellbook pack** (compact + stat‑block layouts) via Pandoc/HTML-print.
 
-**M3 – Robust Search & Facets (1 week)**
+**M3 – Robust Search & Facets**
 - Keyword across name, description, material components, tags, source, author.
 - Multi-select **school** filter and **level** range slider; saved searches.
 
-**M4 – Semantic Search (1 week)**
+**M3.1 – 12th Circle & Quest Spells (SPEC-2)**
+- Extend level slider to 12; add "Quest" spell toggle.
+- Update data model with `is_quest_spell` (already in M0-M3 migrations) and `level` validation (0-12).
+- Visual badges for Epic (10+) and Quest spells.
+- See to [SPEC-2](spec_2_12th_circle_spells.md) for details.
+
+**M3.2 – Character Profiles (SPEC-3)**
+- Enhance `character` table with type (PC/NPC), race, alignment, notes.
+- Add `character_ability` (STR/DEX/etc) and `character_class` tables.
+- UI for multi-class management and per-class spell lists (Known/Prepared).
+- See [SPEC-3](spec_3_character_profiles_feature.md) for details.
+
+**M3.3 – Classes & Spell Lists (SPEC-4)**
+- `class_definition` registry with type (Arcane/Divine), inheritance, and description.
+- Rules engine: Barred schools (Specialists), Sphere access (Clerics), and Overrides.
+- Validate spell additions to Character spellbooks against class rules.
+- See [SPEC-4](spec_4_classes_spell_lists_feature.md) for details.
+
+**M4 – Semantic Search**
 - Python sidecar with embeddings endpoint; background embedding job.
 - Vector table and hybrid ranking (keyword+semantic) with latency budgets.
 - Search UI toggle (keyword/semantic) + facets.
 - E2E UI Tests in CI
 
-**M5 – Local Chat (RAG) (1–2 weeks)**
+**M5 – Local Chat (RAG)**
 - Retriever (top-K vec + FTS union) and prompt assembly with citations.
 - **FLAN-T5-small (int8 via CTranslate2)** inference endpoint; streaming UI panel.
 - Guardrails: out-of-scope detection; show sources; copy-to-clipboard.
 
-**M6 – Import/Export of Spellbooks (1 week)**
+**M6 – Import/Export of Spellbooks**
 - Markdown export (YAML front-matter). Pandoc-based PDF export (A4/Letter), HTML-print fallback.
 - Spellbook pack generator (selected character, prepared/known flags, notes).
 - Export spellbooks to **Markdown/JSON bundle**; import from bundle; collision/dedup handling.
 - Print-friendly options (A4/Letter, compact/full), include per-spell notes and prepared/known markers.
 
-**M7 – Polish & Packaging (1 week)**
+**M7 – Polish & Packaging**
 - Theming (light/dark), keyboard shortcuts, high-contrast mode.
 - Installers: Windows MSI, macOS DMG/App, Linux AppImage/Deb. Portable: Windows .zip, macOS/Linux .tar.gz
 - Smoke tests across OSes; vault export/import UX.
 
-**M8 – Beta & Feedback (ongoing)**
+**M8 – Beta & Feedback**
 - Dogfood with a 2e corpus; address parsing edge cases; stabilize.
 
 ## Gathering Results
@@ -398,7 +467,7 @@ spellbook/
 
 ### Appendix A — Seed Bundle Contents
 
-A downloadable bundle has been generated with:
+A local file `spellbook_seed_bundle.zip` is available. It contains:
 
 ```
 spellbook_seed_bundle.zip
@@ -458,7 +527,7 @@ Notes:
 
 **Printing**: Compact / Stat-Block / List layouts; include prepared/known markers and notes.
 
-**Sample Bundles & Schemas**: Download `spellbook_bundle_examples.zip` attached to this spec; contents:
+**Sample Bundles & Schemas**: See local file `spellbook_bundle_examples.zip`; contents:
 
 ```
 spellbook_bundle_examples.zip

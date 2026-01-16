@@ -1,7 +1,6 @@
 ---
 name: rust
 description: Systems programming expertise for Tauri desktop application backend development with memory safety and performance optimization
-model: sonnet
 risk_level: MEDIUM
 ---
 

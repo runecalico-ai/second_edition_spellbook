@@ -37,9 +37,8 @@ pub async fn list_characters(state: State<'_, Arc<Pool>>) -> Result<Vec<Characte
     let pool = state.inner().clone();
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, name, type, notes FROM \"character\" ORDER BY name",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id, name, type, notes FROM \"character\" ORDER BY name")?;
         let rows = stmt.query_map([], |row| {
             Ok(Character {
                 id: row.get(0)?,

@@ -25,18 +25,18 @@ fn python_command() -> PathBuf {
     // Try to find Python in the virtual environment first
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let repo_root = manifest_dir.join("../../..");
-    
+
     // Check for venv Python (Windows vs Unix paths)
     let venv_python = if cfg!(target_os = "windows") {
         repo_root.join("services/ml/venv/Scripts/python.exe")
     } else {
         repo_root.join("services/ml/venv/bin/python")
     };
-    
+
     if venv_python.exists() {
         return venv_python;
     }
-    
+
     // Fall back to system Python
     if cfg!(target_os = "windows") {
         PathBuf::from("python")

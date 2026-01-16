@@ -25,6 +25,8 @@ export interface CreateSpellOptions {
   source?: string;
   school?: string;
   classes?: string;
+  components?: string;
+  tags?: string;
   isCantrip?: boolean;
   isQuest?: boolean;
 }
@@ -33,10 +35,12 @@ export interface CreateSpellOptions {
  * Page Object Model for the Spellbook application.
  */
 export class SpellbookApp {
-  constructor(public page: Page) { }
+  constructor(public page: Page) {}
 
   /** Navigate to a page using the nav link (preferring nav bar links) */
-  async navigate(label: "Library" | "Characters" | "Import" | "Chat" | "App" | "Add Spell" | "Export"): Promise<void> {
+  async navigate(
+    label: "Library" | "Characters" | "Import" | "Chat" | "App" | "Add Spell" | "Export",
+  ): Promise<void> {
     if (label === "Add Spell") {
       // Ensure we are in Library first, as "Add Spell" is a contextual link
       await this.navigate("Library");
@@ -121,6 +125,20 @@ export class SpellbookApp {
       await expect(descLoc).toHaveValue(description);
     }
 
+    if (options.components) {
+      const compLoc = this.page.getByPlaceholder("Components (V,S,M)");
+      await compLoc.fill("");
+      await compLoc.fill(options.components);
+      await expect(compLoc).toHaveValue(options.components);
+    }
+
+    if (options.tags) {
+      const tagsLoc = this.page.getByLabel("Tags");
+      await tagsLoc.fill("");
+      await tagsLoc.fill(options.tags);
+      await expect(tagsLoc).toHaveValue(options.tags);
+    }
+
     await this.page.getByRole("button", { name: "Save Spell" }).click();
     await this.waitForLibrary();
   }
@@ -141,7 +159,9 @@ export class SpellbookApp {
     await expect(this.page.getByText(path.basename(filePath))).toBeVisible();
 
     await this.page.getByRole("button", { name: "Preview →" }).click();
-    await expect(this.page.getByText(/Parsed \d+ spell\(s\)/)).toBeVisible({ timeout: TIMEOUTS.medium });
+    await expect(this.page.getByText(/Parsed \d+ spell\(s\)/)).toBeVisible({
+      timeout: TIMEOUTS.medium,
+    });
 
     await this.page.getByRole("button", { name: "Skip Review →" }).click();
 

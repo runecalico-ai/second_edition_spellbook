@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
+// Imports handled by explicit paths in derives
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct SpellSummary {
     pub id: i64,
     pub name: String,
@@ -13,8 +14,8 @@ pub struct SpellSummary {
     pub is_quest_spell: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(ignore_unknown_fields)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct SpellCreate {
     pub name: String,
     pub school: Option<String>,
@@ -38,8 +39,8 @@ pub struct SpellCreate {
     pub is_quest_spell: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(ignore_unknown_fields)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct SpellUpdate {
     pub id: i64,
     pub name: String,
@@ -64,7 +65,8 @@ pub struct SpellUpdate {
     pub is_quest_spell: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct SpellArtifact {
     pub id: i64,
     pub spell_id: i64,
@@ -74,8 +76,8 @@ pub struct SpellArtifact {
     pub imported_at: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(ignore_unknown_fields)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct SpellDetail {
     pub id: Option<i64>,
     pub name: String,

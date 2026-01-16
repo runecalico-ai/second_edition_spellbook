@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct ImportSpell {
     pub name: String,
     pub school: Option<String>,
@@ -30,7 +31,8 @@ pub struct ImportSpell {
     pub is_quest_spell: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct ImportArtifact {
     #[serde(rename = "type")]
     pub r#type: String,
@@ -39,15 +41,16 @@ pub struct ImportArtifact {
     pub imported_at: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct ImportConflictField {
     pub field: String,
     pub existing: Option<String>,
     pub incoming: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde", tag = "type", rename_all = "snake_case")]
 pub enum ImportConflict {
     Parse {
         path: String,
@@ -61,19 +64,22 @@ pub enum ImportConflict {
     },
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct ParseConflict {
     pub path: String,
     pub reason: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct ImportFile {
     pub name: String,
     pub content: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct ImportResult {
     pub spells: Vec<SpellDetail>,
     pub artifacts: Vec<Value>,
@@ -82,7 +88,8 @@ pub struct ImportResult {
     pub skipped: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct ImportConflictResolution {
     pub action: String,
     pub existing_id: i64,
@@ -90,14 +97,16 @@ pub struct ImportConflictResolution {
     pub artifact: Option<ImportArtifact>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct ResolveImportResult {
     pub resolved: Vec<String>,
     pub skipped: Vec<String>,
     pub warnings: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct PreviewSpell {
     pub name: String,
     pub level: i64,
@@ -128,7 +137,8 @@ pub struct PreviewSpell {
     pub is_quest_spell: i64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
 pub struct PreviewResult {
     pub spells: Vec<PreviewSpell>,
     pub artifacts: Vec<ImportArtifact>,

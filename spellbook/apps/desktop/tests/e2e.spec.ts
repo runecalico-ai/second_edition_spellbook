@@ -1,8 +1,9 @@
-import { test, expect } from "@playwright/test";
-import { launchTauriApp, cleanupTauriApp } from "./fixtures/tauri-fixture";
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { expect, test } from "@playwright/test";
+import type { TauriAppContext } from "./fixtures/tauri-fixture";
+import { cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,7 +17,7 @@ const TIMEOUTS = {
 };
 
 // Global handles
-let appContext: any;
+let appContext: TauriAppContext | null = null;
 const fileTracker = {
   created: [] as string[],
   track(p: string) {
@@ -50,7 +51,7 @@ test.describe("Milestone Verification Flow", () => {
     const runId = Date.now();
 
     await test.step("Create a basic spell", async () => {
-      const spellName = `Fireball ${runId}`;
+      const spellName = `Fireball ${runId} `;
       await app.createSpell({
         name: spellName,
         level: "3",
@@ -60,7 +61,7 @@ test.describe("Milestone Verification Flow", () => {
     });
 
     await test.step("Verify duplicate name warning", async () => {
-      const spellName = `Fireball ${runId}`;
+      const spellName = `Fireball ${runId} `;
       await app.navigate("Add Spell");
       await page.getByLabel("Name").fill(spellName);
       // Depending on UI, check for warning text
@@ -75,11 +76,11 @@ test.describe("Milestone Verification Flow", () => {
     const app = new SpellbookApp(page);
     const runId = Date.now();
 
-    const importedName = `Imported Spell ${runId}`;
-    const samplePath = fileTracker.track(path.resolve(__dirname, `sample-${runId}.md`));
+    const importedName = `Imported Spell ${runId} `;
+    const samplePath = fileTracker.track(path.resolve(__dirname, `sample - ${runId}.md`));
     fs.writeFileSync(
       samplePath,
-      `---\nname: ${importedName}\nlevel: 1\nsource: Test Manual\n---\nImported description.`,
+      `-- -\nname: ${importedName} \nlevel: 1\nsource: Test Manual\n-- -\nImported description.`,
     );
 
     await test.step("Import a markdown file", async () => {
@@ -103,8 +104,8 @@ test.describe("Milestone Verification Flow", () => {
     const app = new SpellbookApp(page);
     const runId = Date.now();
 
-    const taggedSpellName = `Tagged Spell ${runId}`;
-    const decoySpellName = `Decoy Spell ${runId}`;
+    const taggedSpellName = `Tagged Spell ${runId} `;
+    const decoySpellName = `Decoy Spell ${runId} `;
 
     await test.step("Setup: Create spells with components and tags", async () => {
       await app.createSpell({
@@ -112,13 +113,9 @@ test.describe("Milestone Verification Flow", () => {
         level: "2",
         description: "Tagged with components",
         classes: "Wizard",
+        components: "M",
+        tags: "alpha, beta",
       });
-      // Edit to add tags and components (assuming createSpell does basics)
-      await app.openSpell(taggedSpellName);
-      await page.getByPlaceholder("Components (V,S,M)").fill("M");
-      await page.getByLabel("Tags").fill("alpha, beta");
-      await page.getByRole("button", { name: "Save Spell" }).click();
-      await app.waitForLibrary();
 
       await app.createSpell({
         name: decoySpellName,
@@ -157,8 +154,8 @@ test("Import conflict merge review flow", async () => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
   const runId = Date.now();
-  const conflictName = `Conflict Spell ${runId}`;
-  const conflictSource = `Conflict Source ${runId}`;
+  const conflictName = `Conflict Spell ${runId} `;
+  const conflictSource = `Conflict Source ${runId} `;
   const originalDescription = "Original description";
   const incomingDescription = "Incoming description";
 
@@ -172,10 +169,10 @@ test("Import conflict merge review flow", async () => {
   });
 
   await test.step("Trigger conflict import and resolve", async () => {
-    const samplePath = fileTracker.track(path.resolve(__dirname, `conflict-${runId}.md`));
+    const samplePath = fileTracker.track(path.resolve(__dirname, `conflict - ${runId}.md`));
     fs.writeFileSync(
       samplePath,
-      `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\n---\n${incomingDescription}`,
+      `-- -\nname: ${conflictName} \nlevel: 1\nsource: ${conflictSource} \n-- -\n${incomingDescription} `,
     );
 
     await app.navigate("Import");
@@ -215,13 +212,13 @@ test("Spell editor persists extended fields", async () => {
   const app = new SpellbookApp(page);
   const runId = Date.now();
 
-  const importedName = `Extended Imported ${runId}`;
-  const importedPath = fileTracker.track(path.resolve(__dirname, `extended-${runId}.md`));
+  const importedName = `Extended Imported ${runId} `;
+  const importedPath = fileTracker.track(path.resolve(__dirname, `extended - ${runId}.md`));
   fs.writeFileSync(
     importedPath,
     [
       "---",
-      `name: ${importedName}`,
+      `name: ${importedName} `,
       "level: 2",
       "school: Illusion",
       "sphere: Lesser",
@@ -287,7 +284,7 @@ test("Spell editor persists extended fields", async () => {
   });
 
   await test.step("Create new spell with extended fields", async () => {
-    const createdName = `Extended Created ${runId}`;
+    const createdName = `Extended Created ${runId} `;
     await app.navigate("Add Spell");
 
     await page.getByLabel("Name").fill(createdName);

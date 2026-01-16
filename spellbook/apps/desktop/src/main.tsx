@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import "./index.css";
+import { useParams } from "react-router-dom";
 import App from "./ui/App";
 import CharacterManager from "./ui/CharacterManager";
 import Chat from "./ui/Chat";
@@ -10,7 +11,6 @@ import ImportWizard from "./ui/ImportWizard";
 import Library from "./ui/Library";
 import SpellEditor from "./ui/SpellEditor";
 import SpellbookBuilder from "./ui/SpellbookBuilder";
-import { useParams } from "react-router-dom";
 
 // This wrapper is now responsible for passing the ID to SpellEditor,
 // allowing SpellEditor to manage its own state and data fetching based on the ID prop,

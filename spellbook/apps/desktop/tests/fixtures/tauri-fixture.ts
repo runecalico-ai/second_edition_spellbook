@@ -2,7 +2,7 @@
  * Tauri application lifecycle management for E2E tests.
  * Provides app launch, CDP connection, and cleanup utilities.
  */
-import { type ChildProcess, spawn, execSync } from "node:child_process";
+import { type ChildProcess, execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,7 +191,9 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
         console.log(`VITE: ${msg}`);
       }
     });
-    viteProcess.stderr?.on("data", (data: Buffer) => console.log(`VITE ERR: ${data.toString().trim()}`));
+    viteProcess.stderr?.on("data", (data: Buffer) =>
+      console.log(`VITE ERR: ${data.toString().trim()}`),
+    );
   }
 
   // Wait for Vite to be ready
@@ -216,7 +218,9 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
 
   if (debug) {
     appProcess.stdout?.on("data", (data: Buffer) => console.log(`APP: ${data.toString().trim()}`));
-    appProcess.stderr?.on("data", (data: Buffer) => console.log(`APP ERR: ${data.toString().trim()}`));
+    appProcess.stderr?.on("data", (data: Buffer) =>
+      console.log(`APP ERR: ${data.toString().trim()}`),
+    );
   }
 
   appProcess.on("error", (err: Error) => {
@@ -294,7 +298,7 @@ export function cleanupTauriApp(ctx: TauriAppContext | null): void {
     if (process.platform === "win32") {
       try {
         execSync(`taskkill /T /F /PID ${ctx.process.pid} 2>nul`, { stdio: "ignore" });
-      } catch (e) { }
+      } catch (e) {}
     } else {
       ctx.process.kill();
     }
@@ -304,7 +308,7 @@ export function cleanupTauriApp(ctx: TauriAppContext | null): void {
     if (process.platform === "win32") {
       try {
         execSync(`taskkill /T /F /PID ${ctx.viteProcess.pid} 2>nul`, { stdio: "ignore" });
-      } catch (e) { }
+      } catch (e) {}
     } else {
       ctx.viteProcess.kill();
     }

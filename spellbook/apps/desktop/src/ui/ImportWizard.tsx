@@ -50,6 +50,7 @@ type SpellDetail = {
   edition?: string;
   author?: string;
   license?: string;
+  is_quest_spell?: number;
   artifacts?: SpellArtifact[];
 };
 
@@ -74,6 +75,7 @@ type SpellUpdate = {
   edition?: string;
   author?: string;
   license?: string;
+  is_quest_spell: number;
 };
 
 type ParseConflict = {
@@ -265,6 +267,7 @@ export default function ImportWizard() {
     edition: spell.edition,
     author: spell.author,
     license: spell.license,
+    is_quest_spell: spell.is_quest_spell || 0,
   });
 
   const applyFieldFromSpell = (target: SpellUpdate, field: string, source: SpellDetail) => {
@@ -325,6 +328,9 @@ export default function ImportWizard() {
         break;
       case "license":
         target.license = source.license;
+        break;
+      case "is_quest_spell":
+        target.is_quest_spell = source.is_quest_spell || 0;
         break;
       default:
         break;

@@ -102,8 +102,9 @@ export default function SpellEditor() {
         const { id, ...createData } = form; // eslint-disable-line @typescript-eslint/no-unused-vars
         await invoke("create_spell", { spell: createData });
       } else {
-        // update_spell expects SpellUpdate (which includes id)
-        await invoke("update_spell", { spell: form });
+        // update_spell expects SpellUpdate (which includes id and excludes artifacts)
+        const { artifacts, ...updateData } = form; // eslint-disable-line @typescript-eslint/no-unused-vars
+        await invoke("update_spell", { spell: updateData });
       }
       navigate("/");
     } catch (e) {

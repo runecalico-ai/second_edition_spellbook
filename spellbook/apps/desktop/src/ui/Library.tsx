@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import * as Slider from "@radix-ui/react-slider";
+import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -305,6 +305,7 @@ export default function Library() {
           <span className="text-xs text-neutral-400">Schools</span>
           <select
             multiple
+            aria-label="Schools filter"
             className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 min-w-[160px]"
             value={schoolFilters}
             onChange={(e) =>
@@ -351,6 +352,7 @@ export default function Library() {
           </div>
         </div>
         <select
+          aria-label="Source filter"
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
@@ -363,6 +365,7 @@ export default function Library() {
           ))}
         </select>
         <select
+          aria-label="Class filter"
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={classListFilter}
           onChange={(e) => setClassListFilter(e.target.value)}
@@ -375,6 +378,7 @@ export default function Library() {
           ))}
         </select>
         <select
+          aria-label="Component filter"
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={componentFilter}
           onChange={(e) => setComponentFilter(e.target.value)}
@@ -387,6 +391,7 @@ export default function Library() {
           ))}
         </select>
         <select
+          aria-label="Tag filter"
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value)}

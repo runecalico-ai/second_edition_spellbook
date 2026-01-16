@@ -16,9 +16,9 @@ type Character = {
 
 type CharacterSpellbookEntry = {
   spell_id: number;
-  name: string;
-  level: number;
-  school?: string;
+  spell_name: string;
+  spell_level: number;
+  spell_school?: string;
   prepared: number;
   known: number;
   notes?: string;
@@ -163,7 +163,7 @@ export default function SpellbookBuilder() {
         notes: entry.notes,
       });
     } catch (e) {
-      setStatusMessage(`Failed to update ${entry.name}: ${e}`);
+      setStatusMessage(`Failed to update ${entry.spell_name}: ${e}`);
       if (previousEntry) {
         setSpellbook((prev) =>
           prev.map((spell) => (spell.spell_id === previousEntry.spell_id ? previousEntry : spell)),
@@ -305,7 +305,7 @@ export default function SpellbookBuilder() {
                     );
                     updateSpell(updated, entry);
                   }}
-                  aria-label={`Prepared ${entry.name}`}
+                  aria-label={`Prepared ${entry.spell_name}`}
                   className="rounded bg-neutral-900 border-neutral-700"
                 />
               </td>
@@ -321,27 +321,27 @@ export default function SpellbookBuilder() {
                     );
                     updateSpell(updated, entry);
                   }}
-                  aria-label={`Known ${entry.name}`}
+                  aria-label={`Known ${entry.spell_name}`}
                   className="rounded bg-neutral-900 border-neutral-700"
                 />
               </td>
               <td className="p-2">
                 <div className="flex items-center gap-2">
-                  <span>{entry.name}</span>
-                  {entry.level >= 10 && (
+                  <span>{entry.spell_name}</span>
+                  {entry.spell_level >= 10 && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
                       Epic
                     </span>
                   )}
-                  {entry.level === 0 && (
+                  {entry.spell_level === 0 && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                       Cantrip
                     </span>
                   )}
                 </div>
               </td>
-              <td className="p-2">{entry.level}</td>
-              <td className="p-2">{entry.school}</td>
+              <td className="p-2">{entry.spell_level}</td>
+              <td className="p-2">{entry.spell_school}</td>
               <td className="p-2">
                 <input
                   className="w-full bg-transparent border-none p-0 text-neutral-300 placeholder-neutral-600 focus:ring-0"

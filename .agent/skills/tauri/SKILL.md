@@ -1,7 +1,6 @@
 ---
 name: tauri
 description: Cross-platform desktop application framework combining Rust backend with web frontend, emphasizing security and performance
-model: sonnet
 risk_level: HIGH
 ---
 

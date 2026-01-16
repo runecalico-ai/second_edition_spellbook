@@ -1,4 +1,4 @@
-# SPEC-4-Character Profiles Feature
+# SPEC-3-Character Profiles Feature
 
 ## Background
 

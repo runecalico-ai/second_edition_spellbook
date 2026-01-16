@@ -59,41 +59,37 @@ Location: `spellbook/services/ml`.
 
 ### JavaScript (Desktop app)
 **spellbook/apps/desktop**
-- Format: `pnpm format`
-- Format check: `pnpm format:check`
-- Lint: `pnpm lint`
 
+- Lint: `pnpm lint`
+```bash
+cd spellbook/apps/desktop
+# Windows/Unix
+pnpm lint
+```
+
+- Format: `pnpm format`
 ```bash
 cd spellbook/apps/desktop
 # Windows/Unix
 pnpm format # Format
-pnpm format:check # Format check
-pnpm lint # Lint
 ```
 
-- Format check
+- Format check: `pnpm format:check`
 ```bash
 cd spellbook/apps/desktop
 # Windows/Unix
 pnpm format:check
 ```
 
-- Lint
-```bash
-cd spellbook/apps/desktop
-# Windows/Unix
-pnpm lint
-```
+
 ### Rust (Dekstop Backend)
 **spellbook/apps/desktop/src-tauri**
-- Format: `cargo fmt`
-- Format check: `cargo fmt -- --check`
+
 - Clippy (lint): `cargo clippy -- -D warnings`
 
 ```bash
 cd spellbook/apps/desktop/src-tauri
 # Windows/Unix
-cargo fmt -- --check # Format check
 # Linux Only (for clippy)
 sudo apt-get install -y \
   libglib2.0-dev \
@@ -103,13 +99,48 @@ sudo apt-get install -y \
 cargo clippy -- -D warnings # Clippy (lint)
 ```
 
+- Format: `cargo fmt`
+```bash
+cd spellbook/apps/desktop/src-tauri
+# Windows/Unix
+cargo fmt # Format
+```
+
+- Format check: `cargo fmt -- --check`
+```bash
+cd spellbook/apps/desktop/src-tauri
+# Windows/Unix
+cargo fmt -- --check # Format check
+```
+
 ### Python (ML services)
 
 Code lives in `spellbook/services/ml`. Use the root virtual environment:
-- Format check: `ruff format --check .`
-- Format: `ruff format .`
 - Lint: `ruff check .`
+```bash
+# In repository root
+# Active Virtual Environment (Windows)
+.\.venv\Scripts\Activate.ps1
+# Active Virtual Environment (Unix)
+source .venv/bin/activate
+cd spellbook/services/ml
+# Lint
+ruff check .
+```
 
+- Format: `ruff format .`
+```bash
+# In repository root
+# Active Virtual Environment (Windows)
+.\.venv\Scripts\Activate.ps1
+# Active Virtual Environment (Unix)
+source .venv/bin/activate
+cd spellbook/services/ml
+# Format
+ruff format .
+```
+
+- Format check: `ruff format --check .`
 ```bash
 # In repository root
 # Active Virtual Environment (Windows)
@@ -119,10 +150,6 @@ source .venv/bin/activate
 cd spellbook/services/ml
 # Format check
 ruff format --check .
-# Format
-ruff format .
-# Lint
-ruff check .
 ```
 
 ## Testing guidance (ML services)

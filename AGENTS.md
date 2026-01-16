@@ -205,3 +205,9 @@ These rules apply to:
 - Build, tooling, and test dependencies
 
 AI agents must follow this document exactly.
+
+---
+
+## Documentation Maintenance
+
+- **CI Workflows**: If you modify any file in `.github/workflows/`, you **MUST** review and update [docs/ci_workflows.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/docs/ci_workflows.md) to ensure it accurately reflects the current state of the automated validation process.

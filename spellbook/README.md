@@ -38,6 +38,8 @@ pnpm format
 pnpm format:check
 ```
 
+See [docs/ci_workflows.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/docs/ci_workflows.md) for details on how these checks are automated in our CI pipeline.
+
 ## Next steps
 - Add models + dependencies to `spellbook/services/ml` for embeddings and local chat.
 - Expand the import pipeline to use PDF/DOCX/Markdown parsers in the sidecar.

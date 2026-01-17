@@ -31,6 +31,8 @@ pub struct ImportSpell {
     pub source_file: Option<String>,
     #[serde(default)]
     pub is_quest_spell: i64,
+    #[serde(default)]
+    pub is_cantrip: i64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -137,6 +139,8 @@ pub struct PreviewSpell {
     pub source_file: String,
     #[serde(default)]
     pub is_quest_spell: i64,
+    #[serde(default)]
+    pub is_cantrip: i64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

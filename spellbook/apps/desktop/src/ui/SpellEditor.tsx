@@ -26,6 +26,7 @@ type SpellDetail = {
   author?: string;
   license?: string;
   is_quest_spell: number;
+  is_cantrip: number;
   artifacts?: {
     id: number;
     type: string;
@@ -49,6 +50,7 @@ export default function SpellEditor() {
     description: "",
     reversible: 0,
     is_quest_spell: 0,
+    is_cantrip: 0,
   });
   const [printStatus, setPrintStatus] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
@@ -74,21 +76,36 @@ export default function SpellEditor() {
   const isDescriptionInvalid = !form.description.trim();
   const isLevelInvalid = Number.isNaN(form.level) || form.level < 0 || form.level > 12;
 
+  const isArcane = !!form.school;
+  const isDivine = !!form.sphere;
+
+  const getLevelDisplay = (level: number) => {
+    if (level === 0 && form.is_cantrip) return "Cantrip";
+    if (level >= 10 && isArcane) {
+      const circle = level === 10 ? "10th" : level === 11 ? "11th" : "12th";
+      return `${circle} Circle`;
+    }
+    if (level === 8 && form.is_quest_spell) return "Quest";
+    return `Level ${level}`;
+  };
+
   const divineClasses = ["priest", "cleric", "druid", "paladin", "ranger"];
   const classesLower = form.class_list?.toLowerCase() || "";
   const hasDivine = divineClasses.some((c) => classesLower.includes(c));
 
-  const isEpicRestricted = form.level >= 10 && hasDivine;
-  const isQuestRestricted = form.is_quest_spell === 1 && !hasDivine;
+  const isEpicRestricted = form.level >= 10 && (isDivine || !isArcane);
+  const isQuestRestricted = form.is_quest_spell === 1 && (isArcane || !isDivine);
   const isConflictRestricted = form.level >= 10 && form.is_quest_spell === 1;
+  const isCantripRestricted = form.is_cantrip === 1 && form.level !== 0;
 
   const validationErrors = [
     isNameInvalid && "Name is required",
     isDescriptionInvalid && "Description is required",
     isLevelInvalid && "Level must be between 0 and 12",
-    isEpicRestricted && "Levels 10-12 are Arcane (Wizard) only",
-    isQuestRestricted && "Quest spells are Divine (Priest) only",
+    isEpicRestricted && "Levels 10-12 are Arcane (has School) only",
+    isQuestRestricted && "Quest spells are Divine (has Sphere) only",
     isConflictRestricted && "A spell cannot be both Epic and Quest",
+    isCantripRestricted && "Cantrips must be Level 0",
   ].filter(Boolean) as string[];
 
   const isInvalid = validationErrors.length > 0;
@@ -165,7 +182,7 @@ export default function SpellEditor() {
                 Epic
               </span>
             )}
-            {form.level === 0 && (
+            {form.level === 0 && form.is_cantrip === 1 && (
               <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                 Cantrip
               </span>
@@ -258,21 +275,33 @@ export default function SpellEditor() {
             min={0}
             max={12}
             value={form.level}
-            onChange={(e) => handleChange("level", Number.parseInt(e.target.value) || 0)}
+            onChange={(e) => {
+              const val = Number.parseInt(e.target.value) || 0;
+              handleChange("level", val);
+              if (val !== 0) handleChange("is_cantrip", 0);
+              if (val !== 8) handleChange("is_quest_spell", 0);
+            }}
           />
+          <div className="text-xs text-neutral-500 mt-1">{getLevelDisplay(form.level)}</div>
           <div className="flex gap-4 mt-2">
-            <label className="flex items-center gap-2 cursor-pointer group">
+            <label
+              className={`flex items-center gap-2 cursor-pointer group ${form.level !== 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
               <input
                 type="checkbox"
-                checked={form.level === 0}
-                onChange={(e) => handleChange("level", e.target.checked ? 0 : 1)}
+                disabled={form.level !== 0}
+                checked={form.is_cantrip === 1}
+                onChange={(e) => handleChange("is_cantrip", e.target.checked ? 1 : 0)}
                 className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
               />
               <span className="text-sm text-neutral-400 group-hover:text-neutral-300">Cantrip</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer group">
+            <label
+              className={`flex items-center gap-2 cursor-pointer group ${form.level !== 8 ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
               <input
                 type="checkbox"
+                disabled={form.level !== 8}
                 checked={form.is_quest_spell === 1}
                 onChange={(e) => handleChange("is_quest_spell", e.target.checked ? 1 : 0)}
                 className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
@@ -299,10 +328,14 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-school"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded disabled:opacity-50 disabled:bg-neutral-800"
             value={form.school || ""}
+            disabled={isDivine}
             onChange={(e) => handleChange("school", e.target.value)}
           />
+          {isDivine && (
+            <p className="text-[10px] text-neutral-500 mt-0.5 italic">Disabled for Divine spells</p>
+          )}
         </div>
         <div>
           <label htmlFor="spell-sphere" className="block text-sm text-neutral-400">
@@ -310,10 +343,14 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-sphere"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded disabled:opacity-50 disabled:bg-neutral-800"
             value={form.sphere || ""}
+            disabled={isArcane}
             onChange={(e) => handleChange("sphere", e.target.value)}
           />
+          {isArcane && (
+            <p className="text-[10px] text-neutral-500 mt-0.5 italic">Disabled for Arcane spells</p>
+          )}
         </div>
         <div>
           <label htmlFor="spell-classes" className="block text-sm text-neutral-400">

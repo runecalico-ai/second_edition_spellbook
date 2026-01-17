@@ -78,7 +78,31 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
         if len(parts) == 3:
             description = parts[2].strip()
     name = meta.get("name") or path.stem.replace("_", " ").title()
-    level = int(meta.get("level") or 0)
+
+    level_val = str(meta.get("level") or 0).lower().strip()
+    is_quest = 0
+    is_cantrip = 0
+
+    if level_val == "cantrip":
+        level = 0
+        is_cantrip = 1
+    elif level_val == "quest":
+        level = 8
+        is_quest = 1
+    elif level_val == "8" and meta.get("sphere"):
+        level = 8
+        is_quest = 1
+    else:
+        try:
+            level = int(level_val)
+            if level == 0 and str(meta.get("is_cantrip", "0")).lower() in {
+                "1",
+                "true",
+                "yes",
+            }:
+                is_cantrip = 1
+        except ValueError:
+            level = 0
 
     # Confidence scoring: 1.0 if field is in metadata, lower if heuristic/fallback
     confidence: Dict[str, float] = {}
@@ -117,6 +141,8 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
         "edition": meta.get("edition"),
         "author": meta.get("author"),
         "license": meta.get("license"),
+        "is_quest_spell": is_quest,
+        "is_cantrip": is_cantrip,
         "_confidence": confidence,
         "_raw_text": text,
         "_source_file": str(path),

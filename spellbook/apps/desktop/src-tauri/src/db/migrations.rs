@@ -54,5 +54,11 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 5", [])?;
     }
 
+    if version < 6 {
+        let sql = include_str!("../../../../../db/migrations/0006_add_cantrip_flag.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 6", [])?;
+    }
+
     Ok(())
 }

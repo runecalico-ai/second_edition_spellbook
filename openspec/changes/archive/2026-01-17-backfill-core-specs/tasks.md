@@ -1,0 +1,33 @@
+# Tasks: backfill-core-specs
+
+- [x] Architecture (M0)
+    - [x] Draft `specs/architecture/spec.md`
+    - [x] Verify core tech stack requirements
+- [x] Vault (Backup/Restore) (M0/M7)
+    - [x] Draft `specs/vault/spec.md`
+    - [x] Add Centralized Vault requirement
+    - [x] Add Native SQLite Backup requirement
+    - [x] Add Vault Archiving (ZIP Export/Import) requirement
+- [x] Library & CRUD (M1)
+    - [x] Draft `specs/library/spec.md`
+    - [x] Verify spell, character, and spellbook scenarios
+    - [x] Add Change Log requirement
+    - [x] Add Spellbook Notes requirement
+- [x] Importers (M2)
+    - [x] Draft `specs/importers/spec.md`
+    - [x] Verify PDF/MD/DOCX import scenarios
+    - [x] Add Provenance tracking requirement
+    - [x] Add Duplicate Merge Review requirement
+    - [x] Add Reparse from Artifact requirement
+- [x] Spellbook Builder & Printing (M2.5)
+    - [x] Draft `specs/spellbooks/spec.md`
+    - [x] Verify printing and layout scenarios
+    - [x] Add Picker Filters requirement
+- [x] Search & Facets (M3)
+    - [x] Draft `specs/search/spec.md`
+    - [x] Verify keyword and facet filtering scenarios
+    - [x] Add Saved Searches requirement
+    - [x] Add Multi-select/Slider filter control requirements
+- [x] Validation
+    - [x] Initial validation
+    - [x] Final validation after gap fixes

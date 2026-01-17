@@ -38,11 +38,11 @@ fn search_keyword_with_conn(
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if !query.trim().is_empty() {
-        sql.push_str(" AND (name LIKE ? OR description LIKE ? OR tags LIKE ?)");
-        let like_query = format!("%{}%", query);
-        params.push(Box::new(like_query.clone()));
-        params.push(Box::new(like_query.clone()));
-        params.push(Box::new(like_query));
+        // Use FTS5 for full-text search across name, description, material_components, tags, source, author
+        sql.push_str(" AND id IN (SELECT rowid FROM spell_fts WHERE spell_fts MATCH ?)");
+        // Escape special FTS5 characters and wrap in quotes for phrase matching
+        let escaped_query = query.replace('"', "\"\"");
+        params.push(Box::new(format!("\"{}\"", escaped_query)));
     }
 
     if let Some(f) = filters {

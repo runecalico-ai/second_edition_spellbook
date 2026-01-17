@@ -70,7 +70,10 @@ test.describe("Vault Backup and Restore", () => {
         // Handle custom modal success alert
         await handleCustomModal(page, "OK");
 
+        // Verify backup exists and is accessible
         expect(fs.existsSync(backupPath)).toBe(true);
+        const stats = fs.statSync(backupPath);
+        expect(stats.size).toBeGreaterThan(0);
       });
 
       await test.step("Delete the spell", async () => {

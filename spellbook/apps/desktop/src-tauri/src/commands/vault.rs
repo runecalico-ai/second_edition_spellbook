@@ -1,9 +1,8 @@
 use crate::error::AppError;
 use dirs::data_dir as system_data_dir;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::PathBuf;
-use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
@@ -21,15 +20,43 @@ fn app_data_dir() -> Result<PathBuf, AppError> {
 }
 
 #[tauri::command]
-pub async fn backup_vault(destination_path: String) -> Result<String, AppError> {
+pub async fn backup_vault(
+    pool: tauri::State<'_, std::sync::Arc<crate::db::pool::Pool>>,
+    destination_path: String,
+) -> Result<String, AppError> {
+    use rusqlite::backup::Backup;
+    use std::time::Duration;
+
     let data_dir = app_data_dir()?;
     let dest_path = PathBuf::from(&destination_path);
+    let db_path = data_dir.join("spellbook.sqlite3");
 
     // Ensure parent directory exists
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent)?;
     }
 
+    // Create a temporary file for the database backup
+    let temp_db = tempfile::NamedTempFile::new()
+        .map_err(|e| AppError::Unknown(format!("Failed to create temp file: {}", e)))?;
+    let temp_db_path = temp_db.path();
+
+    // Use SQLite's backup API to safely backup the database
+    {
+        let pool_arc = pool.inner().clone();
+        let src_conn = pool_arc.get()?;
+        let mut dst_conn = rusqlite::Connection::open(temp_db_path)
+            .map_err(|e| AppError::Unknown(format!("Failed to open temp db: {}", e)))?;
+
+        let backup = Backup::new(&src_conn, &mut dst_conn)
+            .map_err(|e| AppError::Unknown(format!("Failed to init backup: {}", e)))?;
+
+        backup
+            .run_to_completion(5, Duration::from_millis(250), None)
+            .map_err(|e| AppError::Unknown(format!("Failed to backup database: {}", e)))?;
+    }
+
+    // Create ZIP archive
     let file = File::create(&dest_path)
         .map_err(|e| AppError::Unknown(format!("Failed to create backup file: {}", e)))?;
 
@@ -38,29 +65,16 @@ pub async fn backup_vault(destination_path: String) -> Result<String, AppError> 
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o644);
 
-    for entry in WalkDir::new(&data_dir).into_iter().filter_map(|e| e.ok()) {
-        let path = entry.path();
-        let name = path
-            .strip_prefix(&data_dir)
-            .map_err(|e| AppError::Unknown(format!("Path strip failed: {}", e)))?;
+    // Add the backed-up database to the ZIP
+    zip.start_file("spellbook.sqlite3", options)
+        .map_err(|e| AppError::Unknown(format!("Failed to start zip entry: {}", e)))?;
 
-        if path.is_file() {
-            zip.start_file(name.to_string_lossy(), options)
-                .map_err(|e| AppError::Unknown(format!("Failed to start zip entry: {}", e)))?;
+    let mut temp_db_file = File::open(temp_db_path)
+        .map_err(|e| AppError::Unknown(format!("Failed to open temp db: {}", e)))?;
+    std::io::copy(&mut temp_db_file, &mut zip)
+        .map_err(|e| AppError::Unknown(format!("Failed to write db to zip: {}", e)))?;
 
-            let mut f = File::open(path)
-                .map_err(|e| AppError::Unknown(format!("Failed to open file for backup: {}", e)))?;
-            let mut buffer = Vec::new();
-            f.read_to_end(&mut buffer)
-                .map_err(|e| AppError::Unknown(format!("Failed to read file: {}", e)))?;
-            zip.write_all(&buffer)
-                .map_err(|e| AppError::Unknown(format!("Failed to write to zip: {}", e)))?;
-        } else if !name.as_os_str().is_empty() {
-            zip.add_directory(name.to_string_lossy(), options)
-                .map_err(|e| AppError::Unknown(format!("Failed to add directory: {}", e)))?;
-        }
-    }
-
+    // Finalize the ZIP archive
     zip.finish()
         .map_err(|e| AppError::Unknown(format!("Failed to finalize zip: {}", e)))?;
 
@@ -68,7 +82,14 @@ pub async fn backup_vault(destination_path: String) -> Result<String, AppError> 
 }
 
 #[tauri::command]
-pub async fn restore_vault(backup_path: String, allow_overwrite: bool) -> Result<(), AppError> {
+pub async fn restore_vault(
+    pool: tauri::State<'_, std::sync::Arc<crate::db::pool::Pool>>,
+    backup_path: String,
+    allow_overwrite: bool,
+) -> Result<(), AppError> {
+    use rusqlite::backup::Backup;
+    use std::time::Duration;
+
     let backup_file = PathBuf::from(&backup_path);
 
     if !backup_file.exists() {
@@ -79,6 +100,7 @@ pub async fn restore_vault(backup_path: String, allow_overwrite: bool) -> Result
     }
 
     let data_dir = app_data_dir()?;
+    let db_path = data_dir.join("spellbook.sqlite3");
 
     // Check if data directory has content
     let has_content = fs::read_dir(&data_dir)
@@ -97,38 +119,39 @@ pub async fn restore_vault(backup_path: String, allow_overwrite: bool) -> Result
     let mut archive = ZipArchive::new(file)
         .map_err(|e| AppError::Unknown(format!("Failed to read zip archive: {}", e)))?;
 
-    for i in 0..archive.len() {
-        let mut file = archive
-            .by_index(i)
-            .map_err(|e| AppError::Unknown(format!("Failed to read zip entry: {}", e)))?;
+    // Create temp file for database extraction
+    let temp_db = tempfile::NamedTempFile::new()
+        .map_err(|e| AppError::Unknown(format!("Failed to create temp file: {}", e)))?;
+    let temp_db_path = temp_db.path();
 
-        let outpath = match file.enclosed_name() {
-            Some(path) => data_dir.join(path),
-            None => continue,
-        };
+    // Extract only the database file from the archive
+    let mut db_file = archive
+        .by_name("spellbook.sqlite3")
+        .map_err(|e| AppError::Unknown(format!("Database not found in backup: {}", e)))?;
 
-        if file.is_dir() {
-            fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    fs::create_dir_all(p)?;
-                }
-            }
-            let mut outfile = File::create(&outpath)
-                .map_err(|e| AppError::Unknown(format!("Failed to create file: {}", e)))?;
-            std::io::copy(&mut file, &mut outfile)
-                .map_err(|e| AppError::Unknown(format!("Failed to extract file: {}", e)))?;
-        }
+    let mut temp_file = File::create(temp_db_path)
+        .map_err(|e| AppError::Unknown(format!("Failed to create temp db: {}", e)))?;
+    std::io::copy(&mut db_file, &mut temp_file)
+        .map_err(|e| AppError::Unknown(format!("Failed to extract db to temp: {}", e)))?;
 
-        // Set permissions on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Some(mode) = file.unix_mode() {
-                fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).ok();
-            }
-        }
+    // Drop the file handle before using it
+    drop(temp_file);
+    drop(db_file);
+    drop(archive);
+
+    // Use SQLite's restore API to restore the database
+    {
+        let src_conn = rusqlite::Connection::open(temp_db_path)
+            .map_err(|e| AppError::Unknown(format!("Failed to open temp db: {}", e)))?;
+        let pool_arc = pool.inner().clone();
+        let mut dst_conn = pool_arc.get()?;
+
+        let backup = Backup::new(&src_conn, &mut dst_conn)
+            .map_err(|e| AppError::Unknown(format!("Failed to init restore: {}", e)))?;
+
+        backup
+            .run_to_completion(5, Duration::from_millis(250), None)
+            .map_err(|e| AppError::Unknown(format!("Failed to restore database: {}", e)))?;
     }
 
     Ok(())

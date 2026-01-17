@@ -140,7 +140,7 @@ export class SpellbookApp {
       await expect(tagsLoc).toHaveValue(options.tags);
     }
 
-    await this.page.getByRole("button", { name: "Save Spell" }).click();
+    await this.page.locator("#btn-save-spell").click();
     await this.waitForLibrary();
   }
 
@@ -225,16 +225,17 @@ export class SpellbookApp {
   /** Select a character by name */
   async selectCharacter(name: string): Promise<void> {
     await this.navigate("Characters");
-    await this.page.getByRole("button", { name }).click();
+    await this.page.getByRole("link", { name: new RegExp(name) }).click();
   }
 
   /** Create a new character */
   async createCharacter(name: string): Promise<void> {
     await this.navigate("Characters");
-    await this.page.getByRole("button", { name: "Add Character" }).click();
-    await this.page.getByLabel("Name").fill(name);
-    await this.page.getByRole("button", { name: "Save" }).click();
-    await expect(this.page.getByRole("button", { name })).toBeVisible();
+    const nameInput = this.page.getByPlaceholder("New Name");
+    await nameInput.fill(name);
+    await this.page.getByRole("button", { name: "+", exact: true }).click();
+    // Wait for the character to appear in the sidebar list
+    await expect(this.page.getByRole("link", { name: new RegExp(name) })).toBeVisible();
   }
 
   /** Get a spell row in the library table */

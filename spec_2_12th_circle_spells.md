@@ -8,11 +8,11 @@ This specification extends the AD&D 2nd Edition Spellbook application to support
 
 Traditional AD&D 2e caps wizard spells at 9th level (9th circle), but many campaign settings and homebrew content extend this to include:
 - **10th Level**: Epic spells, "True Dweomers", or equivalent high-magic constructs
-- **11th Level**: Mythic-tier spells from advanced campaign settings  
+- **11th Level**: Mythic-tier spells from advanced campaign settings
 - **12th Level**: Deity-level or artifact-tier magic
 
 > [!IMPORTANT]
-> **Arcane Magic Only**: Spell levels 10-12 are restricted to **Arcane (Wizard/Mage) spells only**. Divine magic (Priest/Cleric spells) remains capped at 7th level per AD&D 2e rules.
+> **Arcane Magic Only**: Spell levels 9-12 are restricted to **Arcane magic** (defined by the presence of a `school`). Divine magic (defined by the presence of a `sphere`) remains capped at 7th level, with the exception of Quest spells.
 
 ### Cantrips (Level 0)
 
@@ -29,13 +29,13 @@ Traditional AD&D 2e caps wizard spells at 9th level (9th circle), but many campa
 
 **Quest spells** are special divine magic granted directly by a deity to their faithful servants. Unlike standard priest spells (which cap at 7th level), Quest spells represent divine intervention and miracles beyond mortal priestly power.
 
-- **Quest spells** are not categorized by standard levels but are flagged separately
-- They are **Divine (Priest/Cleric) only** — Arcane casters cannot access Quest spells
+- **Quest spells** are not categorized by standard levels but are flagged separately (using level 8)
+- They are **Divine only** (must have a `sphere`) — Arcane spells cannot be Quest spells.
 - Typically granted for specific missions, holy crusades, or divine purposes
 - Examples: *True Resurrection*, *Divine Wrath*, *Deity's Blessing*
 
 > [!NOTE]
-> Quest spells use the existing `level` field (typically set to 0 or a nominal value) combined with a new `is_quest_spell` flag to distinguish them from standard spells.
+> Quest spells use the existing `level` field (set to 8) combined with a new `is_quest_spell` flag to distinguish them from standard spells.
 
 This feature update ensures the application can accommodate extended Arcane spell levels and Divine Quest spells while maintaining backwards compatibility with standard spells.
 
@@ -53,23 +53,29 @@ This feature update ensures the application can accommodate extended Arcane spel
    - Update the **Library** page level range slider to support 0-12 (currently 0-9)
    - Update the **Spellbook Builder** level filter dropdowns to include levels 10, 11, 12
 
-3. **Arcane-Only Restriction for Levels 10-12**
-   - Spells with level 10, 11, or 12 must be **Arcane (Wizard/Mage) class only**
-   - Validation must reject attempts to save level 10+ spells with Priest/Cleric/Divine classes
-   - Display clear error message when restriction is violated
+### Magic Type Definitions
+- **Arcane Spell**: Defined by the presence of a value in the `school` field.
+- **Divine Spell**: Defined by the presence of a value in the `sphere` field.
+- **Mutual Exclusivity**: A spell **cannot** have both a `school` and a `sphere`.
+
+3. **Field-Based Restrictions for Epic Levels**
+   - Spells with level 9, 10, 11, or 12 must be **Arcane** (have `school`).
+   - Divine spells (have `sphere`) are capped at level 7, unless `is_quest_spell` is 1.
 
 4. **Quest Spell Support (Divine Only)**
-   - Add `is_quest_spell` checkbox/toggle in the Spell Editor
-   - Quest spells must be **Divine (Priest/Cleric) class only**
-   - Validation must reject attempts to save Quest spells with Arcane classes
-   - Quest spells display as "Quest" instead of a level number in spell lists
-   - Quest spell filter option in Library and Spellbook Builder
+   - Add `is_quest_spell` checkbox/toggle in the Spell Editor.
+   - Quest spells must be **Divine** (have `sphere`) and must be **Level 8**.
+   - Arcane spells (have `school`) cannot be flagged as Quest spells.
+   - Quest spells display as "Quest" instead of a level number in spell lists.
+   - Quest spell filter option in Library and Spellbook Builder.
 
 5. **Spell Editor Validation**
-   - Update the level input validation to enforce Arcane-only for levels 10+
-   - Add Quest spell toggle with Divine-only enforcement
-   - Display warning/indicator for epic spell levels (10-12) and Quest spells
-   - Disable level 10+ when class is Divine; disable Quest when class is Arcane
+   - Enforce **Mutual Exclusivity**: Saving fails if both `school` and `sphere` are non-empty.
+   - Enforce **Arcane Level Cap**: Arcane spells can be level 0-12.
+   - Enforce **Divine Level Cap**: Divine spells can be level 0-7, or level 8 if `is_quest_spell` is 1.
+   - Display UI warning/indicator for epic spell levels (10-12) and Quest spells.
+   - Disable/Hide `sphere` field if a `school` is selected (and vice-versa).
+   - Disable `is_quest_spell` toggle if `school` is present.
 
 6. **Search & Facets**
    - Ensure the `list_facets` command returns levels 10-12 when present in the database
@@ -77,9 +83,9 @@ This feature update ensures the application can accommodate extended Arcane spel
    - Level range filters must work correctly for levels 10-12
 
 7. **Import/Export Support**
-   - Import wizard must accept spells with levels 10-12 **only if class is Arcane**
-   - Import wizard must accept Quest spells **only if class is Divine**
-   - Display validation error during import for class/level mismatches
+   - Import wizard must accept spells with levels 9-12 **only if spell is Arcane** (has `school`).
+   - Import wizard must accept Quest spells (level 8 + flag) **only if spell is Divine** (has `sphere`).
+   - Display validation error during import for field/level mismatches or if both fields exist.
    - Exported spells and spellbooks must preserve levels 10-12 and `is_quest_spell` flag
 
 ### Should Have
@@ -131,7 +137,7 @@ The following components require updates to support levels 10-12:
 
 | Component | File | Current State | Required Changes |
 |-----------|------|---------------|------------------|
-| Validation | `src-tauri/src/commands/spells.rs` | Only validates level ≥ 0 | Add max validation (≤12) + Arcane-only check for 10+ inside `validate_spell_fields` and `validate_epic_and_quest_spells` |
+| Validation | `src-tauri/src/commands/spells.rs` | Only validates level ≥ 0 | Add max validation (≤12) + Magic Type check (school vs sphere) inside `validate_spell_fields` |
 | Models | `src-tauri/src/models/spell.rs` | Structs lack `is_quest_spell` | Update `SpellSummary`, `SpellCreate`, `SpellUpdate`, `SpellDetail` structs |
 | Migrations | `src-tauri/src/db/migrations.rs` | Loads up to v3 | Add logic to load invalid v4 migration |
 | Facets | `src-tauri/src/commands/search.rs` | Dynamic from DB | No change needed |
@@ -142,7 +148,7 @@ The following components require updates to support levels 10-12:
 | Table | Column | Current State | Required Changes |
 |-------|--------|---------------|------------------|
 | spell | level | INTEGER, no constraints | No change needed |
-| spell | is_quest_spell | **NEW COLUMN** | Add `is_quest_spell INTEGER DEFAULT 0` via migration `0004_add_quest_spells.sql` |
+| spell | is_quest_spell | **NEW COLUMN** | Add `is_quest_spell INTEGER DEFAULT 8` via migration `0004_add_quest_spells.sql` |
 
 
 ### UI/UX Changes
@@ -259,7 +265,7 @@ In the spell list table, display badges:
 
 ##### [MODIFY] [SpellbookBuilder.tsx](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src/ui/SpellbookBuilder.tsx)
 
-The level filter dropdowns in the spell picker modal dynamically populate from `facets.levels`, which comes from the database. No changes needed if levels 10-12 exist in the database. 
+The level filter dropdowns in the spell picker modal dynamically populate from `facets.levels`, which comes from the database. No changes needed if levels 10-12 exist in the database.
 
 However, to ensure levels 10-12 are always available as filter options even when no such spells exist:
 
@@ -267,7 +273,7 @@ However, to ensure levels 10-12 are always available as filter options even when
 
 ---
 
-#### Backend 
+#### Backend
 
 ##### [MODIFY] [src-tauri/src/models/spell.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/models/spell.rs)
 
@@ -327,11 +333,10 @@ ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER DEFAULT 0;
 
 #### Unit Tests
 
-- Verify spell creation with levels 10, 11, 12 (Arcane class)
-- Verify spell creation **fails** for level 10+ with Priest/Cleric class
-- Verify Quest spell creation with Priest/Cleric class
-- Verify Quest spell creation **fails** with Wizard/Mage class
-- Verify a spell cannot be both level 10+ and Quest
+- Verify spell creation with levels 9-12 (has `school`)
+- Verify spell creation **fails** for level 8+ with `sphere` (unless `is_quest_spell`)
+- Verify Quest spell creation with `sphere` and level 8
+- Verify Quest spell creation **fails** if `school` is present
 - Verify search filters work correctly with extended levels and Quest flag
 - Verify facet aggregation includes levels 10-12 and Quest spells
 
@@ -440,7 +445,7 @@ Add tests for:
 While standard AD&D 2e limits wizard spells to 9th level and priest spells to 7th level, several supplements and campaign settings introduced higher-level arcane magic:
 
 - **High-Level Campaigns** (TSR 2156): Introduced "True Dweomers" as 10th-level equivalents for wizards
-- **Forgotten Realms**: Epic arcane magic (via Karsus, Netherese Arcanists, Mystra's Ban scenarios)  
+- **Forgotten Realms**: Epic arcane magic (via Karsus, Netherese Arcanists, Mystra's Ban scenarios)
 - **Homebrew**: Many campaigns extend arcane spell progression for epic-level play
 
 ### Divine Quest Spells

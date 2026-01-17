@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import FieldMapper, { type ParsedSpell } from "./FieldMapper";
+import { useModal } from "../store/useModal";
 
 type ImportFile = {
   name: string;
@@ -156,6 +157,7 @@ const getConflictKey = (conflict: SpellConflict, index: number) =>
   conflict.existing.id ? `${conflict.existing.id}` : `${conflict.incoming.name}-${index}`;
 
 export default function ImportWizard() {
+  const { alert: modalAlert } = useModal();
   const [step, setStep] = useState<ImportStep>("select");
   const [files, setFiles] = useState<File[]>([]);
   const [filePayloads, setFilePayloads] = useState<ImportFile[]>([]);
@@ -381,7 +383,7 @@ export default function ImportWizard() {
       setStep("preview");
     } catch (e) {
       console.error("Preview failed:", e);
-      alert(`Preview failed: ${e}`);
+      await modalAlert(`Preview failed: ${e}`, "Preview Error", "error");
     } finally {
       setLoading(false);
     }
@@ -422,7 +424,7 @@ export default function ImportWizard() {
       }
     } catch (e) {
       console.error("Import failed:", e);
-      alert(`Import failed: ${e}`);
+      await modalAlert(`Import failed: ${e}`, "Import Error", "error");
     } finally {
       setLoading(false);
     }
@@ -460,7 +462,7 @@ export default function ImportWizard() {
       setStep("result");
     } catch (e) {
       console.error("Conflict resolution failed:", e);
-      alert(`Conflict resolution failed: ${e}`);
+      await modalAlert(`Conflict resolution failed: ${e}`, "Resolution Error", "error");
     } finally {
       setLoading(false);
     }

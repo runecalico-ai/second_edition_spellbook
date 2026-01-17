@@ -28,12 +28,12 @@ type SearchFilters = {
   schools?: string[] | null;
   levelMin?: number | null;
   levelMax?: number | null;
-  class_list?: string | null;
+  classList?: string | null;
   source?: string | null;
   components?: string | null;
   tags?: string | null;
-  is_quest_spell?: boolean | null;
-  is_cantrip?: boolean | null;
+  isQuestSpell?: boolean | null;
+  isCantrip?: boolean | null;
 };
 
 type SavedSearchPayload = {
@@ -120,11 +120,11 @@ export default function Library() {
         levelMin: parsedMin,
         levelMax: parsedMax,
         source: sourceFilter || null,
-        class_list: classListFilter || null,
+        classList: classListFilter || null,
         components: componentFilter || null,
         tags: tagFilter || null,
-        is_quest_spell: isQuestFilter,
-        is_cantrip: isCantripFilter,
+        isQuestSpell: isQuestFilter,
+        isCantrip: isCantripFilter,
       };
       const payload: SavedSearchPayload = {
         query,
@@ -154,11 +154,11 @@ export default function Library() {
         setLevelMin(filters.levelMin != null ? String(filters.levelMin) : "");
         setLevelMax(filters.levelMax != null ? String(filters.levelMax) : "");
         setSourceFilter(filters.source || "");
-        setClassListFilter(filters.class_list || "");
+        setClassListFilter(filters.classList || "");
         setComponentFilter(filters.components || "");
         setTagFilter(filters.tags || "");
-        setIsQuestFilter(filters.is_quest_spell ?? false);
-        setIsCantripFilter(filters.is_cantrip ?? false);
+        setIsQuestFilter(filters.isQuestSpell ?? false);
+        setIsCantripFilter(filters.isCantrip ?? false);
       } else {
         const filters = parsed as SearchFilters;
         setQuery("");
@@ -167,11 +167,11 @@ export default function Library() {
         setLevelMin(filters.levelMin != null ? String(filters.levelMin) : "");
         setLevelMax(filters.levelMax != null ? String(filters.levelMax) : "");
         setSourceFilter(filters.source || "");
-        setClassListFilter(filters.class_list || "");
+        setClassListFilter(filters.classList || "");
         setComponentFilter(filters.components || "");
         setTagFilter(filters.tags || "");
-        setIsQuestFilter(filters.is_quest_spell ?? false);
-        setIsCantripFilter(filters.is_cantrip ?? false);
+        setIsQuestFilter(filters.isQuestSpell ?? false);
+        setIsCantripFilter(filters.isCantrip ?? false);
       }
     } catch (e) {
       console.error("Failed to parse saved search", e);
@@ -188,6 +188,20 @@ export default function Library() {
     }
   };
 
+  const handleResetFilters = () => {
+    setQuery("");
+    setMode("keyword");
+    setSchoolFilters([]);
+    setLevelMin("");
+    setLevelMax("");
+    setSourceFilter("");
+    setClassListFilter("");
+    setComponentFilter("");
+    setTagFilter("");
+    setIsQuestFilter(false);
+    setIsCantripFilter(false);
+  };
+
   const search = useCallback(async () => {
     let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
     let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
@@ -199,11 +213,11 @@ export default function Library() {
       levelMin: parsedMin,
       levelMax: parsedMax,
       source: sourceFilter || null,
-      class_list: classListFilter || null,
+      classList: classListFilter || null,
       components: componentFilter || null,
       tags: tagFilter || null,
-      is_quest_spell: isQuestFilter || null,
-      is_cantrip: isCantripFilter || null,
+      isQuestSpell: isQuestFilter || null,
+      isCantrip: isCantripFilter || null,
     };
 
     if (mode === "semantic") {
@@ -297,6 +311,14 @@ export default function Library() {
           type="button"
         >
           Search
+        </button>
+        <button
+          className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700 border border-neutral-700"
+          onClick={handleResetFilters}
+          type="button"
+          title="Reset all search filters to default"
+        >
+          Reset Filters
         </button>
       </div>
 

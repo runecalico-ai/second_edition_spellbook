@@ -139,9 +139,12 @@ const spellName = `Test Spell ${runId}`;
 const characterName = `Test Character ${runId}`;
 ```
 
-### 5. Use Dialog Handlers
+### 5. Dialog and Modal Handlers
 
-For tests that trigger dialogs:
+For tests that trigger dialogs or the custom React modal:
+
+#### 5.1 Native Browser Dialogs
+Use `setupDialogHandler` for `window.alert`, `window.confirm`, and `window.prompt`:
 
 ```typescript
 import { setupDialogHandler } from "./utils/dialog-handler";
@@ -155,6 +158,24 @@ const cleanup = setupDialogHandler(page, {
 
 cleanup(); // Remove handler at end
 ```
+
+#### 5.2 Custom React Modal
+For our custom glassmorphism modal, use `handleCustomModal()`. This utility waits for the modal to be visible, interacts with it, and then waits for the animation to finish.
+
+```typescript
+import { handleCustomModal } from "./utils/dialog-handler";
+
+// Click "Save", then handle the validation error modal
+await page.locator("#btn-save-spell").click();
+await handleCustomModal(page, "OK");
+
+// Handle a "Confirm" modal (e.g., Delete or Restore)
+await page.getByRole("button", { name: "Delete" }).click();
+await handleCustomModal(page, "Confirm");
+```
+
+> [!IMPORTANT]
+> `setupDialogHandler` **cannot** intercept the custom React modal. You must use `handleCustomModal` explicitly in your test flow.
 
 ### 6. Locator Strategy
 
@@ -236,9 +257,9 @@ test("test", async () => {
 ## Common Gotchas & Troubleshooting
 
 ### Blank Screen on Launch
-If you launch the `.exe` directly from the `src-tauri/target/debug` folder, you will likely see a blank screen. 
+If you launch the `.exe` directly from the `src-tauri/target/debug` folder, you will likely see a blank screen.
 - **Reason**: Debug builds expect a running Vite dev server at `http://127.0.0.1:5173`.
-- **Solution**: Always use `npm run tauri dev` (or `pnpm tauri:dev`) for development. 
+- **Solution**: Always use `npm run tauri dev` (or `pnpm tauri:dev`) for development.
 - **Production**: For a standalone binary, use `npm run tauri build` (or `pnpm tauri:build`).
 - **Debug**: To generate the debug binary, use `npm run tauri build --debug` (or `pnpm tauri:build --debug`) to generate a debug binary in `src-tauri/target/debug`.
 

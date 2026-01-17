@@ -49,23 +49,29 @@ test("Milestone 2.5: Advanced Picker & Printing", async () => {
   // 2. Advanced Picker Filtering
   await page.getByRole("button", { name: "Add Spells" }).click();
 
+  // Wait for modal to be visible
+  await expect(page.getByRole("heading", { name: "Add spells" })).toBeVisible();
+
+  // Scope all selectors to the modal to avoid selecting the page size dropdown
+  const modal = page.locator('[role="dialog"], .fixed.inset-0').last();
+
   // Filter by School: Evocation
-  const schoolSelect = page.locator("select").first();
+  const schoolSelect = modal.locator("select[multiple]");
   await schoolSelect.selectOption("Evocation");
-  await page.getByRole("button", { name: "Search" }).click();
+  await modal.getByRole("button", { name: "Search" }).click();
   await expect(app.getSpellRow(spell1)).toBeVisible();
   await expect(app.getSpellRow(spell2)).not.toBeVisible();
 
-  // Filter by Level: 3
+  // Filter by Level: 3 (clear school filter first)
   await schoolSelect.selectOption([]);
-  const levelMin = page.locator("select").nth(1);
-  await levelMin.selectOption("3");
-  await page.getByRole("button", { name: "Search" }).click();
+  const levelSelects = modal.locator("select:not([multiple])");
+  await levelSelects.first().selectOption("3"); // Min level
+  await modal.getByRole("button", { name: "Search" }).click();
   await expect(app.getSpellRow(spell2)).toBeVisible();
   await expect(app.getSpellRow(spell1)).not.toBeVisible();
 
   // Add Spell B to spellbook
-  await page.getByRole("button", { name: "Add" }).click();
+  await page.getByRole("button", { name: "Add", exact: true }).click();
   await page.getByRole("button", { name: "Close" }).click();
 
   // 3. Printing Spellbook
@@ -79,7 +85,6 @@ test("Milestone 2.5: Advanced Picker & Printing", async () => {
   await expect(page.getByText(/Print ready:/)).toBeVisible({ timeout: TIMEOUTS.medium });
 
   // 4. Printing Single Spell
-  await page.getByRole("link", { name: "Spellbook Builder" }).click();
   await app.navigate("Library");
   await page.getByText(spell1).click();
 

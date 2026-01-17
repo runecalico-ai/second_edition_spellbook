@@ -44,8 +44,8 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
   // Create spell with author
   await app.navigate("Add Spell");
   await expect(page).toHaveURL(/\/edit\/new/);
-  await page.getByPlaceholder("Spell Name").fill(spellName);
-  await page.getByPlaceholder("Level").fill("1");
+  await page.getByLabel("Name", { exact: true }).fill(spellName);
+  await page.getByLabel("Level", { exact: true }).fill("1");
   await page.getByLabel("Author").fill(authorName);
   await page.locator(SELECTORS.description).fill("Testing author search");
   await page.getByRole("button", { name: "Save Spell" }).click();
@@ -60,8 +60,8 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
   // Verify level slider
   const level5Spell = `Level 5 Spell ${runId}`;
   await app.navigate("Add Spell");
-  await page.getByPlaceholder("Spell Name").fill(level5Spell);
-  await page.getByPlaceholder("Level").fill("5");
+  await page.getByLabel("Name", { exact: true }).fill(level5Spell);
+  await page.getByLabel("Level", { exact: true }).fill("5");
   await page.locator(SELECTORS.description).fill("Level 5 test");
   await page.getByRole("button", { name: "Save Spell" }).click();
 
@@ -84,7 +84,8 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
   await page.getByPlaceholder("Name...").fill(saveName);
   await page.keyboard.press("Enter");
 
-  await app.navigate("Library");
+  await page.getByRole("button", { name: "Reset Filters" }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(app.getSpellRow(spellName)).toBeVisible();
 
   // Load saved search

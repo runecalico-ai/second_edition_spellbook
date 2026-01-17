@@ -10,7 +10,8 @@ The application SHALL run as a standalone desktop executable on Windows, macOS, 
 - **THEN** it should start up successfully and allow access to all local library data
 
 ### Requirement: SQLite Data Storage
-All spell, character, and application data SHALL be stored in a local SQLite database that is user-accessible and portable.
+All spell, character, and application data SHALL be stored in a local SQLite database that is user-accessible and portable. The `spell` table SHALL include `is_quest_spell` and `is_cantrip` columns (INTEGER) to support extended magic types.
+
 #### Scenario: Database Accessibility
 - **WHEN** the user locates the `SpellbookVault` directory
 - **THEN** they should find a standard SQLite database file that can be backed up or inspected with external tools

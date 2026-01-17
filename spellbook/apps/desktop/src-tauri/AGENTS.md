@@ -109,6 +109,17 @@ Key crates:
 Run `cargo check` before committing to verify compilation.
 E2E tests are in the frontend (`tests/` directory) using Playwright.
 
+## Frontend Modal System
+
+The application uses a custom React-based modal system (instead of native `alert` and `confirm`) to display validation errors, backend errors, and confirmation dialogs.
+
+- **Validation Errors**: When a command like `create_spell` fails validation, the frontend captures the error and displays it in a stylized modal.
+- **Confirmations**: Dangerous operations (like `delete_spell` or `restore_vault`) trigger a "Confirm" modal.
+- **Implementation**: Managed via a Zustand store in `src/store/useModal.ts` and rendered in `src/ui/components/Modal.tsx`.
+
+> [!TIP]
+> When designing new commands that require user confirmation, ensure the frontend is updated to use the `useModal` store's `confirm()` helper before invoking the backend command.
+
 ## Common Pitfalls
 
 1. **Type inference in closures**: Always use `Ok::<T, AppError>(value)` inside `spawn_blocking`

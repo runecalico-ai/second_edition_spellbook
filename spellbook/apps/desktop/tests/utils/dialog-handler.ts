@@ -1,5 +1,7 @@
 /**
  * Dialog handling utilities for E2E tests.
+ * Supports both native browser dialogs (window.alert/confirm)
+ * and our custom React-based Modal component.
  */
 import type { Dialog, Page } from "@playwright/test";
 
@@ -15,8 +17,8 @@ export interface DialogHandlerOptions {
 }
 
 /**
- * Sets up a dialog handler on the page with sensible defaults.
- * Returns a cleanup function to remove the handler.
+ * Sets up a native browser dialog handler.
+ * NOTE: For the custom React modal, use handleCustomModal().
  */
 export function setupDialogHandler(page: Page, options: DialogHandlerOptions = {}): () => void {
   const { acceptDelete = true, dismissValidation = true, debug = false, custom } = options;
@@ -39,18 +41,18 @@ export function setupDialogHandler(page: Page, options: DialogHandlerOptions = {
       dismissValidation &&
       (message.includes("fix validation errors") || message.includes("restricted"))
     ) {
-      await dialog.dismiss();
+      await dialog.dismiss().catch(() => { });
       return;
     }
 
     // Handle delete confirmations
     if (acceptDelete && message.includes("Delete")) {
-      await dialog.accept();
+      await dialog.accept().catch(() => { });
       return;
     }
 
     // Default: dismiss
-    await dialog.dismiss();
+    await dialog.dismiss().catch(() => { });
   };
 
   page.on("dialog", handler);
@@ -61,13 +63,25 @@ export function setupDialogHandler(page: Page, options: DialogHandlerOptions = {
   };
 }
 
+/**
+ * Handles our custom React-based modal.
+ * This is an async helper that can be used inside tests to detect and interact with the modal.
+ */
+export async function handleCustomModal(page: Page, action: "OK" | "Cancel" | "Confirm" = "OK") {
+  const modal = page.getByRole("dialog");
+  await modal.waitFor({ state: "visible", timeout: 5000 });
+  const button = modal.getByRole("button", { name: action, exact: true });
+  await button.click();
+  await modal.waitFor({ state: "hidden", timeout: 5000 });
+}
+
 /** Simple dialog handler that always dismisses */
 export function setupDismissAllDialogs(page: Page, debug = false): () => void {
   const handler = async (dialog: Dialog) => {
     if (debug) {
       console.log(`DIALOG (dismissed): ${dialog.type()} - ${dialog.message()}`);
     }
-    await dialog.dismiss().catch(() => {});
+    await dialog.dismiss().catch(() => { });
   };
 
   page.on("dialog", handler);
@@ -80,7 +94,7 @@ export function setupAcceptAllDialogs(page: Page, debug = false): () => void {
     if (debug) {
       console.log(`DIALOG (accepted): ${dialog.type()} - ${dialog.message()}`);
     }
-    await dialog.accept().catch(() => {});
+    await dialog.accept().catch(() => { });
   };
 
   page.on("dialog", handler);

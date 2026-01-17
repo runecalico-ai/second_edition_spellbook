@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import { TIMEOUTS } from "./fixtures/constants";
 import { type TauriAppContext, cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
 import { SELECTORS, SpellbookApp } from "./page-objects/SpellbookApp";
-import { setupDialogHandler } from "./utils/dialog-handler";
+import { handleCustomModal, setupDialogHandler } from "./utils/dialog-handler";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,7 +40,6 @@ test("Epic and Quest Spells E2E", async () => {
   await page
     .getByRole("link", { name: "Library" })
     .waitFor({ state: "visible", timeout: TIMEOUTS.long });
-  await page.screenshot({ path: path.join(screenshotDir, "01_initial_load.png") });
 
   const runId = Date.now();
   const cantripName = `Cantrip ${runId}`;
@@ -49,28 +48,28 @@ test("Epic and Quest Spells E2E", async () => {
 
   // 1. Create a Cantrip
   await app.createSpell({ name: cantripName, isCantrip: true, description: "A simple cantrip." });
-  await page.screenshot({ path: path.join(screenshotDir, "03_library_after_cantrip.png") });
 
   // 2. Create an Epic Spell (Arcane only)
   await app.navigate("Add Spell");
-  await page.getByPlaceholder("Spell Name").fill(epicName);
+  await page.getByLabel("Name", { exact: true }).fill(epicName);
   await page.locator("#spell-level").fill("10");
   await page.getByLabel("Classes").fill("Wizard, Mage");
   await page.locator(SELECTORS.description).fill("A powerful 10th circle spell.");
-  await page.screenshot({ path: path.join(screenshotDir, "04_epic_filled.png") });
-  await page.getByRole("button", { name: "Save Spell" }).click();
+  await page.locator("#btn-save-spell").click();
   await app.waitForLibrary();
 
   // 3. Attempt Epic Spell for Priest (Should be restricted)
   await app.navigate("Add Spell");
-  await page.getByPlaceholder("Spell Name").fill("Restricted Epic");
+  await page.getByLabel("Name", { exact: true }).fill("Restricted Epic");
   await page.locator("#spell-level").fill("10");
   await page.getByLabel("Classes").fill("Priest, Cleric");
   await page.locator(SELECTORS.description).fill("This should fail.");
-  await page.screenshot({ path: path.join(screenshotDir, "05_restricted_epic_filled.png") });
-  await page.getByRole("button", { name: "Save Spell" }).click();
-  await expect(page).toHaveURL(/\/edit\/new/);
-  await page.getByRole("link", { name: "Cancel" }).click();
+  await page.locator("#btn-save-spell").click();
+
+  // Custom Modal handling for validation error
+  await handleCustomModal(page, "OK");
+
+  await page.locator('button:has-text("Cancel")').click();
 
   // 4. Create a Quest Spell (Divine only)
   await app.createSpell({
@@ -84,22 +83,25 @@ test("Epic and Quest Spells E2E", async () => {
   // 5. Verify Library Filters and Badges
   await app.navigate("Library");
 
-  await expect(app.getSpellRow(cantripName).locator("text=Cantrip")).toBeVisible();
-  await expect(app.getSpellRow(epicName).locator("text=Epic")).toBeVisible();
-  await expect(app.getSpellRow(questName).locator("text=Quest")).toBeVisible();
+  await expect(app.getSpellRow(cantripName).getByText("Cantrip", { exact: true })).toBeVisible();
+  await expect(app.getSpellRow(epicName).getByText("Epic", { exact: true })).toBeVisible();
+  await expect(app.getSpellRow(questName).getByText("Quest", { exact: true })).toBeVisible();
 
   // Filter Quest Spells
-  await page.locator('label:has-text("Quest Spells") input').check();
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const questCheckbox = page.locator('label:has-text("Quest Spells") input');
+  await questCheckbox.check();
+  // Automatic search should trigger. Wait for the list to update.
   await expect(app.getSpellRow(questName)).toBeVisible();
-  await expect(app.getSpellRow(cantripName)).not.toBeVisible();
-  await page.locator('label:has-text("Quest Spells") input').uncheck();
+  await expect(app.getSpellRow(cantripName)).toBeHidden({ timeout: TIMEOUTS.medium });
+
+  await questCheckbox.uncheck();
+  await expect(app.getSpellRow(cantripName)).toBeVisible();
 
   // Filter Cantrips
-  await page.locator('label:has-text("Cantrips Only") input').check();
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const cantripCheckbox = page.locator('label:has-text("Cantrips Only") input');
+  await cantripCheckbox.check();
   await expect(app.getSpellRow(cantripName)).toBeVisible();
-  await expect(app.getSpellRow(epicName)).not.toBeVisible();
+  await expect(app.getSpellRow(epicName)).toBeHidden({ timeout: TIMEOUTS.medium });
 
   cleanupDialog();
 });

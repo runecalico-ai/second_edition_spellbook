@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useModal } from "../store/useModal";
 
 // Mirrors SpellDetail struct from backend
 type SpellDetail = {
@@ -40,6 +41,7 @@ type SpellCreate = Omit<SpellDetail, "id" | "updated_at" | "created_at">;
 export default function SpellEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<SpellDetail>({
     name: "",
@@ -93,7 +95,7 @@ export default function SpellEditor() {
   const save = async () => {
     try {
       if (isInvalid) {
-        alert(`Please fix validation errors:\n- ${validationErrors.join("\n- ")}`);
+        await modalAlert(validationErrors, "Validation Errors", "error");
         return;
       }
       setLoading(true);
@@ -108,21 +110,22 @@ export default function SpellEditor() {
       }
       navigate("/");
     } catch (e) {
-      alert(`Failed to save: ${e}`);
+      await modalAlert(`Failed to save: ${e}`, "Save Error", "error");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this spell?")) return;
+    const confirmed = await modalConfirm("Are you sure you want to delete this spell?", "Delete Spell");
+    if (!confirmed) return;
     try {
       if (form.id) {
         await invoke("delete_spell", { id: form.id });
         navigate("/");
       }
     } catch (e) {
-      alert(`Failed to delete: ${e}`);
+      await modalAlert(`Failed to delete: ${e}`, "Delete Error", "error");
     }
   };
 
@@ -195,6 +198,7 @@ export default function SpellEditor() {
           )}
           {!isNew && (
             <button
+              id="btn-delete-spell"
               type="button"
               onClick={handleDelete}
               className="px-3 py-2 text-red-400 hover:bg-neutral-800 rounded"
@@ -210,6 +214,7 @@ export default function SpellEditor() {
             Cancel
           </button>
           <button
+            id="btn-save-spell"
             type="button"
             onClick={save}
             className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold"
@@ -227,9 +232,8 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-name"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isNameInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${isNameInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
             placeholder="Spell Name"
             value={form.name}
             onChange={(e) => handleChange("name", e.target.value)}
@@ -243,9 +247,8 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-level"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isLevelInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${isLevelInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
             type="number"
             min={0}
             max={12}
@@ -450,9 +453,8 @@ export default function SpellEditor() {
         </label>
         <textarea
           id="spell-description"
-          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
-            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
-          }`}
+          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
           required
@@ -471,14 +473,20 @@ export default function SpellEditor() {
               onClick={async () => {
                 if (!form.artifacts || form.artifacts.length === 0) return;
                 const artifactId = form.artifacts[0].id;
-                if (!confirm("Re-parse this spell from the original artifact file?")) return;
+
+                const confirmed = await modalConfirm(
+                  "Re-parse this spell from the original artifact file? This will overwrite manual changes.",
+                  "Reparse Spell"
+                );
+                if (!confirmed) return;
+
                 try {
                   setLoading(true);
                   const updated = await invoke<SpellDetail>("reparse_artifact", { artifactId });
                   setForm(updated);
-                  alert("Spell re-parsed successfully!");
+                  await modalAlert("Spell re-parsed successfully!", "Reparse Complete", "success");
                 } catch (e) {
-                  alert(`Reparse failed: ${e}`);
+                  await modalAlert(`Reparse failed: ${e}`, "Reparse Error", "error");
                 } finally {
                   setLoading(false);
                 }

@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import type { TauriAppContext } from "./fixtures/tauri-fixture";
 import { cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
-import { setupDialogHandler } from "./utils/dialog-handler";
+import { handleCustomModal, setupDialogHandler } from "./utils/dialog-handler";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,22 +44,9 @@ test.describe("Vault Backup and Restore", () => {
       fs.mkdirSync(tmpDir, { recursive: true });
     }
 
-    // Setup dialog handler that accepts all dialogs for this test
+    // Setup dialog handler
     const cleanupDialogs = setupDialogHandler(page, {
       acceptDelete: true,
-      custom: async (dialog) => {
-        const msg = dialog.message();
-        // Accept backup/restore confirmations
-        if (
-          msg.includes("Backup created") ||
-          msg.includes("Restore complete") ||
-          msg.includes("OVERWRITE")
-        ) {
-          await dialog.accept();
-          return true;
-        }
-        return false;
-      },
     });
 
     try {
@@ -80,8 +67,9 @@ test.describe("Vault Backup and Restore", () => {
 
         await page.getByRole("button", { name: "Backup" }).click();
 
-        // Wait for the backup to complete
-        await page.waitForTimeout(3000);
+        // Handle custom modal success alert
+        await handleCustomModal(page, "OK");
+
         expect(fs.existsSync(backupPath)).toBe(true);
       });
 
@@ -89,22 +77,28 @@ test.describe("Vault Backup and Restore", () => {
         await app.navigate("Library");
         await page.getByText(backupSpellName).click();
         await page.getByRole("button", { name: "Delete" }).click();
-        await page.waitForTimeout(1000);
+        await handleCustomModal(page, "Confirm");
         await app.waitForLibrary();
         await expect(page.getByText(backupSpellName)).not.toBeVisible({ timeout: TIMEOUTS.short });
       });
 
       await test.step("Restore from backup via UI", async () => {
-        // Mock window.prompt and window.confirm
+        // Mock window.prompt
         await page.evaluate((backupFilePath: string) => {
           window.prompt = () => backupFilePath;
-          window.confirm = () => true;
         }, backupPath);
 
         await page.getByRole("button", { name: "Restore" }).click();
 
-        // Wait for restore and reload
-        await page.waitForTimeout(3000);
+        // Handle custom modal confirmation
+        await handleCustomModal(page, "Confirm");
+
+        // Handle custom modal success alert
+        await handleCustomModal(page, "OK");
+
+        // Wait for reload
+        await page.waitForTimeout(2000);
+        await page.waitForURL(/\//);
       });
 
       await test.step("Verify spell is restored", async () => {

@@ -41,8 +41,8 @@ type SearchFilters = {
   schools?: string[] | null;
   levelMin?: number | null;
   levelMax?: number | null;
-  is_quest_spell?: boolean | null;
-  is_cantrip?: boolean | null;
+  isQuestSpell?: boolean | null;
+  isCantrip?: boolean | null;
 };
 
 export default function SpellbookBuilder() {
@@ -98,8 +98,8 @@ export default function SpellbookBuilder() {
       schools: schoolFilters.length > 0 ? schoolFilters : null,
       levelMin: parsedMin,
       levelMax: parsedMax,
-      is_quest_spell: isQuestFilter || null,
-      is_cantrip: isCantripFilter || null,
+      isQuestSpell: isQuestFilter || null,
+      isCantrip: isCantripFilter || null,
     };
     const results = await invoke<SpellSummary[]>("search_keyword", {
       query: pickerQuery,
@@ -527,11 +527,10 @@ export default function SpellbookBuilder() {
                           <button
                             type="button"
                             onClick={() => addSpell(spell)}
-                            className={`text-xs px-2 py-1 rounded ${
-                              alreadyAdded
+                            className={`text-xs px-2 py-1 rounded ${alreadyAdded
                                 ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                                 : "bg-blue-600 hover:bg-blue-500"
-                            }`}
+                              }`}
                             disabled={alreadyAdded}
                           >
                             {alreadyAdded ? "Added" : "Add"}

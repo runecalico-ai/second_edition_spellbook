@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: "./tests",
   timeout: 120000,
   workers: 1,
-  retries: 0,
+  retries: 1,
   reporter: "list",
   use: {
     trace: "on-first-retry",

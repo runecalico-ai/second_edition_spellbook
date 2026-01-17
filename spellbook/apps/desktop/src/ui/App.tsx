@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "classnames";
 import { Link, Outlet, useLocation } from "react-router-dom";
+import { useModal } from "../store/useModal";
+import Modal from "./components/Modal";
 
 export default function App() {
   const { pathname } = useLocation();
+  const { alert: modalAlert, confirm: modalConfirm } = useModal();
+
   const Tab = ({ to, label }: { to: string; label: string }) => (
     <Link
       to={to}
@@ -23,22 +27,28 @@ export default function App() {
     if (!path) return;
     try {
       const result = await invoke("backup_vault", { destinationPath: path });
-      alert(`Backup created at: ${result}`);
+      await modalAlert(`Backup created at: ${result}`, "Backup Successful", "success");
     } catch (e) {
-      alert(`Backup failed: ${e}`);
+      await modalAlert(`Backup failed: ${e}`, "Backup Error", "error");
     }
   };
 
   const handleRestore = async () => {
     const path = prompt("Enter full path to restore from:");
     if (!path) return;
-    if (!confirm("This will OVERWRITE your current database. Are you sure?")) return;
+
+    const confirmed = await modalConfirm(
+      "This will OVERWRITE your current database. All unsaved changes will be lost. Are you sure?",
+      "Restore Database"
+    );
+    if (!confirmed) return;
+
     try {
       await invoke("restore_vault", { backupPath: path, allowOverwrite: true });
-      alert("Restore complete. Please restart the app or reload.");
+      await modalAlert("Restore complete. The application will now reload.", "Restore Successful", "success");
       window.location.reload();
     } catch (e) {
-      alert(`Restore failed: ${e}`);
+      await modalAlert(`Restore failed: ${e}`, "Restore Error", "error");
     }
   };
 
@@ -72,7 +82,10 @@ export default function App() {
           </nav>
         </div>
       </header>
-      <Outlet />
+      <main>
+        <Outlet />
+      </main>
+      <Modal />
     </div>
   );
 }

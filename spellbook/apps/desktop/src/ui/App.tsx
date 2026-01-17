@@ -39,13 +39,17 @@ export default function App() {
 
     const confirmed = await modalConfirm(
       "This will OVERWRITE your current database. All unsaved changes will be lost. Are you sure?",
-      "Restore Database"
+      "Restore Database",
     );
     if (!confirmed) return;
 
     try {
       await invoke("restore_vault", { backupPath: path, allowOverwrite: true });
-      await modalAlert("Restore complete. The application will now reload.", "Restore Successful", "success");
+      await modalAlert(
+        "Restore complete. The application will now reload.",
+        "Restore Successful",
+        "success",
+      );
       window.location.reload();
     } catch (e) {
       await modalAlert(`Restore failed: ${e}`, "Restore Error", "error");

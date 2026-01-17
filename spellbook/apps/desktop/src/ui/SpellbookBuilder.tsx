@@ -527,10 +527,11 @@ export default function SpellbookBuilder() {
                           <button
                             type="button"
                             onClick={() => addSpell(spell)}
-                            className={`text-xs px-2 py-1 rounded ${alreadyAdded
+                            className={`text-xs px-2 py-1 rounded ${
+                              alreadyAdded
                                 ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                                 : "bg-blue-600 hover:bg-blue-500"
-                              }`}
+                            }`}
                             disabled={alreadyAdded}
                           >
                             {alreadyAdded ? "Added" : "Add"}

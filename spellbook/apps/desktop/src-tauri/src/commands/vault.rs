@@ -1,7 +1,6 @@
 use crate::error::AppError;
 use dirs::data_dir as system_data_dir;
 use std::fs::{self, File};
-use std::io::Write;
 use std::path::PathBuf;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
@@ -27,9 +26,8 @@ pub async fn backup_vault(
     use rusqlite::backup::Backup;
     use std::time::Duration;
 
-    let data_dir = app_data_dir()?;
+    let _ = app_data_dir()?;
     let dest_path = PathBuf::from(&destination_path);
-    let db_path = data_dir.join("spellbook.sqlite3");
 
     // Ensure parent directory exists
     if let Some(parent) = dest_path.parent() {
@@ -100,7 +98,6 @@ pub async fn restore_vault(
     }
 
     let data_dir = app_data_dir()?;
-    let db_path = data_dir.join("spellbook.sqlite3");
 
     // Check if data directory has content
     let has_content = fs::read_dir(&data_dir)

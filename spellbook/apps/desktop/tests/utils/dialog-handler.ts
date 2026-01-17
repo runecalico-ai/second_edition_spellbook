@@ -41,18 +41,18 @@ export function setupDialogHandler(page: Page, options: DialogHandlerOptions = {
       dismissValidation &&
       (message.includes("fix validation errors") || message.includes("restricted"))
     ) {
-      await dialog.dismiss().catch(() => { });
+      await dialog.dismiss().catch(() => {});
       return;
     }
 
     // Handle delete confirmations
     if (acceptDelete && message.includes("Delete")) {
-      await dialog.accept().catch(() => { });
+      await dialog.accept().catch(() => {});
       return;
     }
 
     // Default: dismiss
-    await dialog.dismiss().catch(() => { });
+    await dialog.dismiss().catch(() => {});
   };
 
   page.on("dialog", handler);
@@ -81,7 +81,7 @@ export function setupDismissAllDialogs(page: Page, debug = false): () => void {
     if (debug) {
       console.log(`DIALOG (dismissed): ${dialog.type()} - ${dialog.message()}`);
     }
-    await dialog.dismiss().catch(() => { });
+    await dialog.dismiss().catch(() => {});
   };
 
   page.on("dialog", handler);
@@ -94,7 +94,7 @@ export function setupAcceptAllDialogs(page: Page, debug = false): () => void {
     if (debug) {
       console.log(`DIALOG (accepted): ${dialog.type()} - ${dialog.message()}`);
     }
-    await dialog.accept().catch(() => { });
+    await dialog.accept().catch(() => {});
   };
 
   page.on("dialog", handler);

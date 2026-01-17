@@ -239,8 +239,8 @@ test("test", async () => {
 If you launch the `.exe` directly from the `src-tauri/target/debug` folder, you will likely see a blank screen. 
 - **Reason**: Debug builds expect a running Vite dev server at `http://127.0.0.1:5173`.
 - **Solution**: Always use `npm run tauri dev` (or `pnpm tauri:dev`) for development. 
-- **Production**: For a standalone binary, use `npm run tauri build`.
-- **Debug**: To generate the debug binary, use `npm run tauri build --debug` to generate a debug binary in `src-tauri/target/debug`.
+- **Production**: For a standalone binary, use `npm run tauri build` (or `pnpm tauri:build`).
+- **Debug**: To generate the debug binary, use `npm run tauri build --debug` (or `pnpm tauri:build --debug`) to generate a debug binary in `src-tauri/target/debug`.
 
 ### Port Collisions
 If tests fail with "Address already in use":

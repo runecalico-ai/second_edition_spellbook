@@ -45,17 +45,19 @@ test.describe("Batch Import Performance Tests", () => {
 
       // Wait for file selection to be reflected in UI (can be slow with many files)
       // We increase timeout significantly to avoid failing here before we even reach the backend import
-      await expect(page.getByText(`${files.length} file(s) selected`)).toBeVisible({ timeout: 60000 });
+      await expect(page.getByText(`${files.length} file(s) selected`)).toBeVisible({
+        timeout: 60000,
+      });
 
       // Click validation/preview
-      await page.getByRole('button', { name: 'Preview' }).click();
+      await page.getByRole("button", { name: "Preview" }).click();
       await expect(page.getByText(/Parsed \d+ spell/)).toBeVisible({
         timeout: TIMEOUTS.batch, // Use larger timeout for parsing
       });
 
       // Start import
-      await page.getByRole('button', { name: 'Skip Review →' }).click();
-      await page.getByRole('button', { name: 'Start Import' }).click();
+      await page.getByRole("button", { name: "Skip Review →" }).click();
+      await page.getByRole("button", { name: "Start Import" }).click();
 
       // Wait for success indicator
       // UI shows "Imported spells: 50"
@@ -113,7 +115,9 @@ test.describe("Batch Import Performance Tests", () => {
       // (Assuming the UI continues with valid files)
       await page.getByRole("button", { name: "Start Import" }).click();
       // Check for success or updated list
-      await expect(page.getByText(/Import completed successfully|Imported spells: 1/)).toBeVisible();
+      await expect(
+        page.getByText(/Import completed successfully|Imported spells: 1/),
+      ).toBeVisible();
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }

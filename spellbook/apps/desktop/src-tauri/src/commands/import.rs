@@ -179,9 +179,6 @@ fn build_conflict_fields(
     fields
 }
 
-
-use std::io::Write;
-
 #[tauri::command]
 pub async fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, AppError> {
     let dir = app_data_dir()?.join("imports");
@@ -194,8 +191,6 @@ pub async fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, App
         fs::write(&path, &file.content)?;
         paths.push(path);
     }
-
-
 
     let result = call_sidecar("import", json!({"files": paths})).await?;
 
@@ -271,26 +266,35 @@ pub async fn import_files(
     if needs_parsing {
         // --- PATH A: INITIAL IMPORT (Sidecar -> DB) ---
         for chunk in files.chunks(BATCH_SIZE) {
-            let chunk_paths: Vec<PathBuf> = chunk.iter()
+            let chunk_paths: Vec<PathBuf> = chunk
+                .iter()
                 .filter_map(|f| file_paths_map.get(&f.name).cloned())
                 .collect();
-            
-            if chunk_paths.is_empty() { continue; }
+
+            if chunk_paths.is_empty() {
+                continue;
+            }
 
             let result = call_sidecar("import", json!({"files": chunk_paths})).await?;
 
             // Parse Sidecar Result
-            let parsed_spells: Vec<ImportSpell> = serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
-                .map_err(|e| AppError::Sidecar(format!("Failed to parse spells: {}", e)))?;
-            let parsed_artifacts: Vec<ImportArtifact> = serde_json::from_value(result.get("artifacts").cloned().unwrap_or(json!([])))
-                .map_err(|e| AppError::Sidecar(format!("Failed to parse artifacts: {}", e)))?;
-            let parsed_conflicts_raw: Vec<ParseConflict> = serde_json::from_value(result.get("conflicts").cloned().unwrap_or(json!([])))
-                .map_err(|e| AppError::Sidecar(format!("Failed to parse conflicts: {}", e)))?;
+            let parsed_spells: Vec<ImportSpell> =
+                serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
+                    .map_err(|e| AppError::Sidecar(format!("Failed to parse spells: {}", e)))?;
+            let parsed_artifacts: Vec<ImportArtifact> =
+                serde_json::from_value(result.get("artifacts").cloned().unwrap_or(json!([])))
+                    .map_err(|e| AppError::Sidecar(format!("Failed to parse artifacts: {}", e)))?;
+            let parsed_conflicts_raw: Vec<ParseConflict> =
+                serde_json::from_value(result.get("conflicts").cloned().unwrap_or(json!([])))
+                    .map_err(|e| AppError::Sidecar(format!("Failed to parse conflicts: {}", e)))?;
 
-            let batch_conflicts: Vec<ImportConflict> = parsed_conflicts_raw.into_iter().map(|c| ImportConflict::Parse {
-                path: c.path,
-                reason: c.reason,
-            }).collect();
+            let batch_conflicts: Vec<ImportConflict> = parsed_conflicts_raw
+                .into_iter()
+                .map(|c| ImportConflict::Parse {
+                    path: c.path,
+                    reason: c.reason,
+                })
+                .collect();
 
             // DB Transaction
             let pool = state.inner().clone();
@@ -314,7 +318,7 @@ pub async fn import_files(
                 let mut local_conflicts = batch_conflicts;
 
                 for (i, spell) in parsed_spells.iter().enumerate() {
-                    
+
                     let existing_id: Option<i64> = conn.query_row(
                         "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
                         params![spell.name, spell.level, spell.source],
@@ -325,7 +329,7 @@ pub async fn import_files(
                         if !allow_overwrite_clone {
                             let existing_spell = get_spell_from_conn(&conn, id)?
                                 .ok_or_else(|| AppError::NotFound("Failed to fetch existing spell".into()))?;
-                            
+
                             let source_path = spell.source_file.clone();
                             let artifact_opt = source_path
                                 .and_then(|p| artifacts_by_path.get(&p).cloned())
@@ -369,29 +373,29 @@ pub async fn import_files(
                             }
                             continue;
                         }
-                        
+
                         conn.execute(
-                            "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, 
-                            material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, 
-                            reversible=?, description=?, tags=?, edition=?, author=?, license=?, 
+                            "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?,
+                            material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
+                            reversible=?, description=?, tags=?, edition=?, author=?, license=?,
                             is_quest_spell=?, updated_at=? WHERE id=?",
                             params![
-                                spell.school, spell.sphere, spell.class_list, spell.range, spell.components, 
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, 
-                                spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license, 
+                                spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
                                 spell.is_quest_spell, Utc::now().to_rfc3339(), id
                             ],
                         )?;
                         id
                     } else {
                         conn.execute(
-                            "INSERT INTO spell (name, school, sphere, class_list, level, range, components, 
-                            material_components, casting_time, duration, area, saving_throw, reversible, 
-                            description, tags, source, edition, author, license, is_quest_spell) 
+                            "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
+                            material_components, casting_time, duration, area, saving_throw, reversible,
+                            description, tags, source, edition, author, license, is_quest_spell)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             params![
-                                spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components, 
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0), 
+                                spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0),
                                 spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell
                             ],
                         )?;
@@ -411,7 +415,7 @@ pub async fn import_files(
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
                         artifacts: None
                     });
-                    
+
                      let source_path = spell.source_file.clone();
                      let artifact_val = source_path
                         .and_then(|p| artifacts_by_path.get(&p))
@@ -426,7 +430,7 @@ pub async fn import_files(
                     }
 
                 }
-                
+
                 Ok::<ImportResult, AppError>(ImportResult {
                     spells: local_imported,
                     artifacts: serde_json::to_value(&parsed_artifacts).unwrap_or_default().as_array().cloned().unwrap_or_default(),
@@ -435,26 +439,25 @@ pub async fn import_files(
                     skipped: local_skipped
                 })
             }).await.map_err(|e| AppError::Unknown(e.to_string()))??;
-            
+
             all_imported_spells.extend(result.spells);
             all_conflicts.extend(result.conflicts);
             all_skipped.extend(result.skipped);
             all_artifacts.extend(result.artifacts);
         }
-
     } else {
         // --- PATH B: CONFIRMATION (Offsets provided) ---
         let override_spells = spells.unwrap();
         let override_artifacts = artifacts.unwrap_or_default();
         let override_conflicts = conflicts.unwrap_or_default();
-        
+
         // Lookup Setup
         let mut artifacts_by_path = HashMap::new();
         for artifact in &override_artifacts {
             artifacts_by_path.insert(artifact.path.clone(), artifact.clone());
         }
 
-        all_conflicts = override_conflicts; 
+        all_conflicts = override_conflicts;
 
         // Batch the spells
         for chunk in override_spells.chunks(BATCH_SIZE) {
@@ -495,27 +498,27 @@ pub async fn import_files(
                              continue;
                          }
                          conn.execute(
-                            "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, 
-                            material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, 
-                            reversible=?, description=?, tags=?, edition=?, author=?, license=?, 
+                            "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?,
+                            material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
+                            reversible=?, description=?, tags=?, edition=?, author=?, license=?,
                             is_quest_spell=?, updated_at=? WHERE id=?",
                             params![
-                                spell.school, spell.sphere, spell.class_list, spell.range, spell.components, 
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, 
-                                spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license, 
+                                spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
                                 spell.is_quest_spell, Utc::now().to_rfc3339(), id
                             ],
                         )?;
                         id
                     } else {
                         conn.execute(
-                            "INSERT INTO spell (name, school, sphere, class_list, level, range, components, 
-                            material_components, casting_time, duration, area, saving_throw, reversible, 
-                            description, tags, source, edition, author, license, is_quest_spell) 
+                            "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
+                            material_components, casting_time, duration, area, saving_throw, reversible,
+                            description, tags, source, edition, author, license, is_quest_spell)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             params![
-                                spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components, 
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0), 
+                                spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0),
                                 spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell
                             ],
                         )?;
@@ -561,8 +564,12 @@ pub async fn import_files(
             all_conflicts.extend(result.conflicts);
             all_skipped.extend(result.skipped);
         }
-        
-        all_artifacts = serde_json::to_value(override_artifacts).unwrap_or_default().as_array().cloned().unwrap_or_default();
+
+        all_artifacts = serde_json::to_value(override_artifacts)
+            .unwrap_or_default()
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
     }
 
     Ok(ImportResult {

@@ -15,8 +15,6 @@ const __dirname = path.dirname(__filename);
 const SQLITE_VEC_VERSION = "0.1.6";
 const SQLITE_VEC_BASE_URL = `https://github.com/asg017/sqlite-vec/releases/download/v${SQLITE_VEC_VERSION}`;
 
-let globalLaunchCounter = 0;
-
 /** Resolves the Tauri binary path based on platform */
 export function getTauriBinaryPath(): string {
   const baseDir = path.resolve(__dirname, "../../src-tauri/target");
@@ -318,7 +316,7 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
     if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("tauri://")) {
       if (url.includes("chrome-error")) {
         console.log("Detected chrome-error navigation, reloading...");
-        await page.reload().catch(() => { });
+        await page.reload().catch(() => {});
         await new Promise((resolve) => setTimeout(resolve, 1000));
         continue;
       }
@@ -328,7 +326,7 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
     if (url !== "about:blank") {
       if (url.includes("chrome-error")) {
         console.log("Detected chrome-error navigation, reloading...");
-        await page.reload().catch(() => { });
+        await page.reload().catch(() => {});
         await new Promise((resolve) => setTimeout(resolve, 1000));
         continue;
       }
@@ -371,7 +369,7 @@ export async function cleanupTauriApp(ctx: TauriAppContext | null): Promise<void
       try {
         // Use /T to kill the entire process tree
         execSync(`taskkill /T /F /PID ${ctx.process.pid} 2>nul`, { stdio: "ignore" });
-      } catch (e) { }
+      } catch (e) {}
     } else {
       ctx.process.kill();
     }
@@ -383,7 +381,7 @@ export async function cleanupTauriApp(ctx: TauriAppContext | null): Promise<void
       try {
         // Use /T to kill the entire process tree (important for npm/vite/esbuild)
         execSync(`taskkill /T /F /PID ${ctx.viteProcess.pid} 2>nul`, { stdio: "ignore" });
-      } catch (e) { }
+      } catch (e) {}
     } else {
       ctx.viteProcess.kill();
     }
@@ -431,7 +429,8 @@ async function ensureSqliteVec(): Promise<void> {
 
   console.log(`sqlite-vec extension missing. Downloading to ${libPath}...`);
 
-  const platform = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "macos" : "linux";
+  const platform =
+    process.platform === "win32" ? "windows" : process.platform === "darwin" ? "macos" : "linux";
   const arch =
     process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : process.arch;
 

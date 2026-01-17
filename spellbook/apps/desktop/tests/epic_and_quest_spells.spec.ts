@@ -20,8 +20,8 @@ test.beforeAll(async () => {
   appContext = await launchTauriApp({ timeout: TIMEOUTS.long });
 });
 
-test.afterAll(() => {
-  cleanupTauriApp(appContext);
+test.afterAll(async () => {
+  await cleanupTauriApp(appContext);
 });
 
 test.slow();

@@ -11,8 +11,8 @@ test.beforeAll(async () => {
   appContext = await launchTauriApp({ timeout: TIMEOUTS.medium });
 });
 
-test.afterAll(() => {
-  cleanupTauriApp(appContext);
+test.afterAll(async () => {
+  await cleanupTauriApp(appContext);
 });
 
 test("Milestone 2.5: Advanced Picker & Printing", async () => {

@@ -12,8 +12,8 @@ test.beforeAll(async () => {
   appContext = await launchTauriApp({ timeout: TIMEOUTS.long, debug: true });
 });
 
-test.afterAll(() => {
-  cleanupTauriApp(appContext);
+test.afterAll(async () => {
+  await cleanupTauriApp(appContext);
 });
 
 test.slow();
@@ -25,8 +25,7 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
 
   const cleanupDialog = setupAcceptAllDialogs(page);
 
-  await page.reload();
-  await page.waitForLoadState("domcontentloaded");
+  await app.navigate("Library");
 
   try {
     await page
@@ -54,7 +53,7 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
 
   // Verify author search
   await app.navigate("Library");
-  await page.getByPlaceholder("Search spells…").fill(authorName);
+  await page.getByPlaceholder(/Search spells/i).fill(authorName);
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(app.getSpellRow(spellName)).toBeVisible();
 
@@ -67,7 +66,7 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
   await page.getByRole("button", { name: "Save Spell" }).click();
 
   await app.navigate("Library");
-  await page.getByPlaceholder("Search spells…").fill("");
+  await page.getByPlaceholder(/Search spells/i).fill("");
 
   const thumbs = page.locator('[role="slider"]');
   await thumbs.nth(0).focus();
@@ -85,7 +84,7 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
   await page.getByPlaceholder("Name...").fill(saveName);
   await page.keyboard.press("Enter");
 
-  await page.reload();
+  await app.navigate("Library");
   await expect(app.getSpellRow(spellName)).toBeVisible();
 
   // Load saved search

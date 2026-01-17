@@ -34,7 +34,7 @@ fn search_keyword_with_conn(
     query: &str,
     filters: Option<SearchFilters>,
 ) -> Result<Vec<SpellSummary>, AppError> {
-    let mut sql = "SELECT id, name, school, level, class_list, components, duration, source, is_quest_spell FROM spell WHERE 1=1".to_string();
+    let mut sql = "SELECT id, name, school, level, class_list, components, duration, source, is_quest_spell, is_cantrip FROM spell WHERE 1=1".to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if !query.trim().is_empty() {
@@ -105,7 +105,7 @@ fn search_keyword_with_conn(
 
         if let Some(is_cantrip) = f.is_cantrip {
             if is_cantrip {
-                sql.push_str(" AND level = 0");
+                sql.push_str(" AND is_cantrip = 1");
             }
         }
     }
@@ -124,6 +124,7 @@ fn search_keyword_with_conn(
             duration: row.get(6)?,
             source: row.get(7)?,
             is_quest_spell: row.get(8)?,
+            is_cantrip: row.get(9)?,
         })
     })?;
 
@@ -173,8 +174,8 @@ pub async fn search_semantic(
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let mut stmt = conn.prepare(
-            "SELECT s.id, s.name, s.school, s.level, s.class_list, s.components, s.duration, 
-                    s.source, s.is_quest_spell, vec_distance_cosine(v.v, ?) as distance
+            "SELECT s.id, s.name, s.school, s.level, s.class_list, s.components, s.duration,
+                    s.source, s.is_quest_spell, s.is_cantrip, vec_distance_cosine(v.v, ?) as distance
              FROM spell_vec v
              JOIN spell s ON s.id = v.rowid
              ORDER BY distance ASC
@@ -193,6 +194,7 @@ pub async fn search_semantic(
                 duration: row.get(6)?,
                 source: row.get(7)?,
                 is_quest_spell: row.get(8)?,
+                is_cantrip: row.get(9)?,
             })
         })?;
 

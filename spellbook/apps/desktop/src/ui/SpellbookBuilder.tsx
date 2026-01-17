@@ -85,7 +85,9 @@ export default function SpellbookBuilder() {
 
   const loadFacets = useCallback(async () => {
     const data = await invoke<{ schools: string[]; levels: number[] }>("list_facets");
-    setFacets({ schools: data.schools, levels: data.levels });
+    // Ensure 10, 11, 12 are always available in facets
+    const allLevels = Array.from(new Set([...data.levels, 10, 11, 12])).sort((a, b) => a - b);
+    setFacets({ schools: data.schools, levels: allLevels });
   }, []);
 
   const searchPicker = useCallback(async () => {
@@ -338,6 +340,7 @@ export default function SpellbookBuilder() {
                       Cantrip
                     </span>
                   )}
+                  {/* Note: CharacterSpellbookEntry doesnt have is_quest_spell yet, but it should be displayed if we had it */}
                 </div>
               </td>
               <td className="p-2">{entry.spell_level}</td>

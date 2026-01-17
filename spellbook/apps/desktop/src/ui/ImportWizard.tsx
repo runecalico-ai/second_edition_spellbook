@@ -52,6 +52,7 @@ type SpellDetail = {
   author?: string;
   license?: string;
   is_quest_spell?: number;
+  is_cantrip?: number;
   artifacts?: SpellArtifact[];
 };
 
@@ -77,6 +78,7 @@ type SpellUpdate = {
   author?: string;
   license?: string;
   is_quest_spell: number;
+  is_cantrip: number;
 };
 
 type ParseConflict = {
@@ -173,6 +175,8 @@ export default function ImportWizard() {
     {},
   );
   const [resolveResult, setResolveResult] = useState<ResolveImportResult | null>(null);
+  const [showHighLevelWarning, setShowHighLevelWarning] = useState(false);
+  const [suppressWarning, setSuppressWarning] = useState(false);
 
   const hasLowConfidence = (spells: ParsedSpell[]): boolean => {
     return spells.some((spell) => {
@@ -270,6 +274,7 @@ export default function ImportWizard() {
     author: spell.author,
     license: spell.license,
     is_quest_spell: spell.is_quest_spell || 0,
+    is_cantrip: spell.is_cantrip || 0,
   });
 
   const applyFieldFromSpell = (target: SpellUpdate, field: string, source: SpellDetail) => {
@@ -334,6 +339,9 @@ export default function ImportWizard() {
       case "is_quest_spell":
         target.is_quest_spell = source.is_quest_spell || 0;
         break;
+      case "is_cantrip":
+        target.is_cantrip = source.is_cantrip || 0;
+        break;
       default:
         break;
     }
@@ -380,6 +388,12 @@ export default function ImportWizard() {
       setPreviewSpells(response.spells);
       setPreviewArtifacts(response.artifacts);
       setPreviewConflicts(response.conflicts);
+
+      const hasHighLevel = response.spells.some((s) => (s.level || 0) >= 10 || s.is_quest_spell);
+      if (hasHighLevel && !suppressWarning) {
+        setShowHighLevelWarning(true);
+      }
+
       setStep("preview");
     } catch (e) {
       console.error("Preview failed:", e);
@@ -623,6 +637,41 @@ export default function ImportWizard() {
               Skip Review →
             </button>
           </div>
+
+          {showHighLevelWarning && (
+            <div className="p-4 bg-purple-900/20 border border-purple-900 rounded-lg space-y-3">
+              <div className="flex items-center gap-2 text-purple-200 font-semibold">
+                <span className="text-xl">✨</span>
+                High-Level Magic Detected
+              </div>
+              <p className="text-sm text-neutral-300">
+                This import contains Epic (10th-12th Circle) or Quest spells. These spells are
+                extremely powerful and may require specific character levels or divine intervention.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="suppressWarning"
+                  checked={suppressWarning}
+                  onChange={(e) => setSuppressWarning(e.target.checked)}
+                  className="rounded border-neutral-700 bg-neutral-900 text-purple-600 focus:ring-purple-500"
+                />
+                <label
+                  htmlFor="suppressWarning"
+                  className="text-xs text-neutral-400 cursor-pointer"
+                >
+                  Don't show this warning again this session
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowHighLevelWarning(false)}
+                  className="ml-auto px-2 py-1 bg-purple-900/40 text-purple-200 rounded text-xs hover:bg-purple-900/60"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

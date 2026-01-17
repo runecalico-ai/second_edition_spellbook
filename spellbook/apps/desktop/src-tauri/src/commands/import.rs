@@ -175,6 +175,12 @@ fn build_conflict_fields(
         existing.license.clone(),
         incoming.license.clone(),
     );
+    push_conflict(
+        &mut fields,
+        "is_cantrip",
+        Some(existing.is_cantrip.to_string()),
+        Some(incoming.is_cantrip.to_string()),
+    );
 
     fields
 }
@@ -365,6 +371,7 @@ pub async fn import_files(
                                         author: spell.author.clone(),
                                         license: spell.license.clone(),
                                         is_quest_spell: spell.is_quest_spell,
+                                        is_cantrip: spell.is_cantrip,
                                         artifacts: None,
                                     }),
                                     fields,
@@ -378,12 +385,12 @@ pub async fn import_files(
                             "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?,
                             material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
                             reversible=?, description=?, tags=?, edition=?, author=?, license=?,
-                            is_quest_spell=?, updated_at=? WHERE id=?",
+                            is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
                             params![
                                 spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
                                 spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
                                 spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
-                                spell.is_quest_spell, Utc::now().to_rfc3339(), id
+                                spell.is_quest_spell, spell.is_cantrip, Utc::now().to_rfc3339(), id
                             ],
                         )?;
                         id
@@ -391,12 +398,12 @@ pub async fn import_files(
                         conn.execute(
                             "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
                             material_components, casting_time, duration, area, saving_throw, reversible,
-                            description, tags, source, edition, author, license, is_quest_spell)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            description, tags, source, edition, author, license, is_quest_spell, is_cantrip)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             params![
                                 spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
                                 spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0),
-                                spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell
+                                spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell, spell.is_cantrip
                             ],
                         )?;
                         conn.last_insert_rowid()
@@ -413,6 +420,7 @@ pub async fn import_files(
                         material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(),
                         area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, tags: spell.tags.clone(),
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
+                        is_cantrip: spell.is_cantrip,
                         artifacts: None
                     });
 
@@ -490,10 +498,10 @@ pub async fn import_files(
                                  let artifact_opt = source_path.and_then(|p| artifacts_map_clone.get(&p).cloned());
                                  local_conflicts.push(ImportConflict::Spell {
                                      existing: Box::new(existing_spell),
-                                     incoming: Box::new(SpellDetail { id: None, name: spell.name.clone(), school: spell.school.clone(), sphere: spell.sphere.clone(), class_list: spell.class_list.clone(), level: spell.level, range: spell.range.clone(), components: spell.components.clone(), material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(), area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, description: spell.description.clone(), tags: spell.tags.clone(), source: spell.source.clone(), edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell, artifacts: None }),
+                                     incoming: Box::new(SpellDetail { id: None, name: spell.name.clone(), school: spell.school.clone(), sphere: spell.sphere.clone(), class_list: spell.class_list.clone(), level: spell.level, range: spell.range.clone(), components: spell.components.clone(), material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(), area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, description: spell.description.clone(), tags: spell.tags.clone(), source: spell.source.clone(), edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell, is_cantrip: spell.is_cantrip, artifacts: None }),
                                      fields,
                                      artifact: artifact_opt
-                                 });
+                                  });
                              }
                              continue;
                          }
@@ -501,12 +509,12 @@ pub async fn import_files(
                             "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?,
                             material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
                             reversible=?, description=?, tags=?, edition=?, author=?, license=?,
-                            is_quest_spell=?, updated_at=? WHERE id=?",
+                            is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
                             params![
                                 spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
                                 spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
                                 spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
-                                spell.is_quest_spell, Utc::now().to_rfc3339(), id
+                                spell.is_quest_spell, spell.is_cantrip, Utc::now().to_rfc3339(), id
                             ],
                         )?;
                         id
@@ -514,12 +522,12 @@ pub async fn import_files(
                         conn.execute(
                             "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
                             material_components, casting_time, duration, area, saving_throw, reversible,
-                            description, tags, source, edition, author, license, is_quest_spell)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            description, tags, source, edition, author, license, is_quest_spell, is_cantrip)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             params![
                                 spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
                                 spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0),
-                                spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell
+                                spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell, spell.is_cantrip
                             ],
                         )?;
                         conn.last_insert_rowid()
@@ -536,6 +544,7 @@ pub async fn import_files(
                         material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(),
                         area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, tags: spell.tags.clone(),
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
+                        is_cantrip: spell.is_cantrip,
                         artifacts: None
                     });
 
@@ -726,6 +735,7 @@ pub async fn reparse_artifact(
             author: parsed_spell.author.clone(),
             license: parsed_spell.license.clone(),
             is_quest_spell: parsed_spell.is_quest_spell,
+            is_cantrip: parsed_spell.is_cantrip,
         };
 
         apply_spell_update_with_conn(&conn, &update_for_diff)?;

@@ -12,6 +12,7 @@ pub struct SpellSummary {
     pub duration: Option<String>,
     pub source: Option<String>,
     pub is_quest_spell: i64,
+    pub is_cantrip: i64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -37,6 +38,7 @@ pub struct SpellCreate {
     pub author: Option<String>,
     pub license: Option<String>,
     pub is_quest_spell: i64,
+    pub is_cantrip: i64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -63,6 +65,7 @@ pub struct SpellUpdate {
     pub author: Option<String>,
     pub license: Option<String>,
     pub is_quest_spell: i64,
+    pub is_cantrip: i64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -100,5 +103,6 @@ pub struct SpellDetail {
     pub author: Option<String>,
     pub license: Option<String>,
     pub is_quest_spell: i64,
+    pub is_cantrip: i64,
     pub artifacts: Option<Vec<SpellArtifact>>,
 }

@@ -24,6 +24,7 @@ export interface CreateSpellOptions {
   description?: string;
   source?: string;
   school?: string;
+  sphere?: string;
   classes?: string;
   components?: string;
   tags?: string;
@@ -69,6 +70,7 @@ export class SpellbookApp {
       description = "",
       source = "",
       school,
+      sphere,
       classes,
       isCantrip,
       isQuest,
@@ -85,17 +87,16 @@ export class SpellbookApp {
     await nameLoc.fill(name);
     await expect(nameLoc).toHaveValue(name);
 
+    const levelLoc = this.page.getByLabel("Level", { exact: true });
     if (isCantrip) {
+      await levelLoc.fill("0");
       await this.page.locator(SELECTORS.cantripCheckbox).check();
+    } else if (isQuest) {
+      await levelLoc.fill("8");
+      await this.page.locator(SELECTORS.questCheckbox).check();
     } else {
-      const levelLoc = this.page.getByLabel("Level", { exact: true });
-      await levelLoc.fill("");
       await levelLoc.fill(level);
       await expect(levelLoc).toHaveValue(level);
-    }
-
-    if (isQuest) {
-      await this.page.locator(SELECTORS.questCheckbox).check();
     }
 
     if (school) {
@@ -103,6 +104,13 @@ export class SpellbookApp {
       await schoolLoc.fill("");
       await schoolLoc.fill(school);
       await expect(schoolLoc).toHaveValue(school);
+    }
+
+    if (sphere) {
+      const sphereLoc = this.page.getByLabel("Sphere");
+      await sphereLoc.fill("");
+      await sphereLoc.fill(sphere);
+      await expect(sphereLoc).toHaveValue(sphere);
     }
 
     if (classes) {

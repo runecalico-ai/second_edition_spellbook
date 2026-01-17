@@ -28,7 +28,11 @@ fn validate_epic_and_quest_spells(
     level: i64,
     class_list: &Option<String>,
     is_quest_spell: bool,
+    is_cantrip: bool,
 ) -> Result<(), AppError> {
+    if is_cantrip && level != 0 {
+        return Err(AppError::Validation("Cantrips must be level 0".into()));
+    }
     if level > 9 {
         if is_quest_spell {
             return Err(AppError::Validation(
@@ -36,9 +40,26 @@ fn validate_epic_and_quest_spells(
             ));
         }
         if let Some(classes) = class_list {
-            if !classes.contains("Wizard") && !classes.contains("Mage") {
+            let classes_lower = classes.to_lowercase();
+            if !classes_lower.contains("wizard") && !classes_lower.contains("mage") {
                 return Err(AppError::Validation(
                     "Spells above 9th level are restricted to Arcane casters (Wizard/Mage)".into(),
+                ));
+            }
+        }
+    }
+    if is_quest_spell {
+        if level != 8 {
+            return Err(AppError::Validation(
+                "Quest spells must be level 8 (Quest level)".into(),
+            ));
+        }
+        if let Some(classes) = class_list {
+            let classes_lower = classes.to_lowercase();
+            let divine_classes = ["priest", "cleric", "druid", "paladin", "ranger"];
+            if !divine_classes.iter().any(|&c| classes_lower.contains(c)) {
+                return Err(AppError::Validation(
+                    "Quest spells are restricted to Divine casters (Priest/Cleric/Druid/Paladin/Ranger)".into(),
                 ));
             }
         }
@@ -49,9 +70,9 @@ fn validate_epic_and_quest_spells(
 pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDetail>, AppError> {
     let mut spell: SpellDetail = conn
         .query_row(
-            "SELECT id, name, school, sphere, class_list, level, range, components, 
-                material_components, casting_time, duration, area, saving_throw, reversible, 
-                description, tags, source, edition, author, license, is_quest_spell 
+            "SELECT id, name, school, sphere, class_list, level, range, components,
+                material_components, casting_time, duration, area, saving_throw, reversible,
+                description, tags, source, edition, author, license, is_quest_spell, is_cantrip
          FROM spell WHERE id = ?",
             [id],
             |row| {
@@ -77,6 +98,7 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
                     author: row.get(18)?,
                     license: row.get(19)?,
                     is_quest_spell: row.get(20)?,
+                    is_cantrip: row.get(21)?,
                     artifacts: None,
                 })
             },
@@ -240,6 +262,13 @@ fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, Str
             new.license.clone().unwrap_or_default(),
         ));
     }
+    if old.is_cantrip != new.is_cantrip {
+        changes.push((
+            "is_cantrip".into(),
+            old.is_cantrip.to_string(),
+            new.is_cantrip.to_string(),
+        ));
+    }
 
     changes
 }
@@ -263,7 +292,12 @@ pub fn apply_spell_update_with_conn(
     spell: &SpellUpdate,
 ) -> Result<i64, AppError> {
     validate_spell_fields(&spell.name, spell.level, &spell.description)?;
-    validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
+    validate_epic_and_quest_spells(
+        spell.level,
+        &spell.class_list,
+        spell.is_quest_spell != 0,
+        spell.is_cantrip != 0,
+    )?;
 
     if let Some(old_spell) = get_spell_from_conn(conn, spell.id)? {
         let changes = diff_spells(&old_spell, spell);
@@ -271,10 +305,10 @@ pub fn apply_spell_update_with_conn(
     }
 
     conn.execute(
-        "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, 
-         components=?, material_components=?, casting_time=?, duration=?, area=?, 
-         saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, 
-         author=?, license=?, is_quest_spell=?, updated_at=? WHERE id=?",
+        "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
+         components=?, material_components=?, casting_time=?, duration=?, area=?,
+         saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?,
+         author=?, license=?, is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
         params![
             spell.name,
             spell.school,
@@ -296,6 +330,7 @@ pub fn apply_spell_update_with_conn(
             spell.author,
             spell.license,
             spell.is_quest_spell,
+            spell.is_cantrip,
             Utc::now().to_rfc3339(),
             spell.id,
         ],
@@ -326,7 +361,7 @@ pub async fn list_spells(state: State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, school, level, class_list, components, duration, source, is_quest_spell 
+            "SELECT id, name, school, level, class_list, components, duration, source, is_quest_spell, is_cantrip
              FROM spell ORDER BY name ASC",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -340,6 +375,7 @@ pub async fn list_spells(state: State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary
                 duration: row.get(6)?,
                 source: row.get(7)?,
                 is_quest_spell: row.get(8)?,
+                is_cantrip: row.get(9)?,
             })
         })?;
 
@@ -363,14 +399,19 @@ pub async fn create_spell(
     let pool = state.inner().clone();
     let result = tokio::task::spawn_blocking(move || {
         validate_spell_fields(&spell.name, spell.level, &spell.description)?;
-        validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
+        validate_epic_and_quest_spells(
+            spell.level,
+            &spell.class_list,
+            spell.is_quest_spell != 0,
+            spell.is_cantrip != 0,
+        )?;
 
         let conn = pool.get()?;
         conn.execute(
-            "INSERT INTO spell (name, school, sphere, class_list, level, range, components, 
-             material_components, casting_time, duration, area, saving_throw, reversible, 
-             description, tags, source, edition, author, license, is_quest_spell) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
+             material_components, casting_time, duration, area, saving_throw, reversible,
+             description, tags, source, edition, author, license, is_quest_spell, is_cantrip)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 spell.name,
                 spell.school,
@@ -392,6 +433,7 @@ pub async fn create_spell(
                 spell.author,
                 spell.license,
                 spell.is_quest_spell,
+                spell.is_cantrip,
             ],
         )?;
         Ok::<i64, AppError>(conn.last_insert_rowid())
@@ -440,16 +482,21 @@ pub async fn upsert_spell(
     let pool = state.inner().clone();
     let result = tokio::task::spawn_blocking(move || {
         validate_spell_fields(&spell.name, spell.level, &spell.description)?;
-        validate_epic_and_quest_spells(spell.level, &spell.class_list, spell.is_quest_spell != 0)?;
+        validate_epic_and_quest_spells(
+            spell.level,
+            &spell.class_list,
+            spell.is_quest_spell != 0,
+            spell.is_cantrip != 0,
+        )?;
 
         let conn = pool.get()?;
 
         if let Some(id) = spell.id {
             conn.execute(
-                "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?, 
-                 components=?, material_components=?, casting_time=?, duration=?, area=?, 
-                 saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?, 
-                 author=?, license=?, is_quest_spell=?, updated_at=? WHERE id=?",
+                "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
+                 components=?, material_components=?, casting_time=?, duration=?, area=?,
+                 saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?,
+                 author=?, license=?, is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
                 params![
                     spell.name,
                     spell.school,
@@ -471,6 +518,7 @@ pub async fn upsert_spell(
                     spell.author,
                     spell.license,
                     spell.is_quest_spell,
+                    spell.is_cantrip,
                     Utc::now().to_rfc3339(),
                     id,
                 ],
@@ -478,10 +526,10 @@ pub async fn upsert_spell(
             Ok::<i64, AppError>(id)
         } else {
             conn.execute(
-                "INSERT INTO spell (name, school, sphere, class_list, level, range, components, 
-                 material_components, casting_time, duration, area, saving_throw, reversible, 
-                 description, tags, source, edition, author, license, is_quest_spell) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
+                 material_components, casting_time, duration, area, saving_throw, reversible,
+                 description, tags, source, edition, author, license, is_quest_spell, is_cantrip)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![
                     spell.name,
                     spell.school,
@@ -503,6 +551,7 @@ pub async fn upsert_spell(
                     spell.author,
                     spell.license,
                     spell.is_quest_spell,
+                    spell.is_cantrip,
                 ],
             )?;
             Ok::<i64, AppError>(conn.last_insert_rowid())

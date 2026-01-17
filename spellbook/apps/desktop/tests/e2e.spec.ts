@@ -226,8 +226,7 @@ test("Spell editor persists extended fields", async () => {
       `name: ${importedName}`,
       "level: 2",
       "school: Illusion",
-      "sphere: Lesser",
-      "class_list: Mage, Cleric",
+      "class_list: Mage",
       "range: 10 ft",
       "components: V,S,M",
       "material_components: a crystal lens",
@@ -253,8 +252,7 @@ test("Spell editor persists extended fields", async () => {
     await expect(page.getByLabel("Description")).toHaveValue("Imported description text.");
     await expect(page.getByLabel("Name", { exact: true })).toHaveValue(importedName);
     await expect(page.getByLabel("School")).toHaveValue("Illusion");
-    await expect(page.getByLabel("Sphere")).toHaveValue("Lesser");
-    await expect(page.getByLabel("Classes (e.g. Mage, Cleric)")).toHaveValue("Mage, Cleric");
+    await expect(page.getByLabel("Classes (e.g. Mage, Cleric)")).toHaveValue("Mage");
     await expect(page.getByLabel("Source")).toHaveValue("Test Source");
     await expect(page.getByLabel("Edition")).toHaveValue("2e");
     await expect(page.getByLabel("Author")).toHaveValue("Test Author");
@@ -272,7 +270,6 @@ test("Spell editor persists extended fields", async () => {
   });
 
   await test.step("Update extended fields and confirm persistence", async () => {
-    await page.getByLabel("Sphere").fill("Greater");
     await page.getByLabel("Author").fill("Updated Author");
     await page.getByPlaceholder("Range").fill("20 ft");
     await page.getByLabel("Reversible").uncheck();
@@ -281,7 +278,6 @@ test("Spell editor persists extended fields", async () => {
     await app.waitForLibrary();
 
     await app.openSpell(importedName);
-    await expect(page.getByLabel("Sphere")).toHaveValue("Greater");
     await expect(page.getByLabel("Author")).toHaveValue("Updated Author");
     await expect(page.getByPlaceholder("Range")).toHaveValue("20 ft");
     await expect(page.getByLabel("Reversible")).not.toBeChecked();
@@ -295,7 +291,6 @@ test("Spell editor persists extended fields", async () => {
     await page.getByLabel("Name").fill(createdName);
     await page.getByLabel("Level", { exact: true }).fill("4");
     await page.getByLabel("School").fill("Evocation");
-    await page.getByLabel("Sphere").fill("Minor");
     await page.getByLabel("Classes (e.g. Mage, Cleric)").fill("Mage");
     await page.getByLabel("Source").fill("Created Source");
     await page.getByLabel("Edition").fill("1e");

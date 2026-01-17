@@ -22,6 +22,8 @@ export type ParsedSpell = {
   edition?: string;
   author?: string;
   license?: string;
+  is_quest_spell?: number;
+  is_cantrip?: number;
   _confidence: Record<string, number>; // 0-1 confidence per field
   _source_file: string;
   _raw_text?: string;

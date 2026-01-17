@@ -13,6 +13,7 @@ type SpellSummary = {
   duration?: string;
   source?: string;
   is_quest_spell: number;
+  is_cantrip: number;
 };
 
 type Facets = {
@@ -548,7 +549,7 @@ export default function Library() {
                       Epic
                     </span>
                   )}
-                  {s.level === 0 && (
+                  {s.level === 0 && s.is_cantrip === 1 && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                       Cantrip
                     </span>

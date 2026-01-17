@@ -47,12 +47,18 @@ test("Epic and Quest Spells E2E", async () => {
   const questName = `Divine Quest ${runId}`;
 
   // 1. Create a Cantrip
-  await app.createSpell({ name: cantripName, isCantrip: true, description: "A simple cantrip." });
+  await app.createSpell({
+    name: cantripName,
+    level: "0",
+    isCantrip: true,
+    description: "A simple cantrip.",
+  });
 
   // 2. Create an Epic Spell (Arcane only)
   await app.navigate("Add Spell");
   await page.getByLabel("Name", { exact: true }).fill(epicName);
   await page.locator("#spell-level").fill("10");
+  await page.getByLabel("School").fill("Evocation");
   await page.getByLabel("Classes").fill("Wizard, Mage");
   await page.locator(SELECTORS.description).fill("A powerful 10th circle spell.");
   await page.locator("#btn-save-spell").click();
@@ -74,8 +80,9 @@ test("Epic and Quest Spells E2E", async () => {
   // 4. Create a Quest Spell (Divine only)
   await app.createSpell({
     name: questName,
-    level: "7",
+    level: "8",
     isQuest: true,
+    sphere: "All",
     classes: "Priest, Cleric",
     description: "A holy quest spell.",
   });

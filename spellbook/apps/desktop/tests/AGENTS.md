@@ -56,11 +56,17 @@ npx biome lint tests/fixtures tests/page-objects tests/utils tests/*.spec.ts
 ```
 
 ## Developing New Tests
-### 0. Data Isolation
-Always use the `SPELLBOOK_DATA_DIR` environment variable to isolate test data. This prevents tests from polluting your local development database.
+### 0. Data and Port Isolation
+The `launchTauriApp()` helper in `tauri-fixture.ts` handles isolation automatically:
+- **Port Isolation**: Each worker uses a unique Vite and CDP port (calculated as `BASE_PORT + workerIndex`).
+- **Concurrency Limit**: The suite is recommended to run with `workers: 1` on Windows to ensure maximum reliability and avoid port-binding race conditions.
+- **Port Isolation**: Each worker uses a unique Vite and CDP port (calculated as `BASE_PORT + workerIndex`). Standardizing on `127.0.0.1` for loopback addresses avoids IPv6 resolution issues.
+- **Data Isolation**: Each test run creates a unique `SPELLBOOK_DATA_DIR` to avoid database locks and state pollution.
+- **Network Ports**: Each worker uses unique ports for Vite and CDP (starting from 5173 and 9333 + workerIndex) to avoid collisions during parallel execution.
+- **sqlite-vec**: The fixture automatically ensures `vec0.dll` (or equivalent) is present in the test environment and copied to the isolated data directory.
 
 ```typescript
-// Handled automatically by launchTauriApp() in tauri-fixture.ts
+// Handled automatically by launchTauriApp()
 ```
 
 ### 1. Use Shared Fixtures
@@ -187,6 +193,14 @@ test("Feature Test", async () => {
 });
 ```
 
+### 8. Troubleshooting & Resource Cleanup
+The test infrastructure uses `taskkill /T /F` on Windows to ensure that Vite and all its descendants (like `esbuild` and `node` runtimes) are properly terminated. If you see orphaned processes, ensure you are calling `cleanupTauriApp(appContext)` in your `afterAll` hook.
+
+If `sqlite-vec` extension errors occur:
+- The setup will attempt to download `vec0` automatically to `tests/tmp/bin`.
+- Ensure your machine has internet access or pre-place the binary in that folder.
+- The app will fallback to blob-backed tables if the extension cannot be loaded.
+
 ## Adding to SpellbookApp Page Object
 
 When adding new common interactions, extend `page-objects/SpellbookApp.ts`:
@@ -219,3 +233,22 @@ test("test", async () => {
   // File will be cleaned up automatically
 });
 ```
+## Common Gotchas & Troubleshooting
+
+### Blank Screen on Launch
+If you launch the `.exe` directly from the `src-tauri/target/debug` folder, you will likely see a blank screen. 
+- **Reason**: Debug builds expect a running Vite dev server at `http://127.0.0.1:5173`.
+- **Solution**: Always use `npm run tauri dev` (or `pnpm tauri:dev`) for development. 
+- **Production**: For a standalone binary, use `npm run tauri build` (or `pnpm tauri:build`).
+- **Debug**: To generate the debug binary, use `npm run tauri build --debug` (or `pnpm tauri:build --debug`) to generate a debug binary in `src-tauri/target/debug`.
+
+### Port Collisions
+If tests fail with "Address already in use":
+1. Ensure no other instances of the app or Vite are running.
+2. The `tauri-fixture.ts` attempts to kill processes on Ports 5173 and 9000-9100.
+3. If ghost processes persist, run `Get-Process | Where-Object {$_.ProcessName -match "desktop"} | Stop-Process` in PowerShell.
+
+### WebView2 State Pollution
+Tests now use isolated `WEBVIEW2_USER_DATA_FOLDER` paths. If you see state leaking between runs:
+- Check `tests/tmp/data-w*` and clear them manually if the automatic cleanup fails.
+- Ensure `launchTauriApp()` is being called with its default parameters.

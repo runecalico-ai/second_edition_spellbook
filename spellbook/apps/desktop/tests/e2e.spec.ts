@@ -51,7 +51,7 @@ test.describe("Milestone Verification Flow", () => {
     const runId = Date.now();
 
     await test.step("Create a basic spell", async () => {
-      const spellName = `Fireball ${runId} `;
+      const spellName = `Fireball ${runId}`;
       await app.createSpell({
         name: spellName,
         level: "3",
@@ -61,7 +61,7 @@ test.describe("Milestone Verification Flow", () => {
     });
 
     await test.step("Verify duplicate name warning", async () => {
-      const spellName = `Fireball ${runId} `;
+      const spellName = `Fireball ${runId}`;
       await app.navigate("Add Spell");
       await page.getByLabel("Name").fill(spellName);
       // Depending on UI, check for warning text
@@ -76,11 +76,11 @@ test.describe("Milestone Verification Flow", () => {
     const app = new SpellbookApp(page);
     const runId = Date.now();
 
-    const importedName = `Imported Spell ${runId} `;
+    const importedName = `Imported Spell ${runId}`;
     const samplePath = fileTracker.track(path.resolve(__dirname, `sample - ${runId}.md`));
     fs.writeFileSync(
       samplePath,
-      `-- -\nname: ${importedName} \nlevel: 1\nsource: Test Manual\n-- -\nImported description.`,
+      `---\nname: ${importedName}\nlevel: 1\nsource: Test Manual\n---\nImported description.`,
     );
 
     await test.step("Import a markdown file", async () => {
@@ -104,8 +104,8 @@ test.describe("Milestone Verification Flow", () => {
     const app = new SpellbookApp(page);
     const runId = Date.now();
 
-    const taggedSpellName = `Tagged Spell ${runId} `;
-    const decoySpellName = `Decoy Spell ${runId} `;
+    const taggedSpellName = `Tagged Spell ${runId}`;
+    const decoySpellName = `Decoy Spell ${runId}`;
 
     await test.step("Setup: Create spells with components and tags", async () => {
       await app.createSpell({
@@ -144,7 +144,7 @@ test.describe("Milestone Verification Flow", () => {
       await expect(page.getByText(decoySpellName)).not.toBeVisible();
 
       // Clear filters
-      await app.navigate("Library");
+      await app.clearFilters();
     });
   });
 });
@@ -154,8 +154,8 @@ test("Import conflict merge review flow", async () => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
   const runId = Date.now();
-  const conflictName = `Conflict Spell ${runId} `;
-  const conflictSource = `Conflict Source ${runId} `;
+  const conflictName = `Conflict Spell ${runId}`;
+  const conflictSource = `Conflict Source ${runId}`;
   const originalDescription = "Original description";
   const incomingDescription = "Incoming description";
 
@@ -166,13 +166,18 @@ test("Import conflict merge review flow", async () => {
       description: originalDescription,
       source: conflictSource,
     });
+    // Verify it exists in the library to be sure
+    await app.navigate("Library");
+    await page.getByPlaceholder(/Search spells/i).fill(conflictName);
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await expect(page.getByRole("link", { name: conflictName })).toBeVisible();
   });
 
   await test.step("Trigger conflict import and resolve", async () => {
     const samplePath = fileTracker.track(path.resolve(__dirname, `conflict - ${runId}.md`));
     fs.writeFileSync(
       samplePath,
-      `-- -\nname: ${conflictName} \nlevel: 1\nsource: ${conflictSource} \n-- -\n${incomingDescription} `,
+      `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\n---\n${incomingDescription}`,
     );
 
     await app.navigate("Import");
@@ -212,13 +217,13 @@ test("Spell editor persists extended fields", async () => {
   const app = new SpellbookApp(page);
   const runId = Date.now();
 
-  const importedName = `Extended Imported ${runId} `;
+  const importedName = `Extended Imported ${runId}`;
   const importedPath = fileTracker.track(path.resolve(__dirname, `extended - ${runId}.md`));
   fs.writeFileSync(
     importedPath,
     [
       "---",
-      `name: ${importedName} `,
+      `name: ${importedName}`,
       "level: 2",
       "school: Illusion",
       "sphere: Lesser",
@@ -284,7 +289,7 @@ test("Spell editor persists extended fields", async () => {
   });
 
   await test.step("Create new spell with extended fields", async () => {
-    const createdName = `Extended Created ${runId} `;
+    const createdName = `Extended Created ${runId}`;
     await app.navigate("Add Spell");
 
     await page.getByLabel("Name").fill(createdName);

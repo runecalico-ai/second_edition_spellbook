@@ -23,6 +23,12 @@ pnpm install   # or npm install
 pnpm tauri:dev
 ```
 
+> [!IMPORTANT]
+> **Debug Builds vs. Release Builds**
+> When running the app in development mode (`tauri:dev`), the Tauri window acts as a browser pointing to your local Vite server (`http://127.0.0.1:5173`). 
+> **Do not launch the `.exe` directly** from the `src-tauri/target/debug` folder; it will show a blank screen unless the Vite server is already running and reachable. 
+> For a standalone executable, you must use `pnpm tauri:build` to bundle the frontend assets into the binary.
+
 If you want to run just the web UI for quick iteration:
 ```bash
 pnpm dev

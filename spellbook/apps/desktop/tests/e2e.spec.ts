@@ -80,7 +80,7 @@ test.describe("Milestone Verification Flow", () => {
     const samplePath = fileTracker.track(path.resolve(__dirname, `sample - ${runId}.md`));
     fs.writeFileSync(
       samplePath,
-      `-- -\nname: ${importedName}\nlevel: 1\nsource: Test Manual\n-- -\nImported description.`,
+      `---\nname: ${importedName}\nlevel: 1\nsource: Test Manual\n---\nImported description.`,
     );
 
     await test.step("Import a markdown file", async () => {
@@ -166,13 +166,18 @@ test("Import conflict merge review flow", async () => {
       description: originalDescription,
       source: conflictSource,
     });
+    // Verify it exists in the library to be sure
+    await app.navigate("Library");
+    await page.getByPlaceholder(/Search spells/i).fill(conflictName);
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await expect(page.getByRole("link", { name: conflictName })).toBeVisible();
   });
 
   await test.step("Trigger conflict import and resolve", async () => {
     const samplePath = fileTracker.track(path.resolve(__dirname, `conflict - ${runId}.md`));
     fs.writeFileSync(
       samplePath,
-      `-- -\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\n-- -\n${incomingDescription}`,
+      `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\n---\n${incomingDescription}`,
     );
 
     await app.navigate("Import");

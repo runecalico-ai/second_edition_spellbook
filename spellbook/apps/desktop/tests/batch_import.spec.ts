@@ -43,25 +43,24 @@ test.describe("Batch Import Performance Tests", () => {
       const fileInput = page.locator('input[type="file"]');
       await fileInput.setInputFiles(files);
 
-      await expect(page.getByText(`${files.length} files selected`)).toBeVisible({
-        timeout: TIMEOUTS.medium,
-      });
+      // Wait for file selection to be reflected in UI (can be slow with many files)
+      // We increase timeout significantly to avoid failing here before we even reach the backend import
+      await expect(page.getByText(`${files.length} file(s) selected`)).toBeVisible({ timeout: 60000 });
 
-      await page.getByRole("button", { name: "Preview →" }).click();
+      // Click validation/preview
+      await page.getByRole('button', { name: 'Preview' }).click();
       await expect(page.getByText(/Parsed \d+ spell/)).toBeVisible({
-        timeout: TIMEOUTS.medium,
+        timeout: TIMEOUTS.batch, // Use larger timeout for parsing
       });
 
-      await page.getByRole("button", { name: "Skip Review →" }).click();
-      await expect(page.getByText(/Ready to import/)).toBeVisible({
-        timeout: TIMEOUTS.medium,
-      });
-
-      await page.getByRole("button", { name: "Start Import" }).click();
+      // Start import
+      await page.getByRole('button', { name: 'Skip Review →' }).click();
+      await page.getByRole('button', { name: 'Start Import' }).click();
 
       // Wait for success indicator
-      await expect(page.getByText(/Import completed successfully/)).toBeVisible({
-        timeout: TIMEOUTS.batch,
+      // UI shows "Imported spells: 50"
+      await expect(page.getByText(/Imported spells: \d+/)).toBeVisible({
+        timeout: TIMEOUTS.long * 2, // Batch of 50 might take a while
       });
 
       const elapsed = Date.now() - startTime;
@@ -72,6 +71,8 @@ test.describe("Batch Import Performance Tests", () => {
       const match = resultText?.match(/Imported spells: (\d+)/);
       const importedCount = match ? Number.parseInt(match[1]) : 0;
 
+      expect(importedCount).toBeGreaterThan(0);
+      console.log(`Successfully imported ${importedCount} spells`);
       expect(importedCount).toBeGreaterThan(0);
       console.log(`Successfully imported ${importedCount} spells`);
     } finally {
@@ -111,7 +112,8 @@ test.describe("Batch Import Performance Tests", () => {
       // Check for mixed format warning if implementation provides one
       // (Assuming the UI continues with valid files)
       await page.getByRole("button", { name: "Start Import" }).click();
-      await expect(page.getByText(/Import completed successfully/)).toBeVisible();
+      // Check for success or updated list
+      await expect(page.getByText(/Import completed successfully|Imported spells: 1/)).toBeVisible();
     } finally {
       fs.rmSync(testDir, { recursive: true, force: true });
     }

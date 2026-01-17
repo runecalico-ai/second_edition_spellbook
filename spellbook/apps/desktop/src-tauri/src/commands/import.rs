@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+
 use tauri::State;
 
 fn app_data_dir() -> Result<PathBuf, AppError> {
@@ -178,6 +179,9 @@ fn build_conflict_fields(
     fields
 }
 
+
+use std::io::Write;
+
 #[tauri::command]
 pub async fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, AppError> {
     let dir = app_data_dir()?.join("imports");
@@ -190,6 +194,8 @@ pub async fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, App
         fs::write(&path, &file.content)?;
         paths.push(path);
     }
+
+
 
     let result = call_sidecar("import", json!({"files": paths})).await?;
 
@@ -232,280 +238,340 @@ pub async fn import_files(
     let dir = app_data_dir()?.join("imports");
     fs::create_dir_all(&dir)?;
 
-    let mut paths = vec![];
-    let mut warnings = vec![];
+    // BATCH SIZE CONFIGURATION
+    const BATCH_SIZE: usize = 10;
 
+    let mut all_imported_spells = vec![];
+    let mut all_artifacts = vec![];
+    let mut all_conflicts = vec![];
+    let mut all_warnings = vec![];
+    let mut all_skipped = vec![];
+
+    // Pre-save all files to disk (keep this fast and simple)
+    let mut file_paths_map = HashMap::new();
     for file in &files {
         let (safe_name, changed) = sanitize_import_filename(&file.name);
         if changed {
-            warnings.push(format!(
+            all_warnings.push(format!(
                 "Sanitized import file name '{}' to '{}'.",
                 file.name, safe_name
             ));
         }
         let path = dir.join(&safe_name);
         fs::write(&path, &file.content)?;
-        paths.push(path);
+        file_paths_map.insert(file.name.clone(), path);
     }
 
-    let needs_spells = spells.is_none();
-    let needs_artifacts = artifacts
-        .as_ref()
-        .map(|items| items.is_empty())
-        .unwrap_or(true);
-    let needs_conflicts = conflicts.is_none();
-    let needs_sidecar = needs_spells || needs_artifacts || needs_conflicts;
+    // Branch Process:
+    // 1. Initial Import (needs_parsing=true): Chunk files -> Sidecar -> DB
+    // 2. Confirmation (needs_parsing=false): Chunk spells (overrides) -> DB
 
-    let mut parsed_spells: Vec<ImportSpell> = vec![];
-    let mut artifacts_vec: Vec<ImportArtifact> = vec![];
-    let mut conflicts_vec: Vec<ImportConflict> = vec![];
+    let needs_parsing = spells.is_none();
 
-    if needs_sidecar {
-        let result = call_sidecar("import", json!({"files": paths})).await?;
-        if needs_spells {
-            parsed_spells =
-                serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
-                    .map_err(|e| AppError::Sidecar(format!("Failed to parse spells: {}", e)))?;
-        }
-        if needs_artifacts {
-            artifacts_vec =
-                serde_json::from_value(result.get("artifacts").cloned().unwrap_or(json!([])))
-                    .map_err(|e| AppError::Sidecar(format!("Failed to parse artifacts: {}", e)))?;
-        }
-        if needs_conflicts {
-            let parse_conflicts: Vec<ParseConflict> =
-                serde_json::from_value(result.get("conflicts").cloned().unwrap_or(json!([])))
-                    .map_err(|e| AppError::Sidecar(format!("Failed to parse conflicts: {}", e)))?;
-            conflicts_vec.extend(parse_conflicts.into_iter().map(|conflict| {
-                ImportConflict::Parse {
-                    path: conflict.path,
-                    reason: conflict.reason,
+    if needs_parsing {
+        // --- PATH A: INITIAL IMPORT (Sidecar -> DB) ---
+        for chunk in files.chunks(BATCH_SIZE) {
+            let chunk_paths: Vec<PathBuf> = chunk.iter()
+                .filter_map(|f| file_paths_map.get(&f.name).cloned())
+                .collect();
+            
+            if chunk_paths.is_empty() { continue; }
+
+            let result = call_sidecar("import", json!({"files": chunk_paths})).await?;
+
+            // Parse Sidecar Result
+            let parsed_spells: Vec<ImportSpell> = serde_json::from_value(result.get("spells").cloned().unwrap_or(json!([])))
+                .map_err(|e| AppError::Sidecar(format!("Failed to parse spells: {}", e)))?;
+            let parsed_artifacts: Vec<ImportArtifact> = serde_json::from_value(result.get("artifacts").cloned().unwrap_or(json!([])))
+                .map_err(|e| AppError::Sidecar(format!("Failed to parse artifacts: {}", e)))?;
+            let parsed_conflicts_raw: Vec<ParseConflict> = serde_json::from_value(result.get("conflicts").cloned().unwrap_or(json!([])))
+                .map_err(|e| AppError::Sidecar(format!("Failed to parse conflicts: {}", e)))?;
+
+            let batch_conflicts: Vec<ImportConflict> = parsed_conflicts_raw.into_iter().map(|c| ImportConflict::Parse {
+                path: c.path,
+                reason: c.reason,
+            }).collect();
+
+            // DB Transaction
+            let pool = state.inner().clone();
+            let allow_overwrite_clone = allow_overwrite;
+
+            let result = tokio::task::spawn_blocking(move || {
+                let conn = pool.get()?;
+                let mut local_skipped = vec![];
+                let mut local_imported = vec![];
+                let mut artifacts_by_path = HashMap::new();
+
+                for artifact in &parsed_artifacts {
+                    artifacts_by_path.insert(artifact.path.clone(), artifact.clone());
                 }
-            }));
-        }
-    }
 
-    if let Some(override_artifacts) = artifacts {
-        if !override_artifacts.is_empty() {
-            artifacts_vec = override_artifacts;
-        }
-    }
+                let spell_sources: Vec<Option<String>> = parsed_artifacts
+                    .iter()
+                    .map(|artifact| Some(artifact.path.clone()))
+                    .collect();
 
-    if let Some(override_conflicts) = conflicts {
-        conflicts_vec = override_conflicts;
-    }
+                let mut local_conflicts = batch_conflicts;
 
-    let (spells_to_import, spell_sources, using_override) = match spells {
-        Some(override_spells) => {
-            let sources: Vec<Option<String>> = override_spells
-                .iter()
-                .map(|spell| spell.source_file.clone())
-                .collect();
-            (override_spells, sources, true)
-        }
-        None => {
-            let sources: Vec<Option<String>> = artifacts_vec
-                .iter()
-                .map(|artifact| Some(artifact.path.clone()))
-                .collect();
-            (parsed_spells, sources, false)
-        }
-    };
+                for (i, spell) in parsed_spells.iter().enumerate() {
+                    
+                    let existing_id: Option<i64> = conn.query_row(
+                        "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
+                        params![spell.name, spell.level, spell.source],
+                        |row| row.get(0),
+                    ).optional()?;
 
-    let pool = state.inner().clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let conn = pool.get()?;
-        let mut skipped = vec![];
-        let mut imported_spells = vec![];
+                    let spell_id = if let Some(id) = existing_id {
+                        if !allow_overwrite_clone {
+                            let existing_spell = get_spell_from_conn(&conn, id)?
+                                .ok_or_else(|| AppError::NotFound("Failed to fetch existing spell".into()))?;
+                            
+                            let source_path = spell.source_file.clone();
+                            let artifact_opt = source_path
+                                .and_then(|p| artifacts_by_path.get(&p).cloned())
+                                .or_else(|| {
+                                     spell_sources.get(i).and_then(|s| s.as_ref()).and_then(|p| artifacts_by_path.get(p).cloned())
+                                });
+
+                            let fields = build_conflict_fields(&existing_spell, spell);
+                            if fields.is_empty() {
+                                local_skipped.push(spell.name.clone());
+                            } else {
+                                local_conflicts.push(ImportConflict::Spell {
+                                    existing: Box::new(existing_spell),
+                                    incoming: Box::new(SpellDetail {
+                                        id: None,
+                                        name: spell.name.clone(),
+                                        school: spell.school.clone(),
+                                        sphere: spell.sphere.clone(),
+                                        class_list: spell.class_list.clone(),
+                                        level: spell.level,
+                                        range: spell.range.clone(),
+                                        components: spell.components.clone(),
+                                        material_components: spell.material_components.clone(),
+                                        casting_time: spell.casting_time.clone(),
+                                        duration: spell.duration.clone(),
+                                        area: spell.area.clone(),
+                                        saving_throw: spell.saving_throw.clone(),
+                                        reversible: spell.reversible,
+                                        description: spell.description.clone(),
+                                        tags: spell.tags.clone(),
+                                        source: spell.source.clone(),
+                                        edition: spell.edition.clone(),
+                                        author: spell.author.clone(),
+                                        license: spell.license.clone(),
+                                        is_quest_spell: spell.is_quest_spell,
+                                        artifacts: None,
+                                    }),
+                                    fields,
+                                    artifact: artifact_opt,
+                                });
+                            }
+                            continue;
+                        }
+                        
+                        conn.execute(
+                            "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, 
+                            material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, 
+                            reversible=?, description=?, tags=?, edition=?, author=?, license=?, 
+                            is_quest_spell=?, updated_at=? WHERE id=?",
+                            params![
+                                spell.school, spell.sphere, spell.class_list, spell.range, spell.components, 
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, 
+                                spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license, 
+                                spell.is_quest_spell, Utc::now().to_rfc3339(), id
+                            ],
+                        )?;
+                        id
+                    } else {
+                        conn.execute(
+                            "INSERT INTO spell (name, school, sphere, class_list, level, range, components, 
+                            material_components, casting_time, duration, area, saving_throw, reversible, 
+                            description, tags, source, edition, author, license, is_quest_spell) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            params![
+                                spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components, 
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0), 
+                                spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell
+                            ],
+                        )?;
+                        conn.last_insert_rowid()
+                    };
+
+                    local_imported.push(SpellDetail {
+                        id: Some(spell_id),
+                        name: spell.name.clone(),
+                        school: spell.school.clone(),
+                        level: spell.level,
+                        description: spell.description.clone(),
+                        source: spell.source.clone(),
+                        sphere: spell.sphere.clone(), class_list: spell.class_list.clone(), range: spell.range.clone(), components: spell.components.clone(),
+                        material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(),
+                        area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, tags: spell.tags.clone(),
+                        edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
+                        artifacts: None
+                    });
+                    
+                     let source_path = spell.source_file.clone();
+                     let artifact_val = source_path
+                        .and_then(|p| artifacts_by_path.get(&p))
+                        .or_else(|| artifacts_by_path.get(&spell_sources.get(i).cloned().flatten().unwrap_or_default()));
+
+                    if let Some(artifact_val) = artifact_val {
+                        let _ = conn.execute(
+                            "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
+                            ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
+                            params![spell_id, artifact_val.r#type, artifact_val.path, artifact_val.hash, artifact_val.imported_at],
+                        );
+                    }
+
+                }
+                
+                Ok::<ImportResult, AppError>(ImportResult {
+                    spells: local_imported,
+                    artifacts: serde_json::to_value(&parsed_artifacts).unwrap_or_default().as_array().cloned().unwrap_or_default(),
+                    conflicts: local_conflicts,
+                    warnings: vec![],
+                    skipped: local_skipped
+                })
+            }).await.map_err(|e| AppError::Unknown(e.to_string()))??;
+            
+            all_imported_spells.extend(result.spells);
+            all_conflicts.extend(result.conflicts);
+            all_skipped.extend(result.skipped);
+            all_artifacts.extend(result.artifacts);
+        }
+
+    } else {
+        // --- PATH B: CONFIRMATION (Offsets provided) ---
+        let override_spells = spells.unwrap();
+        let override_artifacts = artifacts.unwrap_or_default();
+        let override_conflicts = conflicts.unwrap_or_default();
+        
+        // Lookup Setup
         let mut artifacts_by_path = HashMap::new();
-
-        for artifact in &artifacts_vec {
+        for artifact in &override_artifacts {
             artifacts_by_path.insert(artifact.path.clone(), artifact.clone());
         }
 
-        let mut final_conflicts = conflicts_vec;
+        all_conflicts = override_conflicts; 
 
-        for (i, spell) in spells_to_import.iter().enumerate() {
-            let existing_id: Option<i64> = conn
-                .query_row(
-                    "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
-                    params![spell.name, spell.level, spell.source],
-                    |row| row.get(0),
-                )
-                .optional()?;
+        // Batch the spells
+        for chunk in override_spells.chunks(BATCH_SIZE) {
+            let pool = state.inner().clone();
+            let chunk_spells = chunk.to_vec();
+            let allow_overwrite_clone = allow_overwrite;
+            let artifacts_map_clone = artifacts_by_path.clone();
 
-            let spell_id = if let Some(id) = existing_id {
-                if !allow_overwrite {
-                    let existing_spell = get_spell_from_conn(&conn, id)?
-                        .ok_or_else(|| AppError::NotFound("Failed to fetch existing spell".into()))?;
-                    let artifact = spell_sources
-                        .get(i)
-                        .and_then(|source| source.as_ref())
-                        .and_then(|source| artifacts_by_path.get(source))
-                        .cloned();
-                    let fields = build_conflict_fields(&existing_spell, spell);
-                    if fields.is_empty() {
-                        skipped.push(spell.name.clone());
+            let result = tokio::task::spawn_blocking(move || {
+                let conn = pool.get()?;
+                let mut local_imported = vec![];
+                let mut local_skipped = vec![];
+                let mut local_conflicts = vec![];
+
+                for spell in chunk_spells {
+                     let existing_id: Option<i64> = conn.query_row(
+                        "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
+                        params![spell.name, spell.level, spell.source],
+                        |row| row.get(0),
+                    ).optional()?;
+
+                    let spell_id = if let Some(id) = existing_id {
+                         if !allow_overwrite_clone {
+                             let existing_spell = get_spell_from_conn(&conn, id)?.ok_or_else(|| AppError::NotFound("Ex".into()))?;
+                             let fields = build_conflict_fields(&existing_spell, &spell);
+                             if fields.is_empty() {
+                                 local_skipped.push(spell.name.clone());
+                             } else {
+                                 let source_path = spell.source_file.clone();
+                                 let artifact_opt = source_path.and_then(|p| artifacts_map_clone.get(&p).cloned());
+                                 local_conflicts.push(ImportConflict::Spell {
+                                     existing: Box::new(existing_spell),
+                                     incoming: Box::new(SpellDetail { id: None, name: spell.name.clone(), school: spell.school.clone(), sphere: spell.sphere.clone(), class_list: spell.class_list.clone(), level: spell.level, range: spell.range.clone(), components: spell.components.clone(), material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(), area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, description: spell.description.clone(), tags: spell.tags.clone(), source: spell.source.clone(), edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell, artifacts: None }),
+                                     fields,
+                                     artifact: artifact_opt
+                                 });
+                             }
+                             continue;
+                         }
+                         conn.execute(
+                            "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, 
+                            material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, 
+                            reversible=?, description=?, tags=?, edition=?, author=?, license=?, 
+                            is_quest_spell=?, updated_at=? WHERE id=?",
+                            params![
+                                spell.school, spell.sphere, spell.class_list, spell.range, spell.components, 
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, 
+                                spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license, 
+                                spell.is_quest_spell, Utc::now().to_rfc3339(), id
+                            ],
+                        )?;
+                        id
                     } else {
-                        final_conflicts.push(ImportConflict::Spell {
-                            existing: Box::new(existing_spell),
-                            incoming: Box::new(SpellDetail {
-                                id: None,
-                                name: spell.name.clone(),
-                                school: spell.school.clone(),
-                                sphere: spell.sphere.clone(),
-                                class_list: spell.class_list.clone(),
-                                level: spell.level,
-                                range: spell.range.clone(),
-                                components: spell.components.clone(),
-                                material_components: spell.material_components.clone(),
-                                casting_time: spell.casting_time.clone(),
-                                duration: spell.duration.clone(),
-                                area: spell.area.clone(),
-                                saving_throw: spell.saving_throw.clone(),
-                                reversible: spell.reversible,
-                                description: spell.description.clone(),
-                                tags: spell.tags.clone(),
-                                source: spell.source.clone(),
-                                edition: spell.edition.clone(),
-                                author: spell.author.clone(),
-                                license: spell.license.clone(),
-                                is_quest_spell: spell.is_quest_spell,
-                                artifacts: None,
-                            }),
-                            fields,
-                            artifact,
-                        });
-                    }
-                    continue;
+                        conn.execute(
+                            "INSERT INTO spell (name, school, sphere, class_list, level, range, components, 
+                            material_components, casting_time, duration, area, saving_throw, reversible, 
+                            description, tags, source, edition, author, license, is_quest_spell) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            params![
+                                spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components, 
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0), 
+                                spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell
+                            ],
+                        )?;
+                        conn.last_insert_rowid()
+                    };
+
+                    local_imported.push(SpellDetail {
+                        id: Some(spell_id),
+                        name: spell.name.clone(),
+                        school: spell.school.clone(),
+                        level: spell.level,
+                        description: spell.description.clone(),
+                        source: spell.source.clone(),
+                        sphere: spell.sphere.clone(), class_list: spell.class_list.clone(), range: spell.range.clone(), components: spell.components.clone(),
+                        material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(),
+                        area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, tags: spell.tags.clone(),
+                        edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
+                        artifacts: None
+                    });
+
+                     let source_path = spell.source_file.clone();
+                     if let Some(p) = source_path {
+                         if let Some(artifact_val) = artifacts_map_clone.get(&p) {
+                            let _ = conn.execute(
+                                "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
+                                ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
+                                params![spell_id, artifact_val.r#type, artifact_val.path, artifact_val.hash, artifact_val.imported_at],
+                            );
+                         }
+                     }
                 }
-                conn.execute(
-                    "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?, 
-                     material_components=?, casting_time=?, duration=?, area=?, saving_throw=?, 
-                     reversible=?, description=?, tags=?, edition=?, author=?, license=?, 
-                     is_quest_spell=?, updated_at=? WHERE id=?",
-                    params![
-                        spell.school,
-                        spell.sphere,
-                        spell.class_list,
-                        spell.range,
-                        spell.components,
-                        spell.material_components,
-                        spell.casting_time,
-                        spell.duration,
-                        spell.area,
-                        spell.saving_throw,
-                        spell.reversible.unwrap_or(0),
-                        spell.description,
-                        spell.tags,
-                        spell.edition,
-                        spell.author,
-                        spell.license,
-                        spell.is_quest_spell,
-                        Utc::now().to_rfc3339(),
-                        id,
-                    ],
-                )?;
-                id
-            } else {
-                conn.execute(
-                    "INSERT INTO spell (name, school, sphere, class_list, level, range, components, 
-                     material_components, casting_time, duration, area, saving_throw, reversible, 
-                     description, tags, source, edition, author, license, is_quest_spell) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    params![
-                        spell.name,
-                        spell.school,
-                        spell.sphere,
-                        spell.class_list,
-                        spell.level,
-                        spell.range,
-                        spell.components,
-                        spell.material_components,
-                        spell.casting_time,
-                        spell.duration,
-                        spell.area,
-                        spell.saving_throw,
-                        spell.reversible.unwrap_or(0),
-                        spell.description,
-                        spell.tags,
-                        spell.source,
-                        spell.edition,
-                        spell.author,
-                        spell.license,
-                        spell.is_quest_spell,
-                    ],
-                )?;
-                conn.last_insert_rowid()
-            };
 
-            imported_spells.push(SpellDetail {
-                id: Some(spell_id),
-                name: spell.name.clone(),
-                school: spell.school.clone(),
-                sphere: spell.sphere.clone(),
-                class_list: spell.class_list.clone(),
-                level: spell.level,
-                range: spell.range.clone(),
-                components: spell.components.clone(),
-                material_components: spell.material_components.clone(),
-                casting_time: spell.casting_time.clone(),
-                duration: spell.duration.clone(),
-                area: spell.area.clone(),
-                saving_throw: spell.saving_throw.clone(),
-                reversible: spell.reversible,
-                description: spell.description.clone(),
-                tags: spell.tags.clone(),
-                source: spell.source.clone(),
-                edition: spell.edition.clone(),
-                author: spell.author.clone(),
-                license: spell.license.clone(),
-                is_quest_spell: spell.is_quest_spell,
-                artifacts: None,
-            });
+                Ok::<ImportResult, AppError>(ImportResult {
+                    spells: local_imported,
+                    artifacts: vec![],
+                    conflicts: local_conflicts,
+                    warnings: vec![],
+                    skipped: local_skipped
+                })
+            }).await.map_err(|e| AppError::Unknown(e.to_string()))??;
 
-            let artifact_val = if using_override {
-                spell_sources
-                    .get(i)
-                    .and_then(|source| source.as_ref())
-                    .and_then(|source| artifacts_by_path.get(source))
-            } else {
-                spell_sources
-                    .get(i)
-                    .and_then(|source| source.as_ref())
-                    .and_then(|source| artifacts_by_path.get(source))
-                    .or_else(|| artifacts_vec.get(i))
-            };
-
-            if let Some(artifact_val) = artifact_val {
-                let _ = conn.execute(
-                    "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
-                     ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
-                    params![
-                        spell_id,
-                        artifact_val.r#type,
-                        artifact_val.path,
-                        artifact_val.hash,
-                        artifact_val.imported_at
-                    ],
-                );
-            }
+            all_imported_spells.extend(result.spells);
+            all_conflicts.extend(result.conflicts);
+            all_skipped.extend(result.skipped);
         }
+        
+        all_artifacts = serde_json::to_value(override_artifacts).unwrap_or_default().as_array().cloned().unwrap_or_default();
+    }
 
-        let artifacts_value = serde_json::to_value(&artifacts_vec).unwrap_or_default();
-
-        Ok::<ImportResult, AppError>(ImportResult {
-            spells: imported_spells,
-            artifacts: artifacts_value.as_array().cloned().unwrap_or_default(),
-            conflicts: final_conflicts,
-            warnings,
-            skipped,
-        })
+    Ok(ImportResult {
+        spells: all_imported_spells,
+        artifacts: all_artifacts,
+        conflicts: all_conflicts,
+        warnings: all_warnings,
+        skipped: all_skipped,
     })
-    .await
-    .map_err(|e| AppError::Unknown(e.to_string()))??;
-
-    Ok(result)
 }
 
 #[tauri::command]

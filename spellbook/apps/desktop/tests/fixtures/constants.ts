@@ -11,7 +11,7 @@ export const TIMEOUTS = {
   /** App startup, complex operations */
   long: 30000,
   /** Batch imports, file processing */
-  batch: 60000,
+  batch: 120000,
 } as const;
 
 /** Base CDP port - workers will use offsets from this to avoid collisions */

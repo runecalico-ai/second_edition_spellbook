@@ -84,7 +84,8 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
   await page.getByPlaceholder("Name...").fill(saveName);
   await page.keyboard.press("Enter");
 
-  await app.navigate("Library");
+  await page.getByRole("button", { name: "Reset Filters" }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(app.getSpellRow(spellName)).toBeVisible();
 
   // Load saved search

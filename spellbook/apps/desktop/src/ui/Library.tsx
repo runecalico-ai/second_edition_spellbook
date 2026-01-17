@@ -188,6 +188,20 @@ export default function Library() {
     }
   };
 
+  const handleResetFilters = () => {
+    setQuery("");
+    setMode("keyword");
+    setSchoolFilters([]);
+    setLevelMin("");
+    setLevelMax("");
+    setSourceFilter("");
+    setClassListFilter("");
+    setComponentFilter("");
+    setTagFilter("");
+    setIsQuestFilter(false);
+    setIsCantripFilter(false);
+  };
+
   const search = useCallback(async () => {
     let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
     let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
@@ -297,6 +311,14 @@ export default function Library() {
           type="button"
         >
           Search
+        </button>
+        <button
+          className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700 border border-neutral-700"
+          onClick={handleResetFilters}
+          type="button"
+          title="Reset all search filters to default"
+        >
+          Reset Filters
         </button>
       </div>
 

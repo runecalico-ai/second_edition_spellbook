@@ -247,8 +247,8 @@ Commands follow the application's pattern: `pub async fn name(state: State<'_, A
 
 Two example bundles are attached for testing parsers/importers:
 
-- **JSON**: `character.json` — inline abilities, classes, and reference-style spells.
-- **Markdown**: `md_bundle/character.yml` + `md_bundle/spells/*.md` — human-editable variant.
+- **JSON**: `spec/character_bundle_examples/character.json` — inline abilities, classes, and reference-style spells.
+- **Markdown**: `spec/character_bundle_examples/md_bundle/character.yml` + `spec/character_bundle_examples/md_bundle/spells/*.md` — human-editable variant.
 
 See local file: `character_bundle_examples.zip`.
 

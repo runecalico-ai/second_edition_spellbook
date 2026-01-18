@@ -1,0 +1,66 @@
+{
+  "format": "adnd2e-character",
+  "format_version": "1.0.0",
+  "character": {
+    "name": "Elira Vael",
+    "type": "PC",
+    "race": "Elf",
+    "alignment": "Chaotic Good",
+    "notes": "Scout-mage. Uses divination and precise evocation.",
+    "abilities": {
+      "str": 10,
+      "dex": 18,
+      "con": 12,
+      "int": 16,
+      "wis": 12,
+      "cha": 14,
+      "com": 17
+    }
+  },
+  "classes": [
+    {
+      "class_name": "Mage",
+      "level": 5,
+      "known_spells": [
+        {
+          "name": "Magic Missile",
+          "class": "Mage",
+          "level": 1,
+          "source": "Homebrew/OGL-like summary"
+        },
+        {
+          "name": "Detect Magic",
+          "class": "Mage",
+          "level": 1,
+          "source": "Homebrew/OGL-like summary"
+        },
+        {
+          "name": "Fireball",
+          "class": "Mage",
+          "level": 3,
+          "source": "Homebrew/OGL-like summary"
+        }
+      ],
+      "prepared_spells": [
+        {
+          "name": "Magic Missile",
+          "class": "Mage",
+          "level": 1,
+          "source": "Homebrew/OGL-like summary"
+        },
+        {
+          "name": "Detect Magic",
+          "class": "Mage",
+          "level": 1,
+          "source": "Homebrew/OGL-like summary"
+        },
+        {
+          "name": "Fireball",
+          "class": "Mage",
+          "level": 3,
+          "source": "Homebrew/OGL-like summary"
+        }
+      ]
+    }
+  ]
+}

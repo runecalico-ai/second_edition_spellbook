@@ -1,0 +1,27 @@
+format: adnd2e-character
+format_version: 1.0.0
+character:
+  name: Elira Vael
+  type: PC
+  race: Elf
+  alignment: Chaotic Good
+  notes: Scout-mage. Uses divination and precise evocation.
+  abilities:
+    str: 10
+    dex: 18
+    con: 12
+    int: 16
+    wis: 12
+    cha: 14
+    com: 17
+classes:
+- class_name: Mage
+  level: 5
+  known_files:
+  - spells/magic_missile.md
+  - spells/detect_magic.md
+  - spells/fireball.md
+  prepared_files:
+  - spells/magic_missile.md
+  - spells/detect_magic.md
+  - spells/fireball.md

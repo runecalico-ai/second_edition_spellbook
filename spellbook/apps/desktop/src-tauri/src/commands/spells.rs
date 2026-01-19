@@ -361,7 +361,7 @@ pub async fn list_spells(state: State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, school, sphere, level, class_list, components, duration, source, is_quest_spell, is_cantrip
+            "SELECT id, name, school, sphere, level, class_list, components, duration, source, is_quest_spell, is_cantrip, tags
              FROM spell ORDER BY name ASC",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -377,6 +377,7 @@ pub async fn list_spells(state: State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary
                 source: row.get(8)?,
                 is_quest_spell: row.get(9)?,
                 is_cantrip: row.get(10)?,
+                tags: row.get(11)?,
             })
         })?;
 

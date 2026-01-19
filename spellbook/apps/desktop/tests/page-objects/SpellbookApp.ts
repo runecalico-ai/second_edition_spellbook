@@ -36,7 +36,7 @@ export interface CreateSpellOptions {
  * Page Object Model for the Spellbook application.
  */
 export class SpellbookApp {
-  constructor(public page: Page) { }
+  constructor(public page: Page) {}
 
   /** Navigate to a page using the nav link (preferring nav bar links) */
   async navigate(
@@ -50,7 +50,7 @@ export class SpellbookApp {
       const link = this.page.getByRole("navigation").getByRole("link", { name: label });
       await link.click();
     }
-    await this.page.waitForLoadState("domcontentloaded").catch(() => { });
+    await this.page.waitForLoadState("domcontentloaded").catch(() => {});
     await this.page.waitForTimeout(500);
   }
 

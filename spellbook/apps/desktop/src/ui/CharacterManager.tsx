@@ -73,9 +73,7 @@ export default function CharacterManager() {
     if (!classes || classes.length === 0) return null;
     // For simplicity, first class is "primary" or show multi-class string
     if (classes.length === 1) return `${classes[0].class_name} ${classes[0].level}`;
-    return classes
-      .map((c) => `${c.class_name.charAt(0)}${c.level}`)
-      .join("/");
+    return classes.map((c) => `${c.class_name.charAt(0)}${c.level}`).join("/");
   };
 
   return (
@@ -89,10 +87,11 @@ export default function CharacterManager() {
                 key={t}
                 type="button"
                 onClick={() => setTypeFilter(t)}
-                className={`px-1.5 py-0.5 text-[10px] rounded border ${typeFilter === t
-                  ? "bg-blue-600 border-blue-500 text-white"
-                  : "bg-neutral-900 border-neutral-700 text-neutral-500 hover:border-neutral-500"
-                  }`}
+                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                  typeFilter === t
+                    ? "bg-blue-600 border-blue-500 text-white"
+                    : "bg-neutral-900 border-neutral-700 text-neutral-500 hover:border-neutral-500"
+                }`}
               >
                 {t}
               </button>
@@ -138,7 +137,22 @@ export default function CharacterManager() {
                       className="opacity-0 group-hover:opacity-100 p-1 text-neutral-500 hover:text-red-500 transition-all"
                       title="Delete Character"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                      <svg
+                        role="img"
+                        aria-label="Delete"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -161,7 +175,10 @@ export default function CharacterManager() {
         </div>
 
         <div className="pt-4 border-t border-neutral-800">
-          <Link to="/" className="text-xs text-neutral-500 hover:text-white flex items-center gap-1 transition-colors">
+          <Link
+            to="/"
+            className="text-xs text-neutral-500 hover:text-white flex items-center gap-1 transition-colors"
+          >
             ← Back to Library
           </Link>
         </div>
@@ -170,11 +187,27 @@ export default function CharacterManager() {
       <div className="flex-1 flex items-center justify-center bg-neutral-900/30 rounded-lg border border-neutral-800/50 border-dashed">
         <div className="text-center space-y-3 max-w-sm px-6">
           <div className="h-12 w-12 bg-neutral-800 rounded-full flex items-center justify-center mx-auto text-neutral-500">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <svg
+              role="img"
+              aria-label="User"
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
           </div>
           <h3 className="text-lg font-semibold text-neutral-200">Select a Character</h3>
           <p className="text-sm text-neutral-500">
-            Select a character from the list to manage their identity, abilities, classes, and spellbook.
+            Select a character from the list to manage their identity, abilities, classes, and
+            spellbook.
           </p>
           <div className="pt-2">
             <p className="text-xs text-neutral-600 leading-relaxed">

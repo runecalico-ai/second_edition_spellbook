@@ -59,11 +59,12 @@ export default function Modal() {
             <div className={clsx("p-2 rounded-lg border", typeStyles[type])}>
               {type === "error" && (
                 <svg
+                  role="img"
+                  aria-label="Error icon"
                   className="w-6 h-6"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
-                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -75,11 +76,12 @@ export default function Modal() {
               )}
               {type === "warning" && (
                 <svg
+                  role="img"
+                  aria-label="Warning icon"
                   className="w-6 h-6"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
-                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -91,11 +93,12 @@ export default function Modal() {
               )}
               {type === "success" && (
                 <svg
+                  role="img"
+                  aria-label="Success icon"
                   className="w-6 h-6"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
-                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -107,11 +110,12 @@ export default function Modal() {
               )}
               {type === "info" && (
                 <svg
+                  role="img"
+                  aria-label="Info icon"
                   className="w-6 h-6"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
-                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"

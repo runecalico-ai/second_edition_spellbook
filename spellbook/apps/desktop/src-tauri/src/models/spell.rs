@@ -14,6 +14,7 @@ pub struct SpellSummary {
     pub source: Option<String>,
     pub is_quest_spell: i64,
     pub is_cantrip: i64,
+    pub tags: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

@@ -1,6 +1,9 @@
 use crate::db::Pool;
 use crate::error::AppError;
-use crate::models::{Character, CharacterAbilities, CharacterClass, CharacterSpellbookEntry};
+use crate::models::{
+    Character, CharacterAbilities, CharacterClass, CharacterSpellbookEntry, UpdateAbilitiesInput,
+    UpdateCharacterDetailsInput,
+};
 use rusqlite::{params, OptionalExtension};
 use std::sync::Arc;
 use tauri::State;
@@ -35,20 +38,14 @@ pub async fn create_character(
 #[tauri::command]
 pub async fn update_character_details(
     state: State<'_, Arc<Pool>>,
-    id: i64,
-    name: String,
-    character_type: String,
-    race: Option<String>,
-    alignment: Option<String>,
-    com_enabled: i32,
-    notes: Option<String>,
+    input: UpdateCharacterDetailsInput,
 ) -> Result<(), AppError> {
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         conn.execute(
             "UPDATE \"character\" SET name=?, type=?, race=?, alignment=?, com_enabled=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            params![name, character_type, race, alignment, com_enabled, notes, id],
+            params![input.name, input.character_type, input.race, input.alignment, input.com_enabled, input.notes, input.id],
         )?;
         Ok::<(), AppError>(())
     })
@@ -170,14 +167,7 @@ pub async fn get_character_abilities(
 #[tauri::command]
 pub async fn update_character_abilities(
     state: State<'_, Arc<Pool>>,
-    character_id: i64,
-    str: i32,
-    dex: i32,
-    con: i32,
-    int: i32,
-    wis: i32,
-    cha: i32,
-    com: i32,
+    input: UpdateAbilitiesInput,
 ) -> Result<(), AppError> {
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
@@ -188,7 +178,16 @@ pub async fn update_character_abilities(
              ON CONFLICT(character_id) DO UPDATE SET
                 str=excluded.str, dex=excluded.dex, con=excluded.con,
                 int=excluded.int, wis=excluded.wis, cha=excluded.cha, com=excluded.com",
-            params![character_id, str, dex, con, int, wis, cha, com],
+            params![
+                input.character_id,
+                input.str,
+                input.dex,
+                input.con,
+                input.int,
+                input.wis,
+                input.cha,
+                input.com
+            ],
         )?;
         Ok::<(), AppError>(())
     })
@@ -303,7 +302,8 @@ pub async fn get_character_class_spells(
             "SELECT s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
                     CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
                     CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
-                    ccs.notes
+                    ccs.notes,
+                    s.tags
              FROM character_class_spell ccs
              JOIN spell s ON s.id = ccs.spell_id
              WHERE ccs.character_class_id = ? AND ccs.list_type = ?
@@ -312,7 +312,8 @@ pub async fn get_character_class_spells(
             "SELECT s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
                     MAX(CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END),
                     MAX(CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END),
-                    ccs.notes
+                    ccs.notes,
+                    s.tags
              FROM character_class_spell ccs
              JOIN spell s ON s.id = ccs.spell_id
              WHERE ccs.character_class_id = ?
@@ -335,6 +336,7 @@ pub async fn get_character_class_spells(
                     prepared: row.get(7)?,
                     known: row.get(8)?,
                     notes: row.get(9)?,
+                    tags: row.get(10)?,
                 })
             })?;
             let mut out = vec![];
@@ -356,6 +358,7 @@ pub async fn get_character_class_spells(
                     prepared: row.get(7)?,
                     known: row.get(8)?,
                     notes: row.get(9)?,
+                    tags: row.get(10)?,
                 })
             })?;
             let mut out = vec![];
@@ -478,7 +481,7 @@ pub async fn get_character_spellbook(
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let mut stmt = conn.prepare(
-            "SELECT s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip, sb.prepared, sb.known, sb.notes
+            "SELECT s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip, sb.prepared, sb.known, sb.notes, s.tags
              FROM spellbook sb
              JOIN spell s ON s.id = sb.spell_id
              WHERE sb.character_id = ?
@@ -497,6 +500,7 @@ pub async fn get_character_spellbook(
                 prepared: row.get(7)?,
                 known: row.get(8)?,
                 notes: row.get(9)?,
+                tags: row.get(10)?,
             })
         })?;
 

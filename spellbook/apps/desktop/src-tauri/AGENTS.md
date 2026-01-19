@@ -120,6 +120,127 @@ The application uses a custom React-based modal system (instead of native `alert
 > [!TIP]
 > When designing new commands that require user confirmation, ensure the frontend is updated to use the `useModal` store's `confirm()` helper before invoking the backend command.
 
+## Character Management
+
+The character system supports multi-class characters with per-class spell lists. All character commands are in `commands/characters.rs`.
+
+### Data Model
+
+- **`character` table**: Core identity (name, race, alignment, COM toggle)
+- **`character_ability` table**: 1:1 relationship for ability scores (STR, DEX, CON, INT, WIS, CHA, COM)
+- **`character_class` table**: 1:N relationship for multi-class support
+- **`character_class_spell` table**: Links spells to *classes* (not characters) with `list_type` ('KNOWN' or 'PREPARED')
+
+### Command Patterns
+
+#### Character CRUD
+```rust
+#[tauri::command]
+pub async fn update_character_details(
+    state: State<'_, Arc<Pool>>,
+    id: i64,
+    name: String,
+    character_type: String,
+    race: Option<String>,
+    alignment: Option<String>,
+    com_enabled: i32,
+    notes: Option<String>,
+) -> Result<(), AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        conn.execute(
+            "UPDATE \"character\" SET name=?, type=?, race=?, alignment=?, com_enabled=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            params![name, character_type, race, alignment, com_enabled, notes, id],
+        )?;
+        Ok::<(), AppError>(())
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+    Ok(())
+}
+```
+
+#### Per-Class Spell Management with Integrity Constraints
+
+**Critical**: The system enforces two integrity rules:
+
+1. **Prepared spells must be Known**: When adding a spell to the PREPARED list, validate it exists in KNOWN
+2. **Removing from Known removes from Prepared**: Cascade deletion to maintain consistency
+
+```rust
+#[tauri::command]
+pub async fn add_character_spell(
+    state: State<'_, Arc<Pool>>,
+    character_class_id: i64,
+    spell_id: i64,
+    list_type: String,
+    notes: Option<String>,
+) -> Result<(), AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+
+        // Integrity constraint: Validate Prepared spells must be Known
+        if list_type == "PREPARED" {
+            let known_exists: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'KNOWN')",
+                params![character_class_id, spell_id],
+                |row| row.get(0),
+            )?;
+
+            if !known_exists {
+                return Err(AppError::Unknown("Cannot prepare a spell that is not in the Known list.".to_string()));
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(character_class_id, spell_id, list_type) DO UPDATE SET notes=excluded.notes",
+            params![character_class_id, spell_id, list_type, notes],
+        )?;
+        Ok::<(), AppError>(())
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_character_spell(
+    state: State<'_, Arc<Pool>>,
+    character_class_id: i64,
+    spell_id: i64,
+    list_type: String,
+) -> Result<(), AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        conn.execute(
+            "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = ?",
+            params![character_class_id, spell_id, list_type],
+        )?;
+
+        // Integrity constraint: Removing from Known removes from Prepared
+        if list_type == "KNOWN" {
+            conn.execute(
+                "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'PREPARED'",
+                params![character_class_id, spell_id],
+            )?;
+        }
+
+        Ok::<(), AppError>(())
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+    Ok(())
+}
+```
+
+> [!IMPORTANT]
+> The legacy `spellbook` table is deprecated. All new spell associations should use `character_class_spell` with a `character_class_id` foreign key.
+
 ## Common Pitfalls
 
 1. **Type inference in closures**: Always use `Ok::<T, AppError>(value)` inside `spawn_blocking`

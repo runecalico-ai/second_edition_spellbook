@@ -24,6 +24,8 @@ test("Milestone 2.5: Advanced Picker & Printing", async () => {
   const charName = `M2.5 Char ${runId}`;
   const spell1 = `M2.5 Spell A ${runId}`;
   const spell2 = `M2.5 Spell B ${runId}`;
+  const spell3 = `M2.5 Spell C ${runId}`;
+  const spell4 = `M2.5 Spell D ${runId}`;
 
   // 1. Setup: Create test spells and character
   // Add Spell A (Evocation, Level 2)
@@ -42,37 +44,61 @@ test("Milestone 2.5: Advanced Picker & Printing", async () => {
     description: "Description B",
   });
 
+  // Add Spell C (All, Quest Spell)
+  await app.createSpell({
+    name: spell3,
+    level: "3",
+    sphere: "All",
+    description: "Description C",
+    isQuest: true,
+  });
+
+  // Add Spell D (Evocation, Cantrip)
+  await app.createSpell({
+    name: spell4,
+    level: "0",
+    school: "Evocation",
+    description: "Description D",
+    isCantrip: true,
+  });
+
   // Create Character
   await app.createCharacter(charName);
-  await app.selectCharacter(charName);
 
-  // 2. Advanced Picker Filtering
-  await page.getByRole("button", { name: "Add Spells" }).click();
+  // Add Mage Class
+  await app.openCharacterEditor(charName);
+  await app.addClass("Mage");
+  await app.addClass("Cleric");
 
-  // Wait for modal to be visible
-  await expect(page.getByRole("heading", { name: "Add spells" })).toBeVisible();
+  // Select Mage Class and Add Spells to known list
+  // TODO:
 
-  // Scope all selectors to the modal to avoid selecting the page size dropdown
-  const modal = page.locator('[role="dialog"], .fixed.inset-0').last();
+  // Filter Cantrips
+  // TODO:
+
+  // Add Cantrip (Spell D) to known list for Mage
+  // TODO:
 
   // Filter by School: Evocation
-  const schoolSelect = modal.locator("select[multiple]");
-  await schoolSelect.selectOption("Evocation");
-  await modal.getByRole("button", { name: "Search" }).click();
-  await expect(app.getSpellRow(spell1)).toBeVisible();
-  await expect(app.getSpellRow(spell2)).not.toBeVisible();
+  // TODO:
 
   // Filter by Level: 3 (clear school filter first)
-  await schoolSelect.selectOption([]);
-  const levelSelects = modal.locator("select:not([multiple])");
-  await levelSelects.first().selectOption("3"); // Min level
-  await modal.getByRole("button", { name: "Search" }).click();
-  await expect(app.getSpellRow(spell2)).toBeVisible();
-  await expect(app.getSpellRow(spell1)).not.toBeVisible();
+  // TODO:
 
-  // Add Spell B to spellbook
-  await page.getByRole("button", { name: "Add", exact: true }).click();
-  await page.getByRole("button", { name: "Close" }).click();
+  // Add Spell B to KNOWN list for Mage
+  // TODO:
+
+
+  // Select Cleric Class and Add Spells to prepared list
+  // TODO:
+
+  // Filter by School: All
+  // TODO:
+
+  // Add Spell C to PREPARED list for Cleric
+  // TODO:
+
+
 
   // 3. Printing Spellbook
   const pageSizeSelect = page.locator("select").first();

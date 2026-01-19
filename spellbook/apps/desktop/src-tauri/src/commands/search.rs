@@ -34,7 +34,7 @@ fn search_keyword_with_conn(
     query: &str,
     filters: Option<SearchFilters>,
 ) -> Result<Vec<SpellSummary>, AppError> {
-    let mut sql = "SELECT id, name, school, level, class_list, components, duration, source, is_quest_spell, is_cantrip FROM spell WHERE 1=1".to_string();
+    let mut sql = "SELECT id, name, school, sphere, level, class_list, components, duration, source, is_quest_spell, is_cantrip FROM spell WHERE 1=1".to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if !query.trim().is_empty() {
@@ -55,6 +55,20 @@ fn search_keyword_with_conn(
                     }
                     sql.push_str("school LIKE ?");
                     params.push(Box::new(format!("%{}%", school)));
+                }
+                sql.push(')');
+            }
+        }
+
+        if let Some(spheres) = f.spheres {
+            if !spheres.is_empty() {
+                sql.push_str(" AND (");
+                for (i, sphere) in spheres.iter().enumerate() {
+                    if i > 0 {
+                        sql.push_str(" OR ");
+                    }
+                    sql.push_str("sphere LIKE ?");
+                    params.push(Box::new(format!("%{}%", sphere)));
                 }
                 sql.push(')');
             }
@@ -99,8 +113,9 @@ fn search_keyword_with_conn(
         }
 
         if let Some(is_quest) = f.is_quest_spell {
-            sql.push_str(" AND is_quest_spell = ?");
-            params.push(Box::new(if is_quest { 1 } else { 0 }));
+            if is_quest {
+                sql.push_str(" AND is_quest_spell = 1");
+            }
         }
 
         if let Some(is_cantrip) = f.is_cantrip {
@@ -118,13 +133,14 @@ fn search_keyword_with_conn(
             id: row.get(0)?,
             name: row.get(1)?,
             school: row.get(2)?,
-            level: row.get(3)?,
-            class_list: row.get(4)?,
-            components: row.get(5)?,
-            duration: row.get(6)?,
-            source: row.get(7)?,
-            is_quest_spell: row.get(8)?,
-            is_cantrip: row.get(9)?,
+            sphere: row.get(3)?,
+            level: row.get(4)?,
+            class_list: row.get(5)?,
+            components: row.get(6)?,
+            duration: row.get(7)?,
+            source: row.get(8)?,
+            is_quest_spell: row.get(9)?,
+            is_cantrip: row.get(10)?,
         })
     })?;
 
@@ -174,7 +190,7 @@ pub async fn search_semantic(
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let mut stmt = conn.prepare(
-            "SELECT s.id, s.name, s.school, s.level, s.class_list, s.components, s.duration,
+            "SELECT s.id, s.name, s.school, s.sphere, s.level, s.class_list, s.components, s.duration,
                     s.source, s.is_quest_spell, s.is_cantrip, vec_distance_cosine(v.v, ?) as distance
              FROM spell_vec v
              JOIN spell s ON s.id = v.rowid
@@ -188,13 +204,14 @@ pub async fn search_semantic(
                 id: row.get(0)?,
                 name: row.get(1)?,
                 school: row.get(2)?,
-                level: row.get(3)?,
-                class_list: row.get(4)?,
-                components: row.get(5)?,
-                duration: row.get(6)?,
-                source: row.get(7)?,
-                is_quest_spell: row.get(8)?,
-                is_cantrip: row.get(9)?,
+                sphere: row.get(3)?,
+                level: row.get(4)?,
+                class_list: row.get(5)?,
+                components: row.get(6)?,
+                duration: row.get(7)?,
+                source: row.get(8)?,
+                is_quest_spell: row.get(9)?,
+                is_cantrip: row.get(10)?,
             })
         })?;
 
@@ -216,6 +233,7 @@ pub async fn list_facets(state: State<'_, Arc<Pool>>) -> Result<Facets, AppError
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let schools = collect_facet_entries(&conn, "SELECT school FROM spell")?;
+        let spheres = collect_facet_entries(&conn, "SELECT sphere FROM spell")?;
         let sources = collect_facet_entries(&conn, "SELECT source FROM spell")?;
         let class_list = collect_facet_entries(&conn, "SELECT class_list FROM spell")?;
         let components = collect_facet_entries(&conn, "SELECT components FROM spell")?;
@@ -230,6 +248,7 @@ pub async fn list_facets(state: State<'_, Arc<Pool>>) -> Result<Facets, AppError
 
         Ok::<Facets, AppError>(Facets {
             schools,
+            spheres,
             sources,
             class_list,
             components,

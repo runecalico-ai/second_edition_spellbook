@@ -36,23 +36,22 @@ export interface CreateSpellOptions {
  * Page Object Model for the Spellbook application.
  */
 export class SpellbookApp {
-  constructor(public page: Page) {}
+  constructor(public page: Page) { }
 
   /** Navigate to a page using the nav link (preferring nav bar links) */
   async navigate(
     label: "Library" | "Characters" | "Import" | "Chat" | "App" | "Add Spell" | "Export",
   ): Promise<void> {
+    console.log(`Navigating to: ${label}`);
     if (label === "Add Spell") {
-      // Ensure we are in Library first, as "Add Spell" is a contextual link
       await this.navigate("Library");
-      await this.page.waitForTimeout(500); // Small wait for contextual link to mount
-      await this.page.getByRole("link", { name: "Add Spell" }).click();
+      await this.page.locator("#link-add-spell").click();
     } else {
       const link = this.page.getByRole("navigation").getByRole("link", { name: label });
       await link.click();
     }
-    await this.page.waitForLoadState("networkidle").catch(() => {});
-    // DO NOT reload here, it destroys SPA state that tests might rely on.
+    await this.page.waitForLoadState("domcontentloaded").catch(() => { });
+    await this.page.waitForTimeout(500);
   }
 
   /** Wait for the Library heading to be visible */
@@ -75,28 +74,31 @@ export class SpellbookApp {
       isCantrip,
       isQuest,
     } = options;
-
+    console.log(`Creating spell: ${name}`);
     await this.navigate("Add Spell");
     await expect(this.page.getByRole("heading", { name: "New Spell" })).toBeVisible();
 
     await this.page.waitForLoadState("networkidle");
     await this.page.waitForTimeout(500); // Allow React state to settle after mount
 
-    const nameLoc = this.page.getByLabel("Name");
-    await nameLoc.fill("");
+    const nameLoc = this.page.locator("#spell-name");
     await nameLoc.fill(name);
     await expect(nameLoc).toHaveValue(name);
 
-    const levelLoc = this.page.getByLabel("Level", { exact: true });
+    const levelLoc = this.page.locator("#spell-level");
     if (isCantrip) {
       await levelLoc.fill("0");
-      await this.page.locator(SELECTORS.cantripCheckbox).check();
+      const checkbox = this.page.locator(SELECTORS.cantripCheckbox);
+      await expect(checkbox).toBeEnabled();
+      await checkbox.check();
     } else if (isQuest) {
       await levelLoc.fill("8");
-      await this.page.locator(SELECTORS.questCheckbox).check();
+      const checkbox = this.page.locator(SELECTORS.questCheckbox);
+      await expect(checkbox).toBeEnabled();
+      await checkbox.check();
     } else {
-      await levelLoc.fill(level);
-      await expect(levelLoc).toHaveValue(level);
+      await levelLoc.fill(level.toString());
+      await expect(levelLoc).toHaveValue(level.toString());
     }
 
     if (school) {
@@ -128,15 +130,13 @@ export class SpellbookApp {
     }
 
     if (description) {
-      const descLoc = this.page.getByLabel("Description");
-      await descLoc.fill("");
+      const descLoc = this.page.locator("#spell-description");
       await descLoc.fill(description);
       await expect(descLoc).toHaveValue(description);
     }
 
     if (options.components) {
       const compLoc = this.page.getByPlaceholder("Components (V,S,M)");
-      await compLoc.fill("");
       await compLoc.fill(options.components);
       await expect(compLoc).toHaveValue(options.components);
     }
@@ -149,11 +149,13 @@ export class SpellbookApp {
     }
 
     await this.page.locator("#btn-save-spell").click();
+    console.log(`Saved spell: ${name}, waiting for Library...`);
     await this.waitForLibrary();
   }
 
   /** Reset the import wizard to the first step */
   async resetImportWizard(): Promise<void> {
+    console.log("Resetting import wizard...");
     await this.navigate("Import");
     const importMoreBtn = this.page.getByRole("button", { name: "Import More Files" });
     if (await importMoreBtn.isVisible()) {
@@ -167,6 +169,7 @@ export class SpellbookApp {
 
   /** Import a file through the import wizard */
   async importFile(filePath: string, allowOverwrite = false): Promise<void> {
+    console.log(`Importing file: ${filePath}`);
     await this.resetImportWizard();
 
     const fileInput = this.page.locator(SELECTORS.fileInput);
@@ -199,6 +202,7 @@ export class SpellbookApp {
 
   /** Open a spell in the editor by name */
   async openSpell(name: string): Promise<void> {
+    console.log(`Opening spell: ${name}`);
     await this.navigate("Library");
     await this.page.getByPlaceholder(/Search spells/i).fill(name);
     await this.page.getByRole("button", { name: "Search", exact: true }).click();
@@ -218,6 +222,7 @@ export class SpellbookApp {
 
   /** Clear all library filters */
   async clearFilters(): Promise<void> {
+    console.log("Clearing filters");
     await this.navigate("Library");
     const clearBtn = this.page.getByRole("button", { name: /Clear|Reset/i });
     if (await clearBtn.isVisible()) {
@@ -232,12 +237,14 @@ export class SpellbookApp {
 
   /** Select a character by name */
   async selectCharacter(name: string): Promise<void> {
+    console.log(`Selecting character: ${name}`);
     await this.navigate("Characters");
     await this.page.getByRole("link", { name: new RegExp(name) }).click();
   }
 
   /** Create a new character */
   async createCharacter(name: string): Promise<void> {
+    console.log(`Creating character: ${name}`);
     await this.navigate("Characters");
     const nameInput = this.page.getByPlaceholder("New Name");
     await nameInput.fill(name);
@@ -248,6 +255,97 @@ export class SpellbookApp {
 
   /** Get a spell row in the library table */
   getSpellRow(spellName: string) {
+    console.log(`Getting spell row: ${spellName}`);
     return this.page.getByRole("row", { name: new RegExp(spellName) });
+  }
+
+  /** Open character editor by name */
+  async openCharacterEditor(name: string): Promise<void> {
+    console.log(`Opening character editor: ${name}`);
+    await this.navigate("Characters");
+    const link = this.page.getByRole("link", { name: new RegExp(name) });
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(this.page).toHaveURL(/\/character\/\d+\/edit/);
+  }
+
+  /** Update character identity */
+  async updateIdentity(options: {
+    race?: string;
+    alignment?: string;
+    enableCom?: boolean;
+  }): Promise<void> {
+    console.log("Updating character identity");
+    if (options.race) {
+      await this.page.locator("#char-race").fill(options.race);
+    }
+    if (options.alignment) {
+      await this.page.locator("#char-alignment").selectOption(options.alignment);
+    }
+    if (options.enableCom !== undefined) {
+      await this.page.locator("#toggle-com").setChecked(options.enableCom, { force: true });
+    }
+    await this.page.getByRole("button", { name: "Save Identity" }).click();
+    await this.page.waitForTimeout(500); // Allow save to complete
+  }
+
+  /** Open spell picker for a class */
+  async openSpellPicker(className: string, listType: "KNOWN" | "PREPARED"): Promise<void> {
+    console.log(`Opening spell picker for ${className} ${listType}`);
+    const section = this.page.getByLabel(`Class section for ${className}`);
+    // Ensure the tab is active
+    await section.getByRole("button", { name: listType }).click();
+    // Click ADD
+    await section.getByRole("button", { name: "ADD" }).click();
+  }
+
+  /** Update character abilities */
+  async updateAbilities(abilities: { [key: string]: number }): Promise<void> {
+    console.log("Updating character abilities");
+    for (const [key, val] of Object.entries(abilities)) {
+      await this.page.getByLabel(key.toUpperCase(), { exact: true }).fill(val.toString());
+    }
+    await this.page.getByRole("button", { name: "Save Abilities" }).click();
+    await this.page.waitForTimeout(500);
+  }
+
+  /** Add a class to the character */
+  async addClass(className: string): Promise<void> {
+    console.log(`Adding class: ${className}`);
+    await this.page.locator("#new-class-select").selectOption(className);
+    // Wait for the class row to appear in the list using data-testid
+    const classRow = this.page.locator(`[data-testid="class-row"]`).filter({ hasText: className });
+    await expect(classRow).toBeVisible({ timeout: TIMEOUTS.medium });
+    console.log(`Class added and verified: ${className}`);
+  }
+
+  /** Add a spell to a class list */
+  async addSpellToClass(
+    className: string,
+    spellName: string,
+    listType: "KNOWN" | "PREPARED",
+  ): Promise<void> {
+    console.log(`Adding spell ${spellName} to class ${className} (${listType})`);
+    // Find the specific spell list container for this class using aria-label
+    const classSection = this.page.locator(`[aria-label="Class section for ${className}"]`);
+    await classSection.getByRole("button", { name: listType }).click();
+    await this.page.waitForTimeout(300);
+    await classSection.getByRole("button", { name: "+ ADD" }).click();
+
+    // Wait for the specific picker modal to appear
+    const picker = this.page.locator('[data-testid="spell-picker"]');
+    await expect(picker).toBeVisible({ timeout: TIMEOUTS.medium });
+    console.log("Picker visible, searching for spell...");
+
+    await picker.locator("#spell-search-input").fill(spellName);
+    await this.page.waitForTimeout(1000); // Wait for search results and debounce
+    await picker.getByRole("button", { name: "ADD", exact: true }).first().click();
+    console.log("Clicked ADD, closing picker...");
+
+    // Optionally wait for picker to close if it doesn't close automatically
+    await expect(picker).not.toBeVisible({ timeout: TIMEOUTS.medium });
+
+    await expect(classSection.getByText(spellName)).toBeVisible();
+    console.log(`Spell ${spellName} verified in class ${className}`);
   }
 }

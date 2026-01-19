@@ -252,9 +252,8 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-name"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isNameInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${isNameInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
             placeholder="Spell Name"
             value={form.name}
             onChange={(e) => handleChange("name", e.target.value)}
@@ -268,9 +267,8 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-level"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isLevelInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${isLevelInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
             type="number"
             min={0}
             max={12}
@@ -495,9 +493,8 @@ export default function SpellEditor() {
         </label>
         <textarea
           id="spell-description"
-          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
-            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
-          }`}
+          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
           required

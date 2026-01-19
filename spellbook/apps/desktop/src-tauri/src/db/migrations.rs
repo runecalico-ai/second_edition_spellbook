@@ -3,6 +3,7 @@ use rusqlite::Connection;
 
 pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
     let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    eprintln!("DB VERSION START: {}", version);
 
     if version < 1 {
         let sql = include_str!("../../../../../db/migrations/0001_init.sql");
@@ -55,10 +56,19 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
     }
 
     if version < 6 {
+        eprintln!("Applying migration 0006...");
         let sql = include_str!("../../../../../db/migrations/0006_add_cantrip_flag.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 6", [])?;
     }
+
+    if version < 7 {
+        eprintln!("Applying migration 0007...");
+        let sql = include_str!("../../../../../db/migrations/0007_character_profiles.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 7", [])?;
+    }
+    eprintln!("DB VERSION END: 7");
 
     Ok(())
 }

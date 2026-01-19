@@ -11,6 +11,7 @@ import ImportWizard from "./ui/ImportWizard";
 import Library from "./ui/Library";
 import SpellEditor from "./ui/SpellEditor";
 import SpellbookBuilder from "./ui/SpellbookBuilder";
+import CharacterEditor from "./ui/CharacterEditor";
 
 // This wrapper is now responsible for passing the ID to SpellEditor,
 // allowing SpellEditor to manage its own state and data fetching based on the ID prop,
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
       { path: "edit/:id", element: <SpellEditorWrapper /> },
       { path: "character", element: <CharacterManager /> },
       { path: "character/:id/builder", element: <SpellbookBuilder /> },
+      { path: "character/:id/edit", element: <CharacterEditor /> },
     ],
   },
 ]);

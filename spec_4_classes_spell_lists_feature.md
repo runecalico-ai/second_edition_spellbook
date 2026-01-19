@@ -22,14 +22,15 @@ We’re adding a **Classes** system that integrates with Characters and spell li
 ## Requirements
 
 ### Must Have
-- **Class registry** persisted locally; each class has: name, type (**Arcane**, **Divine**, or **Hybrid**), description/notes.
+- **Class registry** persisted locally; each class has: name, type (**Arcane**, **Divine**, **Psionic**, or **Hybrid**), description/notes.
 - **Spell list strategy** per class:
   - **Own list**: explicit includes (by spell id/key) with optional excludes.
   - **Inherit**: reuse another class’s list with **delta rules** (adds/removes).
   - **Specialist bans**: for Arcane classes, mark **barred schools** (cannot learn/cast from these).
   - **Divine spheres**: per-class **sphere access** with values **Full / Limited / None**; optional granted/forbidden spell overrides.
 - **Compatibility with Characters (SPEC-2)**: Character classes reference class definitions to validate **Known/Prepared** lists.
-- **Search/Filter** classes by type, barred schools, sphere access pattern.
+- **Search/Filter** classes by type, barred schools, sphere access pattern. List only spells of the type the class can cast.
+- **Spell Type** Spells are either Arcane of Divine, and should be recorded as such in the database. This is used to validate that characters can only learn spells of their type.
 - **Import/Export** open bundles for classes (JSON/Markdown).
 - **Placeholder**: keep a `Psionics` type value reserved (no behavior in v1).
 

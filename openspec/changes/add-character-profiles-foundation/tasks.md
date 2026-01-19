@@ -61,6 +61,7 @@
   - [ ] C1.4.5 Test bulk operations
   - [ ] C1.4.6 Test character-specific spell lists (two characters with same class)
   - [ ] C1.4.7 Test non-spellcasting classes (Fighter, Thief)
+  - [ ] C1.4.8 Test spell picker filter state reset between dialog sessions
 
 ## Documentation
 - [ ] D1 Update AGENTS.md

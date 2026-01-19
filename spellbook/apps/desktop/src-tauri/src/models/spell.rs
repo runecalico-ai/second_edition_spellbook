@@ -6,6 +6,7 @@ pub struct SpellSummary {
     pub id: i64,
     pub name: String,
     pub school: Option<String>,
+    pub sphere: Option<String>,
     pub level: i64,
     pub class_list: Option<String>,
     pub components: Option<String>,

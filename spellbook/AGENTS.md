@@ -205,6 +205,46 @@ Always run the following before completing work:
 - Rust linting.
 - Python linting.
 
+## Character Profile System
+
+Established in Part 1 (Foundation), the character system supports multi-classing and per-class spell management.
+
+### Data Model
+
+- **`character` table**: Core identity (name, race, alignment, COM toggle).
+- **`character_ability` table**: Normalized 1:1 table for ability scores (STR, DEX, CON, INT, WIS, CHA, COM).
+- **`character_class` table**: 1:N relationship allowing multiple classes per character.
+- **`character_class_spell` table**: Links spells to *classes* rather than characters, with `list_type` ('KNOWN' or 'PREPARED').
+
+### Backend Patterns
+
+All character management is via Tauri commands in `src-tauri/src/commands/characters.rs`:
+
+- **Identity**: `update_character_details(id, name, type, race, alignment, com_enabled, notes)`
+- **Abilities**: `update_character_abilities(character_id, str, dex, ...)`
+- **Classes**: `add_character_class`, `remove_character_class`, `get_character_classes`
+- **Spells**: `add_character_spell` (with notes), `remove_character_spell`, `get_character_class_spells`, `update_character_spell_notes`
+
+> [!IMPORTANT]
+> The legacy `spellbook` table is deprecated. Spells are now associated with a specific `character_class_id`.
+
+### Example CRUD Flow (Frontend)
+
+```typescript
+// 1. Create Character
+const id = await invoke("create_character", { name: "Elminster", characterType: "PC" });
+
+// 2. Add Class
+const classId = await invoke("add_character_class", { characterId: id, className: "Mage", level: 20 });
+
+// 3. Add Spell to Class Known List
+await invoke("add_character_spell", {
+  characterClassId: classId,
+  spellId: 42,
+  listType: "KNOWN"
+});
+```
+
 ## Notes
 
 - Keep instructions offline-friendly since the sidecar is designed to run without network access.

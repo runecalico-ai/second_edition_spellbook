@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct SearchFilters {
     #[serde(rename = "schools")]
     pub schools: Option<Vec<String>>,
+    #[serde(rename = "spheres")]
+    pub spheres: Option<Vec<String>>,
     // Handled by rename_all="camelCase"
     pub level_min: Option<i64>,
     pub level_max: Option<i64>,
@@ -41,6 +43,7 @@ pub struct SavedSearchPayload {
 #[derive(Serialize, Deserialize)]
 pub struct Facets {
     pub schools: Vec<String>,
+    pub spheres: Vec<String>,
     pub sources: Vec<String>,
     pub levels: Vec<i64>,
     pub class_list: Vec<String>,

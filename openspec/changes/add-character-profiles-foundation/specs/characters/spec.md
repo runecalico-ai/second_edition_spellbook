@@ -35,7 +35,7 @@ Characters SHALL support multiple classes, each with an independent level (no ma
 - **THEN** the class and all associated per-class spell lists SHALL be deleted
 
 ### Requirement: Per-Class Spell Management
-Each class instance on a specific character SHALL maintain separate "Known" and "Prepared" spell lists that are unique to that character. Spell lists SHALL NOT be shared across different characters with the same class. Spells SHALL reference existing `spell` records, and each spell link MAY include per-spell notes.
+Each class instance on a specific character SHALL maintain separate "Known" and "Prepared" spell lists that are unique to that character. Spell lists SHALL NOT be shared across different characters with the same class. Spells SHALL reference existing `spell` records, and each spell link MAY include per-spell notes. Any spell in the "Prepared" list MUST also exist in the "Known" list for that class.
 
 #### Scenario: Adding Spell to Known List
 - **WHEN** the user adds "Magic Missile" to the Known list for the "Mage" class
@@ -43,7 +43,18 @@ Each class instance on a specific character SHALL maintain separate "Known" and 
 
 #### Scenario: Adding Spell to Prepared List
 - **WHEN** the user adds "Magic Missile" to the Prepared list for the "Mage" class
+- **AND** "Magic Missile" is already in the Known list for the "Mage" class
 - **THEN** the spell SHALL be linked to that class with list_type "PREPARED"
+
+#### Scenario: Validating Prepared Spell is Known
+- **WHEN** the user attempts to add "Fireball" to the Prepared list for the "Mage" class
+- **AND** "Fireball" is NOT in the Known list for the "Mage" class
+- **THEN** the application SHALL display a validation error and prevent adding the spell
+
+#### Scenario: Removing Known Spell Removes Prepared
+- **WHEN** the user removes "Magic Missile" from the "Mage" Known list
+- **AND** "Magic Missile" is also in the "Mage" Prepared list
+- **THEN** the spell SHALL be automatically removed from the Prepared list as well
 
 #### Scenario: Per-Spell Notes
 - **WHEN** the user adds the note "Use against Trolls" to "Fireball" in the Prepared list
@@ -66,6 +77,29 @@ Each class instance on a specific character SHALL maintain separate "Known" and 
 - **WHEN** the user adds a "Fighter" class to a character
 - **THEN** the class SHALL be created without requiring any spell list entries
 
+#### Scenario: Filtering Spells for Addition
+- **WHEN** the user opens the dialog to add a spell to a class
+- **THEN** the application SHALL provide search filters for:
+    - **Spell Name**: partial text match
+    - **Level**: exact level number
+    - **Cantrip**: boolean toggle
+    - **Quest**: boolean toggle
+    - **School**: for Arcane spells (e.g., "Necromancy")
+    - **Sphere**: for Divine spells (e.g., "Healing")
+    - **Tags**: filter by associated tags
+
+#### Scenario: Filter State Reset on Dialog Open
+- **WHEN** the user opens the spell picker dialog
+- **THEN** all filter options SHALL be reset to their default values:
+    - **Spell Name**: empty string
+    - **Level Min/Max**: undefined (no level filter)
+    - **Cantrip**: unchecked (false)
+    - **Quest**: unchecked (false)
+    - **School**: "All Schools" (empty string)
+    - **Sphere**: "All Spheres" (empty string)
+    - **Tags**: empty string
+- **AND** this reset SHALL occur regardless of what filter values were set in previous dialog sessions
+
 ### Requirement: Character Data Validation
 The application SHALL validate character data to ensure integrity: ability scores and levels MUST be non-negative integers, class names MUST match the core list or "Other", and COM SHALL only be displayed/editable when `com_enabled` is true.
 
@@ -80,3 +114,10 @@ The application SHALL validate character data to ensure integrity: ability score
 #### Scenario: Enforcing Unique Classes
 - **WHEN** the user attempts to add a class that already exists on the character (same class_name and class_label)
 - **THEN** the application SHALL display a validation error and prevent adding the duplicate class
+
+### Requirement: Character Deletion
+Deleting a character SHALL remove the character record and all associated data, including abilities, classes, and per-class spell lists.
+
+#### Scenario: Deleting a Character
+- **WHEN** the user deletes character "Elira"
+- **THEN** the character record, ability scores, classes, and all associated spell lists SHALL be permanently removed from the database

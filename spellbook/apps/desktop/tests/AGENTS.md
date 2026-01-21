@@ -178,6 +178,8 @@ const app = new SpellbookApp(page);
 - `await app.deleteCurrentCharacter()`: Click the "DELETE PROFILE" button in the character editor header.
 - `await app.deleteCharacterFromList(name)`: Setup dialog listener, hover over character in list, click delete, and handle confirmation.
 - `await app.verifyCharacterNotExists(name)`: Navigate to Characters and verify the named profile is missing.
+- `await app.removeSpellFromClass(className, listType, spellName)`: Remove a spell from a character's class list (handling the complex UI interaction).
+- `await app.verifySpellInClassList(className, listType, spellName, shouldExist)`: Verify if a spell is present or absent in a class list (handling tab switching).
 
 #### Using Shared Selectors
 If a method doesn't exist, use the exported `SELECTORS` for consistency:

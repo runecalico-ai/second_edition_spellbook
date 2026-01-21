@@ -4,11 +4,7 @@
  */
 import { test as base } from "@playwright/test";
 import type { TauriAppContext } from "./tauri-fixture";
-import {
-	cleanupTauriApp,
-	createFileTracker,
-	launchTauriApp,
-} from "./tauri-fixture";
+import { cleanupTauriApp, createFileTracker, launchTauriApp } from "./tauri-fixture";
 
 /**
  * Extended test fixtures for Tauri E2E tests.
@@ -21,19 +17,19 @@ import {
  * Use test.use({ tauriOptions: { ... } }) to override defaults.
  */
 type TauriFixtureOptions = {
-	/** Timeout for app readiness. Defaults to TIMEOUTS.long * 2 */
-	timeout?: number;
-	/** Pipe stdout/stderr for debugging. Defaults to true */
-	debug?: boolean;
+  /** Timeout for app readiness. Defaults to TIMEOUTS.long * 2 */
+  timeout?: number;
+  /** Pipe stdout/stderr for debugging. Defaults to true */
+  debug?: boolean;
 };
 
 type TauriTestFixtures = {
-	/** Tauri app context with browser, page, and process handles */
-	appContext: TauriAppContext;
-	/** File tracker for automatic cleanup of temporary files */
-	fileTracker: ReturnType<typeof createFileTracker>;
-	/** Options for customizing Tauri app launch behavior */
-	tauriOptions: TauriFixtureOptions;
+  /** Tauri app context with browser, page, and process handles */
+  appContext: TauriAppContext;
+  /** File tracker for automatic cleanup of temporary files */
+  fileTracker: ReturnType<typeof createFileTracker>;
+  /** Options for customizing Tauri app launch behavior */
+  tauriOptions: TauriFixtureOptions;
 };
 
 /**
@@ -58,34 +54,34 @@ type TauriTestFixtures = {
  * ```
  */
 export const test = base.extend<TauriTestFixtures>({
-	// Default options for Tauri app launch
-	tauriOptions: [{}, { option: true }],
+  // Default options for Tauri app launch
+  tauriOptions: [{}, { option: true }],
 
-	appContext: async ({ tauriOptions }, use, testInfo) => {
-		// Launch the app once per worker with custom options
-		const ctx = await launchTauriApp({
-			workerIndex: testInfo.workerIndex,
-			timeout: tauriOptions.timeout,
-			debug: tauriOptions.debug,
-		});
+  appContext: async ({ tauriOptions }, use, testInfo) => {
+    // Launch the app once per worker with custom options
+    const ctx = await launchTauriApp({
+      workerIndex: testInfo.workerIndex,
+      timeout: tauriOptions.timeout,
+      debug: tauriOptions.debug,
+    });
 
-		// Provide the context to the test
-		await use(ctx);
+    // Provide the context to the test
+    await use(ctx);
 
-		// Cleanup after the test
-		await cleanupTauriApp(ctx);
-	},
+    // Cleanup after the test
+    await cleanupTauriApp(ctx);
+  },
 
-	fileTracker: async ({}, use) => {
-		// Create file tracker
-		const tracker = createFileTracker();
+  fileTracker: async ({}, use) => {
+    // Create file tracker
+    const tracker = createFileTracker();
 
-		// Provide to the test
-		await use(tracker);
+    // Provide to the test
+    await use(tracker);
 
-		// Cleanup tracked files
-		tracker.cleanup();
-	},
+    // Cleanup tracked files
+    tracker.cleanup();
+  },
 });
 
 /**

@@ -27,11 +27,11 @@ import { fileURLToPath } from "node:url";
  * ```
  */
 export function ensureTmpDir(dirname: string, subdir = "tmp"): string {
-	const tmpDir = path.resolve(dirname, subdir);
-	if (!fs.existsSync(tmpDir)) {
-		fs.mkdirSync(tmpDir, { recursive: true });
-	}
-	return tmpDir;
+  const tmpDir = path.resolve(dirname, subdir);
+  if (!fs.existsSync(tmpDir)) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  }
+  return tmpDir;
 }
 
 /**
@@ -47,7 +47,7 @@ export function ensureTmpDir(dirname: string, subdir = "tmp"): string {
  * ```
  */
 export function getTestDirname(importMetaUrl: string): string {
-	return path.dirname(fileURLToPath(importMetaUrl));
+  return path.dirname(fileURLToPath(importMetaUrl));
 }
 
 /**
@@ -64,7 +64,7 @@ export function getTestDirname(importMetaUrl: string): string {
  * ```
  */
 export function generateRunId(): number {
-	return Date.now();
+  return Date.now();
 }
 
 /**
@@ -83,24 +83,24 @@ export function generateRunId(): number {
  * ```
  */
 export function createTmpFilePath(
-	dirname: string,
-	filename: string,
-	fileTracker?: { track: (path: string) => string },
+  dirname: string,
+  filename: string,
+  fileTracker?: { track: (path: string) => string },
 ): string {
-	const tmpDir = ensureTmpDir(dirname);
-	const runId = generateRunId();
+  const tmpDir = ensureTmpDir(dirname);
+  const runId = generateRunId();
 
-	// Insert runId before the file extension
-	const ext = path.extname(filename);
-	const base = path.basename(filename, ext);
-	const uniqueFilename = `${base}-${runId}${ext}`;
+  // Insert runId before the file extension
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  const uniqueFilename = `${base}-${runId}${ext}`;
 
-	const filePath = path.join(tmpDir, uniqueFilename);
+  const filePath = path.join(tmpDir, uniqueFilename);
 
-	// Track the file if a tracker was provided
-	if (fileTracker) {
-		return fileTracker.track(filePath);
-	}
+  // Track the file if a tracker was provided
+  if (fileTracker) {
+    return fileTracker.track(filePath);
+  }
 
-	return filePath;
+  return filePath;
 }

@@ -67,6 +67,22 @@ import { getTestDirname } from "./fixtures/test-utils";
 const __dirname = getTestDirname(import.meta.url);
 ```
 
+#### 4. Use New Page Object Methods
+
+Replace brittle manual locators with new `SpellbookApp` methods:
+
+**Before:**
+```typescript
+const mageSection = page.locator('[aria-label="Class section for Mage"]');
+await mageSection.getByRole("button", { name: "KNOWN" }).click();
+await expect(mageSection.getByText(mageSpell)).toBeVisible();
+```
+
+**After:**
+```typescript
+await app.verifySpellInClassList("Mage", "KNOWN", mageSpell, true);
+```
+
 ### Full Migration (Higher Effort, Maximum Benefit)
 
 For comprehensive modernization, migrate to Playwright fixtures:

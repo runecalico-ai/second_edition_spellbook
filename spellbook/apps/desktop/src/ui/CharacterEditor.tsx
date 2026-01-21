@@ -66,39 +66,42 @@ export default function CharacterEditor() {
   const [saving, setSaving] = useState(false);
   const [isAddingClass, setIsAddingClass] = useState(false);
 
-  const loadData = useCallback(async (isSilent = false) => {
-    if (!Number.isFinite(characterId)) return;
-    if (!isSilent) setLoading(true);
-    try {
-      const char = await invoke<Character>("get_character", { id: characterId });
-      const abs = await invoke<CharacterAbilities | null>("get_character_abilities", {
-        characterId,
-      });
-      const cls = await invoke<CharacterClass[]>("get_character_classes", {
-        characterId,
-      });
+  const loadData = useCallback(
+    async (isSilent = false) => {
+      if (!Number.isFinite(characterId)) return;
+      if (!isSilent) setLoading(true);
+      try {
+        const char = await invoke<Character>("get_character", { id: characterId });
+        const abs = await invoke<CharacterAbilities | null>("get_character_abilities", {
+          characterId,
+        });
+        const cls = await invoke<CharacterClass[]>("get_character_classes", {
+          characterId,
+        });
 
-      setCharacter(char);
-      setAbilities(
-        abs || {
-          id: 0,
-          character_id: characterId,
-          str: 10,
-          dex: 10,
-          con: 10,
-          int: 10,
-          wis: 10,
-          cha: 10,
-          com: 10,
-        },
-      );
-      setClasses(cls);
-    } catch (e) {
-      console.error("Failed to load character data:", e);
-    } finally {
-      if (!isSilent) setLoading(false);
-    }
-  }, [characterId]);
+        setCharacter(char);
+        setAbilities(
+          abs || {
+            id: 0,
+            character_id: characterId,
+            str: 10,
+            dex: 10,
+            con: 10,
+            int: 10,
+            wis: 10,
+            cha: 10,
+            com: 10,
+          },
+        );
+        setClasses(cls);
+      } catch (e) {
+        console.error("Failed to load character data:", e);
+      } finally {
+        if (!isSilent) setLoading(false);
+      }
+    },
+    [characterId],
+  );
 
   useEffect(() => {
     loadData();
@@ -191,7 +194,12 @@ export default function CharacterEditor() {
             <button
               type="button"
               onClick={async () => {
-                if (await modalConfirm("Are you sure you want to delete this character? This cannot be undone.", "Delete Profile")) {
+                if (
+                  await modalConfirm(
+                    "Are you sure you want to delete this character? This cannot be undone.",
+                    "Delete Profile",
+                  )
+                ) {
                   try {
                     await invoke("delete_character", { id: character.id });
                     window.location.href = "/character";
@@ -474,7 +482,7 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
     if (
       !(await modalConfirm(
         `Are you sure you want to remove the ${cls.class_name} class? All associated spells will be unlinked.`,
-        "Remove Class"
+        "Remove Class",
       ))
     )
       return;
@@ -593,9 +601,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
       className="bg-neutral-900/60 border border-neutral-800 rounded-xl overflow-hidden flex flex-col"
       aria-label={`Class section for ${charClass.class_name}`}
     >
-      <div
-        className="w-full p-4 bg-neutral-950/50 border-b border-neutral-800 flex items-center justify-between"
-      >
+      <div className="w-full p-4 bg-neutral-950/50 border-b border-neutral-800 flex items-center justify-between">
         <div className="flex flex-col flex-1 gap-1">
           <button
             type="button"
@@ -640,8 +646,8 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                   }}
                   className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${
                     activeTab === tab
-                       ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
-                       : "text-neutral-600 hover:text-neutral-400"
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
+                      : "text-neutral-600 hover:text-neutral-400"
                   }`}
                 >
                   {tab}
@@ -656,7 +662,10 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
               type="button"
               onClick={async (e) => {
                 e.stopPropagation();
-                if (!(await modalConfirm(`Remove ${selectedRemoveIds.size} spells?`, "Bulk Remove"))) return;
+                if (
+                  !(await modalConfirm(`Remove ${selectedRemoveIds.size} spells?`, "Bulk Remove"))
+                )
+                  return;
                 try {
                   for (const spellId of selectedRemoveIds) {
                     await invoke("remove_character_spell", {
@@ -944,7 +953,11 @@ function SpellPicker({
         });
       }
       if (skipped > 0) {
-        modalAlert(`${skipped} spell(s) were skipped because they are not in the Known list.`, "Spell Constraint", "warning");
+        modalAlert(
+          `${skipped} spell(s) were skipped because they are not in the Known list.`,
+          "Spell Constraint",
+          "warning",
+        );
       }
       await onAdded(); // Await refresh before closing
       setOpen(false);
@@ -961,7 +974,11 @@ function SpellPicker({
         onClick={(e) => {
           e.stopPropagation();
           if (listType === "PREPARED" && knownSpells.length === 0) {
-            modalAlert("You must have at least one Known spell before you can prepare spells.", "Character Logic", "warning");
+            modalAlert(
+              "You must have at least one Known spell before you can prepare spells.",
+              "Character Logic",
+              "warning",
+            );
             return;
           }
           setOpen(true);
@@ -1150,7 +1167,11 @@ function SpellPicker({
                       if (listType === "PREPARED") {
                         const isKnown = knownSpells.some((ks) => ks.spell_id === spell.id);
                         if (!isKnown) {
-                          modalAlert(`"${spell.name}" must be in the Known list before it can be Prepared.`, "Character Logic", "warning");
+                          modalAlert(
+                            `"${spell.name}" must be in the Known list before it can be Prepared.`,
+                            "Character Logic",
+                            "warning",
+                          );
                           return;
                         }
                       }

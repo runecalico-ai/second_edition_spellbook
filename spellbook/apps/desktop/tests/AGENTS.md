@@ -70,24 +70,70 @@ The `launchTauriApp()` helper in `tauri-fixture.ts` handles isolation automatica
 ```
 
 ### 1. Use Shared Fixtures
-Always use the shared infrastructure with explicit typing:
+
+#### Recommended: Playwright Fixtures (Automatic Lifecycle)
+
+The easiest way to write tests is using the custom Playwright fixtures that handle app lifecycle automatically:
+
+```typescript
+import { expect, test } from "./fixtures/test-fixtures";
+import { TIMEOUTS } from "./fixtures/constants";
+import { SpellbookApp } from "./page-objects/SpellbookApp";
+
+test.describe("My Test Suite", () => {
+  test("my test", async ({ appContext, fileTracker }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    // Track temporary files
+    const tmpFile = fileTracker.track(path.resolve(__dirname, "tmp/test.md"));
+
+    // Your test code here...
+  });
+});
+```
+
+**Benefits:**
+- ✅ No `beforeAll`/`afterAll` boilerplate
+- ✅ Automatic cleanup even if tests fail
+- ✅ Each test gets fresh fixtures
+- ✅ Type-safe access to `appContext` and `fileTracker`
+
+#### Alternative: Manual Lifecycle (Advanced)
+
+For test suites that need to share a single app instance across multiple tests (e.g., for performance), use manual lifecycle management:
 
 ```typescript
 import { TIMEOUTS } from "./fixtures/constants";
-import { type TauriAppContext, cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
+import { type TauriAppContext, cleanupTauriApp, createFileTracker, launchTauriApp } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 // Use explicit typing instead of 'any'
 let appContext: TauriAppContext | null = null;
+const fileTracker = createFileTracker();
 
 test.beforeAll(async () => {
   appContext = await launchTauriApp();
 });
 
-test.afterAll(() => {
-  cleanupTauriApp(appContext);
+test.afterAll(async () => {
+  if (appContext) {
+    await cleanupTauriApp(appContext);
+  }
+  fileTracker.cleanup();
+});
+
+test("my test", async () => {
+  if (!appContext) throw new Error("App context not initialized");
+  const { page } = appContext;
+  // Your test code here...
 });
 ```
+
+**Use this approach when:**
+- You need to share app state across multiple tests
+- You're running a large test suite and want to minimize app launches
+- You need fine-grained control over the lifecycle
 
 ### 2. Use SpellbookApp Page Object
 The `SpellbookApp` class in `tests/page-objects/SpellbookApp.ts` is the central hub for common UI interactions. **Always** prefer its methods over raw Playwright locators.
@@ -264,7 +310,7 @@ export class SpellbookApp {
 
 ## File Cleanup
 
-Use the file tracker for temporary test files:
+Use the file tracker for temporary test files to ensure automatic cleanup:
 
 ```typescript
 import { createFileTracker } from "./fixtures/tauri-fixture";
@@ -280,6 +326,28 @@ test("test", async () => {
   fs.writeFileSync(testFile, content);
   // File will be cleaned up automatically
 });
+```
+
+### Working with tmp Directory
+
+For tests that create multiple files or need a dedicated directory:
+
+```typescript
+const runId = Date.now();
+
+// Ensure tmp directory exists
+const tmpDir = path.resolve(__dirname, "tmp");
+if (!fs.existsSync(tmpDir)) {
+  fs.mkdirSync(tmpDir, { recursive: true });
+}
+
+// Track files for automatic cleanup
+const backupPath = fileTracker.track(path.resolve(tmpDir, `backup-${runId}.zip`));
+const testFile = fileTracker.track(path.resolve(tmpDir, `test-${runId}.md`));
+
+// Use the files in your test
+fs.writeFileSync(testFile, content);
+// Files will be cleaned up automatically in afterAll
 ```
 ## Common Gotchas & Troubleshooting
 

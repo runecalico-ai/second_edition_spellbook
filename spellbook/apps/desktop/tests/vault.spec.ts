@@ -1,31 +1,24 @@
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
+import {
+	createTmpFilePath,
+	generateRunId,
+	getTestDirname,
+} from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal, setupDialogHandler } from "./utils/dialog-handler";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = getTestDirname(import.meta.url);
 
 test.describe("Vault Backup and Restore", () => {
 	test("Backup and Restore Flow", async ({ appContext, fileTracker }) => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);
-		const runId = Date.now();
+		const runId = generateRunId();
 
 		const backupSpellName = `Backup Test Spell ${runId}`;
-
-		// Ensure tmp directory exists
-		const tmpDir = path.resolve(__dirname, "tmp");
-		if (!fs.existsSync(tmpDir)) {
-			fs.mkdirSync(tmpDir, { recursive: true });
-		}
-
-		const backupPath = fileTracker.track(
-			path.resolve(tmpDir, `backup-${runId}.zip`),
-		);
+		const backupPath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
 
 		// Setup dialog handler
 		const cleanupDialogs = setupDialogHandler(page, {
@@ -101,3 +94,4 @@ test.describe("Vault Backup and Restore", () => {
 		}
 	});
 });
+

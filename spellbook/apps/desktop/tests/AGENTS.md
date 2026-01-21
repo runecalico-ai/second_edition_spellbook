@@ -2,13 +2,17 @@
 
 Instructions for developing, running, and maintaining Playwright E2E tests for the Spellbook desktop application.
 
+> **Migrating existing tests?** See [MIGRATION.md](MIGRATION.md) for a complete guide on updating tests to use the modern infrastructure.
+
 ## Directory Structure
 
 ```
 tests/
 ├── fixtures/           # Test infrastructure
 │   ├── constants.ts    # Timeout values, configuration
-│   └── tauri-fixture.ts # App launch/teardown utilities
+│   ├── tauri-fixture.ts # App launch/teardown utilities
+│   ├── test-fixtures.ts # Playwright fixtures (automatic lifecycle)
+│   └── test-utils.ts   # Common test utilities
 ├── page-objects/       # Page Object Model classes
 │   └── SpellbookApp.ts # Common UI interactions
 ├── utils/              # Helper utilities
@@ -149,13 +153,18 @@ const app = new SpellbookApp(page);
 - `await app.navigate("Library" | "Characters" | "Import" | "Add Spell")`: Safe navigation that waits for React state to settle.
 
 #### Library & Spell Management
-- `await app.createSpell({ name, level, ... })`: Full workflow to add a spell and return to Library.
+- `await app.createSpell({ name, level, ... })`: Full workflow to add a spell and return to Library. Supports extended fields like `author`, `materialComponents`, `isReversible`, etc.
 - `await app.openSpell(name)`: Search for and open the editor for a specific spell.
-- `await app.importFile(path, allowOverwrite?)`: Complete multi-step Import Wizard handling.
+- `await app.importFile(path | path[], allowOverwrite?)`: Complete multi-step Import Wizard handling. Supports single or multiple file imports.
+- `await app.setLibraryFilters({ search?, className?, component?, tag?, questOnly?, cantripsOnly? })`: Set persistent library filters.
 - `app.getSpellRow(name)`: Returns a locator for a specific spell's row in the library table.
 
 #### Character Management
-- `await app.createCharacter(name)`: Rapidly create a character via the sidebar.
+- `await app.openSpellPicker(className, listType)`: Open the spell picker dialog for a character.
+- `await app.setSpellPickerFilters({ search?, minLevel?, maxLevel?, tags?, school?, sphere?, questOnly?, cantripsOnly? })`: Set filters within an open spell picker.
+- `await app.clearSpellPickerFilters()`: Reset all filters in the spell picker to defaults.
+- `await app.bulkAddSpells(names)`: Select multiple spells (clears filters first) and click "BULK ADD".
+- `await app.createCharacter(name)`: Create a new character profile.
 - `await app.selectCharacter(name)`: Click a character in the sidebar.
 - `await app.openCharacterEditor(name)`: Navigate to and wait for a character's full editor to load.
 - `await app.addClass(className)`: Add a class (handles the "Other" custom prompt automatically).
@@ -195,14 +204,59 @@ await expect(element).toBeVisible({ timeout: TIMEOUTS.medium });
 | `TIMEOUTS.long` | 30000ms | App startup, complex operations |
 | `TIMEOUTS.batch` | 60000ms | Batch imports, file processing |
 
-### 4. Generate Unique Test Data
+### 4. Use Test Utilities
 
-Use timestamps to avoid collisions:
+The `fixtures/test-utils.ts` module provides helper functions for common test patterns:
+
+#### Generate Unique Test Data
 
 ```typescript
-const runId = Date.now();
+import { generateRunId } from "./fixtures/test-utils";
+
+const runId = generateRunId();
 const spellName = `Test Spell ${runId}`;
 const characterName = `Test Character ${runId}`;
+```
+
+#### Get Test Directory Name
+
+Instead of repeating the `fileURLToPath` pattern:
+
+```typescript
+import { getTestDirname } from "./fixtures/test-utils";
+
+const __dirname = getTestDirname(import.meta.url);
+```
+
+#### Create Temporary File Paths
+
+The easiest way to create unique temporary files with automatic tracking:
+
+```typescript
+import { createTmpFilePath } from "./fixtures/test-utils";
+
+test("my test", async ({ fileTracker }) => {
+  // Creates tmp/backup-<timestamp>.zip and tracks it for cleanup
+  const backupPath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
+
+  // Use the file...
+  fs.writeFileSync(backupPath, data);
+  // Cleanup is automatic!
+});
+```
+
+#### Ensure Temporary Directory Exists
+
+For manual directory management:
+
+```typescript
+import { ensureTmpDir } from "./fixtures/test-utils";
+
+// Creates tests/tmp if it doesn't exist
+const tmpDir = ensureTmpDir(__dirname);
+
+// Or create a subdirectory
+const backupDir = ensureTmpDir(__dirname, "tmp/backups");
 ```
 
 ### 5. Dialog and Modal Handlers

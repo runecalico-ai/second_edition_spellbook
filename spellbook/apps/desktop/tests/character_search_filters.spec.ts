@@ -1,157 +1,175 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
-import { cleanupTauriApp, launchTauriApp, type TauriAppContext } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { generateRunId } from "./fixtures/test-utils";
 
-test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
-
-let appContext: TauriAppContext | null = null;
-
-test.beforeEach(async () => {
-  appContext = await launchTauriApp({ timeout: TIMEOUTS.medium });
-});
-
-test.afterEach(async () => {
-  await cleanupTauriApp(appContext);
-  appContext = null;
-});
+test.skip(
+	process.platform !== "win32",
+	"Tauri CDP tests require WebView2 on Windows.",
+);
 
 test.describe("Character Search Filters (KNOWN vs PREPARED)", () => {
-  test("should filter correctly when adding spells to KNOWN list", async () => {
-    if (!appContext) throw new Error("App context not initialized");
-    const { page } = appContext;
-    const app = new SpellbookApp(page);
+	test("should filter correctly when adding spells to KNOWN list", async ({
+		appContext,
+	}) => {
+		const { page } = appContext;
+		const app = new SpellbookApp(page);
+		const runId = generateRunId();
 
-    const runId = Date.now();
-    // Create diverse spells
-    const spells = [
-      { name: `Quest_Spell_${runId}`, level: "8", sphere: "All", description: "Q", isQuest: true },
-      {
-        name: `Cantrip_Spell_${runId}`,
-        level: "0",
-        school: "Alteration",
-        description: "C",
-        isCantrip: true,
-      },
-      {
-        name: `High_Level_${runId}`,
-        level: "9",
-        school: "Necromancy",
-        description: "H",
-        tags: "Chaos",
-      },
-      { name: `Sphere_Spell_${runId}`, level: "2", sphere: "Healing", description: "S" },
-    ];
+		const spells = [
+			{
+				name: `Quest_Spell_${runId}`,
+				level: "8",
+				sphere: "All",
+				description: "Q",
+				isQuest: true,
+			},
+			{
+				name: `Cantrip_Spell_${runId}`,
+				level: "0",
+				school: "Alteration",
+				description: "C",
+				isCantrip: true,
+			},
+			{
+				name: `High_Level_${runId}`,
+				level: "9",
+				school: "Necromancy",
+				description: "H",
+				tags: "Chaos",
+			},
+			{
+				name: `Sphere_Spell_${runId}`,
+				level: "2",
+				sphere: "Healing",
+				description: "S",
+			},
+		];
 
-    for (const s of spells) {
-      await app.createSpell(s);
-    }
+		await test.step("Setup: Create diverse spells", async () => {
+			for (const s of spells) {
+				await app.createSpell(s);
+			}
+		});
 
-    const charName = `Searcher_${runId}`;
-    await app.createCharacter(charName);
-    await app.openCharacterEditor(charName);
-    await app.addClass("Mage");
+		await test.step("Setup: Create character and add Mage class", async () => {
+			const charName = `Searcher_${runId}`;
+			await app.createCharacter(charName);
+			await app.openCharacterEditor(charName);
+			await app.addClass("Mage");
+		});
 
-    // 1. KNOWN List (Global Search)
-    await app.openSpellPicker("Mage", "KNOWN");
-    const picker = page.getByTestId("spell-picker");
+		await test.step("KNOWN List: Test search and global filters", async () => {
+			await app.openSpellPicker("Mage", "KNOWN");
+			const picker = page.getByTestId("spell-picker");
 
-    // Test Quest filter
-    await picker.locator("label").filter({ hasText: "Quest" }).locator("input").check();
-    await expect(picker.getByText(`Quest_Spell_${runId}`)).toBeVisible();
-    await expect(picker.getByText(`Cantrip_Spell_${runId}`)).not.toBeVisible();
-    await picker.locator("label").filter({ hasText: "Quest" }).locator("input").uncheck();
+			// Test Quest filter
+			await app.setSpellPickerFilters({ questOnly: true });
+			await expect(picker.getByText(`Quest_Spell_${runId}`)).toBeVisible();
+			await expect(
+				picker.getByText(`Cantrip_Spell_${runId}`),
+			).not.toBeVisible();
 
-    // Test Level Range (9-9)
-    await picker.getByPlaceholder("Min").fill("9");
-    await picker.getByPlaceholder("Max").fill("9");
-    await expect(picker.getByText(`High_Level_${runId}`)).toBeVisible();
-    await expect(picker.getByText(`Quest_Spell_${runId}`)).not.toBeVisible();
-    await picker.getByPlaceholder("Min").clear();
-    await picker.getByPlaceholder("Max").clear();
+			// Reset quest and test Level Range
+			await app.setSpellPickerFilters({
+				questOnly: false,
+				minLevel: "9",
+				maxLevel: "9",
+			});
+			await expect(picker.getByText(`High_Level_${runId}`)).toBeVisible();
+			await expect(picker.getByText(`Quest_Spell_${runId}`)).not.toBeVisible();
 
-    // Test Tags filter
-    await picker.getByPlaceholder("TAGS...").fill("Chaos");
-    await expect(picker.getByText(`High_Level_${runId}`)).toBeVisible();
-    await expect(picker.getByText(`Quest_Spell_${runId}`)).not.toBeVisible();
-    await picker.getByPlaceholder("TAGS...").clear();
+			// Reset level and test Tag filter
+			await app.setSpellPickerFilters({
+				minLevel: "",
+				maxLevel: "",
+				tags: "Chaos",
+			});
+			await expect(picker.getByText(`High_Level_${runId}`)).toBeVisible();
+			await expect(picker.getByText(`Quest_Spell_${runId}`)).not.toBeVisible();
 
-    // Add them all to KNOWN for next step using checkboxes and BULK ADD
-    for (const s of spells) {
-      await picker.getByPlaceholder("Search spells by name...").fill(s.name);
-      const row = picker.getByTestId(`spell-row-${s.name}`);
-      await expect(row).toBeVisible();
-      await row.locator('input[type="checkbox"]').check();
-      await picker.getByPlaceholder("Search spells by name...").clear();
-    }
-    await picker.getByRole("button", { name: "BULK ADD", exact: true }).click();
+			// Add spells via bulk add
+			await app.bulkAddSpells(spells.map((s) => s.name));
+		});
 
-    // 2. PREPARED List (Local Filter)
-    await app.openSpellPicker("Mage", "PREPARED");
+		await test.step("PREPARED List: Test local filters", async () => {
+			await app.openSpellPicker("Mage", "PREPARED");
+			const picker = page.getByTestId("spell-picker");
 
-    // Test Cantrip filter locally
-    await picker.locator("label").filter({ hasText: "Cantrip" }).locator("input").check();
-    await expect(picker.getByText(`Cantrip_Spell_${runId}`)).toBeVisible();
-    await expect(picker.getByText(`High_Level_${runId}`)).not.toBeVisible();
-    await picker.locator("label").filter({ hasText: "Cantrip" }).locator("input").uncheck();
+			// Test Cantrip filter locally
+			await app.setSpellPickerFilters({ cantripsOnly: true });
+			await expect(picker.getByText(`Cantrip_Spell_${runId}`)).toBeVisible();
+			await expect(picker.getByText(`High_Level_${runId}`)).not.toBeVisible();
 
-    // Test Sphere filter locally
-    await picker.locator("select").nth(1).selectOption("Healing");
-    await expect(picker.getByText(`Sphere_Spell_${runId}`)).toBeVisible();
-    await expect(picker.getByText(`Cantrip_Spell_${runId}`)).not.toBeVisible();
-  });
+			// Test Sphere filter locally
+			await app.setSpellPickerFilters({
+				cantripsOnly: false,
+				sphere: "Healing",
+			});
+			await expect(picker.getByText(`Sphere_Spell_${runId}`)).toBeVisible();
+			await expect(
+				picker.getByText(`Cantrip_Spell_${runId}`),
+			).not.toBeVisible();
+		});
+	});
 
-  test("should reset all filters when spell picker dialog is reopened", async () => {
-    if (!appContext) throw new Error("App context not initialized");
-    const { page } = appContext;
-    const app = new SpellbookApp(page);
+	test("should reset all filters when spell picker dialog is reopened", async ({
+		appContext,
+	}) => {
+		const { page } = appContext;
+		const app = new SpellbookApp(page);
+		const runId = generateRunId();
 
-    const runId = Date.now();
-    const testSpell = `FilterTest_${runId}`;
+		const testSpell = `FilterTest_${runId}`;
 
-    await app.createSpell({
-      name: testSpell,
-      level: "5",
-      school: "Evocation",
-      description: "Test",
-      tags: "Fire",
-    });
+		await test.step("Setup: Create spell and character", async () => {
+			await app.createSpell({
+				name: testSpell,
+				level: "5",
+				school: "Evocation",
+				description: "Test",
+				tags: "Fire",
+			});
 
-    const charName = `FilterReset_${runId}`;
-    await app.createCharacter(charName);
-    await app.openCharacterEditor(charName);
-    await app.addClass("Mage");
+			const charName = `FilterReset_${runId}`;
+			await app.createCharacter(charName);
+			await app.openCharacterEditor(charName);
+			await app.addClass("Mage");
+		});
 
-    // 1. Open spell picker and apply various filters
-    await app.openSpellPicker("Mage", "KNOWN");
-    const picker = page.getByTestId("spell-picker");
+		await test.step("Apply filters and close picker", async () => {
+			await app.openSpellPicker("Mage", "KNOWN");
+			await app.setSpellPickerFilters({
+				questOnly: true,
+				minLevel: "5",
+				maxLevel: "9",
+				tags: "Fire",
+				school: "Necromancy",
+			});
 
-    await picker.locator("label").filter({ hasText: "Quest" }).locator("input").check();
-    await picker.getByPlaceholder("Min").fill("5");
-    await picker.getByPlaceholder("Max").fill("9");
-    await picker.getByPlaceholder("TAGS...").fill("Fire");
-    await picker.locator("select").first().selectOption("Necromancy"); // School filter
+			await page.getByRole("button", { name: "CANCEL" }).click();
+			await expect(page.getByTestId("spell-picker")).not.toBeVisible();
+		});
 
-    // 2. Close the dialog
-    await picker.getByRole("button", { name: "CANCEL" }).click();
+		await test.step("Reopen picker and verify filters are reset", async () => {
+			await app.openSpellPicker("Mage", "KNOWN");
+			const picker = page.getByTestId("spell-picker");
 
-    // 3. Reopen the dialog
-    await app.openSpellPicker("Mage", "KNOWN");
+			await expect(
+				picker.locator("label").filter({ hasText: "Quest" }).locator("input"),
+			).not.toBeChecked();
+			await expect(
+				picker.locator("label").filter({ hasText: "Cantrip" }).locator("input"),
+			).not.toBeChecked();
+			await expect(
+				picker.getByPlaceholder("Search spells by name..."),
+			).toHaveValue("");
+			await expect(picker.getByPlaceholder("Min")).toHaveValue("");
+			await expect(picker.getByPlaceholder("Max")).toHaveValue("");
+			await expect(picker.getByPlaceholder("TAGS...")).toHaveValue("");
 
-    // 4. Assert all filters are reset to defaults
-    await expect(
-      picker.locator("label").filter({ hasText: "Quest" }).locator("input"),
-    ).not.toBeChecked();
-    await expect(
-      picker.locator("label").filter({ hasText: "Cantrip" }).locator("input"),
-    ).not.toBeChecked();
-    await expect(picker.getByPlaceholder("Search spells by name...")).toHaveValue("");
-    await expect(picker.getByPlaceholder("Min")).toHaveValue("");
-    await expect(picker.getByPlaceholder("Max")).toHaveValue("");
-    await expect(picker.getByPlaceholder("TAGS...")).toHaveValue("");
-
-    // School select should be at default (first option is "All Schools")
-    const schoolSelect = picker.locator("select").first();
-    await expect(schoolSelect).toHaveValue("");
-  });
+			const schoolSelect = picker.locator("select").first();
+			await expect(schoolSelect).toHaveValue("");
+		});
+	});
 });

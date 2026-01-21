@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { TIMEOUTS } from "./fixtures/constants";
 import { type TauriAppContext, cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { generateRunId } from "./fixtures/test-utils";
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 
@@ -22,7 +23,7 @@ test.describe("Character Profiles Foundation", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    const charName = `Hero_${Date.now()}`;
+    const charName = `Hero_${generateRunId()}`;
 
     await app.createCharacter(charName);
     await app.openCharacterEditor(charName);
@@ -54,7 +55,7 @@ test.describe("Character Profiles Foundation", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    const runId = Date.now();
+    const runId = generateRunId();
     const mageSpell = `MageSpell_${runId}`;
     const clericSpell = `ClericSpell_${runId}`;
 
@@ -111,7 +112,7 @@ test.describe("Character Profiles Foundation", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    const runId = Date.now();
+    const runId = generateRunId();
     const testSpell = `TestSpell_${runId}`;
     await app.createSpell({
       name: testSpell,
@@ -174,7 +175,7 @@ test.describe("Character Profiles Foundation", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    const charName = `DeleteMe_${Date.now()}`;
+    const charName = `DeleteMe_${generateRunId()}`;
 
     // 1. Create Character
     await app.createCharacter(charName);
@@ -205,3 +206,5 @@ test.describe("Character Profiles Foundation", () => {
     await expect(page.getByRole("link", { name: new RegExp(charName) })).not.toBeVisible();
   });
 });
+
+

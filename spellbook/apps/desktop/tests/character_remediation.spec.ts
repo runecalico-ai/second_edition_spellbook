@@ -7,6 +7,7 @@ import {
 } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal } from "./utils/dialog-handler";
+import { generateRunId } from "./fixtures/test-utils";
 
 test.skip(
 	process.platform !== "win32",
@@ -30,7 +31,7 @@ test.describe("Character Profile Remediation", () => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);
 
-		const charName = `OtherHero_${Date.now()}`;
+		const charName = `OtherHero_${generateRunId()}`;
 		await app.createCharacter(charName);
 		await app.openCharacterEditor(charName);
 
@@ -48,7 +49,7 @@ test.describe("Character Profile Remediation", () => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);
 
-		const charName = `IntegrityHero_${Date.now()}`;
+		const charName = `IntegrityHero_${generateRunId()}`;
 		await app.createCharacter(charName);
 		await app.openCharacterEditor(charName);
 
@@ -78,7 +79,7 @@ test.describe("Character Profile Remediation", () => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);
 
-		const runId = Date.now();
+		const runId = generateRunId();
 		const testSpell = `LogicSpell_${runId}`;
 		await app.createSpell({ name: testSpell, level: "1", description: "L" });
 
@@ -127,3 +128,5 @@ test.describe("Character Profile Remediation", () => {
 		).not.toBeVisible();
 	});
 });
+
+

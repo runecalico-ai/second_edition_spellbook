@@ -16,11 +16,24 @@ import {
  * - appContext: Tauri app instance with browser, page, and process
  * - fileTracker: Automatic cleanup of temporary test files
  */
+/**
+ * Options for customizing Tauri app launch behavior.
+ * Use test.use({ tauriOptions: { ... } }) to override defaults.
+ */
+type TauriFixtureOptions = {
+	/** Timeout for app readiness. Defaults to TIMEOUTS.long * 2 */
+	timeout?: number;
+	/** Pipe stdout/stderr for debugging. Defaults to true */
+	debug?: boolean;
+};
+
 type TauriTestFixtures = {
 	/** Tauri app context with browser, page, and process handles */
 	appContext: TauriAppContext;
 	/** File tracker for automatic cleanup of temporary files */
 	fileTracker: ReturnType<typeof createFileTracker>;
+	/** Options for customizing Tauri app launch behavior */
+	tauriOptions: TauriFixtureOptions;
 };
 
 /**
@@ -45,10 +58,15 @@ type TauriTestFixtures = {
  * ```
  */
 export const test = base.extend<TauriTestFixtures>({
-	appContext: async ({}, use, testInfo) => {
-		// Launch the app once per worker
+	// Default options for Tauri app launch
+	tauriOptions: [{}, { option: true }],
+
+	appContext: async ({ tauriOptions }, use, testInfo) => {
+		// Launch the app once per worker with custom options
 		const ctx = await launchTauriApp({
 			workerIndex: testInfo.workerIndex,
+			timeout: tauriOptions.timeout,
+			debug: tauriOptions.debug,
 		});
 
 		// Provide the context to the test

@@ -30,6 +30,16 @@ export interface CreateSpellOptions {
 	tags?: string;
 	isCantrip?: boolean;
 	isQuest?: boolean;
+	author?: string;
+	edition?: string;
+	license?: string;
+	range?: string;
+	castingTime?: string;
+	duration?: string;
+	area?: string;
+	savingThrow?: string;
+	materialComponents?: string;
+	isReversible?: boolean;
 }
 
 /**
@@ -142,6 +152,41 @@ export class SpellbookApp {
 			await expect(sourceLoc).toHaveValue(source);
 		}
 
+		if (options.author) {
+			await this.page.getByLabel("Author").fill(options.author);
+		}
+		if (options.edition) {
+			await this.page.getByLabel("Edition").fill(options.edition);
+		}
+		if (options.license) {
+			await this.page.getByLabel("License").fill(options.license);
+		}
+		if (options.range) {
+			await this.page.getByPlaceholder("Range").fill(options.range);
+		}
+		if (options.castingTime) {
+			await this.page
+				.getByPlaceholder("Casting Time")
+				.fill(options.castingTime);
+		}
+		if (options.duration) {
+			await this.page.getByPlaceholder("Duration").fill(options.duration);
+		}
+		if (options.area) {
+			await this.page.getByPlaceholder("Area").fill(options.area);
+		}
+		if (options.savingThrow) {
+			await this.page.getByPlaceholder("Save").fill(options.savingThrow);
+		}
+		if (options.materialComponents) {
+			await this.page
+				.getByLabel("Material Components")
+				.fill(options.materialComponents);
+		}
+		if (options.isReversible !== undefined) {
+			await this.page.getByLabel("Reversible").setChecked(options.isReversible);
+		}
+
 		if (description) {
 			const descLoc = this.page.locator("#spell-description");
 			await descLoc.fill(description);
@@ -183,15 +228,25 @@ export class SpellbookApp {
 	}
 
 	/** Import a file through the import wizard */
-	async importFile(filePath: string, allowOverwrite = false): Promise<void> {
-		console.log(`Importing file: ${filePath}`);
+	async importFile(
+		filePath: string | string[],
+		allowOverwrite = false,
+	): Promise<void> {
+		console.log(`Importing file(s): ${filePath}`);
 		await this.resetImportWizard();
 
 		const fileInput = this.page.locator(SELECTORS.fileInput);
 		await expect(fileInput).toBeVisible({ timeout: TIMEOUTS.medium });
 
 		await fileInput.setInputFiles(filePath);
-		await expect(this.page.getByText(path.basename(filePath))).toBeVisible();
+
+		if (Array.isArray(filePath)) {
+			await expect(
+				this.page.getByText(`${filePath.length} file(s) selected`),
+			).toBeVisible();
+		} else {
+			await expect(this.page.getByText(path.basename(filePath))).toBeVisible();
+		}
 
 		await this.page.getByRole("button", { name: "Preview →" }).click();
 		await expect(this.page.getByText(/Parsed \d+ spell\(s\)/)).toBeVisible({
@@ -415,5 +470,179 @@ export class SpellbookApp {
 
 		await expect(classSection.getByText(spellName)).toBeVisible();
 		console.log(`Spell ${spellName} verified in class ${className}`);
+	}
+
+	/** Set library filters */
+	async setLibraryFilters(filters: {
+		questOnly?: boolean;
+		cantripsOnly?: boolean;
+		className?: string;
+		component?: string;
+		tag?: string;
+		search?: string;
+	}): Promise<void> {
+		console.log("Setting library filters", filters);
+		await this.navigate("Library");
+
+		if (filters.search !== undefined) {
+			const searchInput = this.page.getByPlaceholder(/Search spells/i);
+			await searchInput.fill(filters.search);
+		}
+
+		if (filters.className !== undefined) {
+			await this.page
+				.getByLabel("Class filter")
+				.selectOption(filters.className);
+		}
+
+		if (filters.component !== undefined) {
+			await this.page
+				.getByLabel("Component filter")
+				.selectOption(filters.component);
+		}
+
+		if (filters.tag !== undefined) {
+			await this.page.getByLabel("Tag filter").selectOption(filters.tag);
+		}
+
+		if (filters.questOnly !== undefined) {
+			const questCheckbox = this.page.locator(
+				'label:has-text("Quest Spells") input',
+			);
+			await questCheckbox.setChecked(filters.questOnly);
+		}
+
+		if (filters.cantripsOnly !== undefined) {
+			const cantripCheckbox = this.page.locator(
+				'label:has-text("Cantrips Only") input',
+			);
+			await cantripCheckbox.setChecked(filters.cantripsOnly);
+		}
+
+		// Trigger search if we filled filters or clear it
+		await this.page
+			.getByRole("button", { name: "Search", exact: true })
+			.click();
+
+		// Wait for the search/filter to settle
+		await this.page.waitForTimeout(500);
+	}
+
+	/** Set filters in the open spell picker dialog */
+	async setSpellPickerFilters(filters: {
+		search?: string;
+		minLevel?: string;
+		maxLevel?: string;
+		tags?: string;
+		school?: string;
+		sphere?: string;
+		questOnly?: boolean;
+		cantripsOnly?: boolean;
+	}): Promise<void> {
+		const picker = this.page.getByTestId("spell-picker");
+		await expect(picker).toBeVisible();
+
+		if (filters.search !== undefined) {
+			await picker
+				.getByPlaceholder("Search spells by name...")
+				.fill(filters.search);
+		}
+
+		if (filters.minLevel !== undefined) {
+			await picker.getByPlaceholder("Min").fill(filters.minLevel);
+		}
+
+		if (filters.maxLevel !== undefined) {
+			await picker.getByPlaceholder("Max").fill(filters.maxLevel);
+		}
+
+		if (filters.tags !== undefined) {
+			await picker.getByPlaceholder("TAGS...").fill(filters.tags);
+		}
+
+		if (filters.school !== undefined) {
+			await picker.locator("select").first().selectOption(filters.school);
+		}
+
+		if (filters.sphere !== undefined) {
+			// Find sphere select (usually second one if both present, or only one)
+			const selects = picker.locator("select");
+			const count = await selects.count();
+			if (count > 1) {
+				await selects.nth(1).selectOption(filters.sphere);
+			} else {
+				await selects.first().selectOption(filters.sphere);
+			}
+		}
+
+		if (filters.questOnly !== undefined) {
+			await picker
+				.locator("label")
+				.filter({ hasText: "Quest" })
+				.locator("input")
+				.setChecked(filters.questOnly);
+		}
+
+		if (filters.cantripsOnly !== undefined) {
+			await picker
+				.locator("label")
+				.filter({ hasText: "Cantrip" })
+				.locator("input")
+				.setChecked(filters.cantripsOnly);
+		}
+
+		// Settlement wait for debounce
+		await this.page.waitForTimeout(300);
+	}
+
+	/** Clear all filters in the open spell picker dialog */
+	async clearSpellPickerFilters(): Promise<void> {
+		const picker = this.page.getByTestId("spell-picker");
+		await expect(picker).toBeVisible();
+
+		await picker.getByPlaceholder("Search spells by name...").clear();
+		await picker.getByPlaceholder("Min").clear();
+		await picker.getByPlaceholder("Max").clear();
+		await picker.getByPlaceholder("TAGS...").clear();
+
+		const selects = picker.locator("select");
+		const count = await selects.count();
+		for (let i = 0; i < count; i++) {
+			await selects.nth(i).selectOption("");
+		}
+
+		await picker
+			.locator("label")
+			.filter({ hasText: "Quest" })
+			.locator("input")
+			.uncheck();
+		await picker
+			.locator("label")
+			.filter({ hasText: "Cantrip" })
+			.locator("input")
+			.uncheck();
+
+		await this.page.waitForTimeout(300);
+	}
+
+	/** Select multiple spells in the picker and click BULK ADD */
+	async bulkAddSpells(names: string[]): Promise<void> {
+		const picker = this.page.getByTestId("spell-picker");
+		await expect(picker).toBeVisible();
+
+		// Clear filters first to ensure all spells can be found
+		await this.clearSpellPickerFilters();
+
+		for (const name of names) {
+			await picker.getByPlaceholder("Search spells by name...").fill(name);
+			const row = picker.getByTestId(`spell-row-${name}`);
+			await expect(row).toBeVisible();
+			await row.locator('input[type="checkbox"]').check();
+			// Clear search for next one
+			await picker.getByPlaceholder("Search spells by name...").clear();
+		}
+
+		await picker.getByRole("button", { name: "BULK ADD", exact: true }).click();
+		await expect(picker).not.toBeVisible();
 	}
 }

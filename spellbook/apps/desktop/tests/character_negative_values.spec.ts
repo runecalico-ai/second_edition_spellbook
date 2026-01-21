@@ -11,7 +11,6 @@ test.skip(
 test.describe("Character Negative Value Validation", () => {
 	test("should prevent negative ability and level values", async ({
 		appContext,
-		fileTracker,
 	}) => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);

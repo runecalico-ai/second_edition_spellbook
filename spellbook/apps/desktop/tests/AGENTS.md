@@ -176,6 +176,7 @@ const app = new SpellbookApp(page);
 - `await app.addClass(className)`: Add a class (handles the "Other" custom prompt automatically).
 - `await app.addSpellToClass(className, spellName, "KNOWN" | "PREPARED")`: Complex interaction with the Spell Picker modal.
 - `await app.deleteCurrentCharacter()`: Click the "DELETE PROFILE" button in the character editor header.
+- `await app.deleteCharacterFromList(name)`: Setup dialog listener, hover over character in list, click delete, and handle confirmation.
 - `await app.verifyCharacterNotExists(name)`: Navigate to Characters and verify the named profile is missing.
 
 #### Using Shared Selectors

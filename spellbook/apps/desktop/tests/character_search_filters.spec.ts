@@ -1,5 +1,4 @@
 import { expect, test } from "./fixtures/test-fixtures";
-import { TIMEOUTS } from "./fixtures/constants";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { generateRunId } from "./fixtures/test-utils";
 

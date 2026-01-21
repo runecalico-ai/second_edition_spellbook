@@ -1,5 +1,4 @@
 import { expect, test } from "./fixtures/test-fixtures";
-import { TIMEOUTS } from "./fixtures/constants";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal } from "./utils/dialog-handler";
 import { generateRunId } from "./fixtures/test-utils";
@@ -12,7 +11,6 @@ test.skip(
 test.describe("Character Profile Remediation", () => {
 	test("should handle 'Other' class with custom label", async ({
 		appContext,
-		fileTracker,
 	}) => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);
@@ -35,7 +33,6 @@ test.describe("Character Profile Remediation", () => {
 
 	test("should enforce 'Prepared MUST be Known' in Spell Picker", async ({
 		appContext,
-		fileTracker,
 	}) => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);
@@ -71,7 +68,6 @@ test.describe("Character Profile Remediation", () => {
 
 	test("should delete character from profile header", async ({
 		appContext,
-		fileTracker,
 	}) => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);

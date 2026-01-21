@@ -671,4 +671,30 @@ export class SpellbookApp {
 		await this.navigate("Characters");
 		await expect(this.page.getByRole("link", { name })).not.toBeVisible();
 	}
+
+	/** Delete a character from the main list view */
+	async deleteCharacterFromList(name: string): Promise<void> {
+		console.log(`Deleting character from list: ${name}`);
+		await this.navigate("Characters");
+
+		// Hover over the character item to reveal the delete button
+		const charItem = this.page.getByRole("link", { name: new RegExp(name) });
+		await charItem.hover();
+
+		// Handle confirmation dialog
+		this.page.once("dialog", async (dialog) => {
+			expect(dialog.message()).toContain(
+				`Are you sure you want to delete "${name}"?`,
+			);
+			await dialog.accept();
+		});
+
+		// Click delete button inside the item
+		await charItem.locator('button[title="Delete Character"]').click();
+
+		// Verify gone
+		await expect(
+			this.page.getByRole("link", { name: new RegExp(name) }),
+		).not.toBeVisible();
+	}
 }

@@ -3,7 +3,7 @@
  * Provides automatic lifecycle management for app context and file tracking.
  */
 import { test as base } from "@playwright/test";
-import type { TauriAppContext } from "./tauri-fixture";
+import type { FileTracker, TauriAppContext } from "./tauri-fixture";
 import { cleanupTauriApp, createFileTracker, launchTauriApp } from "./tauri-fixture";
 
 /**
@@ -27,7 +27,7 @@ type TauriTestFixtures = {
   /** Tauri app context with browser, page, and process handles */
   appContext: TauriAppContext;
   /** File tracker for automatic cleanup of temporary files */
-  fileTracker: ReturnType<typeof createFileTracker>;
+  fileTracker: FileTracker;
   /** Options for customizing Tauri app launch behavior */
   tauriOptions: TauriFixtureOptions;
 };
@@ -72,6 +72,7 @@ export const test = base.extend<TauriTestFixtures>({
     await cleanupTauriApp(ctx);
   },
 
+  // biome-ignore lint/correctness/noEmptyPattern:
   fileTracker: async ({}, use) => {
     // Create file tracker
     const tracker = createFileTracker();

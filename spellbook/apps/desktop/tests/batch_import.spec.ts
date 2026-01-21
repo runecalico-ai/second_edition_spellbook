@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
 import { generateRunId, getTestDirname } from "./fixtures/test-utils";
+import type { FileTracker } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 const __dirname = getTestDirname(import.meta.url);
@@ -65,7 +66,11 @@ test.describe("Batch Import Performance Tests", () => {
   });
 });
 
-async function generateTestSpells(dir: string, count: number, fileTracker: any): Promise<string[]> {
+async function generateTestSpells(
+  dir: string,
+  count: number,
+  fileTracker: FileTracker,
+): Promise<string[]> {
   const files: string[] = [];
 
   for (let i = 0; i < count; i++) {

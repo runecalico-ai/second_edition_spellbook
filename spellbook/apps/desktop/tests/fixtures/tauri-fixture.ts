@@ -478,11 +478,13 @@ function copySqliteVecToDataDir(dataDir: string): void {
   }
 }
 
-/** Helper to track files for cleanup */
-export function createFileTracker(): {
-  track: (path: string) => string;
+export interface FileTracker {
+  track: (filePath: string) => string;
   cleanup: () => void;
-} {
+}
+
+/** Helper to track files for cleanup */
+export function createFileTracker(): FileTracker {
   const files: string[] = [];
   return {
     track: (filePath: string) => {

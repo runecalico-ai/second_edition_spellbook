@@ -28,6 +28,7 @@ export interface CharacterClass {
   id: number;
   character_id: number;
   class_name: string;
+  class_label?: string | null;
   level: number;
 }
 

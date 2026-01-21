@@ -72,6 +72,15 @@
   - [x] D2.1 Document character creation workflow
   - [x] D2.2 Document multi-class management
   - [x] D2.3 Document per-class spell list management
+- [ ] R1 Remediation & Hardening (Code Review Fixes)
+  - [x] R1.1 Database: Add `class_label` to `character_class` table
+  - [x] R1.2 Backend: Add non-negative validation to ability and level commands
+  - [x] R1.3 Backend: Update class commands to handle `class_label`
+  - [x] R1.4 Frontend: Add `min="0"` to all ability and level inputs
+  - [x] R1.5 Frontend: Use `class_label` for "Other" class display and management
+  - [x] R1.6 Frontend: Prevent adding Prepared spells not in Known list in `SpellPicker`
+  - [x] R1.7 Frontend: Add "Delete Character" button to Character Editor profile header
+  - [/] R1.8 Verification: Run full lint, clippy, and E2E battery
 
 ## Notes
 - **Total tasks**: ~45

@@ -36,3 +36,4 @@ venv/
 .pytest_cache/
 spellbook/apps/desktop/tests/screenshots/
 spellbook/apps/desktop/tests/tmp/
+spellbook/apps/desktop/playwright-report/

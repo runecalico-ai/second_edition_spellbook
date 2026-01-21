@@ -59,6 +59,7 @@ pub struct CharacterClass {
     pub id: i64,
     pub character_id: i64,
     pub class_name: String,
+    pub class_label: Option<String>,
     pub level: i32,
 }
 

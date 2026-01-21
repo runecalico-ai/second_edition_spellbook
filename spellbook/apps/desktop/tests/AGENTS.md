@@ -89,27 +89,47 @@ test.afterAll(() => {
 });
 ```
 
-### 2. Use Page Object Methods
+### 2. Use SpellbookApp Page Object
+The `SpellbookApp` class in `tests/page-objects/SpellbookApp.ts` is the central hub for common UI interactions. **Always** prefer its methods over raw Playwright locators.
 
-Prefer `SpellbookApp` methods over raw locators:
-
+#### Initialization
 ```typescript
-// Good
-const app = new SpellbookApp(page);
-await app.createSpell({
-  name: "Fireball",
-  level: "3",
-  description: "A bright streak flashes...",
-  components: "V, S, M",
-  tags: "Evocation, Fire"
-});
-await app.navigate("Library");
-await app.waitForLibrary();
+import { SpellbookApp } from "./page-objects/SpellbookApp";
 
-// Avoid
-await page.getByRole("link", { name: "Add Spell" }).click();
-await page.getByPlaceholder("Spell Name").fill("Test Spell");
-// ... repeated boilerplate
+const app = new SpellbookApp(page);
+```
+
+#### Core Navigation
+- `await app.navigate("Library" | "Characters" | "Import" | "Add Spell")`: Safe navigation that waits for React state to settle.
+
+#### Library & Spell Management
+- `await app.createSpell({ name, level, ... })`: Full workflow to add a spell and return to Library.
+- `await app.openSpell(name)`: Search for and open the editor for a specific spell.
+- `await app.importFile(path, allowOverwrite?)`: Complete multi-step Import Wizard handling.
+- `app.getSpellRow(name)`: Returns a locator for a specific spell's row in the library table.
+
+#### Character Management
+- `await app.createCharacter(name)`: Rapidly create a character via the sidebar.
+- `await app.selectCharacter(name)`: Click a character in the sidebar.
+- `await app.openCharacterEditor(name)`: Navigate to and wait for a character's full editor to load.
+- `await app.addClass(className)`: Add a class (handles the "Other" custom prompt automatically).
+- `await app.addSpellToClass(className, spellName, "KNOWN" | "PREPARED")`: Complex interaction with the Spell Picker modal.
+
+#### Using Shared Selectors
+If a method doesn't exist, use the exported `SELECTORS` for consistency:
+```typescript
+import { SELECTORS } from "./page-objects/SpellbookApp";
+
+await page.locator(SELECTORS.spellName).fill("New Name");
+```
+
+#### Example: Full Character Setup
+```typescript
+const app = new SpellbookApp(page);
+await app.createCharacter("Elminster");
+await app.openCharacterEditor("Elminster");
+await app.addClass("Mage");
+await app.addSpellToClass("Mage", "Fireball", "KNOWN");
 ```
 
 ### 3. Use Standard Timeouts
@@ -140,42 +160,49 @@ const characterName = `Test Character ${runId}`;
 ```
 
 ### 5. Dialog and Modal Handlers
-
-For tests that trigger dialogs or the custom React modal:
+The application uses two types of dialogs. You must use the correct handler depending on the interaction.
 
 #### 5.1 Native Browser Dialogs
-Use `setupDialogHandler` for `window.alert`, `window.confirm`, and `window.prompt`:
+These are triggered by `window.alert`, `window.confirm`, or `window.prompt`. Use `setupDialogHandler` or its simplified variants.
 
 ```typescript
-import { setupDialogHandler } from "./utils/dialog-handler";
+import { setupDialogHandler, setupAcceptAllDialogs } from "./utils/dialog-handler";
 
+// Complex handler with options
 const cleanup = setupDialogHandler(page, {
-  acceptDelete: true,
-  dismissValidation: true,
+  acceptDelete: true,      // Automatically type "OK" for delete
+  dismissValidation: true, // Dismiss error popups
+  debug: true,             // Log dialog text to console
 });
 
-// ... test code ...
+// Implementation of test triggering dialogs...
+await page.getByRole("button", { name: "Reset Database" }).click();
 
-cleanup(); // Remove handler at end
+cleanup(); // CRITICAL: Stop listening after the action
 ```
 
-#### 5.2 Custom React Modal
-For our custom glassmorphism modal, use `handleCustomModal()`. This utility waits for the modal to be visible, interacts with it, and then waits for the animation to finish.
+- `setupAcceptAllDialogs(page)`: Always clicks "OK".
+- `setupDismissAllDialogs(page)`: Always clicks "Cancel" or "Esc".
+
+#### 5.2 Custom glassmorphism Modals
+These are React-based components (using `Modal.tsx`) and **cannot** be intercepted by `setupDialogHandler`. Use the `handleCustomModal` async helper.
 
 ```typescript
-import { handleCustomModal } from "./utils/dialog-handler";
+import { handleCustomModal } from "../utils/dialog-handler";
 
-// Click "Save", then handle the validation error modal
+// Example: Handling a validation error after saving
 await page.locator("#btn-save-spell").click();
 await handleCustomModal(page, "OK");
 
-// Handle a "Confirm" modal (e.g., Delete or Restore)
-await page.getByRole("button", { name: "Delete" }).click();
+// Example: Confirming a complex action
+await page.getByRole("button", { name: "Restore Vault" }).click();
 await handleCustomModal(page, "Confirm");
 ```
 
+- `handleCustomModal(page, action)`: Waits for the modal to appear, clicks the button matching the label (default "OK"), and waits for the exit animation to finish.
+
 > [!IMPORTANT]
-> `setupDialogHandler` **cannot** intercept the custom React modal. You must use `handleCustomModal` explicitly in your test flow.
+> If a test hangs, check if a modal is visible in the trace. Native handlers are non-blocking event listeners, while `handleCustomModal` is an `await`-ed interaction.
 
 ### 6. Locator Strategy
 

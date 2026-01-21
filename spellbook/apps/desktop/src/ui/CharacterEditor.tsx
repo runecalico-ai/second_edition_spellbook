@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useModal } from "../store/useModal";
 import type {
   Character,
   CharacterAbilities,
@@ -55,6 +56,7 @@ const CORE_CLASSES = [
 
 export default function CharacterEditor() {
   const { id } = useParams();
+  const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const characterId = Number.parseInt(id || "", 10);
 
   const [character, setCharacter] = useState<Character | null>(null);
@@ -62,10 +64,11 @@ export default function CharacterEditor() {
   const [classes, setClasses] = useState<CharacterClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isAddingClass, setIsAddingClass] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isSilent = false) => {
     if (!Number.isFinite(characterId)) return;
-    setLoading(true);
+    if (!isSilent) setLoading(true);
     try {
       const char = await invoke<Character>("get_character", { id: characterId });
       const abs = await invoke<CharacterAbilities | null>("get_character_abilities", {
@@ -93,7 +96,7 @@ export default function CharacterEditor() {
     } catch (e) {
       console.error("Failed to load character data:", e);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [characterId]);
 
@@ -106,17 +109,19 @@ export default function CharacterEditor() {
     setSaving(true);
     try {
       await invoke("update_character_details", {
-        id: character.id,
-        name: character.name,
-        characterType: character.character_type,
-        race: character.race,
-        alignment: character.alignment,
-        comEnabled: character.com_enabled ? 1 : 0,
-        notes: character.notes,
+        input: {
+          id: character.id,
+          name: character.name,
+          character_type: character.character_type,
+          race: character.race,
+          alignment: character.alignment,
+          com_enabled: character.com_enabled ? 1 : 0,
+          notes: character.notes,
+        },
       });
     } catch (e) {
       console.error("Save identity failed:", e);
-      alert(`Save failed: ${e}`);
+      modalAlert(`Save failed: ${e}`, "Error", "error");
     } finally {
       setSaving(false);
     }
@@ -127,12 +132,14 @@ export default function CharacterEditor() {
     setSaving(true);
     try {
       await invoke("update_character_abilities", {
-        characterId: Number.parseInt(id ?? "0", 10),
-        ...abilities,
+        input: {
+          character_id: Number.parseInt(id ?? "0", 10),
+          ...abilities,
+        },
       });
     } catch (e) {
       console.error("Save abilities failed:", e);
-      alert(`Save failed: ${e}`);
+      modalAlert(`Save failed: ${e}`, "Error", "error");
     } finally {
       setSaving(false);
     }
@@ -177,9 +184,25 @@ export default function CharacterEditor() {
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="text-neutral-500 hover:text-white transition-colors"
+              className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 rounded text-xs font-medium transition-colors"
             >
               Reload
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (await modalConfirm("Are you sure you want to delete this character? This cannot be undone.", "Delete Profile")) {
+                  try {
+                    await invoke("delete_character", { id: character.id });
+                    window.location.href = "/character";
+                  } catch (e) {
+                    modalAlert(`Delete failed: ${e}`, "Error", "error");
+                  }
+                }
+              }}
+              className="px-3 py-1 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-600/30 rounded text-xs font-bold transition-all"
+            >
+              DELETE PROFILE
             </button>
           </div>
         </header>
@@ -315,12 +338,13 @@ export default function CharacterEditor() {
                     id={`ability-${ability.key}`}
                     type="number"
                     className="w-full bg-transparent text-center text-xl font-bold font-mono outline-none border-b border-transparent focus:border-blue-600/30 transition-all"
-                    value={abilities?.[ability.key as keyof CharacterAbilities] || 10}
+                    value={abilities?.[ability.key as keyof CharacterAbilities] ?? 10}
                     onChange={(e) => {
                       if (!abilities) return;
+                      const val = Number.parseInt(e.target.value, 10);
                       setAbilities({
                         ...abilities,
-                        [ability.key]: Number.parseInt(e.target.value, 10),
+                        [ability.key]: Number.isNaN(val) ? 0 : Math.max(0, val),
                       });
                     }}
                   />
@@ -339,11 +363,12 @@ export default function CharacterEditor() {
             <div className="flex gap-2">
               <select
                 id="new-class-select"
-                className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-1 text-xs outline-none"
+                className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-1 text-xs outline-none disabled:opacity-50"
                 defaultValue=""
+                disabled={isAddingClass}
                 onChange={async (e) => {
                   const className = e.target.value;
-                  if (!className) return;
+                  if (!className || isAddingClass) return;
 
                   let finalName = className;
                   if (className === "Other") {
@@ -355,16 +380,21 @@ export default function CharacterEditor() {
                     finalName = custom;
                   }
 
+                  setIsAddingClass(true);
                   try {
                     await invoke("add_character_class", {
                       characterId,
-                      className: finalName,
+                      className: className === "Other" ? "Other" : className,
+                      classLabel: finalName === className ? null : finalName,
                       level: 1,
                     });
-                    loadData();
+                    await loadData(true);
                     e.target.value = "";
                   } catch (err) {
-                    alert(`Failed to add class: ${err}`);
+                    modalAlert(`Failed to add class: ${err}`, "Error", "error");
+                    e.target.value = "";
+                  } finally {
+                    setIsAddingClass(false);
                   }
                 }}
               >
@@ -382,7 +412,7 @@ export default function CharacterEditor() {
 
           <div className="space-y-4">
             {classes.map((cls) => (
-              <ClassRow key={cls.id} cls={cls} onUpdate={() => loadData()} />
+              <ClassRow key={cls.id} cls={cls} onUpdate={() => loadData(true)} />
             ))}
             {classes.length === 0 && (
               <p className="text-center py-4 text-sm text-neutral-600">No classes assigned yet.</p>
@@ -428,6 +458,7 @@ function canCast(className: string) {
 }
 
 function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void }) {
+  const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const [level, setLevel] = useState(cls.level);
 
   const updateLevel = async (newVal: number) => {
@@ -441,16 +472,17 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
 
   const removeClass = async () => {
     if (
-      !confirm(
+      !(await modalConfirm(
         `Are you sure you want to remove the ${cls.class_name} class? All associated spells will be unlinked.`,
-      )
+        "Remove Class"
+      ))
     )
       return;
     try {
       await invoke("remove_character_class", { classId: cls.id });
       onUpdate();
     } catch (e) {
-      alert(`Failed to remove class: ${e}`);
+      modalAlert(`Failed to remove class: ${e}`, "Error", "error");
     }
   };
 
@@ -461,9 +493,11 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
           {cls.class_name.charAt(0)}
         </div>
         <div data-testid="class-row">
-          <h4 className="font-semibold text-neutral-200">{cls.class_name}</h4>
+          <h4 className="font-semibold text-neutral-200">
+            {cls.class_name === "Other" && cls.class_label ? cls.class_label : cls.class_name}
+          </h4>
           <span className="text-[10px] text-neutral-600 uppercase font-bold tracking-tighter">
-            Class Identity
+            {cls.class_name === "Other" ? "Custom Class" : "Class Identity"}
           </span>
         </div>
       </div>
@@ -473,12 +507,20 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => updateLevel(Math.max(1, level - 1))}
+              onClick={() => updateLevel(Math.max(0, level - 1))}
               className="h-6 w-6 rounded bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-500 hover:text-white"
             >
               -
             </button>
-            <span className="w-6 text-center font-mono font-bold text-lg">{level}</span>
+            <input
+              type="number"
+              value={level}
+              onChange={(e) => {
+                const val = Number.parseInt(e.target.value, 10);
+                updateLevel(Number.isNaN(val) ? 0 : Math.max(0, val));
+              }}
+              className="w-12 bg-neutral-950 border-x border-neutral-800 text-center font-mono font-bold text-sm outline-none focus:text-blue-500 transition-colors"
+            />
             <button
               type="button"
               onClick={() => updateLevel(level + 1)}
@@ -519,6 +561,7 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
 }
 
 function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
+  const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const [spells, setSpells] = useState<CharacterSpellbookEntry[]>([]);
   const [activeTab, setActiveTab] = useState<"KNOWN" | "PREPARED">("KNOWN");
   const [selectedRemoveIds, setSelectedRemoveIds] = useState<Set<number>>(new Set());
@@ -549,40 +592,62 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
       className="bg-neutral-900/60 border border-neutral-800 rounded-xl overflow-hidden flex flex-col"
       aria-label={`Class section for ${charClass.class_name}`}
     >
-      <button
-        type="button"
-        className="group w-full text-left p-4 bg-neutral-950/50 border-b border-neutral-800 flex items-center justify-between cursor-pointer hover:bg-neutral-900/40 transition-colors m-0 border-none"
-        onClick={() => setIsCollapsed(!isCollapsed)}
+      <div
+        className="w-full p-4 bg-neutral-950/50 border-b border-neutral-800 flex items-center justify-between"
       >
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-1 h-4 rounded-full ${canCast(charClass.class_name) ? "bg-blue-500" : "bg-neutral-700"}`}
-          />
-          <div>
-            <h4 className="font-bold text-neutral-200">{charClass.class_name}</h4>
-            {!isCollapsed && (
-              <div className="flex gap-2 mt-1">
-                {(["KNOWN", "PREPARED"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveTab(tab);
-                      setSelectedRemoveIds(new Set());
-                    }}
-                    className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${
-                      activeTab === tab
-                        ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
-                        : "text-neutral-600 hover:text-neutral-400"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
+        <div className="flex flex-col flex-1 gap-1">
+          <button
+            type="button"
+            className="flex items-center gap-3 cursor-pointer group text-left w-full bg-transparent border-none p-0"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+          >
+            <div
+              className={`w-1 h-4 rounded-full ${canCast(charClass.class_name) ? "bg-blue-500" : "bg-neutral-700"}`}
+            />
+            <div className="flex items-center gap-2">
+              <h4 className="font-bold text-neutral-200">{charClass.class_name}</h4>
+              <div
+                className={`text-neutral-500 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+              >
+                <svg
+                  role="img"
+                  aria-label="Expand"
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
               </div>
-            )}
-          </div>
+            </div>
+          </button>
+          {!isCollapsed && (
+            <div className="flex gap-2 pl-4">
+              {(["KNOWN", "PREPARED"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab);
+                    setSelectedRemoveIds(new Set());
+                  }}
+                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${
+                    activeTab === tab
+                       ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
+                       : "text-neutral-600 hover:text-neutral-400"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {!isCollapsed && selectedRemoveIds.size > 0 && (
@@ -590,7 +655,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
               type="button"
               onClick={async (e) => {
                 e.stopPropagation();
-                if (!confirm(`Remove ${selectedRemoveIds.size} spells?`)) return;
+                if (!(await modalConfirm(`Remove ${selectedRemoveIds.size} spells?`, "Bulk Remove"))) return;
                 try {
                   for (const spellId of selectedRemoveIds) {
                     await invoke("remove_character_spell", {
@@ -602,7 +667,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                   setSelectedRemoveIds(new Set());
                   loadSpells();
                 } catch (e) {
-                  alert(`Bulk remove failed: ${e}`);
+                  modalAlert(`Bulk remove failed: ${e}`, "Error", "error");
                 }
               }}
               className="px-2 py-1 bg-red-900/20 hover:bg-red-900/40 text-red-500 border border-red-500/30 rounded text-xs transition-all"
@@ -618,27 +683,8 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
               knownSpells={spells.filter((s) => s.known === 1)}
             />
           )}
-          <div
-            className={`text-neutral-500 transition-transform ${isCollapsed ? "" : "rotate-180"}`}
-          >
-            <svg
-              role="img"
-              aria-label="Expand"
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </div>
         </div>
-      </button>
+      </div>
 
       {!isCollapsed && (
         <div className="flex-1 overflow-auto p-4 space-y-2 min-h-[200px]">
@@ -696,7 +742,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                           });
                           loadSpells();
                         } catch (e) {
-                          alert(`Failed: ${e}`);
+                          modalAlert(`Failed: ${e}`, "Error", "error");
                         }
                       }}
                       className="text-neutral-700 hover:text-red-500 transition-colors"
@@ -757,6 +803,7 @@ function SpellPicker({
   listType: "KNOWN" | "PREPARED";
   knownSpells: CharacterSpellbookEntry[];
 }) {
+  const { alert: modalAlert } = useModal();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PickerSpell[]>([]);
@@ -879,7 +926,15 @@ function SpellPicker({
   const bulkAdd = async () => {
     if (selectedIds.size === 0) return;
     try {
+      let skipped = 0;
       for (const spellId of selectedIds) {
+        if (listType === "PREPARED") {
+          const isKnown = knownSpells.some((ks) => ks.spell_id === spellId);
+          if (!isKnown) {
+            skipped++;
+            continue;
+          }
+        }
         await invoke("add_character_spell", {
           characterClassId: charClass.id,
           spellId,
@@ -887,11 +942,14 @@ function SpellPicker({
           notes: "",
         });
       }
+      if (skipped > 0) {
+        modalAlert(`${skipped} spell(s) were skipped because they are not in the Known list.`, "Spell Constraint", "warning");
+      }
       await onAdded(); // Await refresh before closing
       setOpen(false);
       setSelectedIds(new Set());
     } catch (e) {
-      alert(`Bulk Error: ${e}`);
+      modalAlert(`Bulk Error: ${e}`, "Error", "error");
     }
   };
 
@@ -899,7 +957,14 @@ function SpellPicker({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (listType === "PREPARED" && knownSpells.length === 0) {
+            modalAlert("You must have at least one Known spell before you can prepare spells.", "Character Logic", "warning");
+            return;
+          }
+          setOpen(true);
+        }}
         className="px-3 py-1 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/30 rounded-lg text-[11px] font-bold transition-all"
       >
         + ADD
@@ -1081,6 +1146,13 @@ function SpellPicker({
                   <button
                     type="button"
                     onClick={async () => {
+                      if (listType === "PREPARED") {
+                        const isKnown = knownSpells.some((ks) => ks.spell_id === spell.id);
+                        if (!isKnown) {
+                          modalAlert(`"${spell.name}" must be in the Known list before it can be Prepared.`, "Character Logic", "warning");
+                          return;
+                        }
+                      }
                       try {
                         await invoke("add_character_spell", {
                           characterClassId: charClass.id,
@@ -1091,7 +1163,7 @@ function SpellPicker({
                         await onAdded();
                         setOpen(false);
                       } catch (e) {
-                        alert(`Error: ${e}`);
+                        modalAlert(`Error: ${e}`, "Error", "error");
                       }
                     }}
                     className="px-4 py-1 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/30 rounded-lg text-xs font-bold transition-all"

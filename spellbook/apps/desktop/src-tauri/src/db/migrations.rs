@@ -68,7 +68,13 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 7", [])?;
     }
-    eprintln!("DB VERSION END: 7");
+    if version < 8 {
+        eprintln!("Applying migration 0008...");
+        let sql = include_str!("../../../../../db/migrations/0008_character_class_label.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 8", [])?;
+    }
+    eprintln!("DB VERSION END: 8");
 
     Ok(())
 }

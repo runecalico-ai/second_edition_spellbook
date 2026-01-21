@@ -171,6 +171,18 @@ pub async fn update_character_abilities(
 ) -> Result<(), AppError> {
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
+        if input.str < 0
+            || input.dex < 0
+            || input.con < 0
+            || input.int < 0
+            || input.wis < 0
+            || input.cha < 0
+            || input.com < 0
+        {
+            return Err(AppError::Unknown(
+                "Ability scores must be non-negative.".to_string(),
+            ));
+        }
         let conn = pool.get()?;
         conn.execute(
             "INSERT INTO character_ability (character_id, str, dex, con, int, wis, cha, com)
@@ -206,14 +218,15 @@ pub async fn get_character_classes(
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let mut stmt = conn.prepare(
-            "SELECT id, character_id, class_name, level FROM character_class WHERE character_id = ?"
+            "SELECT id, character_id, class_name, class_label, level FROM character_class WHERE character_id = ?"
         )?;
         let rows = stmt.query_map(params![character_id], |row| {
             Ok(CharacterClass {
                 id: row.get(0)?,
                 character_id: row.get(1)?,
                 class_name: row.get(2)?,
-                level: row.get(3)?,
+                class_label: row.get(3)?,
+                level: row.get(4)?,
             })
         })?;
 
@@ -234,14 +247,30 @@ pub async fn add_character_class(
     state: State<'_, Arc<Pool>>,
     character_id: i64,
     class_name: String,
+    class_label: Option<String>,
     level: i32,
 ) -> Result<i64, AppError> {
     let pool = state.inner().clone();
     let result = tokio::task::spawn_blocking(move || {
+        if level < 0 {
+            return Err(AppError::Unknown("Level must be non-negative.".to_string()));
+        }
         let conn = pool.get()?;
+
+        // Check for duplicates
+        let existing_id: Option<i64> = conn.query_row(
+            "SELECT id FROM character_class WHERE character_id = ? AND class_name = ? AND IFNULL(class_label, '') = ?",
+            params![character_id, class_name, class_label.as_deref().unwrap_or("")],
+            |row| row.get(0),
+        ).optional()?;
+
+        if let Some(id) = existing_id {
+            return Ok::<i64, AppError>(id);
+        }
+
         conn.execute(
-            "INSERT INTO character_class (character_id, class_name, level) VALUES (?, ?, ?)",
-            params![character_id, class_name, level],
+            "INSERT INTO character_class (character_id, class_name, class_label, level) VALUES (?, ?, ?, ?)",
+            params![character_id, class_name, class_label, level],
         )?;
         Ok::<i64, AppError>(conn.last_insert_rowid())
     })
@@ -259,6 +288,9 @@ pub async fn update_character_class_level(
 ) -> Result<(), AppError> {
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
+        if level < 0 {
+            return Err(AppError::Unknown("Level must be non-negative.".to_string()));
+        }
         let conn = pool.get()?;
         conn.execute(
             "UPDATE character_class SET level=? WHERE id=?",

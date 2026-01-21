@@ -56,6 +56,7 @@ test("Epic and Quest Spells E2E", async ({ appContext }) => {
 
 		// Custom Modal handling for validation error
 		await handleCustomModal(page, "OK");
+		await page.waitForTimeout(300); // Settlement wait for modal close
 		await page.locator('button:has-text("Cancel")').click();
 	});
 

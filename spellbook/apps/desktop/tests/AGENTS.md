@@ -155,8 +155,11 @@ const app = new SpellbookApp(page);
 #### Library & Spell Management
 - `await app.createSpell({ name, level, ... })`: Full workflow to add a spell and return to Library. Supports extended fields like `author`, `materialComponents`, `isReversible`, etc.
 - `await app.openSpell(name)`: Search for and open the editor for a specific spell.
+- `await app.waitForLibrary()`: Wait for the Library heading to be visible (useful after saving or navigation).
 - `await app.importFile(path | path[], allowOverwrite?)`: Complete multi-step Import Wizard handling. Supports single or multiple file imports.
+- `await app.resetImportWizard()`: Reset the import wizard to the first step (useful if a previous test left it in an inconsistent state).
 - `await app.setLibraryFilters({ search?, className?, component?, tag?, questOnly?, cantripsOnly? })`: Set persistent library filters.
+- `await app.clearFilters()`: Reset all library filters to default.
 - `app.getSpellRow(name)`: Returns a locator for a specific spell's row in the library table.
 
 #### Character Management
@@ -167,8 +170,13 @@ const app = new SpellbookApp(page);
 - `await app.createCharacter(name)`: Create a new character profile.
 - `await app.selectCharacter(name)`: Click a character in the sidebar.
 - `await app.openCharacterEditor(name)`: Navigate to and wait for a character's full editor to load.
+- `await app.waitForProfileLoad()`: Wait for the "Loading character profile..." overlay to disappear.
+- `await app.updateIdentity({ race?, alignment?, enableCom? })`: Update race, alignment, or Component (COM) mode.
+- `await app.updateAbilities({ STR?, DEX?, CON?, INT?, WIS?, CHA? })`: Update character ability scores.
 - `await app.addClass(className)`: Add a class (handles the "Other" custom prompt automatically).
 - `await app.addSpellToClass(className, spellName, "KNOWN" | "PREPARED")`: Complex interaction with the Spell Picker modal.
+- `await app.deleteCurrentCharacter()`: Click the "DELETE PROFILE" button in the character editor header.
+- `await app.verifyCharacterNotExists(name)`: Navigate to Characters and verify the named profile is missing.
 
 #### Using Shared Selectors
 If a method doesn't exist, use the exported `SELECTORS` for consistency:
@@ -293,16 +301,21 @@ import { handleCustomModal } from "../utils/dialog-handler";
 // Example: Handling a validation error after saving
 await page.locator("#btn-save-spell").click();
 await handleCustomModal(page, "OK");
+await page.waitForTimeout(300); // Settlement wait for modal close
 
 // Example: Confirming a complex action
 await page.getByRole("button", { name: "Restore Vault" }).click();
 await handleCustomModal(page, "Confirm");
+await page.waitForTimeout(300); // Settlement wait for modal close
 ```
 
 - `handleCustomModal(page, action)`: Waits for the modal to appear, clicks the button matching the label (default "OK"), and waits for the exit animation to finish.
 
 > [!IMPORTANT]
 > If a test hangs, check if a modal is visible in the trace. Native handlers are non-blocking event listeners, while `handleCustomModal` is an `await`-ed interaction.
+
+> [!TIP]
+> **Settlement Waits After Modals**: Always add a 300ms settlement wait after `handleCustomModal()` to ensure the modal has fully closed and React state has updated before the next interaction. This prevents race conditions where subsequent assertions may run before the UI has fully settled.
 
 ### 6. Locator Strategy
 
@@ -362,6 +375,40 @@ export class SpellbookApp {
 }
 ```
 
+### When to Add Page Object Methods
+
+Add methods to `SpellbookApp` when:
+- ✅ The interaction is used in **2+ tests**
+- ✅ The locator chain is **complex or brittle** (e.g., multiple filters, parent traversal)
+- ✅ The interaction represents a **user workflow** (e.g., "delete character", "add spell to class")
+- ✅ The locator relies on **implementation details** that may change (e.g., DOM structure)
+
+**Keep inline in tests when:**
+- ❌ Used only once in a single test
+- ❌ Simple, semantic locator (e.g., `page.getByRole("button", { name: "Save" })`)
+- ❌ Test-specific assertion logic
+
+**Example: Complex Locator → Page Object Method**
+
+```typescript
+// ❌ BAD: Complex locator in test (brittle, hard to maintain)
+const classEntry = page
+  .locator("div")
+  .filter({ has: page.getByTestId("class-row").filter({ hasText: "Druid" }) })
+  .first();
+const levelInput = classEntry.locator('input[type="number"]');
+
+// ✅ GOOD: Extract to page object method
+// In SpellbookApp.ts:
+getClassLevelInput(className: string) {
+  const classRow = this.page.getByTestId("class-row").filter({ hasText: className });
+  return classRow.locator('input[type="number"]');
+}
+
+// In test:
+const levelInput = app.getClassLevelInput("Druid");
+```
+
 ## File Cleanup
 
 Use the file tracker for temporary test files to ensure automatic cleanup:
@@ -416,7 +463,7 @@ If you launch the `.exe` directly from the `src-tauri/target/debug` folder, you 
 If tests fail with "Address already in use":
 1. Ensure no other instances of the app or Vite are running.
 2. The `tauri-fixture.ts` attempts to kill processes on Ports 5173 and 9000-9100.
-3. If ghost processes persist, run `Get-Process | Where-Object {$_.ProcessName -match "desktop"} | Stop-Process` in PowerShell.
+3. If ghost processes persist, run `Get-Process | Where-Object {$_.ProcessName -match "spellbook"} | Stop-Process` in PowerShell.
 
 ### WebView2 State Pollution
 Tests now use isolated `WEBVIEW2_USER_DATA_FOLDER` paths. If you see state leaking between runs:

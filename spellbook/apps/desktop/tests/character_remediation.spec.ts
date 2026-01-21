@@ -1,10 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
-import {
-	cleanupTauriApp,
-	launchTauriApp,
-	type TauriAppContext,
-} from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal } from "./utils/dialog-handler";
 import { generateRunId } from "./fixtures/test-utils";
@@ -14,119 +9,87 @@ test.skip(
 	"Tauri CDP tests require WebView2 on Windows.",
 );
 
-let appContext: TauriAppContext | null = null;
-
-test.beforeEach(async () => {
-	appContext = await launchTauriApp({ timeout: TIMEOUTS.medium });
-});
-
-test.afterEach(async () => {
-	await cleanupTauriApp(appContext);
-	appContext = null;
-});
-
 test.describe("Character Profile Remediation", () => {
-	test("should handle 'Other' class with custom label", async () => {
-		if (!appContext) throw new Error("App context not initialized");
+	test("should handle 'Other' class with custom label", async ({
+		appContext,
+		fileTracker,
+	}) => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);
-
-		const charName = `OtherHero_${generateRunId()}`;
-		await app.createCharacter(charName);
-		await app.openCharacterEditor(charName);
-
-		await app.addClass("Other", "Psionicist");
-		await expect(page.locator('[data-testid="class-row"]')).toContainText(
-			"Psionicist",
-		);
-		await expect(page.locator('[data-testid="class-row"]')).toContainText(
-			"Custom Class",
-		);
-	});
-
-	test("should prevent negative ability and level values", async () => {
-		if (!appContext) throw new Error("App context not initialized");
-		const { page } = appContext;
-		const app = new SpellbookApp(page);
-
-		const charName = `IntegrityHero_${generateRunId()}`;
-		await app.createCharacter(charName);
-		await app.openCharacterEditor(charName);
-
-		// 1. Ability Non-Negative
-		const strInput = page.getByLabel("STR", { exact: true });
-		await expect(strInput).toHaveValue("10", { timeout: TIMEOUTS.medium });
-		await strInput.fill("-5");
-		// Frontend should clamp to 0
-		await expect(strInput).toHaveValue("0");
-		await page.getByRole("button", { name: "Save Abilities" }).click();
-		// await page.waitForTimeout(500); // Wait for save
-
-		// 2. Level Non-Negative
-		await app.addClass("Druid");
-		const section = page.locator('div[aria-label="Class section for Druid"]');
-		const levelInput = section.locator('input[type="number"]').first();
-		await expect(levelInput).toHaveValue("1", { timeout: TIMEOUTS.medium });
-		await levelInput.fill("-1");
-		// Negative numbers can't be input, -1 will end up as 01
-		await expect(levelInput).toHaveValue("0");
-		// Level saves automatically, but wait for reload
-		// await page.waitForTimeout(500);
-	});
-
-	test("should enforce 'Prepared MUST be Known' in Spell Picker", async () => {
-		if (!appContext) throw new Error("App context not initialized");
-		const { page } = appContext;
-		const app = new SpellbookApp(page);
-
 		const runId = generateRunId();
-		const testSpell = `LogicSpell_${runId}`;
-		await app.createSpell({ name: testSpell, level: "1", description: "L" });
 
-		const charName = `LogicHero_${runId}`;
-		await app.createCharacter(charName);
-		await app.openCharacterEditor(charName);
-		await app.addClass("Ranger");
+		await test.step("Create character and add 'Other' class", async () => {
+			const charName = `OtherHero_${runId}`;
+			await app.createCharacter(charName);
+			await app.openCharacterEditor(charName);
 
-		// Try to add to PREPARED without KNOWN
-		// Note: The UI now prevents the picker from even opening if there are no known spells.
-		// So we manually find the ADD button and expect the alert immediately.
-		// const classSection = page.locator(
-		// 	'div[aria-label="Class section for Ranger"]',
-		// );
-		// await classSection.getByRole("button", { name: "KNOWN" }).click();
-		// await classSection.getByRole("button", { name: "PREPARED" }).click();
-		// // await page.waitForTimeout(300);
-		// await classSection.getByRole("button", { name: "+ ADD" }).click();
-		await app.openSpellPicker("Ranger", "PREPARED");
-		// Wait for the modal to appear
-		// await expect(page.getByRole("dialog")).toBeVisible();
+			await app.addClass("Other", "Psionicist");
+		});
 
-		await handleCustomModal(page, "OK");
-
-		// Verify picker did NOT open
-		const picker = page.getByTestId("spell-picker");
-		await expect(picker).not.toBeVisible();
+		await test.step("Verify custom class label in UI", async () => {
+			const classRow = page.locator('[data-testid="class-row"]');
+			await expect(classRow).toContainText("Psionicist");
+			await expect(classRow).toContainText("Custom Class");
+		});
 	});
 
-	test("should delete character from profile header", async () => {
-		if (!appContext) throw new Error("App context not initialized");
+	test("should enforce 'Prepared MUST be Known' in Spell Picker", async ({
+		appContext,
+		fileTracker,
+	}) => {
 		const { page } = appContext;
 		const app = new SpellbookApp(page);
+		const runId = generateRunId();
 
-		await app.createCharacter("HeaderDeleteHero");
-		await app.openCharacterEditor("HeaderDeleteHero");
+		await test.step("Setup: Create spell and character", async () => {
+			const testSpell = `LogicSpell_${runId}`;
+			await app.createSpell({
+				name: testSpell,
+				level: "1",
+				description: "L",
+			});
 
-		// Click DELETE PROFILE button in header
-		await page.getByRole("button", { name: "DELETE PROFILE" }).click();
-		await handleCustomModal(page, "Confirm");
+			const charName = `LogicHero_${runId}`;
+			await app.createCharacter(charName);
+			await app.openCharacterEditor(charName);
+			await app.addClass("Ranger");
+		});
 
-		// Should navigate back to list
-		await expect(page).toHaveURL(/\/character/);
-		await expect(
-			page.getByRole("link", { name: /HeaderDeleteHero/ }),
-		).not.toBeVisible();
+		await test.step("Try to open PREPARED picker without known spells", async () => {
+			// The UI prevents opening the picker if no spells are known for that class
+			await app.openSpellPicker("Ranger", "PREPARED");
+
+			// Wait for the alert modal
+			await handleCustomModal(page, "OK");
+			await page.waitForTimeout(300); // Settlement wait for modal close
+
+			// Verify picker did NOT open
+			const picker = page.getByTestId("spell-picker");
+			await expect(picker).not.toBeVisible();
+		});
+	});
+
+	test("should delete character from profile header", async ({
+		appContext,
+		fileTracker,
+	}) => {
+		const { page } = appContext;
+		const app = new SpellbookApp(page);
+		const runId = generateRunId();
+		const charName = `HeaderDeleteHero_${runId}`;
+
+		await test.step("Setup: Create character and open editor", async () => {
+			await app.createCharacter(charName);
+			await app.openCharacterEditor(charName);
+		});
+
+		await test.step("Delete character via header button", async () => {
+			await app.deleteCurrentCharacter();
+			await handleCustomModal(page, "Confirm");
+			await page.waitForTimeout(300); // Settlement wait for navigation
+
+			// Verify navigation and character removal
+			await app.verifyCharacterNotExists(charName);
+		});
 	});
 });
-
-

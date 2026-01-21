@@ -45,6 +45,7 @@ test.describe("Vault Backup and Restore", () => {
 
 				// Handle custom modal success alert
 				await handleCustomModal(page, "OK");
+				await page.waitForTimeout(300); // Settlement wait for modal close
 
 				// Verify backup exists and is accessible
 				expect(fs.existsSync(backupPath)).toBe(true);
@@ -57,6 +58,7 @@ test.describe("Vault Backup and Restore", () => {
 				await page.getByText(backupSpellName).click();
 				await page.getByRole("button", { name: "Delete" }).click();
 				await handleCustomModal(page, "Confirm");
+				await page.waitForTimeout(300); // Settlement wait for modal close
 				await app.waitForLibrary();
 				await expect(page.getByText(backupSpellName)).not.toBeVisible({
 					timeout: TIMEOUTS.short,
@@ -73,9 +75,11 @@ test.describe("Vault Backup and Restore", () => {
 
 				// Handle custom modal confirmation
 				await handleCustomModal(page, "Confirm");
+				await page.waitForTimeout(300); // Settlement wait for modal close
 
 				// Handle custom modal success alert
 				await handleCustomModal(page, "OK");
+				await page.waitForTimeout(300); // Settlement wait for modal close
 
 				// Wait for reload
 				await page.waitForTimeout(2000);
@@ -94,4 +98,3 @@ test.describe("Vault Backup and Restore", () => {
 		}
 	});
 });
-

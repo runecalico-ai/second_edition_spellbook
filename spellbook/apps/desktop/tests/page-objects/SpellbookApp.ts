@@ -645,4 +645,30 @@ export class SpellbookApp {
 		await picker.getByRole("button", { name: "BULK ADD", exact: true }).click();
 		await expect(picker).not.toBeVisible();
 	}
+
+	/**
+	 * Get the level input for a specific class in the Classes panel.
+	 * This targets the main class level input (with +/- buttons) in the Classes section,
+	 * NOT the level input in the Spell Management section.
+	 */
+	getClassLevelInput(className: string) {
+		console.log(`Getting level input for class: ${className}`);
+		const classRow = this.page
+			.getByTestId("class-row")
+			.filter({ hasText: className });
+		return classRow.locator('input[type="number"]');
+	}
+
+	/** Delete the currently open character profile via header button */
+	async deleteCurrentCharacter(): Promise<void> {
+		console.log("Deleting current character via header button");
+		await this.page.getByRole("button", { name: "DELETE PROFILE" }).click();
+	}
+
+	/** Verify character does not exist in the character list */
+	async verifyCharacterNotExists(name: string): Promise<void> {
+		console.log(`Verifying character does not exist: ${name}`);
+		await this.navigate("Characters");
+		await expect(this.page.getByRole("link", { name })).not.toBeVisible();
+	}
 }

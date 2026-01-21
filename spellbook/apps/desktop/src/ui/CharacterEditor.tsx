@@ -514,6 +514,7 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
             </button>
             <input
               type="number"
+              data-testid="class-level-input"
               value={level}
               onChange={(e) => {
                 const val = Number.parseInt(e.target.value, 10);

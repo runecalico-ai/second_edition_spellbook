@@ -6,6 +6,7 @@ import {
 	launchTauriApp,
 } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { handleCustomModal } from "./utils/dialog-handler";
 import { generateRunId } from "./fixtures/test-utils";
 
 test.skip(
@@ -68,20 +69,20 @@ test.describe("Character Profiles Foundation", () => {
 
 		// 4. Verify Isolation
 		console.log("Verifying isolation with explicit selectors...");
-		const mageSection = page.locator(
-			'div[aria-label="Class section for Mage"]',
-		);
+		const mageSection = page.locator('[aria-label="Class section for Mage"]');
 		const clericSection = page.locator(
-			'div[aria-label="Class section for Cleric"]',
+			'[aria-label="Class section for Cleric"]',
 		);
 
 		// Verify Mage has MageSpell in KNOWN
 		await mageSection.getByRole("button", { name: "KNOWN" }).click();
+		await page.waitForTimeout(300);
 		await expect(mageSection.getByText(mageSpell)).toBeVisible();
 		await expect(mageSection.getByText(clericSpell)).not.toBeVisible();
 
 		// Verify Cleric has ClericSpell in PREPARED
 		await clericSection.getByRole("button", { name: "PREPARED" }).click();
+		await page.waitForTimeout(300);
 		await expect(clericSection.getByText(clericSpell)).toBeVisible();
 		await expect(clericSection.getByText(mageSpell)).not.toBeVisible();
 	});
@@ -105,18 +106,19 @@ test.describe("Character Profiles Foundation", () => {
 		await app.openCharacterEditor(charName);
 		await app.addClass("Mage");
 
-		const mageSection = page.locator(
-			'div[aria-label="Class section for Mage"]',
-		);
+		const mageSection = page.locator('[aria-label="Class section for Mage"]');
 
-		// 1. Try to add to PREPARED immediately (should fail or not be visible)
-		// Since UI now filters the picker, checking for visibility in picker is the test
+		// 1. Try to add to PREPARED immediately (should fail with an error)
 		await app.openSpellPicker("Mage", "PREPARED");
-		const picker = page.getByTestId("spell-picker");
-		await picker.getByPlaceholder("Search spells by name...").fill(testSpell);
-		// Should show no results because it's not in KNOWN
-		await expect(picker.getByText(testSpell)).not.toBeVisible();
-		await picker.getByRole("button", { name: "CANCEL" }).click();
+		// Wait for the alert modal
+		await handleCustomModal(page, "OK");
+		await page.waitForTimeout(300); // Settlement wait for modal close
+
+		// const picker = page.getByTestId("spell-picker");
+		// await picker.getByPlaceholder("Search spells by name...").fill(testSpell);
+		// // Should show no results because it's not in KNOWN
+		// await expect(picker.getByText(testSpell)).not.toBeVisible();
+		// await picker.getByRole("button", { name: "CANCEL" }).click();
 
 		// 2. Add to KNOWN
 		await app.addSpellToClass("Mage", testSpell, "KNOWN");

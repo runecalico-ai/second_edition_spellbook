@@ -1,7 +1,7 @@
 # importers Specification
 
 ## Purpose
-TBD - created by archiving change backfill-core-specs. Update Purpose after archive.
+This specification defines the spell import system for extracting and validating spell data from multiple file formats (PDF, Markdown, DOCX). It covers parsing logic, assisted field mapping, duplicate detection and merging, import provenance tracking, and validation of high-level magic during import. This enables users to quickly populate their library from existing spell collections while maintaining data integrity.
 ## Requirements
 ### Requirement: Multi-format Parsing
 The application SHALL support extracting spell data from `.pdf`, `.md`, and `.docx` files.

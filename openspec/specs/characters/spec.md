@@ -1,7 +1,7 @@
 # characters Specification
 
 ## Purpose
-TBD - created by archiving change add-character-profiles-foundation. Update Purpose after archive.
+This specification defines character profile management for PCs and NPCs, including identity tracking (name, race, alignment), ability scores (including optional Comeliness), multi-class configurations with independent levels, and per-class spell management with separate "Known" and "Prepared" lists. It ensures characters can accurately represent AD&D 2e multi-class spellcasters with character-specific spell selections.
 ## Requirements
 ### Requirement: Character Profile Data
 The application SHALL support rich character profiles for PCs and NPCs, including identity (name, type, race, alignment, notes), abilities (STR, DEX, CON, INT, WIS, CHA, and optional COM), and multi-class configurations with independent levels.
@@ -39,6 +39,9 @@ Characters SHALL support multiple classes, each with an independent level (no ma
 
 ### Requirement: Per-Class Spell Management
 Each class instance on a specific character SHALL maintain separate "Known" and "Prepared" spell lists that are unique to that character. Spell lists SHALL NOT be shared across different characters with the same class. Spells SHALL reference existing `spell` records, and each spell link MAY include per-spell notes. Any spell in the "Prepared" list MUST also exist in the "Known" list for that class.
+
+### Requirement: Character Spell Notes
+The system MUST allow users to add notes to spells assigned to a character class.
 
 #### Scenario: Adding Spell to Known List
 - **WHEN** the user adds "Magic Missile" to the Known list for the "Mage" class
@@ -125,3 +128,12 @@ Deleting a character SHALL remove the character record and all associated data, 
 - **WHEN** the user deletes character "Elira"
 - **THEN** the character record, ability scores, classes, and all associated spell lists SHALL be permanently removed from the database
 
+#### Scenario: distinct notes for known and prepared lists
+Given a character "Merlin" with the "Mage" class
+And "Merlin" has the spell "Fireball" in the "Known" list
+And "Merlin" has the spell "Fireball" in the "Prepared" list
+When "Merlin" adds the note "For research" to "Fireball" in the "Known" list
+And "Merlin" adds the note "For combat" to "Fireball" in the "Prepared" list
+Then the system MUST persist "For research" for the Known entry
+And the system MUST persist "For combat" for the Prepared entry
+And the notes MUST NOT overwrite each other

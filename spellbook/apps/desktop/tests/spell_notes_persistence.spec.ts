@@ -1,4 +1,3 @@
-
 import { test, expect } from "./fixtures/test-fixtures";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
@@ -55,7 +54,9 @@ test.describe("Character Spell Notes Persistence", () => {
 
     const knownRowAfterReload = classSectionReloaded.getByTestId(`spell-row-${spellName}`);
     await expect(knownRowAfterReload).toBeVisible();
-    await expect(knownRowAfterReload.locator("input[placeholder='Add notes...']")).toHaveValue(knownNote);
+    await expect(knownRowAfterReload.locator("input[placeholder='Add notes...']")).toHaveValue(
+      knownNote,
+    );
 
     // 8. Add same spell to PREPARED
     await app.addSpellToClass("Mage", spellName, "PREPARED");
@@ -87,9 +88,17 @@ test.describe("Character Spell Notes Persistence", () => {
     const classSectionFinal = page.locator(`[aria-label="Class section for Mage"]`);
 
     await classSectionFinal.getByRole("button", { name: "KNOWN" }).click();
-    await expect(classSectionFinal.getByTestId(`spell-row-${spellName}`).locator("input[placeholder='Add notes...']")).toHaveValue(knownNote);
+    await expect(
+      classSectionFinal
+        .getByTestId(`spell-row-${spellName}`)
+        .locator("input[placeholder='Add notes...']"),
+    ).toHaveValue(knownNote);
 
     await classSectionFinal.getByRole("button", { name: "PREPARED" }).click();
-    await expect(classSectionFinal.getByTestId(`spell-row-${spellName}`).locator("input[placeholder='Add notes...']")).toHaveValue(preparedNote);
+    await expect(
+      classSectionFinal
+        .getByTestId(`spell-row-${spellName}`)
+        .locator("input[placeholder='Add notes...']"),
+    ).toHaveValue(preparedNote);
   });
 });

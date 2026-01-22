@@ -1,7 +1,7 @@
 # spellbooks Specification
 
 ## Purpose
-TBD - created by archiving change backfill-core-specs. Update Purpose after archive.
+This specification defines spellbook export and display features, including printable PDF generation with multiple layout presets (Compact, Stat-Block, List), spell picker filtering for character spellbook management, and standardized terminology for high-level magic (Epic Circles, Quest spells, Cantrips). It ensures character spellbooks can be exported for table use with appropriate AD&D 2e formatting.
 ## Requirements
 ### Requirement: Printable Export
 The application SHALL generate printable PDF exports for single spells or entire character spellbooks.

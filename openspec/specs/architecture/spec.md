@@ -1,7 +1,7 @@
 # architecture Specification
 
 ## Purpose
-TBD - created by archiving change backfill-core-specs. Update Purpose after archive.
+This specification defines the foundational technical architecture of the Spellbook application, a local-first desktop application for managing AD&D 2nd Edition spell libraries and character profiles. It establishes the core technology stack (Tauri + SQLite + Python sidecar), data storage patterns, hybrid search infrastructure (FTS5 + vector search), and quality assurance practices (E2E testing) that all other specifications build upon.
 ## Requirements
 ### Requirement: Local-First Desktop App
 The application SHALL run as a standalone desktop executable on Windows, macOS, and Linux without requiring a network connection for core functionality.

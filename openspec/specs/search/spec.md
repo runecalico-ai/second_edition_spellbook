@@ -1,7 +1,7 @@
 # search Specification
 
 ## Purpose
-TBD - created by archiving change backfill-core-specs. Update Purpose after archive.
+This specification defines the spell search and filtering system, enabling users to quickly find spells through full-text keyword search, faceted filtering by structured fields (school, level, class, source, quest/cantrip flags), and saved search configurations. It leverages the hybrid search infrastructure (FTS5 + vector search) established in the architecture spec to provide fast, flexible spell discovery.
 ## Requirements
 ### Requirement: Keyword Search
 The application SHALL provide a full-text search across spell names, descriptions, and other text fields.

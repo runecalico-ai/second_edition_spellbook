@@ -1,7 +1,7 @@
 # vault Specification
 
 ## Purpose
-TBD - created by archiving change backfill-core-specs. Update Purpose after archive.
+This specification defines the data storage and backup system, including the centralized SpellbookVault directory structure, native SQLite backup API usage for data integrity, and full vault archiving (export/import) for portability. It ensures user data remains accessible, portable, and protected through robust backup mechanisms that complement the local-first architecture.
 ## Requirements
 ### Requirement: Centralized Vault Directory
 The application SHALL store all user data, including database files and any attached artifacts, within a single, user-controlled "SpellbookVault" directory.

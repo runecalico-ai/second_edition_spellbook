@@ -1,7 +1,7 @@
 # library Specification
 
 ## Purpose
-TBD - created by archiving change backfill-core-specs. Update Purpose after archive.
+This specification defines the core spell library management system, including CRUD operations for spell records, field-level change tracking, validation rules for AD&D 2e magic systems (Arcane/Divine), and support for high-level magic (Epic spells up to 12th level, Quest spells, and Cantrips). It establishes the data model and business rules for the central spell repository that all other features depend on.
 ## Requirements
 ### Requirement: Spell CRUD
 The user SHALL be able to create, read, update, and delete spell records containing the following mandatory and optional fields:

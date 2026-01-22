@@ -342,14 +342,13 @@ pub async fn get_character_class_spells(
              ORDER BY s.level, s.name"
         } else {
             "SELECT s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
-                    MAX(CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END),
-                    MAX(CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END),
+                    CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
+                    CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
                     ccs.notes,
                     s.tags
              FROM character_class_spell ccs
              JOIN spell s ON s.id = ccs.spell_id
              WHERE ccs.character_class_id = ?
-             GROUP BY s.id
              ORDER BY s.level, s.name"
         };
 

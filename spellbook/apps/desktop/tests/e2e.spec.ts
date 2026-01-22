@@ -1,54 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
-import type { TauriAppContext } from "./fixtures/tauri-fixture";
-import { cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
+import { expect, test } from "./fixtures/test-fixtures";
+import { TIMEOUTS } from "./fixtures/constants";
+import { generateRunId, getTestDirname } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = getTestDirname(import.meta.url);
 
-// Constants
-const TIMEOUTS = {
-  short: 5000,
-  medium: 15000,
-  long: 30000,
-};
-
-// Global handles
-let appContext: TauriAppContext | null = null;
-const fileTracker = {
-  created: [] as string[],
-  track(p: string) {
-    this.created.push(p);
-    return p;
-  },
-  cleanup() {
-    for (const p of this.created) {
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-    }
-    this.created = [];
-  },
-};
-
-test.beforeAll(async () => {
-  appContext = await launchTauriApp();
-});
-
-test.afterAll(async () => {
-  if (appContext) {
-    await cleanupTauriApp(appContext);
-  }
-  fileTracker.cleanup();
-});
+test.slow();
 
 test.describe("Milestone Verification Flow", () => {
-  test("Milestone 1: Basic Spell Management", async () => {
-    if (!appContext) throw new Error("App context not initialized");
+  test("Milestone 1: Basic Spell Management", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    const runId = Date.now();
+    const runId = generateRunId();
 
     await test.step("Create a basic spell", async () => {
       const spellName = `Fireball ${runId}`;
@@ -64,20 +29,18 @@ test.describe("Milestone Verification Flow", () => {
       const spellName = `Fireball ${runId}`;
       await app.navigate("Add Spell");
       await page.getByLabel("Name").fill(spellName);
-      // Depending on UI, check for warning text
-      // For now, satisfy the flow
+      // Depending on UI, check for warning text - just ensuring navigation for now
       await app.navigate("Library");
     });
   });
 
-  test("Milestone 2: Import Wizard & Provenance", async () => {
-    if (!appContext) throw new Error("App context not initialized");
+  test("Milestone 2: Import Wizard & Provenance", async ({ appContext, fileTracker }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    const runId = Date.now();
+    const runId = generateRunId();
 
     const importedName = `Imported Spell ${runId}`;
-    const samplePath = fileTracker.track(path.resolve(__dirname, `sample - ${runId}.md`));
+    const samplePath = fileTracker.track(path.resolve(__dirname, `tmp/sample-${runId}.md`));
     fs.writeFileSync(
       samplePath,
       `---\nname: ${importedName}\nlevel: 1\nsource: Test Manual\n---\nImported description.`,
@@ -98,11 +61,10 @@ test.describe("Milestone Verification Flow", () => {
     });
   });
 
-  test("Milestone 3: Library filters for components and tags", async () => {
-    if (!appContext) throw new Error("App context not initialized");
+  test("Milestone 3: Library filters for components and tags", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    const runId = Date.now();
+    const runId = generateRunId();
 
     const taggedSpellName = `Tagged Spell ${runId}`;
     const decoySpellName = `Decoy Spell ${runId}`;
@@ -125,19 +87,16 @@ test.describe("Milestone Verification Flow", () => {
     });
 
     await test.step("Apply filters and verify results", async () => {
-      await app.navigate("Library");
-      // Search - use regex to be robust against ellipsis (...) vs …
-      await page.getByPlaceholder(/Search spells/i).fill(taggedSpellName);
+      await app.setLibraryFilters({ search: taggedSpellName });
       await expect(page.getByText(taggedSpellName)).toBeVisible();
       await expect(page.getByText(decoySpellName)).not.toBeVisible();
-      await page.getByPlaceholder(/Search spells/i).clear();
 
-      // Other filters
-      await page.getByLabel("Class filter").selectOption("Wizard");
-      await page.getByLabel("Component filter").selectOption("M");
-      await page.getByLabel("Tag filter").selectOption("alpha");
-
-      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await app.setLibraryFilters({
+        search: "",
+        className: "Wizard",
+        component: "M",
+        tag: "alpha",
+      });
 
       // Verify results
       await expect(page.getByText(taggedSpellName)).toBeVisible();
@@ -149,11 +108,10 @@ test.describe("Milestone Verification Flow", () => {
   });
 });
 
-test("Import conflict merge review flow", async () => {
-  if (!appContext) throw new Error("App context not initialized");
+test("Import conflict merge review flow", async ({ appContext, fileTracker }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
-  const runId = Date.now();
+  const runId = generateRunId();
   const conflictName = `Conflict Spell ${runId}`;
   const conflictSource = `Conflict Source ${runId}`;
   const originalDescription = "Original description";
@@ -166,15 +124,13 @@ test("Import conflict merge review flow", async () => {
       description: originalDescription,
       source: conflictSource,
     });
-    // Verify it exists in the library to be sure
     await app.navigate("Library");
-    await page.getByPlaceholder(/Search spells/i).fill(conflictName);
-    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await app.setLibraryFilters({ search: conflictName });
     await expect(page.getByRole("link", { name: conflictName })).toBeVisible();
   });
 
   await test.step("Trigger conflict import and resolve", async () => {
-    const samplePath = fileTracker.track(path.resolve(__dirname, `conflict - ${runId}.md`));
+    const samplePath = fileTracker.track(path.resolve(__dirname, `tmp/conflict-${runId}.md`));
     fs.writeFileSync(
       samplePath,
       `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\n---\n${incomingDescription}`,
@@ -191,14 +147,18 @@ test("Import conflict merge review flow", async () => {
     await expect(page.getByRole("button", { name: "Custom Merge" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Use Incoming" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Keep Existing" })).toBeVisible();
+
     await expect(page.getByRole("columnheader", { name: "Field" })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Existing" })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Incoming" })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Use" })).toBeVisible();
+
     await expect(page.getByLabel("Existing").first()).toBeVisible();
     await expect(page.getByLabel("Incoming").first()).toBeVisible();
+
     await page.getByRole("button", { name: "Use Incoming" }).first().click();
     await page.getByRole("button", { name: "Apply Resolutions" }).click();
+
     await expect(page.getByRole("button", { name: "Import More Files" })).toBeVisible({
       timeout: TIMEOUTS.medium,
     });
@@ -206,19 +166,19 @@ test("Import conflict merge review flow", async () => {
 
   await test.step("Verify updated spell", async () => {
     await app.navigate("Library");
+    await app.setLibraryFilters({ search: conflictName });
     await page.getByText(conflictName).click();
     await expect(page.getByLabel("Description")).toHaveValue(incomingDescription);
   });
 });
 
-test("Spell editor persists extended fields", async () => {
-  if (!appContext) throw new Error("App context not initialized");
+test("Spell editor persists extended fields", async ({ appContext, fileTracker }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
-  const runId = Date.now();
+  const runId = generateRunId();
 
   const importedName = `Extended Imported ${runId}`;
-  const importedPath = fileTracker.track(path.resolve(__dirname, `extended - ${runId}.md`));
+  const importedPath = fileTracker.track(path.resolve(__dirname, `tmp/extended-${runId}.md`));
   fs.writeFileSync(
     importedPath,
     [
@@ -286,28 +246,26 @@ test("Spell editor persists extended fields", async () => {
 
   await test.step("Create new spell with extended fields", async () => {
     const createdName = `Extended Created ${runId}`;
-    await app.navigate("Add Spell");
-
-    await page.getByLabel("Name").fill(createdName);
-    await page.getByLabel("Level", { exact: true }).fill("4");
-    await page.getByLabel("School").fill("Evocation");
-    await page.getByLabel("Classes (e.g. Mage, Cleric)").fill("Mage");
-    await page.getByLabel("Source").fill("Created Source");
-    await page.getByLabel("Edition").fill("1e");
-    await page.getByLabel("Author").fill("Created Author");
-    await page.getByLabel("License").fill("CC-BY");
-    await page.getByPlaceholder("Range").fill("Self");
-    await page.getByPlaceholder("Components (V,S,M)").fill("V,S");
-    await page.getByLabel("Reversible").check();
-    await page.getByPlaceholder("Duration").fill("Instant");
-    await page.getByPlaceholder("Casting Time").fill("1 action");
-    await page.getByPlaceholder("Area").fill("Self");
-    await page.getByPlaceholder("Save").fill("None");
-    await page.getByLabel("Material Components").fill("a drop of water");
-    await page.getByLabel("Tags").fill("created, field");
-    await page.getByLabel("Description").fill("Created description text.");
-    await page.getByRole("button", { name: "Save Spell" }).click();
-    await app.waitForLibrary();
+    await app.createSpell({
+      name: createdName,
+      level: "4",
+      school: "Evocation",
+      classes: "Mage",
+      source: "Created Source",
+      edition: "1e",
+      author: "Created Author",
+      license: "CC-BY",
+      range: "Self",
+      components: "V,S",
+      isReversible: true,
+      duration: "Instant",
+      castingTime: "1 action",
+      area: "Self",
+      savingThrow: "None",
+      materialComponents: "a drop of water",
+      tags: "created, field",
+      description: "Created description text.",
+    });
 
     await app.openSpell(createdName);
     await expect(page.getByLabel("Edition")).toHaveValue("1e");
@@ -320,11 +278,10 @@ test("Spell editor persists extended fields", async () => {
   });
 });
 
-test("M3 FTS5 Search covers author and material_components", async () => {
-  if (!appContext) throw new Error("App context not initialized");
+test("M3 FTS5 Search covers author and material_components", async ({ appContext }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
-  const runId = Date.now();
+  const runId = generateRunId();
 
   const authorSpellName = `Author Search Spell ${runId}`;
   const materialSpellName = `Material Search Spell ${runId}`;
@@ -332,47 +289,41 @@ test("M3 FTS5 Search covers author and material_components", async () => {
   const uniqueMaterial = `raregem${runId}`;
 
   await test.step("Create spell with unique author", async () => {
-    await app.navigate("Add Spell");
-    await page.getByLabel("Name").fill(authorSpellName);
-    await page.getByLabel("Level", { exact: true }).fill("3");
-    await page.getByLabel("Author").fill(uniqueAuthor);
-    await page.getByLabel("Description").fill("A spell with a unique author.");
-    await page.getByRole("button", { name: "Save Spell" }).click();
-    await app.waitForLibrary();
+    await app.createSpell({
+      name: authorSpellName,
+      level: "3",
+      author: uniqueAuthor,
+      description: "A spell with a unique author.",
+    });
   });
 
   await test.step("Create spell with unique material component", async () => {
-    await app.navigate("Add Spell");
-    await page.getByLabel("Name").fill(materialSpellName);
-    await page.getByLabel("Level", { exact: true }).fill("4");
-    await page.getByLabel("Material Components").fill(uniqueMaterial);
-    await page.getByLabel("Description").fill("A spell with unique material.");
-    await page.getByRole("button", { name: "Save Spell" }).click();
-    await app.waitForLibrary();
+    await app.createSpell({
+      name: materialSpellName,
+      level: "4",
+      materialComponents: uniqueMaterial,
+      description: "A spell with unique material.",
+    });
   });
 
   await test.step("Search by author finds correct spell", async () => {
-    await app.navigate("Library");
-    await page.getByPlaceholder(/Search spells/i).fill(uniqueAuthor);
-    await page.getByRole("button", { name: "Search", exact: true }).click();
-
-    await expect(page.getByText(authorSpellName)).toBeVisible({ timeout: TIMEOUTS.short });
+    await app.setLibraryFilters({ search: uniqueAuthor });
+    await expect(page.getByText(authorSpellName)).toBeVisible({
+      timeout: TIMEOUTS.short,
+    });
     await expect(page.getByText(materialSpellName)).not.toBeVisible();
   });
 
   await test.step("Search by material component finds correct spell", async () => {
-    await page.getByPlaceholder(/Search spells/i).clear();
-    await page.getByPlaceholder(/Search spells/i).fill(uniqueMaterial);
-    await page.getByRole("button", { name: "Search", exact: true }).click();
-
-    await expect(page.getByText(materialSpellName)).toBeVisible({ timeout: TIMEOUTS.short });
+    await app.setLibraryFilters({ search: uniqueMaterial });
+    await expect(page.getByText(materialSpellName)).toBeVisible({
+      timeout: TIMEOUTS.short,
+    });
     await expect(page.getByText(authorSpellName)).not.toBeVisible();
   });
 
   await test.step("Clear search shows both spells", async () => {
-    await page.getByPlaceholder(/Search spells/i).clear();
-    await page.getByRole("button", { name: "Search", exact: true }).click();
-
+    await app.setLibraryFilters({ search: "" });
     await expect(page.getByText(authorSpellName)).toBeVisible();
     await expect(page.getByText(materialSpellName)).toBeVisible();
   });

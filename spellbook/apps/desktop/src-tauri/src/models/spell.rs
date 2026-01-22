@@ -6,6 +6,7 @@ pub struct SpellSummary {
     pub id: i64,
     pub name: String,
     pub school: Option<String>,
+    pub sphere: Option<String>,
     pub level: i64,
     pub class_list: Option<String>,
     pub components: Option<String>,
@@ -13,6 +14,7 @@ pub struct SpellSummary {
     pub source: Option<String>,
     pub is_quest_spell: i64,
     pub is_cantrip: i64,
+    pub tags: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

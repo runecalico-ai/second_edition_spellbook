@@ -1,25 +1,22 @@
-import { type Browser, chromium, expect, test } from "@playwright/test";
-import { BASE_CDP_PORT, TIMEOUTS } from "./fixtures/constants";
-import { type TauriAppContext, cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
+import { expect, test } from "./fixtures/test-fixtures";
+import { TIMEOUTS } from "./fixtures/constants";
 import { SELECTORS, SpellbookApp } from "./page-objects/SpellbookApp";
 import { setupAcceptAllDialogs } from "./utils/dialog-handler";
+import { generateRunId } from "./fixtures/test-utils";
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 
-let appContext: TauriAppContext | null = null;
-
-test.beforeAll(async () => {
-  appContext = await launchTauriApp({ timeout: TIMEOUTS.long, debug: true });
-});
-
-test.afterAll(async () => {
-  await cleanupTauriApp(appContext);
+// Configure custom timeout and debug for this test
+test.use({
+  tauriOptions: {
+    timeout: TIMEOUTS.long,
+    debug: true,
+  },
 });
 
 test.slow();
 
-test("Milestone 3: Robust Search & Saved Searches", async () => {
-  if (!appContext) throw new Error("App context not initialized");
+test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
 
@@ -37,7 +34,7 @@ test("Milestone 3: Robust Search & Saved Searches", async () => {
     throw e;
   }
 
-  const runId = Date.now();
+  const runId = generateRunId();
   const authorName = `Author ${runId}`;
   const spellName = `M3 Search Spell ${runId}`;
 

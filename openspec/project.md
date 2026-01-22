@@ -14,7 +14,11 @@ A local-only, privacy-first desktop application for managing AD&D 2nd Edition sp
 
 ### Code Style
 - **JS/TS**: STRICTLY use [Biome](https://biomejs.dev/) for linting and formatting. Do not use ESLint or Prettier.
+  - **Application code** (`src/`): Format via `pnpm format` (wraps `biome format --write .`)
+  - **E2E tests** (`tests/`): Lint/format via `npx biome lint` and `npx biome format` (direct Biome commands)
+  - Both use the same `biome.json` configuration
 - **Rust**: Use `cargo clippy` and `rustfmt`.
+- **Python**: Use `ruff` for linting and formatting.
 - **Naming**: Use `snake_case` for Rust backend commands and `camelCase` for React frontend code.
 
 ### Architecture Patterns
@@ -49,3 +53,57 @@ A local-only, privacy-first desktop application for managing AD&D 2nd Edition sp
 - **sqlite-vec**: Vector search extension.
 - **Pandoc**: Used for high-quality PDF/Markdown exports.
 - **sentence-transformers**: Local embedding models.
+
+## Directory Structure
+
+```
+/
+│
+├── docs/                        # Project documentation
+│
+├── spellbook/                   # Main application monorepo
+│   ├── AGENTS.md                # Spellbook-specific agent context
+│   ├── README.md                # Spellbook overview
+│   │
+│   ├── apps/desktop/            # Tauri desktop application
+│   │   ├── src/                 # React frontend source
+│   │   │   ├── main.tsx         # Application entry point
+│   │   │   ├── index.css        # Global styles (Tailwind)
+│   │   │   ├── store/           # Zustand state management
+│   │   │   └── ui/              # React components and pages
+│   │   │
+│   │   ├── src-tauri/           # Rust backend source
+│   │   │   ├── AGENTS.md        # Backend-specific agent context
+│   │   │   ├── Cargo.toml       # Rust dependencies
+│   │   │   ├── tauri.conf.json  # Tauri configuration
+│   │   │   ├── build.rs         # Build script (Python sidecar bundling)
+│   │   │   └── src/
+│   │   │       ├── main.rs      # Tauri entry point
+│   │   │       ├── lib.rs       # Library exports
+│   │   │       ├── commands/    # Tauri IPC command handlers
+│   │   │       ├── db/          # SQLite database logic (schema, migrations, queries)
+│   │   │       ├── models/      # Rust data models (Spell, Character, etc.)
+│   │   │       ├── sidecar/     # Python sidecar integration
+│   │   │       └── error.rs     # Error handling
+│   │   │
+│   │   ├── tests/               # Playwright E2E tests
+│   │   │   ├── AGENTS.md        # Testing-specific agent context
+│   │   │   ├── *.spec.ts        # Test specifications
+│   │   │   ├── page-objects/    # Page object models for tests
+│   │   │   ├── fixtures/        # Test data and fixtures
+│   │   │   └── utils/           # Test utilities
+│   │   │
+│   │   ├── biome.json           # Biome linter/formatter config
+│   │   ├── playwright.config.ts # Playwright configuration
+│   │   ├── vite.config.ts       # Vite bundler configuration
+│   │   ├── tailwind.config.js   # Tailwind CSS configuration
+│   │   └── package.json         # Node.js dependencies
+│   │
+│   ├── services/ml/             # Python ML sidecar service
+│   │   ├── spellbook_sidecar.py # Main sidecar script (embeddings, LLM inference)
+│   │   ├── requirements.txt     # Python dependencies
+│   │   └── tests/               # Python unit tests
+│   │
+│   ├── db/                      # Database utilities and seed data
+│   ├── scripts/                 # Build and utility scripts
+│   └── spells_md/               # Markdown spell data for seeding

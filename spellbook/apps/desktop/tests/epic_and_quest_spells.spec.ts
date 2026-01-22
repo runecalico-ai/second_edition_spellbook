@@ -1,114 +1,99 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
-import { type TauriAppContext, cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
-import { SELECTORS, SpellbookApp } from "./page-objects/SpellbookApp";
+import { generateRunId } from "./fixtures/test-utils";
+import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal, setupDialogHandler } from "./utils/dialog-handler";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const screenshotDir = path.resolve(__dirname, "screenshots");
-if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir);
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 
-let appContext: TauriAppContext | null = null;
-
-test.beforeAll(async () => {
-  appContext = await launchTauriApp({ timeout: TIMEOUTS.long });
-});
-
-test.afterAll(async () => {
-  await cleanupTauriApp(appContext);
-});
-
 test.slow();
 
-test("Epic and Quest Spells E2E", async () => {
-  if (!appContext) throw new Error("App context not initialized");
+test("Epic and Quest Spells E2E", async ({ appContext }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
 
-  const cleanupDialog = setupDialogHandler(page, {
-    acceptDelete: true,
-    dismissValidation: true,
+  await test.step("Setup", async () => {
+    await page.waitForLoadState("domcontentloaded");
+    await page
+      .getByRole("link", { name: "Library" })
+      .waitFor({ state: "visible", timeout: TIMEOUTS.long });
   });
 
-  await page.waitForLoadState("domcontentloaded");
-  await page
-    .getByRole("link", { name: "Library" })
-    .waitFor({ state: "visible", timeout: TIMEOUTS.long });
-
-  const runId = Date.now();
+  const runId = generateRunId();
   const cantripName = `Cantrip ${runId}`;
   const epicName = `Epic Wizard ${runId}`;
   const questName = `Divine Quest ${runId}`;
 
-  // 1. Create a Cantrip
-  await app.createSpell({
-    name: cantripName,
-    level: "0",
-    isCantrip: true,
-    description: "A simple cantrip.",
+  await test.step("Create a Cantrip", async () => {
+    await app.createSpell({
+      name: cantripName,
+      level: "0",
+      isCantrip: true,
+      description: "A simple cantrip.",
+    });
   });
 
-  // 2. Create an Epic Spell (Arcane only)
-  await app.navigate("Add Spell");
-  await page.getByLabel("Name", { exact: true }).fill(epicName);
-  await page.locator("#spell-level").fill("10");
-  await page.getByLabel("School").fill("Evocation");
-  await page.getByLabel("Classes").fill("Wizard, Mage");
-  await page.locator(SELECTORS.description).fill("A powerful 10th circle spell.");
-  await page.locator("#btn-save-spell").click();
-  await app.waitForLibrary();
-
-  // 3. Attempt Epic Spell for Priest (Should be restricted)
-  await app.navigate("Add Spell");
-  await page.getByLabel("Name", { exact: true }).fill("Restricted Epic");
-  await page.locator("#spell-level").fill("10");
-  await page.getByLabel("Classes").fill("Priest, Cleric");
-  await page.locator(SELECTORS.description).fill("This should fail.");
-  await page.locator("#btn-save-spell").click();
-
-  // Custom Modal handling for validation error
-  await handleCustomModal(page, "OK");
-
-  await page.locator('button:has-text("Cancel")').click();
-
-  // 4. Create a Quest Spell (Divine only)
-  await app.createSpell({
-    name: questName,
-    level: "8",
-    isQuest: true,
-    sphere: "All",
-    classes: "Priest, Cleric",
-    description: "A holy quest spell.",
+  await test.step("Create an Epic Spell (Arcane only)", async () => {
+    await app.createSpell({
+      name: epicName,
+      level: "10",
+      school: "Evocation",
+      classes: "Wizard, Mage",
+      description: "A powerful 10th circle spell.",
+    });
   });
 
-  // 5. Verify Library Filters and Badges
-  await app.navigate("Library");
+  await test.step("Attempt Epic Spell for Priest (Should be restricted)", async () => {
+    await app.navigate("Add Spell");
+    await page.getByLabel("Name", { exact: true }).fill("Restricted Epic");
+    await page.locator("#spell-level").fill("10");
+    await page.getByLabel("Classes").fill("Priest, Cleric");
+    await page.locator("#spell-description").fill("This should fail.");
+    await page.locator("#btn-save-spell").click();
 
-  await expect(app.getSpellRow(cantripName).getByText("Cantrip", { exact: true })).toBeVisible();
-  await expect(app.getSpellRow(epicName).getByText("Epic", { exact: true })).toBeVisible();
-  await expect(app.getSpellRow(questName).getByText("Quest", { exact: true })).toBeVisible();
+    // Custom Modal handling for validation error
+    await handleCustomModal(page, "OK");
+    await page.waitForTimeout(300); // Settlement wait for modal close
+    await page.locator('button:has-text("Cancel")').click();
+  });
 
-  // Filter Quest Spells
-  const questCheckbox = page.locator('label:has-text("Quest Spells") input');
-  await questCheckbox.check();
-  // Automatic search should trigger. Wait for the list to update.
-  await expect(app.getSpellRow(questName)).toBeVisible();
-  await expect(app.getSpellRow(cantripName)).toBeHidden({ timeout: TIMEOUTS.medium });
+  await test.step("Create a Quest Spell (Divine only)", async () => {
+    await app.createSpell({
+      name: questName,
+      level: "8",
+      isQuest: true,
+      sphere: "All",
+      classes: "Priest, Cleric",
+      description: "A holy quest spell.",
+    });
+  });
 
-  await questCheckbox.uncheck();
-  await expect(app.getSpellRow(cantripName)).toBeVisible();
+  await test.step("Verify Library Filters and Badges", async () => {
+    await app.navigate("Library");
 
-  // Filter Cantrips
-  const cantripCheckbox = page.locator('label:has-text("Cantrips Only") input');
-  await cantripCheckbox.check();
-  await expect(app.getSpellRow(cantripName)).toBeVisible();
-  await expect(app.getSpellRow(epicName)).toBeHidden({ timeout: TIMEOUTS.medium });
+    await expect(app.getSpellRow(cantripName).getByText("Cantrip", { exact: true })).toBeVisible();
+    await expect(app.getSpellRow(epicName).getByText("Epic", { exact: true })).toBeVisible();
+    await expect(app.getSpellRow(questName).getByText("Quest", { exact: true })).toBeVisible();
 
+    // Filter Quest Spells
+    await app.setLibraryFilters({ questOnly: true });
+    await expect(app.getSpellRow(questName)).toBeVisible();
+    await expect(app.getSpellRow(cantripName)).toBeHidden({
+      timeout: TIMEOUTS.medium,
+    });
+
+    await app.setLibraryFilters({ questOnly: false });
+    await expect(app.getSpellRow(cantripName)).toBeVisible();
+
+    // Filter Cantrips
+    await app.setLibraryFilters({ cantripsOnly: true });
+    await expect(app.getSpellRow(cantripName)).toBeVisible();
+    await expect(app.getSpellRow(epicName)).toBeHidden({
+      timeout: TIMEOUTS.medium,
+    });
+  });
+
+  // Cleanup native dialog handler if it was used (not strictly needed here as we didn't trigger any native deletes)
+  const cleanupDialog = setupDialogHandler(page, { acceptDelete: true });
   cleanupDialog();
 });

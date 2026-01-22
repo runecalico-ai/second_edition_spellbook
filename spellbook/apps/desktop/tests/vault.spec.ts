@@ -1,48 +1,20 @@
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
-import type { TauriAppContext } from "./fixtures/tauri-fixture";
-import { cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
+import { expect, test } from "./fixtures/test-fixtures";
+import { TIMEOUTS } from "./fixtures/constants";
+import { createTmpFilePath, generateRunId, getTestDirname } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal, setupDialogHandler } from "./utils/dialog-handler";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const TIMEOUTS = {
-  short: 5000,
-  medium: 15000,
-  long: 30000,
-};
-
-let appContext: TauriAppContext | null = null;
+const __dirname = getTestDirname(import.meta.url);
 
 test.describe("Vault Backup and Restore", () => {
-  test.beforeAll(async () => {
-    appContext = await launchTauriApp();
-  });
-
-  test.afterAll(async () => {
-    if (appContext) {
-      await cleanupTauriApp(appContext);
-    }
-  });
-
-  test("Backup and Restore Flow", async () => {
-    if (!appContext) throw new Error("App context not initialized");
+  test("Backup and Restore Flow", async ({ appContext, fileTracker }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    const runId = Date.now();
+    const runId = generateRunId();
 
     const backupSpellName = `Backup Test Spell ${runId}`;
-    const backupPath = path.resolve(__dirname, `tmp/backup-${runId}.zip`);
-
-    // Ensure tmp directory exists
-    const tmpDir = path.resolve(__dirname, "tmp");
-    if (!fs.existsSync(tmpDir)) {
-      fs.mkdirSync(tmpDir, { recursive: true });
-    }
+    const backupPath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
 
     // Setup dialog handler
     const cleanupDialogs = setupDialogHandler(page, {
@@ -69,6 +41,7 @@ test.describe("Vault Backup and Restore", () => {
 
         // Handle custom modal success alert
         await handleCustomModal(page, "OK");
+        await page.waitForTimeout(300); // Settlement wait for modal close
 
         // Verify backup exists and is accessible
         expect(fs.existsSync(backupPath)).toBe(true);
@@ -81,8 +54,11 @@ test.describe("Vault Backup and Restore", () => {
         await page.getByText(backupSpellName).click();
         await page.getByRole("button", { name: "Delete" }).click();
         await handleCustomModal(page, "Confirm");
+        await page.waitForTimeout(300); // Settlement wait for modal close
         await app.waitForLibrary();
-        await expect(page.getByText(backupSpellName)).not.toBeVisible({ timeout: TIMEOUTS.short });
+        await expect(page.getByText(backupSpellName)).not.toBeVisible({
+          timeout: TIMEOUTS.short,
+        });
       });
 
       await test.step("Restore from backup via UI", async () => {
@@ -95,9 +71,11 @@ test.describe("Vault Backup and Restore", () => {
 
         // Handle custom modal confirmation
         await handleCustomModal(page, "Confirm");
+        await page.waitForTimeout(300); // Settlement wait for modal close
 
         // Handle custom modal success alert
         await handleCustomModal(page, "OK");
+        await page.waitForTimeout(300); // Settlement wait for modal close
 
         // Wait for reload
         await page.waitForTimeout(2000);
@@ -106,14 +84,13 @@ test.describe("Vault Backup and Restore", () => {
 
       await test.step("Verify spell is restored", async () => {
         await app.navigate("Library");
-        await expect(page.getByText(backupSpellName)).toBeVisible({ timeout: TIMEOUTS.medium });
+        await expect(page.getByText(backupSpellName)).toBeVisible({
+          timeout: TIMEOUTS.medium,
+        });
       });
     } finally {
       cleanupDialogs();
-      // Cleanup backup file
-      if (fs.existsSync(backupPath)) {
-        fs.unlinkSync(backupPath);
-      }
+      // Backup file cleanup handled by fileTracker in afterAll
     }
   });
 });

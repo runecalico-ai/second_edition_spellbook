@@ -283,6 +283,7 @@ export default function Library() {
           </Link>
           <Link
             to="/edit/new"
+            id="link-add-spell"
             className="px-3 py-2 bg-blue-700 text-white rounded-md hover:bg-blue-600"
           >
             Add Spell

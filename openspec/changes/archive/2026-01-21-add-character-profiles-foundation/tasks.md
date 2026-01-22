@@ -1,0 +1,89 @@
+## C0 – Schema & CRUD
+- [x] C0.1 Create database migration for character profile tables
+  - [x] C0.1.1 Add columns to `character` table (race, alignment, com_enabled, created_at, updated_at)
+  - [x] C0.1.2 Create `character_ability` table with all ability scores
+  - [x] C0.1.3 Create `character_class` table for multi-class support
+  - [x] C0.1.4 Create `character_class_spell` table for per-class Known/Prepared lists
+  - [x] C0.1.5 Add indexes for performance (character name, class lookups, spell lists)
+- [x] C0.2 Implement Rust backend commands for character details
+  - [x] C0.2.1 Update `create_character` to accept type parameter (already exists, verify)
+  - [x] C0.2.2 Add `update_character_details` command
+  - [x] C0.2.3 Add `delete_character` command
+  - [x] C0.2.4 Update `list_characters` to include new fields
+  - [x] C0.2.5 Add `get_character` command for full character data
+- [x] C0.3 Implement Rust backend commands for abilities
+  - [x] C0.3.1 Add `get_character_abilities` command
+  - [x] C0.3.2 Add `update_character_abilities` command (upsert pattern)
+- [x] C0.4 Implement Rust backend commands for classes
+  - [x] C0.4.1 Add `add_character_class` command
+  - [x] C0.4.2 Add `update_character_class_level` command
+  - [x] C0.4.3 Add `remove_character_class` command
+  - [x] C0.4.4 Add `get_character_classes` command
+- [x] C0.5 Create/update React models and types
+  - [x] C0.5.1 Define TypeScript interfaces for Character, CharacterAbilities, CharacterClass
+  - [x] C0.5.2 Update existing Character type with new fields
+- [x] C0.6 Build Character Editor UI
+  - [x] C0.6.1 Create Identity panel (name, type, race, alignment, notes, COM toggle)
+  - [x] C0.6.2 Create Abilities panel (STR/DEX/CON/INT/WIS/CHA/COM inputs, no max validation)
+  - [x] C0.6.3 Create Classes panel (add/remove classes, set levels)
+  - [x] C0.6.4 Wire up form state management and validation
+  - [x] C0.6.5 Connect to backend commands
+- [x] C0.7 Update Characters Index/List view
+  - [x] C0.7.1 Display race, type, and primary class in character list
+  - [x] C0.7.2 Add quick filters for PC/NPC type
+- [x] C0.8 Write E2E tests for basic CRUD
+  - [x] C0.8.1 Test creating character with abilities and classes
+  - [x] C0.8.2 Test updating character details
+  - [x] C0.8.3 Test multi-class management
+  - [x] C0.8.4 Test edge cases (very high ability scores, many classes)
+
+## C1 – Per-Class Spell Lists
+- [x] C1.1 Implement Rust backend commands for per-class spells
+  - [x] C1.1.1 Add `add_character_spell` command (character_class_id, spell_id, list_type, notes)
+  - [x] C1.1.2 Add `remove_character_spell` command
+  - [x] C1.1.3 Add `get_character_class_spells` command (filter by list_type)
+  - [x] C1.1.4 Add `update_character_spell_notes` command
+- [x] C1.2 Build Per-Class Spell Management UI
+  - [x] C1.2.1 Create tabs for each class within Character Editor
+  - [x] C1.2.2 Create Known spells panel with add/remove functionality
+  - [x] C1.2.3 Create Prepared spells panel with add/remove functionality
+  - [x] C1.2.4 Add spell search/filter within add dialog
+  - [x] C1.2.5 Add per-spell notes input
+  - [x] C1.2.6 Implement bulk add/remove with filters
+- [x] C1.3 Update existing spellbook integration
+  - [x] C1.3.1 Deprecate old `spellbook` table usage (or mark for future removal)
+  - [x] C1.3.2 Migrate existing spellbook data to new per-class structure (if needed)
+- [x] C1.4 Write E2E tests for spell management
+  - [x] C1.4.1 Test adding spells to Known list
+  - [x] C1.4.2 Test adding spells to Prepared list
+  - [x] C1.4.3 Test removing spells
+  - [x] C1.4.4 Test per-spell notes
+  - [x] C1.4.5 Test bulk operations
+  - [x] C1.4.6 Test character-specific spell lists (two characters with same class)
+  - [x] C1.4.7 Test non-spellcasting classes (Fighter, Thief)
+  - [x] C1.4.8 Test spell picker filter state reset between dialog sessions
+
+## Documentation
+- [x] D1 Update AGENTS.md
+  - [x] D1.1 Document character profile data model
+  - [x] D1.2 Document per-class spell management patterns
+  - [x] D1.3 Add examples for character CRUD operations
+- [x] D2 Update user documentation
+  - [x] D2.1 Document character creation workflow
+  - [x] D2.2 Document multi-class management
+  - [x] D2.3 Document per-class spell list management
+- [x] R1 Remediation & Hardening (Code Review Fixes)
+  - [x] R1.1 Database: Add `class_label` to `character_class` table
+  - [x] R1.2 Backend: Add non-negative validation to ability and level commands
+  - [x] R1.3 Backend: Update class commands to handle `class_label`
+  - [x] R1.4 Frontend: Add `min="0"` to all ability and level inputs
+  - [x] R1.5 Frontend: Use `class_label` for "Other" class display and management
+  - [x] R1.6 Frontend: Prevent adding Prepared spells not in Known list in `SpellPicker`
+  - [x] R1.7 Frontend: Add "Delete Character" button to Character Editor profile header
+  - [x] R1.8 Verification: Run full lint, clippy, and E2E battery
+
+## Notes
+- **Total tasks**: ~45
+- **Estimated effort**: 1-2 weeks
+- **Enables**: Part 2 (Import/Export) and Part 3 (Printing/Search)
+- **Milestones C2-C5** are moved to subsequent proposals

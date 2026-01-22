@@ -14,8 +14,8 @@ The current character system is minimal (name, type, notes only) and lacks the r
 - **Character Model**: Extend character table with `race`, `alignment`, `com_enabled` fields
 - **Multi-Class Support**: Characters can have multiple classes, each with independent levels (no max)
 - **Abilities Tracking**: Track all six core abilities plus optional Comeliness (COM) with no maximum values enforced
-- **Per-Class Spell Management**: Each class on a character maintains separate Known and Prepared spell lists with per-spell notes
-- **UI Components**: Character editor with identity, abilities, multi-class management, and per-class spell list panels
+- **Per-Class Spell Management**: Each class on a character maintains separate known/prepared spell lists with spell search filtering and notes
+- **UI Components**: Character editor with identity, abilities, multi-class management, and per-class spell list panels; spell picker dialog filters reset to default values on open
 - **E2E Testing**: Playwright tests for CRUD operations and spell management
 
 ## Impact

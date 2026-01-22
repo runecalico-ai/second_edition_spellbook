@@ -2,13 +2,17 @@
 
 Instructions for developing, running, and maintaining Playwright E2E tests for the Spellbook desktop application.
 
+> **Migrating existing tests?** See [MIGRATION.md](MIGRATION.md) for a complete guide on updating tests to use the modern infrastructure.
+
 ## Directory Structure
 
 ```
 tests/
 ├── fixtures/           # Test infrastructure
 │   ├── constants.ts    # Timeout values, configuration
-│   └── tauri-fixture.ts # App launch/teardown utilities
+│   ├── tauri-fixture.ts # App launch/teardown utilities
+│   ├── test-fixtures.ts # Playwright fixtures (automatic lifecycle)
+│   └── test-utils.ts   # Common test utilities
 ├── page-objects/       # Page Object Model classes
 │   └── SpellbookApp.ts # Common UI interactions
 ├── utils/              # Helper utilities
@@ -70,46 +74,128 @@ The `launchTauriApp()` helper in `tauri-fixture.ts` handles isolation automatica
 ```
 
 ### 1. Use Shared Fixtures
-Always use the shared infrastructure with explicit typing:
+
+#### Recommended: Playwright Fixtures (Automatic Lifecycle)
+
+The easiest way to write tests is using the custom Playwright fixtures that handle app lifecycle automatically:
+
+```typescript
+import { expect, test } from "./fixtures/test-fixtures";
+import { TIMEOUTS } from "./fixtures/constants";
+import { SpellbookApp } from "./page-objects/SpellbookApp";
+
+test.describe("My Test Suite", () => {
+  test("my test", async ({ appContext, fileTracker }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    // Track temporary files
+    const tmpFile = fileTracker.track(path.resolve(__dirname, "tmp/test.md"));
+
+    // Your test code here...
+  });
+});
+```
+
+**Benefits:**
+- ✅ No `beforeAll`/`afterAll` boilerplate
+- ✅ Automatic cleanup even if tests fail
+- ✅ Each test gets fresh fixtures
+- ✅ Type-safe access to `appContext` and `fileTracker`
+
+#### Alternative: Manual Lifecycle (Advanced)
+
+For test suites that need to share a single app instance across multiple tests (e.g., for performance), use manual lifecycle management:
 
 ```typescript
 import { TIMEOUTS } from "./fixtures/constants";
-import { type TauriAppContext, cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
+import { type TauriAppContext, cleanupTauriApp, createFileTracker, launchTauriApp } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 // Use explicit typing instead of 'any'
 let appContext: TauriAppContext | null = null;
+const fileTracker = createFileTracker();
 
 test.beforeAll(async () => {
   appContext = await launchTauriApp();
 });
 
-test.afterAll(() => {
-  cleanupTauriApp(appContext);
+test.afterAll(async () => {
+  if (appContext) {
+    await cleanupTauriApp(appContext);
+  }
+  fileTracker.cleanup();
+});
+
+test("my test", async () => {
+  if (!appContext) throw new Error("App context not initialized");
+  const { page } = appContext;
+  // Your test code here...
 });
 ```
 
-### 2. Use Page Object Methods
+**Use this approach when:**
+- You need to share app state across multiple tests
+- You're running a large test suite and want to minimize app launches
+- You need fine-grained control over the lifecycle
 
-Prefer `SpellbookApp` methods over raw locators:
+### 2. Use SpellbookApp Page Object
+The `SpellbookApp` class in `tests/page-objects/SpellbookApp.ts` is the central hub for common UI interactions. **Always** prefer its methods over raw Playwright locators.
 
+#### Initialization
 ```typescript
-// Good
-const app = new SpellbookApp(page);
-await app.createSpell({
-  name: "Fireball",
-  level: "3",
-  description: "A bright streak flashes...",
-  components: "V, S, M",
-  tags: "Evocation, Fire"
-});
-await app.navigate("Library");
-await app.waitForLibrary();
+import { SpellbookApp } from "./page-objects/SpellbookApp";
 
-// Avoid
-await page.getByRole("link", { name: "Add Spell" }).click();
-await page.getByPlaceholder("Spell Name").fill("Test Spell");
-// ... repeated boilerplate
+const app = new SpellbookApp(page);
+```
+
+#### Core Navigation
+- `await app.navigate("Library" | "Characters" | "Import" | "Add Spell")`: Safe navigation that waits for React state to settle.
+
+#### Library & Spell Management
+- `await app.createSpell({ name, level, ... })`: Full workflow to add a spell and return to Library. Supports extended fields like `author`, `materialComponents`, `isReversible`, etc.
+- `await app.openSpell(name)`: Search for and open the editor for a specific spell.
+- `await app.waitForLibrary()`: Wait for the Library heading to be visible (useful after saving or navigation).
+- `await app.importFile(path | path[], allowOverwrite?)`: Complete multi-step Import Wizard handling. Supports single or multiple file imports.
+- `await app.resetImportWizard()`: Reset the import wizard to the first step (useful if a previous test left it in an inconsistent state).
+- `await app.setLibraryFilters({ search?, className?, component?, tag?, questOnly?, cantripsOnly? })`: Set persistent library filters.
+- `await app.clearFilters()`: Reset all library filters to default.
+- `app.getSpellRow(name)`: Returns a locator for a specific spell's row in the library table.
+
+#### Character Management
+- `await app.openSpellPicker(className, listType)`: Open the spell picker dialog for a character.
+- `await app.setSpellPickerFilters({ search?, minLevel?, maxLevel?, tags?, school?, sphere?, questOnly?, cantripsOnly? })`: Set filters within an open spell picker.
+- `await app.clearSpellPickerFilters()`: Reset all filters in the spell picker to defaults.
+- `await app.bulkAddSpells(names)`: Select multiple spells (clears filters first) and click "BULK ADD".
+- `await app.createCharacter(name)`: Create a new character profile.
+- `await app.selectCharacter(name)`: Click a character in the sidebar.
+- `await app.openCharacterEditor(name)`: Navigate to and wait for a character's full editor to load.
+- `await app.waitForProfileLoad()`: Wait for the "Loading character profile..." overlay to disappear.
+- `await app.updateIdentity({ race?, alignment?, enableCom? })`: Update race, alignment, or Component (COM) mode.
+- `await app.updateAbilities({ STR?, DEX?, CON?, INT?, WIS?, CHA? })`: Update character ability scores.
+- `await app.addClass(className)`: Add a class (handles the "Other" custom prompt automatically).
+- `await app.addSpellToClass(className, spellName, "KNOWN" | "PREPARED")`: Complex interaction with the Spell Picker modal.
+- `await app.deleteCurrentCharacter()`: Click the "DELETE PROFILE" button in the character editor header.
+- `await app.deleteCharacterFromList(name)`: Setup dialog listener, hover over character in list, click delete, and handle confirmation.
+- `await app.verifyCharacterNotExists(name)`: Navigate to Characters and verify the named profile is missing.
+- `await app.removeSpellFromClass(className, listType, spellName)`: Remove a spell from a character's class list (handling the complex UI interaction).
+- `await app.verifySpellInClassList(className, listType, spellName, shouldExist)`: Verify if a spell is present or absent in a class list (handling tab switching).
+
+#### Using Shared Selectors
+If a method doesn't exist, use the exported `SELECTORS` for consistency:
+```typescript
+import { SELECTORS } from "./page-objects/SpellbookApp";
+
+await page.locator(SELECTORS.spellName).fill("New Name");
+```
+
+#### Example: Full Character Setup
+```typescript
+const app = new SpellbookApp(page);
+await app.createCharacter("Elminster");
+await app.openCharacterEditor("Elminster");
+await app.addClass("Mage");
+await app.addSpellToClass("Mage", "Fireball", "KNOWN");
 ```
 
 ### 3. Use Standard Timeouts
@@ -129,53 +215,110 @@ await expect(element).toBeVisible({ timeout: TIMEOUTS.medium });
 | `TIMEOUTS.long` | 30000ms | App startup, complex operations |
 | `TIMEOUTS.batch` | 60000ms | Batch imports, file processing |
 
-### 4. Generate Unique Test Data
+### 4. Use Test Utilities
 
-Use timestamps to avoid collisions:
+The `fixtures/test-utils.ts` module provides helper functions for common test patterns:
+
+#### Generate Unique Test Data
 
 ```typescript
-const runId = Date.now();
+import { generateRunId } from "./fixtures/test-utils";
+
+const runId = generateRunId();
 const spellName = `Test Spell ${runId}`;
 const characterName = `Test Character ${runId}`;
 ```
 
-### 5. Dialog and Modal Handlers
+#### Get Test Directory Name
 
-For tests that trigger dialogs or the custom React modal:
+Instead of repeating the `fileURLToPath` pattern:
+
+```typescript
+import { getTestDirname } from "./fixtures/test-utils";
+
+const __dirname = getTestDirname(import.meta.url);
+```
+
+#### Create Temporary File Paths
+
+The easiest way to create unique temporary files with automatic tracking:
+
+```typescript
+import { createTmpFilePath } from "./fixtures/test-utils";
+
+test("my test", async ({ fileTracker }) => {
+  // Creates tmp/backup-<timestamp>.zip and tracks it for cleanup
+  const backupPath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
+
+  // Use the file...
+  fs.writeFileSync(backupPath, data);
+  // Cleanup is automatic!
+});
+```
+
+#### Ensure Temporary Directory Exists
+
+For manual directory management:
+
+```typescript
+import { ensureTmpDir } from "./fixtures/test-utils";
+
+// Creates tests/tmp if it doesn't exist
+const tmpDir = ensureTmpDir(__dirname);
+
+// Or create a subdirectory
+const backupDir = ensureTmpDir(__dirname, "tmp/backups");
+```
+
+### 5. Dialog and Modal Handlers
+The application uses two types of dialogs. You must use the correct handler depending on the interaction.
 
 #### 5.1 Native Browser Dialogs
-Use `setupDialogHandler` for `window.alert`, `window.confirm`, and `window.prompt`:
+These are triggered by `window.alert`, `window.confirm`, or `window.prompt`. Use `setupDialogHandler` or its simplified variants.
 
 ```typescript
-import { setupDialogHandler } from "./utils/dialog-handler";
+import { setupDialogHandler, setupAcceptAllDialogs } from "./utils/dialog-handler";
 
+// Complex handler with options
 const cleanup = setupDialogHandler(page, {
-  acceptDelete: true,
-  dismissValidation: true,
+  acceptDelete: true,      // Automatically type "OK" for delete
+  dismissValidation: true, // Dismiss error popups
+  debug: true,             // Log dialog text to console
 });
 
-// ... test code ...
+// Implementation of test triggering dialogs...
+await page.getByRole("button", { name: "Reset Database" }).click();
 
-cleanup(); // Remove handler at end
+cleanup(); // CRITICAL: Stop listening after the action
 ```
 
-#### 5.2 Custom React Modal
-For our custom glassmorphism modal, use `handleCustomModal()`. This utility waits for the modal to be visible, interacts with it, and then waits for the animation to finish.
+- `setupAcceptAllDialogs(page)`: Always clicks "OK".
+- `setupDismissAllDialogs(page)`: Always clicks "Cancel" or "Esc".
+
+#### 5.2 Custom glassmorphism Modals
+These are React-based components (using `Modal.tsx`) and **cannot** be intercepted by `setupDialogHandler`. Use the `handleCustomModal` async helper.
 
 ```typescript
-import { handleCustomModal } from "./utils/dialog-handler";
+import { handleCustomModal } from "../utils/dialog-handler";
 
-// Click "Save", then handle the validation error modal
+// Example: Handling a validation error after saving
 await page.locator("#btn-save-spell").click();
 await handleCustomModal(page, "OK");
+await page.waitForTimeout(300); // Settlement wait for modal close
 
-// Handle a "Confirm" modal (e.g., Delete or Restore)
-await page.getByRole("button", { name: "Delete" }).click();
+// Example: Confirming a complex action
+await page.getByRole("button", { name: "Restore Vault" }).click();
 await handleCustomModal(page, "Confirm");
+await page.waitForTimeout(300); // Settlement wait for modal close
 ```
 
+- `handleCustomModal(page, action)`: Waits for the modal to appear, clicks the button matching the label (default "OK"), and waits for the exit animation to finish.
+
 > [!IMPORTANT]
-> `setupDialogHandler` **cannot** intercept the custom React modal. You must use `handleCustomModal` explicitly in your test flow.
+> If a test hangs, check if a modal is visible in the trace. Native handlers are non-blocking event listeners, while `handleCustomModal` is an `await`-ed interaction.
+
+> [!TIP]
+> **Settlement Waits After Modals**: Always add a 300ms settlement wait after `handleCustomModal()` to ensure the modal has fully closed and React state has updated before the next interaction. This prevents race conditions where subsequent assertions may run before the UI has fully settled.
 
 ### 6. Locator Strategy
 
@@ -235,9 +378,43 @@ export class SpellbookApp {
 }
 ```
 
+### When to Add Page Object Methods
+
+Add methods to `SpellbookApp` when:
+- ✅ The interaction is used in **2+ tests**
+- ✅ The locator chain is **complex or brittle** (e.g., multiple filters, parent traversal)
+- ✅ The interaction represents a **user workflow** (e.g., "delete character", "add spell to class")
+- ✅ The locator relies on **implementation details** that may change (e.g., DOM structure)
+
+**Keep inline in tests when:**
+- ❌ Used only once in a single test
+- ❌ Simple, semantic locator (e.g., `page.getByRole("button", { name: "Save" })`)
+- ❌ Test-specific assertion logic
+
+**Example: Complex Locator → Page Object Method**
+
+```typescript
+// ❌ BAD: Complex locator in test (brittle, hard to maintain)
+const classEntry = page
+  .locator("div")
+  .filter({ has: page.getByTestId("class-row").filter({ hasText: "Druid" }) })
+  .first();
+const levelInput = classEntry.locator('input[type="number"]');
+
+// ✅ GOOD: Extract to page object method
+// In SpellbookApp.ts:
+getClassLevelInput(className: string) {
+  const classRow = this.page.getByTestId("class-row").filter({ hasText: className });
+  return classRow.locator('input[type="number"]');
+}
+
+// In test:
+const levelInput = app.getClassLevelInput("Druid");
+```
+
 ## File Cleanup
 
-Use the file tracker for temporary test files:
+Use the file tracker for temporary test files to ensure automatic cleanup:
 
 ```typescript
 import { createFileTracker } from "./fixtures/tauri-fixture";
@@ -254,6 +431,28 @@ test("test", async () => {
   // File will be cleaned up automatically
 });
 ```
+
+### Working with tmp Directory
+
+For tests that create multiple files or need a dedicated directory:
+
+```typescript
+const runId = Date.now();
+
+// Ensure tmp directory exists
+const tmpDir = path.resolve(__dirname, "tmp");
+if (!fs.existsSync(tmpDir)) {
+  fs.mkdirSync(tmpDir, { recursive: true });
+}
+
+// Track files for automatic cleanup
+const backupPath = fileTracker.track(path.resolve(tmpDir, `backup-${runId}.zip`));
+const testFile = fileTracker.track(path.resolve(tmpDir, `test-${runId}.md`));
+
+// Use the files in your test
+fs.writeFileSync(testFile, content);
+// Files will be cleaned up automatically in afterAll
+```
 ## Common Gotchas & Troubleshooting
 
 ### Blank Screen on Launch
@@ -267,7 +466,7 @@ If you launch the `.exe` directly from the `src-tauri/target/debug` folder, you 
 If tests fail with "Address already in use":
 1. Ensure no other instances of the app or Vite are running.
 2. The `tauri-fixture.ts` attempts to kill processes on Ports 5173 and 9000-9100.
-3. If ghost processes persist, run `Get-Process | Where-Object {$_.ProcessName -match "desktop"} | Stop-Process` in PowerShell.
+3. If ghost processes persist, run `Get-Process | Where-Object {$_.ProcessName -match "spellbook"} | Stop-Process` in PowerShell.
 
 ### WebView2 State Pollution
 Tests now use isolated `WEBVIEW2_USER_DATA_FOLDER` paths. If you see state leaking between runs:

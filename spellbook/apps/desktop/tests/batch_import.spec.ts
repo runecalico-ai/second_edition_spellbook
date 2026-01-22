@@ -1,69 +1,30 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
-import { type TauriAppContext, cleanupTauriApp, launchTauriApp } from "./fixtures/tauri-fixture";
+import { generateRunId, getTestDirname } from "./fixtures/test-utils";
+import type { FileTracker } from "./fixtures/tauri-fixture";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = getTestDirname(import.meta.url);
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 
 test.describe("Batch Import Performance Tests", () => {
-  let appContext: TauriAppContext | null = null;
-
-  test.beforeAll(async () => {
-    appContext = await launchTauriApp();
-  });
-
-  test.afterAll(async () => {
-    if (appContext) {
-      await cleanupTauriApp(appContext);
-      appContext = null;
-    }
-  });
-
-  test("imports 50 markdown files successfully", async () => {
-    if (!appContext) throw new Error("App context not initialized");
+  test("imports 50 markdown files successfully", async ({ appContext, fileTracker }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    await app.resetImportWizard();
+    const runId = generateRunId();
 
-    const testDir = path.join(__dirname, "batch_test_spells");
-    const files = await generateTestSpells(testDir, 50);
+    const testDir = path.join(__dirname, `tmp/batch_test_${runId}`);
+    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
 
-    try {
-      await app.navigate("Import");
-      await expect(page).toHaveURL(/\/import/);
+    const files = await generateTestSpells(testDir, 50, fileTracker);
 
+    await test.step("Perform batch import", async () => {
       const startTime = Date.now();
 
-      const fileInput = page.locator('input[type="file"]');
-      await fileInput.setInputFiles(files);
-
-      // Wait for file selection to be reflected in UI (can be slow with many files)
-      // We increase timeout significantly to avoid failing here before we even reach the backend import
-      await expect(page.getByText(`${files.length} file(s) selected`)).toBeVisible({
-        timeout: 60000,
-      });
-
-      // Click validation/preview
-      await page.getByRole("button", { name: "Preview" }).click();
-      await expect(page.getByText(/Parsed \d+ spell/)).toBeVisible({
-        timeout: TIMEOUTS.batch, // Use larger timeout for parsing
-      });
-
-      // Start import
-      await page.getByRole("button", { name: "Skip Review →" }).click();
-      await page.getByRole("button", { name: "Start Import" }).click();
-
-      // Wait for success indicator
-      // UI shows "Imported spells: 50"
-      await expect(page.getByText(/Imported spells: \d+/)).toBeVisible({
-        timeout: TIMEOUTS.long * 2, // Batch of 50 might take a while
-      });
+      await app.importFile(files);
 
       const elapsed = Date.now() - startTime;
       console.log(`Batch import of ${files.length} files completed in ${elapsed}ms`);
@@ -73,64 +34,48 @@ test.describe("Batch Import Performance Tests", () => {
       const match = resultText?.match(/Imported spells: (\d+)/);
       const importedCount = match ? Number.parseInt(match[1]) : 0;
 
-      expect(importedCount).toBeGreaterThan(0);
-      console.log(`Successfully imported ${importedCount} spells`);
-      expect(importedCount).toBeGreaterThan(0);
-      console.log(`Successfully imported ${importedCount} spells`);
-    } finally {
-      fs.rmSync(testDir, { recursive: true, force: true });
-    }
+      expect(importedCount).toBe(50);
+    });
   });
 
-  test("handles mixed format files gracefully", async () => {
-    if (!appContext) throw new Error("App context not initialized");
+  test("handles mixed format files gracefully", async ({ appContext, fileTracker }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    await app.resetImportWizard();
+    const runId = generateRunId();
 
-    const testDir = path.join(__dirname, "mixed_format_test");
-    fs.mkdirSync(testDir, { recursive: true });
+    const testDir = path.join(__dirname, `tmp/mixed_test_${runId}`);
+    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
 
-    try {
-      const mdFile = path.join(testDir, "valid_spell.md");
-      fs.writeFileSync(
-        mdFile,
-        "---\nname: Valid Markdown Spell\nlevel: 3\n---\nThis is a valid spell description.\n",
-      );
+    const mdFile = fileTracker.track(path.join(testDir, "valid_spell.md"));
+    fs.writeFileSync(
+      mdFile,
+      "---\nname: Valid Markdown Spell\nlevel: 3\n---\nThis is a valid spell description.\n",
+    );
 
-      const txtFile = path.join(testDir, "unsupported.txt");
-      fs.writeFileSync(txtFile, "This should be rejected");
+    const txtFile = fileTracker.track(path.join(testDir, "unsupported.txt"));
+    fs.writeFileSync(txtFile, "This should be rejected");
 
-      await app.navigate("Import");
+    await test.step("Import mixed files", async () => {
+      await app.importFile([mdFile, txtFile]);
 
-      const fileInput = page.locator('input[type="file"]');
-      await fileInput.setInputFiles([mdFile, txtFile]);
-
-      await page.getByRole("button", { name: "Preview →" }).click();
-      await expect(page.getByText(/Parsed \d+ spell/)).toBeVisible();
-      await page.getByRole("button", { name: "Skip Review →" }).click();
-      await expect(page.getByText(/Ready to import/)).toBeVisible();
-
-      // Check for mixed format warning if implementation provides one
-      // (Assuming the UI continues with valid files)
-      await page.getByRole("button", { name: "Start Import" }).click();
-      // Check for success or updated list
+      // Check for success indicator for valid file
       await expect(
         page.getByText(/Import completed successfully|Imported spells: 1/),
       ).toBeVisible();
-    } finally {
-      fs.rmSync(testDir, { recursive: true, force: true });
-    }
+    });
   });
 });
 
-async function generateTestSpells(dir: string, count: number): Promise<string[]> {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+async function generateTestSpells(
+  dir: string,
+  count: number,
+  fileTracker: FileTracker,
+): Promise<string[]> {
   const files: string[] = [];
 
   for (let i = 0; i < count; i++) {
     const fileName = `spell_${i}.md`;
-    const filePath = path.join(dir, fileName);
+    const filePath = fileTracker.track(path.join(dir, fileName));
     const content = `---
 name: Batch Spell ${i}
 level: ${1 + (i % 9)}

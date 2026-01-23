@@ -296,6 +296,12 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
         output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
         return {"path": str(output_path), "format": "md"}
 
+    if fmt == "html":
+        html_path = output_dir / f"spellbook_export_{unique_id}.html"
+        html = _render_print_html(spells, mode, layout, character)
+        html_path.write_text(html, encoding="utf-8")
+        return {"path": str(html_path), "format": "html"}
+
     if fmt == "pdf":
         html_path = output_dir / f"spellbook_export_{unique_id}.html"
         html = _render_print_html(spells, mode, layout, character)
@@ -423,7 +429,9 @@ def _render_print_html(
 
 def _render_spellbook_header(character: Dict[str, Any]) -> str:
     name = html_escape(character.get("name") or "Spellbook")
-    character_type = html_escape(character.get("type") or "")
+    character_type = html_escape(
+        character.get("type") or character.get("characterType") or ""
+    )
     notes = html_escape(character.get("notes") or "")
     meta = f"{character_type} Spellbook" if character_type else "Spellbook"
     notes_block = f"<p class='meta'>{notes}</p>" if notes else ""
@@ -437,11 +445,15 @@ def _render_spell_block(spell: Dict[str, Any], layout: str, mode: str) -> str:
     school = html_escape(school_raw)
     level = html_escape(level_raw)
     description = html_escape(spell.get("description") or "").replace("\n", "<br/>")
-    class_list = html_escape(spell.get("class_list") or "")
+    class_list = html_escape(
+        spell.get("class_list") or spell.get("classList") or ""
+    )
     range_text = html_escape(spell.get("range") or "")
     components = html_escape(spell.get("components") or "")
     duration = html_escape(spell.get("duration") or "")
-    saving_throw = html_escape(spell.get("saving_throw") or "")
+    saving_throw = html_escape(
+        spell.get("saving_throw") or spell.get("savingThrow") or ""
+    )
     prepared = spell.get("prepared")
     known = spell.get("known")
     notes = html_escape(spell.get("notes") or "")

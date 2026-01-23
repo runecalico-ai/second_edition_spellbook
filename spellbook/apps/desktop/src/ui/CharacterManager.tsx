@@ -88,10 +88,11 @@ export default function CharacterManager() {
                 type="button"
                 data-testid={`filter-type-${t.toLowerCase()}`}
                 onClick={() => setTypeFilter(t)}
-                className={`px-1.5 py-0.5 text-[10px] rounded border ${typeFilter === t
+                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                  typeFilter === t
                     ? "bg-blue-600 border-blue-500 text-white"
                     : "bg-neutral-900 border-neutral-700 text-neutral-500 hover:border-neutral-500"
-                  }`}
+                }`}
               >
                 {t}
               </button>

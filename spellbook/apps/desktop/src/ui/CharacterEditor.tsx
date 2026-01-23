@@ -663,10 +663,11 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                     setActiveTab(tab);
                     setSelectedRemoveIds(new Set());
                   }}
-                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${activeTab === tab
-                    ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
-                    : "text-neutral-600 hover:text-neutral-400"
-                    }`}
+                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${
+                    activeTab === tab
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
+                      : "text-neutral-600 hover:text-neutral-400"
+                  }`}
                 >
                   {tab}
                 </button>

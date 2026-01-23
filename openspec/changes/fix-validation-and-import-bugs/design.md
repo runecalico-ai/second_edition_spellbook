@@ -6,169 +6,9 @@ This change fixes 4 critical bugs discovered during code review. The fixes are i
 
 ## Technical Approach
 
-### Fix 1: Epic Spell Validation Bypass
 
-**File**: `spellbook/apps/desktop/src-tauri/src/commands/spells.rs`
 
-**Current Logic** (lines 36-50):
-```rust
-if level > 9 {
-    if is_quest_spell {
-        return Err(AppError::Validation(
-            "Spells above 9th level cannot be Quest Spells".into(),
-        ));
-    }
-    if let Some(classes) = class_list {  // ← Only checks when Some
-        let classes_lower = classes.to_lowercase();
-        if !classes_lower.contains("wizard") && !classes_lower.contains("mage") {
-            return Err(AppError::Validation(
-                "Spells above 9th level are restricted to Arcane casters (Wizard/Mage)".into(),
-            ));
-        }
-    }
-}
-```
-
-**Proposed Change**:
-```rust
-if level > 9 {
-    if is_quest_spell {
-        return Err(AppError::Validation(
-            "Spells above 9th level cannot be Quest Spells".into(),
-        ));
-    }
-    // Reject if class_list is None
-    let classes = class_list.as_ref().ok_or_else(|| {
-        AppError::Validation(
-            "Epic spells (level 10-12) require class_list with arcane casters (Wizard/Mage)".into()
-        )
-    })?;
-
-    let classes_lower = classes.to_lowercase();
-    if !classes_lower.contains("wizard") && !classes_lower.contains("mage") {
-        return Err(AppError::Validation(
-            "Epic spells (level 10-12) require class_list with arcane casters (Wizard/Mage)".into(),
-        ));
-    }
-}
-```
-
-**Rationale**: Epic spells are inherently arcane by game rules. Missing `class_list` should be treated as invalid, not as a bypass.
-
----
-
-### Fix 2: Quest Spell Validation Bypass
-
-**File**: `spellbook/apps/desktop/src-tauri/src/commands/spells.rs`
-
-**Current Logic** (lines 51-66):
-```rust
-if is_quest_spell {
-    if level != 8 {
-        return Err(AppError::Validation(
-            "Quest spells must be level 8 (Quest level)".into(),
-        ));
-    }
-    if let Some(classes) = class_list {  // ← Only checks when Some
-        let classes_lower = classes.to_lowercase();
-        let divine_classes = ["priest", "cleric", "druid", "paladin", "ranger"];
-        if !divine_classes.iter().any(|&c| classes_lower.contains(c)) {
-            return Err(AppError::Validation(
-                "Quest spells are restricted to Divine casters (Priest/Cleric/Druid/Paladin/Ranger)".into(),
-            ));
-        }
-    }
-}
-```
-
-**Proposed Change**:
-```rust
-if is_quest_spell {
-    if level != 8 {
-        return Err(AppError::Validation(
-            "Quest spells must be level 8 (Quest level)".into(),
-        ));
-    }
-    // Reject if class_list is None
-    let classes = class_list.as_ref().ok_or_else(|| {
-        AppError::Validation(
-            "Quest spells require class_list with divine casters (Priest/Cleric/Druid/Paladin/Ranger)".into()
-        )
-    })?;
-
-    let classes_lower = classes.to_lowercase();
-    let divine_classes = ["priest", "cleric", "druid", "paladin", "ranger"];
-    if !divine_classes.iter().any(|&c| classes_lower.contains(c)) {
-        return Err(AppError::Validation(
-            "Quest spells require class_list with divine casters (Priest/Cleric/Druid/Paladin/Ranger)".into(),
-        ));
-    }
-}
-```
-
-**Rationale**: Quest spells are inherently divine by game rules. Missing `class_list` should be treated as invalid.
-
----
-
-### Fix 3: Cantrip Auto-Detection
-
-**File**: `spellbook/services/ml/spellbook_sidecar.py`
-
-**Current Logic** (lines 86-105):
-```python
-if level_val == "cantrip":
-    level = 0
-    is_cantrip = 1
-elif level_val == "quest":
-    level = 8
-    is_quest = 1
-elif level_val == "8" and meta.get("sphere"):
-    level = 8
-    is_quest = 1
-else:
-    try:
-        level = int(level_val)
-        if level == 0 and str(meta.get("is_cantrip", "0")).lower() in {
-            "1",
-            "true",
-            "yes",
-        }:
-            is_cantrip = 1
-    except ValueError:
-        level = 0
-```
-
-**Proposed Change**:
-```python
-if level_val == "cantrip":
-    level = 0
-    is_cantrip = 1
-elif level_val == "quest":
-    level = 8
-    is_quest = 1
-elif level_val == "8" and meta.get("sphere"):
-    level = 8
-    is_quest = 1
-else:
-    try:
-        level = int(level_val)
-    except ValueError:
-        level = 0
-
-# Auto-detect cantrips from level 0, allow explicit override
-if level == 0:
-    is_cantrip_meta = str(meta.get("is_cantrip", "")).lower()
-    if is_cantrip_meta in {"0", "false", "no"}:
-        is_cantrip = 0  # Explicit override
-    else:
-        is_cantrip = 1  # Default for level 0
-```
-
-**Rationale**: In AD&D 2e, level-0 spells are cantrips by definition. This aligns with user expectations while allowing explicit overrides for edge cases.
-
----
-
-### Fix 4: Modal Backdrop Dismissal
+### Fix 1: Modal Backdrop Dismissal
 
 **Files**:
 - `spellbook/apps/desktop/src/store/useModal.ts`
@@ -251,7 +91,7 @@ export default function Modal() {
 
 ---
 
-### Fix 5: Import Conflict Key Collision
+### Fix 2: Import Conflict Key Collision
 
 **File**: `spellbook/apps/desktop/src/ui/ImportWizard.tsx`
 
@@ -271,33 +111,46 @@ const getConflictKey = (conflict: SpellConflict, index: number) =>
 
 ---
 
-### Fix 6: Character Creation Parameter Name
+### Fix 3: Character Model Modernization (camelCase standardization)
 
-**File**: `spellbook/apps/desktop/src/ui/CharacterManager.tsx`
+**Files**:
+- `spellbook/apps/desktop/src-tauri/src/models/character.rs`
+- `spellbook/apps/desktop/src/types/character.ts`
+- `spellbook/apps/desktop/src/ui/CharacterManager.tsx`
+- `spellbook/apps/desktop/src/ui/CharacterEditor.tsx`
 
-**Current Logic** (line 39-43):
-```typescript
-await invoke("create_character", {
-  name: newCharName,
-  characterType: newCharType,  // ← camelCase doesn't match backend
-  notes: "",
-});
-```
+**Current Problem**: The project mixes `camelCase` (JS standard) and `snake_case` (Rust target). Functions like `create_character` and `update_character_details` fail or use inconsistent property names because backend structs aren't configured for `camelCase` renaming.
 
-**Proposed Change**:
-```typescript
-await invoke("create_character", {
-  name: newCharName,
-  character_type: newCharType,  // ← Fix: use snake_case to match backend
-  notes: "",
-});
-```
+**Proposed Changes**:
 
-**Rationale**: Tauri's IPC layer performs strict parameter name matching during deserialization. The Rust backend parameter is `character_type: String` (line 15 in `characters.rs`), so the frontend must use the exact same name.
+1. **Rust Models (`character.rs`)**:
+   Add `#[serde(rename_all = "camelCase")]` to all character structs used for IPC.
+   ```rust
+   #[derive(serde::Serialize, serde::Deserialize)]
+   #[serde(rename_all = "camelCase")]
+   pub struct Character {
+       pub character_type: String, // Becomes .characterType in JS
+       ...
+   }
+   ```
+
+2. **TypeScript Types (`character.ts`)**:
+   Standardize interfaces to `camelCase`.
+   ```typescript
+   export interface Character {
+     characterType: CharacterType;
+     ...
+   }
+   ```
+
+3. **Frontend Components**:
+   Update usages of `character_type` to `characterType`, `class_name` to `className`, etc.
+
+**Rationale**: Adhering to Tauri's intended `camelCase` bridge ensures the frontend remains idiomatic JavaScript while maintaining strict type safety and fixing all deserialization errors.
 
 ---
 
-### Fix 7: Filename Sanitization Collision Detection
+### Fix 4: Filename Sanitization Collision Detection
 
 **File**: `spellbook/apps/desktop/src-tauri/src/commands/import.rs`
 
@@ -343,7 +196,7 @@ for file in &files {
 
 ---
 
-### Fix 8: Include Identity Fields in Overwrite UPDATE
+### Fix 5: Include Identity Fields in Overwrite UPDATE
 
 **File**: `spellbook/apps/desktop/src-tauri/src/commands/import.rs`
 
@@ -380,7 +233,7 @@ conn.execute(
 
 ---
 
-### Fix 9: Fetch Actual Character ID from Database
+### Fix 6: Fetch Actual Character ID from Database
 
 **File**: `spellbook/apps/desktop/src-tauri/src/commands/characters.rs`
 

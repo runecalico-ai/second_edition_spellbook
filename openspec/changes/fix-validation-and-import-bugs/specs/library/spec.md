@@ -2,45 +2,28 @@
 
 ## MODIFIED Requirements
 
-### Requirement: High-Level Magic Validation
+### Requirement: Modal Dialog Behavior
 
-The application SHALL enforce validation rules for high-level and quest magic to ensure consistency with AD&D 2e conventions.
-- Arcane spells (with `school`) are permitted up to Level 12.
-- Divine spells (with `sphere`) are capped at Level 7, unless explicitly flagged as a Quest Spell.
-- Quest Spells MUST be Level 8 and MUST be Divine (have `sphere`).
-- **Quest Spells MUST have a `class_list` containing at least one divine caster class (Priest, Cleric, Druid, Paladin, or Ranger).**
-- **Epic Spells (level 10-12) MUST have a `class_list` containing at least one arcane caster class (Wizard or Mage).**
-- Cantrips MUST be Level 0.
-- A spell SHALL NOT have both a `school` and a `sphere`.
+Modal dialogs used for critical alerts and confirmations SHALL require explicit user interaction to resolve.
 
-#### Scenario: Preventing Invalid Cantrip Level
-- **WHEN** the user attempts to toggle "Cantrip" on a spell with Level > 0
-- **THEN** the application SHALL prevent the toggle or display a validation error upon saving
+#### Scenario: Alert/Confirm Backdrop Interaction
+- **WHEN** an `alert()` or `confirm()` modal is open
+- **AND** the user clicks the black backdrop overlay
+- **THEN** the modal SHALL NOT close
+- **AND** the Promise awaiting the user's choice SHALL NOT hang
+- **AND** the user MUST click a button (e.g., "OK", "Cancel") to proceed
 
-#### Scenario: Preventing Invalid Epic Divine Spell
-- **WHEN** the user attempts to save a Divine spell with Level 10
-- **THEN** the application SHALL display a validation error and prevent saving
+### Requirement: Character Data Consistency
 
-#### Scenario: Preventing Invalid Arcane Quest Spell
-- **WHEN** the user attempts to toggle "Quest Spell" on an Arcane spell
-- **THEN** the application SHALL prevent the toggle or display a validation error upon saving
+The application SHALL ensure consistent data handling for Character entities across the IPC boundary and database queries.
 
-#### Scenario: Rejecting Epic Spell Without class_list
-- **WHEN** the user attempts to save an Epic spell (level 10-12) with no `class_list`
-- **THEN** the application SHALL display a validation error: "Epic spells (level 10-12) require class_list with arcane casters (Wizard/Mage)" and prevent saving
+#### Scenario: Character Creation
+- **WHEN** a new character is created via the UI
+- **THEN** the frontend SHALL send parameters in camelCase (e.g., `characterType`)
+- **AND** the backend SHALL correctly deserialize these parameters using standard camelCase conventions
+- **AND** the created character SHALL persist in the database
 
-#### Scenario: Rejecting Epic Spell With Divine-Only class_list
-- **WHEN** the user attempts to save an Epic spell (level 10-12) with `class_list` containing only divine casters (e.g., "Priest, Cleric")
-- **THEN** the application SHALL display a validation error: "Epic spells (level 10-12) require class_list with arcane casters (Wizard/Mage)" and prevent saving
-
-#### Scenario: Rejecting Quest Spell Without class_list
-- **WHEN** the user attempts to save a Quest spell with no `class_list`
-- **THEN** the application SHALL display a validation error: "Quest spells require class_list with divine casters (Priest/Cleric/Druid/Paladin/Ranger)" and prevent saving
-
-#### Scenario: Rejecting Quest Spell With Arcane-Only class_list
-- **WHEN** the user attempts to save a Quest spell with `class_list` containing only arcane casters (e.g., "Wizard, Mage")
-- **THEN** the application SHALL display a validation error: "Quest spells require class_list with divine casters (Priest/Cleric/Druid/Paladin/Ranger)" and prevent saving
-
-#### Scenario: Editing an Epic Spell
-- **WHEN** the user sets a spell level to 10-12
-- **THEN** the editor SHALL display an "Epic Magic" indicator
+#### Scenario: Retrieving Character Spells
+- **WHEN** requesting a character's spell list (Known or Prepared)
+- **THEN** the returned data items SHALL include the correct `character_id` matching the database record
+- **AND** the `character_id` SHALL NOT be 0

@@ -1,29 +1,8 @@
 # Tasks
 
-## Validation Fixes
-
-- [ ] **Fix epic spell validation bypass**
-  - [ ] Modify `validate_epic_and_quest_spells` in `spells.rs` to reject epic spells (level > 9) when `class_list` is `None`
-  - [ ] Add validation error message: "Epic spells (level 10-12) require class_list with arcane casters (Wizard/Mage)"
-  - [ ] Update existing validation to also check for arcane classes when `class_list` is present
-  - [ ] Add unit test for epic spell with missing `class_list`
-  - [ ] Add unit test for epic spell with divine-only `class_list`
-
-- [ ] **Fix quest spell validation bypass**
-  - [ ] Modify `validate_epic_and_quest_spells` in `spells.rs` to reject quest spells when `class_list` is `None`
-  - [ ] Add validation error message: "Quest spells require class_list with divine casters (Priest/Cleric/Druid/Paladin/Ranger)"
-  - [ ] Update existing validation to also check for divine classes when `class_list` is present
-  - [ ] Add unit test for quest spell with missing `class_list`
-  - [ ] Add unit test for quest spell with arcane-only `class_list`
 
 ## Import Fixes
 
-- [ ] **Fix cantrip auto-detection**
-  - [ ] Modify `_spell_from_markdown` in `spellbook_sidecar.py` to auto-set `is_cantrip = 1` for all level-0 spells
-  - [ ] Allow explicit `is_cantrip: false` metadata to override auto-detection
-  - [ ] Update confidence scoring for cantrip detection
-  - [ ] Add Python test for numeric level-0 cantrip import
-  - [ ] Add Python test for explicit `is_cantrip: false` override
 
 - [ ] **Fix import conflict key collision**
   - [ ] Modify `getConflictKey` in `ImportWizard.tsx` to include index in all cases
@@ -46,9 +25,14 @@
 
 ## UI Fixes
 
-- [ ] **Fix character creation parameter mismatch**
-  - [ ] Change `characterType` to `character_type` in `CharacterManager.tsx` invoke call
-  - [ ] Verify character creation works in the UI
+- [ ] **Fix character IPC parameter mismatch (camelCase standardization)**
+  - [ ] Add `#[serde(rename_all = "camelCase")]` to all structs in `character.rs`
+  - [ ] Update `types/character.ts` to use `camelCase` for all interfaces
+  - [ ] Global search and replace `character_type` → `characterType` in frontend
+  - [ ] Global search and replace `character_id` → `characterId` (where it refers to property)
+  - [ ] Global search and replace `class_name` → `className`
+  - [ ] Global search and replace `class_label` → `classLabel`
+  - [ ] Verify character creation and updates work in the UI
   - [ ] Add E2E test for character creation flow
 
 - [ ] **Fix character_id hardcoded to zero**
@@ -75,9 +59,6 @@
   - [ ] Verify all tests pass
 
 - [ ] **Manual validation**
-  - [ ] Test epic spell creation with missing `class_list` (should reject)
-  - [ ] Test quest spell creation with missing `class_list` (should reject)
-  - [ ] Import markdown file with `level: 0` (should auto-flag as cantrip)
   - [ ] Import multiple files matching same spell (should show independent conflict resolutions)
   - [ ] Click backdrop on alert modal (should not dismiss)
   - [ ] Create a new character (should work without errors)

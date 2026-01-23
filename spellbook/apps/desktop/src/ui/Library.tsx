@@ -277,7 +277,7 @@ export default function Library() {
         <div className="space-x-2 flex items-center">
           <Link
             to="/character"
-            data-testid="nav-link-characters"
+            data-testid="link-to-characters"
             className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
           >
             Characters

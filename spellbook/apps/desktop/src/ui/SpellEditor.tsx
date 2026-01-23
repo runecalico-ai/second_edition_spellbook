@@ -282,7 +282,7 @@ export default function SpellEditor() {
             value={form.level}
             onChange={(e) => {
               const val = e.target.valueAsNumber;
-              const clamped = Math.max(0, Math.min(12, isNaN(val) ? 0 : Math.floor(val)));
+              const clamped = Math.max(0, Math.min(12, Number.isNaN(val) ? 0 : Math.floor(val)));
               handleChange("level", clamped);
               if (clamped !== 0) handleChange("is_cantrip", 0);
               if (clamped !== 8) handleChange("is_quest_spell", 0);

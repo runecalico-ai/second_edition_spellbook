@@ -507,9 +507,8 @@ export default function ImportWizard() {
         {(Object.keys(STEP_TITLES) as ImportStep[]).map((s) => (
           <div
             key={s}
-            className={`px-2 py-1 rounded ${
-              s === step ? "bg-blue-600 text-white" : "bg-neutral-800 text-neutral-500"
-            }`}
+            className={`px-2 py-1 rounded ${s === step ? "bg-blue-600 text-white" : "bg-neutral-800 text-neutral-500"
+              }`}
           >
             {STEP_TITLES[s]}
           </div>
@@ -523,17 +522,20 @@ export default function ImportWizard() {
             type="file"
             multiple
             accept=".md,.pdf,.docx"
+            data-testid="import-file-input"
+            aria-label="Select files to import"
             onChange={handleFileChange}
             className="block w-full text-sm text-neutral-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-neutral-800 file:text-neutral-300 hover:file:bg-neutral-700"
           />
           {files.length > 0 && (
             <>
-              <pre className="text-xs bg-neutral-950 p-2 rounded-md border border-neutral-800 text-neutral-500 max-h-32 overflow-auto">
+              <pre className="text-xs bg-neutral-950 p-2 rounded-md border border-neutral-800 text-neutral-500 max-h-32 overflow-auto" data-testid="selected-files-list">
                 {files.map((f) => f.name).join("\n")}
               </pre>
-              <div className="text-sm text-neutral-400">{files.length} file(s) selected</div>
+              <div className="text-sm text-neutral-400" data-testid="file-count-label">{files.length} file(s) selected</div>
               <button
                 type="button"
+                data-testid="btn-preview-import"
                 onClick={goToPreview}
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 disabled:opacity-50"
@@ -589,13 +591,12 @@ export default function ImportWizard() {
                       <td className="p-1">{spell.source || "-"}</td>
                       <td className="p-1">
                         <span
-                          className={`px-1 rounded text-[10px] ${
-                            avgConf > 0.7
-                              ? "bg-green-900/50 text-green-400"
-                              : avgConf > 0.4
-                                ? "bg-yellow-900/50 text-yellow-400"
-                                : "bg-red-900/50 text-red-400"
-                          }`}
+                          className={`px-1 rounded text-[10px] ${avgConf > 0.7
+                            ? "bg-green-900/50 text-green-400"
+                            : avgConf > 0.4
+                              ? "bg-yellow-900/50 text-yellow-400"
+                              : "bg-red-900/50 text-red-400"
+                            }`}
                         >
                           {Math.round(avgConf * 100)}%
                         </span>
@@ -617,6 +618,7 @@ export default function ImportWizard() {
           <div className="flex gap-2">
             <button
               type="button"
+              data-testid="btn-back-to-select"
               onClick={() => setStep("select")}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
@@ -624,6 +626,7 @@ export default function ImportWizard() {
             </button>
             <button
               type="button"
+              data-testid="btn-review-fields"
               onClick={goToMap}
               className="px-3 py-2 bg-yellow-600 rounded hover:bg-yellow-500"
             >
@@ -631,6 +634,7 @@ export default function ImportWizard() {
             </button>
             <button
               type="button"
+              data-testid="btn-skip-review"
               onClick={skipMapping}
               className="px-3 py-2 bg-blue-600 rounded hover:bg-blue-500"
             >
@@ -688,7 +692,7 @@ export default function ImportWizard() {
       {step === "confirm" && (
         <div className="space-y-4">
           <div className="p-3 bg-neutral-900/50 border border-neutral-800 rounded">
-            <div className="text-sm font-semibold">
+            <div className="text-sm font-semibold" data-testid="import-ready-label">
               Ready to import {mappedSpells.length} spell(s)
             </div>
           </div>
@@ -697,6 +701,7 @@ export default function ImportWizard() {
             <input
               type="checkbox"
               id="allowOverwrite"
+              data-testid="overwrite-existing-checkbox"
               checked={allowOverwrite}
               onChange={(e) => setAllowOverwrite(e.target.checked)}
               className="rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-blue-500"
@@ -709,6 +714,7 @@ export default function ImportWizard() {
           <div className="flex gap-2">
             <button
               type="button"
+              data-testid="btn-back-to-preview"
               onClick={() => setStep("preview")}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
@@ -716,6 +722,7 @@ export default function ImportWizard() {
             </button>
             <button
               type="button"
+              data-testid="btn-start-import"
               onClick={doImport}
               disabled={loading}
               className="px-4 py-2 bg-green-600 rounded hover:bg-green-500 disabled:opacity-50 font-semibold"
@@ -754,34 +761,34 @@ export default function ImportWizard() {
                   <div className="flex flex-wrap gap-2 text-xs">
                     <button
                       type="button"
+                      data-testid="btn-custom-merge"
                       onClick={() => setConflictAction(key, "merge")}
-                      className={`px-2 py-1 rounded border ${
-                        action === "merge"
-                          ? "border-blue-500 bg-blue-900/40 text-blue-200"
-                          : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
-                      }`}
+                      className={`px-2 py-1 rounded border ${action === "merge"
+                        ? "border-blue-500 bg-blue-900/40 text-blue-200"
+                        : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
+                        }`}
                     >
                       Custom Merge
                     </button>
                     <button
                       type="button"
+                      data-testid="btn-use-incoming"
                       onClick={() => setConflictAction(key, "overwrite")}
-                      className={`px-2 py-1 rounded border ${
-                        action === "overwrite"
-                          ? "border-green-500 bg-green-900/40 text-green-200"
-                          : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
-                      }`}
+                      className={`px-2 py-1 rounded border ${action === "overwrite"
+                        ? "border-green-500 bg-green-900/40 text-green-200"
+                        : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
+                        }`}
                     >
                       Use Incoming
                     </button>
                     <button
                       type="button"
+                      data-testid="btn-keep-existing"
                       onClick={() => setConflictAction(key, "skip")}
-                      className={`px-2 py-1 rounded border ${
-                        action === "skip"
-                          ? "border-red-500 bg-red-900/40 text-red-200"
-                          : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
-                      }`}
+                      className={`px-2 py-1 rounded border ${action === "skip"
+                        ? "border-red-500 bg-red-900/40 text-red-200"
+                        : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
+                        }`}
                     >
                       Keep Existing
                     </button>
@@ -869,6 +876,7 @@ export default function ImportWizard() {
             </button>
             <button
               type="button"
+              data-testid="btn-apply-resolutions"
               onClick={resolveConflicts}
               disabled={loading}
               className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 disabled:opacity-50 font-semibold"
@@ -969,6 +977,7 @@ export default function ImportWizard() {
 
           <button
             type="button"
+            data-testid="btn-import-more"
             onClick={reset}
             className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500"
           >

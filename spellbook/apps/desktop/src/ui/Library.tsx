@@ -273,16 +273,18 @@ export default function Library() {
   return (
     <div className="space-y-3 h-full flex flex-col">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">Library</h2>
+        <h1 className="text-xl font-bold">Library</h1>
         <div className="space-x-2 flex items-center">
           <Link
             to="/character"
+            data-testid="nav-link-characters"
             className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
           >
             Characters
           </Link>
           <Link
             to="/edit/new"
+            data-testid="link-add-spell"
             id="link-add-spell"
             className="px-3 py-2 bg-blue-700 text-white rounded-md hover:bg-blue-600"
           >
@@ -295,12 +297,16 @@ export default function Library() {
         <input
           className="flex-1 bg-neutral-900 border border-neutral-700 rounded-md px-3 py-2"
           placeholder="Search spells…"
+          data-testid="library-search-input"
+          aria-label="Search spells"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && search()}
         />
         <select
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-2"
+          data-testid="library-mode-select"
+          aria-label="Search mode"
           value={mode}
           onChange={(e) => setMode(e.target.value as "keyword" | "semantic")}
         >
@@ -309,6 +315,7 @@ export default function Library() {
         </select>
         <button
           className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
+          data-testid="library-search-button"
           onClick={search}
           type="button"
         >
@@ -316,6 +323,7 @@ export default function Library() {
         </button>
         <button
           className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700 border border-neutral-700"
+          data-testid="library-reset-button"
           onClick={handleResetFilters}
           type="button"
           title="Reset all search filters to default"
@@ -330,6 +338,7 @@ export default function Library() {
           <select
             multiple
             aria-label="Schools filter"
+            data-testid="filter-school-select"
             className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 min-w-[160px]"
             value={schoolFilters}
             onChange={(e) =>
@@ -350,6 +359,7 @@ export default function Library() {
           <div className="pt-2 px-1">
             <Slider.Root
               className="relative flex items-center select-none touch-none w-32 h-5"
+              data-testid="filter-level-slider"
               value={[
                 levelMin ? Number.parseInt(levelMin) : 0,
                 levelMax ? Number.parseInt(levelMax) : 12,
@@ -367,16 +377,19 @@ export default function Library() {
               <Slider.Thumb
                 className="block w-4 h-4 bg-white shadow-lg rounded-full hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 aria-label="Min Level"
+                data-testid="filter-level-min-thumb"
               />
               <Slider.Thumb
                 className="block w-4 h-4 bg-white shadow-lg rounded-full hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 aria-label="Max Level"
+                data-testid="filter-level-max-thumb"
               />
             </Slider.Root>
           </div>
         </div>
         <select
           aria-label="Source filter"
+          data-testid="filter-source-select"
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
@@ -390,6 +403,7 @@ export default function Library() {
         </select>
         <select
           aria-label="Class filter"
+          data-testid="filter-class-select"
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={classListFilter}
           onChange={(e) => setClassListFilter(e.target.value)}
@@ -403,6 +417,7 @@ export default function Library() {
         </select>
         <select
           aria-label="Component filter"
+          data-testid="filter-component-select"
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={componentFilter}
           onChange={(e) => setComponentFilter(e.target.value)}
@@ -416,6 +431,7 @@ export default function Library() {
         </select>
         <select
           aria-label="Tag filter"
+          data-testid="filter-tag-select"
           className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
           value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value)}
@@ -430,6 +446,7 @@ export default function Library() {
         <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors">
           <input
             type="checkbox"
+            data-testid="filter-quest-checkbox"
             checked={isQuestFilter}
             onChange={(e) => setIsQuestFilter(e.target.checked)}
             className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-offset-neutral-900"
@@ -439,6 +456,7 @@ export default function Library() {
         <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors">
           <input
             type="checkbox"
+            data-testid="filter-cantrip-checkbox"
             checked={isCantripFilter}
             onChange={(e) => setIsCantripFilter(e.target.checked)}
             className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-offset-neutral-900"
@@ -452,6 +470,8 @@ export default function Library() {
           {savedSearches.length > 0 && (
             <select
               className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 text-xs"
+              data-testid="saved-searches-select"
+              aria-label="Saved searches"
               onChange={(e) => {
                 const saved = savedSearches.find((s) => s.id === Number.parseInt(e.target.value));
                 if (saved) loadSearch(saved);
@@ -468,11 +488,13 @@ export default function Library() {
           )}
 
           {isSaving ? (
-            <div className="flex gap-1 animate-in slide-in-from-right-1 duration-200">
+            <div className="flex gap-1 animate-in slide-in-from-right-1 duration-200" data-testid="save-search-container">
               <input
                 ref={saveInputRef}
                 className="bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-xs w-32"
                 placeholder="Name..."
+                data-testid="save-search-name-input"
+                aria-label="Search name"
                 value={newSearchName}
                 onChange={(e) => setNewSearchName(e.target.value)}
                 onKeyDown={(e) => {
@@ -483,6 +505,7 @@ export default function Library() {
               <button
                 type="button"
                 className="px-2 py-1 bg-blue-700 text-white rounded text-xs"
+                data-testid="btn-save-search-confirm"
                 onClick={handleSaveSearch}
               >
                 Save
@@ -490,6 +513,7 @@ export default function Library() {
               <button
                 type="button"
                 className="px-2 py-1 bg-neutral-800 rounded text-xs"
+                data-testid="btn-save-search-cancel"
                 onClick={() => setIsSaving(false)}
               >
                 ✕
@@ -499,6 +523,7 @@ export default function Library() {
             <button
               type="button"
               className="px-3 py-1 bg-neutral-800 border border-neutral-700 rounded-md text-xs hover:bg-neutral-700 transition-colors"
+              data-testid="btn-save-search-trigger"
               onClick={() => setIsSaving(true)}
             >
               Save Current Search
@@ -509,8 +534,9 @@ export default function Library() {
             <button
               type="button"
               className="text-xs text-neutral-500 hover:text-red-400 ml-1"
+              data-testid="btn-delete-saved-search"
               onClick={() => {
-                const currentVal = (document.querySelector('select[value=""]') as HTMLSelectElement)
+                const currentVal = (document.querySelector('select[data-testid="saved-searches-select"]') as HTMLSelectElement)
                   ?.value;
                 if (currentVal) handleDeleteSavedSearch(Number.parseInt(currentVal));
               }}
@@ -523,7 +549,7 @@ export default function Library() {
       </div>
 
       <div className="flex-1 overflow-auto bg-neutral-900/30 rounded-md border border-neutral-800">
-        <table className="w-full text-sm text-left border-collapse">
+        <table className="w-full text-sm text-left border-collapse" data-testid="spell-library-table">
           <thead className="text-neutral-400 bg-neutral-900 sticky top-0">
             <tr>
               <th className="p-2 border-b border-neutral-800">Name</th>
@@ -535,9 +561,9 @@ export default function Library() {
           </thead>
           <tbody>
             {spells.map((s) => (
-              <tr key={s.id} className="border-b border-neutral-800/50 hover:bg-neutral-800 group">
+              <tr key={s.id} data-testid={`spell-row-${s.name.replace(/\s+/g, '-').toLowerCase()}`} className="border-b border-neutral-800/50 hover:bg-neutral-800 group">
                 <td className="p-2 space-x-2 flex items-center">
-                  <Link to={`/edit/${s.id}`} className="text-blue-400 hover:underline">
+                  <Link to={`/edit/${s.id}`} data-testid={`spell-link-${s.name.replace(/\s+/g, '-').toLowerCase()}`} className="text-blue-400 hover:underline">
                     {s.name}
                   </Link>
                   {s.is_quest_spell === 1 && (
@@ -557,6 +583,8 @@ export default function Library() {
                   )}
                   <select
                     className="ml-2 w-4 h-4 text-xs bg-neutral-800 text-transparent hover:text-white rounded focus:w-auto focus:text-white transition-all"
+                    data-testid={`add-to-char-select-${s.name.replace(/\s+/g, '-').toLowerCase()}`}
+                    aria-label={`Add ${s.name} to character`}
                     onChange={(e) => addToCharacter(s.id, e.target.value)}
                     value=""
                   >
@@ -576,7 +604,7 @@ export default function Library() {
             ))}
             {spells.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-neutral-500">
+                <td colSpan={5} className="p-8 text-center text-neutral-500" data-testid="no-spells-found">
                   No spells found.
                 </td>
               </tr>

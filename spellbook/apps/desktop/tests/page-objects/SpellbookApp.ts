@@ -5,17 +5,17 @@ import { TIMEOUTS } from "../fixtures/constants";
 
 /** Common selectors used throughout the app */
 export const SELECTORS = {
-  spellName: '[placeholder="Spell Name"]',
-  level: "#spell-level",
+  spellName: '[data-testid="spell-name-input"]',
+  level: '[data-testid="spell-level-input"]',
   levelPlaceholder: '[placeholder="Level"]',
-  description: "textarea#spell-description",
+  description: '[data-testid="spell-description-textarea"]',
   descriptionLabel: '[aria-label="Description"]',
-  cantripCheckbox: 'label:has-text("Cantrip") input',
-  questCheckbox: 'label:has-text("Quest Spell") input',
-  reversibleCheckbox: '[aria-label="Reversible"]',
-  classesInput: '[aria-label="Classes"]',
+  cantripCheckbox: '[data-testid="chk-cantrip"]',
+  questCheckbox: '[data-testid="chk-quest"]',
+  reversibleCheckbox: '[data-testid="chk-reversible"]',
+  classesInput: '[data-testid="spell-classes-input"]',
   classesLabel: '[aria-label="Classes (e.g. Mage, Cleric)"]',
-  fileInput: 'input[type="file"]',
+  fileInput: '[data-testid="import-file-input"]',
 } as const;
 
 export interface CreateSpellOptions {
@@ -56,6 +56,8 @@ export class SpellbookApp {
     if (label === "Add Spell") {
       await this.navigate("Library");
       await this.page.locator("#link-add-spell").click();
+    } else if (label === "Import") {
+      await this.page.getByRole("navigation").getByRole("link", { name: "Import" }).click();
     } else {
       const link = this.page.getByRole("navigation").getByRole("link", { name: label });
       await link.click();
@@ -91,19 +93,19 @@ export class SpellbookApp {
     await this.page.waitForLoadState("networkidle");
     await this.page.waitForTimeout(500); // Allow React state to settle after mount
 
-    const nameLoc = this.page.locator("#spell-name");
+    const nameLoc = this.page.getByTestId("spell-name-input");
     await nameLoc.fill(name);
     await expect(nameLoc).toHaveValue(name);
 
-    const levelLoc = this.page.locator("#spell-level");
+    const levelLoc = this.page.getByTestId("spell-level-input");
     if (isCantrip) {
       await levelLoc.fill("0");
-      const checkbox = this.page.locator(SELECTORS.cantripCheckbox);
+      const checkbox = this.page.getByTestId("chk-cantrip");
       await expect(checkbox).toBeEnabled();
       await checkbox.check();
     } else if (isQuest) {
       await levelLoc.fill("8");
-      const checkbox = this.page.locator(SELECTORS.questCheckbox);
+      const checkbox = this.page.getByTestId("chk-quest");
       await expect(checkbox).toBeEnabled();
       await checkbox.check();
     } else {
@@ -126,7 +128,7 @@ export class SpellbookApp {
     }
 
     if (classes) {
-      const classesLoc = this.page.getByLabel("Classes (e.g. Mage, Cleric)");
+      const classesLoc = this.page.getByTestId("spell-classes-input");
       await classesLoc.fill("");
       await classesLoc.fill(classes);
       await expect(classesLoc).toHaveValue(classes);
@@ -171,7 +173,7 @@ export class SpellbookApp {
     }
 
     if (description) {
-      const descLoc = this.page.locator("#spell-description");
+      const descLoc = this.page.getByTestId("spell-description-textarea");
       await descLoc.fill(description);
       await expect(descLoc).toHaveValue(description);
     }
@@ -189,7 +191,7 @@ export class SpellbookApp {
       await expect(tagsLoc).toHaveValue(options.tags);
     }
 
-    await this.page.locator("#btn-save-spell").click();
+    await this.page.getByTestId("btn-save-spell").click();
     console.log(`Saved spell: ${name}, waiting for Library...`);
     await this.waitForLibrary();
   }
@@ -671,5 +673,52 @@ export class SpellbookApp {
     } else {
       await expect(classSection.getByText(spellName)).not.toBeVisible();
     }
+  }
+
+  /** Open the spellbook builder for a character */
+  async openSpellbookBuilder(name: string): Promise<void> {
+    console.log(`Opening spellbook builder for: ${name}`);
+    await this.navigate("Characters");
+    const charItem = this.page.getByRole("link", { name: new RegExp(name) });
+    await charItem.hover();
+    await charItem.locator('a[title="Spellbook Builder"]').click();
+    await expect(this.page.getByRole("heading", { name: "Spellbook Builder" })).toBeVisible();
+  }
+
+  /** Set prepared status for a spell in the spellbook builder */
+  async setPrepared(spellName: string, prepared: boolean): Promise<void> {
+    const slug = spellName.replace(/\s+/g, "-").toLowerCase();
+    const checkbox = this.page.getByTestId(`chk-prepared-${slug}`);
+    if (prepared) {
+      await checkbox.check();
+    } else {
+      await checkbox.uncheck();
+    }
+  }
+
+  /** Set known status for a spell in the spellbook builder */
+  async setKnown(spellName: string, known: boolean): Promise<void> {
+    const slug = spellName.replace(/\s+/g, "-").toLowerCase();
+    const checkbox = this.page.getByTestId(`chk-known-${slug}`);
+    if (known) {
+      await checkbox.check();
+    } else {
+      await checkbox.uncheck();
+    }
+  }
+
+  /** Update notes for a spell in the spellbook builder */
+  async updateSpellbookNotes(spellName: string, notes: string): Promise<void> {
+    const slug = spellName.replace(/\s+/g, "-").toLowerCase();
+    const input = this.page.getByTestId(`input-notes-${slug}`);
+    await input.fill(notes);
+    await input.blur();
+  }
+
+  /** Remove a spell from the spellbook builder */
+  async removeSpellFromBuilder(spellName: string): Promise<void> {
+    const slug = spellName.replace(/\s+/g, "-").toLowerCase();
+    await this.page.getByTestId(`btn-remove-${slug}`).click();
+    await expect(this.page.getByTestId(`spellbook-row-${slug}`)).not.toBeVisible();
   }
 }

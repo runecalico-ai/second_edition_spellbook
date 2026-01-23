@@ -271,7 +271,11 @@ export default function SpellbookBuilder() {
               </button>
             ))}
           </div>
-          <Link to="/character" data-testid="link-back-to-characters" className="text-sm text-neutral-400 hover:text-white">
+          <Link
+            to="/character"
+            data-testid="link-back-to-characters"
+            className="text-sm text-neutral-400 hover:text-white"
+          >
             ← Characters
           </Link>
         </div>
@@ -297,13 +301,13 @@ export default function SpellbookBuilder() {
           {spellbook.map((entry) => (
             <tr
               key={entry.spell_id}
-              data-testid={`spellbook-row-${entry.spell_name.replace(/\s+/g, '-').toLowerCase()}`}
+              data-testid={`spellbook-row-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
               className="border-b border-neutral-800/30 hover:bg-neutral-800/30"
             >
               <td className="p-2 text-center">
                 <input
                   type="checkbox"
-                  data-testid={`chk-prepared-${entry.spell_name.replace(/\s+/g, '-').toLowerCase()}`}
+                  data-testid={`chk-prepared-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
                   checked={!!entry.prepared}
                   onChange={() => {
                     const newPrepared = entry.prepared ? 0 : 1;
@@ -320,7 +324,7 @@ export default function SpellbookBuilder() {
               <td className="p-2 text-center">
                 <input
                   type="checkbox"
-                  data-testid={`chk-known-${entry.spell_name.replace(/\s+/g, '-').toLowerCase()}`}
+                  data-testid={`chk-known-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
                   checked={!!entry.known}
                   onChange={() => {
                     const newKnown = entry.known ? 0 : 1;
@@ -355,7 +359,7 @@ export default function SpellbookBuilder() {
               <td className="p-2">
                 <input
                   className="w-full bg-transparent border-none p-0 text-neutral-300 placeholder-neutral-600 focus:ring-0"
-                  data-testid={`input-notes-${entry.spell_name.replace(/\s+/g, '-').toLowerCase()}`}
+                  data-testid={`input-notes-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
                   value={entry.notes || ""}
                   placeholder="Add notes…"
                   onChange={(e) => {
@@ -367,7 +371,7 @@ export default function SpellbookBuilder() {
               <td className="p-2 text-right">
                 <button
                   type="button"
-                  data-testid={`btn-remove-${entry.spell_name.replace(/\s+/g, '-').toLowerCase()}`}
+                  data-testid={`btn-remove-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
                   onClick={() => removeSpell(entry)}
                   className="text-xs text-red-400 hover:text-red-300"
                 >
@@ -511,7 +515,7 @@ export default function SpellbookBuilder() {
                     return (
                       <tr
                         key={spell.id}
-                        data-testid={`picker-spell-row-${spell.name.replace(/\s+/g, '-').toLowerCase()}`}
+                        data-testid={`picker-spell-row-${spell.name.replace(/\s+/g, "-").toLowerCase()}`}
                         className="border-b border-neutral-800/50 hover:bg-neutral-800"
                       >
                         <td className="p-2">
@@ -539,12 +543,13 @@ export default function SpellbookBuilder() {
                         <td className="p-2 text-right">
                           <button
                             type="button"
-                            data-testid={`btn-add-picker-${spell.name.replace(/\s+/g, '-').toLowerCase()}`}
+                            data-testid={`btn-add-picker-${spell.name.replace(/\s+/g, "-").toLowerCase()}`}
                             onClick={() => addSpell(spell)}
-                            className={`text-xs px-2 py-1 rounded ${alreadyAdded
-                              ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-                              : "bg-blue-600 hover:bg-blue-500"
-                              }`}
+                            className={`text-xs px-2 py-1 rounded ${
+                              alreadyAdded
+                                ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
+                                : "bg-blue-600 hover:bg-blue-500"
+                            }`}
                             disabled={alreadyAdded}
                           >
                             {alreadyAdded ? "Added" : "Add"}

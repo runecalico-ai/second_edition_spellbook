@@ -49,7 +49,11 @@ export default function ExportPage() {
           Export PDF
         </button>
       </div>
-      {status && <div className="text-xs text-neutral-400" data-testid="export-status-message">{status}</div>}
+      {status && (
+        <div className="text-xs text-neutral-400" data-testid="export-status-message">
+          {status}
+        </div>
+      )}
     </div>
   );
 }

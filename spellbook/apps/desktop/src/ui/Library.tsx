@@ -488,7 +488,10 @@ export default function Library() {
           )}
 
           {isSaving ? (
-            <div className="flex gap-1 animate-in slide-in-from-right-1 duration-200" data-testid="save-search-container">
+            <div
+              className="flex gap-1 animate-in slide-in-from-right-1 duration-200"
+              data-testid="save-search-container"
+            >
               <input
                 ref={saveInputRef}
                 className="bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-xs w-32"
@@ -536,8 +539,11 @@ export default function Library() {
               className="text-xs text-neutral-500 hover:text-red-400 ml-1"
               data-testid="btn-delete-saved-search"
               onClick={() => {
-                const currentVal = (document.querySelector('select[data-testid="saved-searches-select"]') as HTMLSelectElement)
-                  ?.value;
+                const currentVal = (
+                  document.querySelector(
+                    'select[data-testid="saved-searches-select"]',
+                  ) as HTMLSelectElement
+                )?.value;
                 if (currentVal) handleDeleteSavedSearch(Number.parseInt(currentVal));
               }}
               title="Delete selected saved search"
@@ -549,7 +555,10 @@ export default function Library() {
       </div>
 
       <div className="flex-1 overflow-auto bg-neutral-900/30 rounded-md border border-neutral-800">
-        <table className="w-full text-sm text-left border-collapse" data-testid="spell-library-table">
+        <table
+          className="w-full text-sm text-left border-collapse"
+          data-testid="spell-library-table"
+        >
           <thead className="text-neutral-400 bg-neutral-900 sticky top-0">
             <tr>
               <th className="p-2 border-b border-neutral-800">Name</th>
@@ -561,9 +570,17 @@ export default function Library() {
           </thead>
           <tbody>
             {spells.map((s) => (
-              <tr key={s.id} data-testid={`spell-row-${s.name.replace(/\s+/g, '-').toLowerCase()}`} className="border-b border-neutral-800/50 hover:bg-neutral-800 group">
+              <tr
+                key={s.id}
+                data-testid={`spell-row-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
+                className="border-b border-neutral-800/50 hover:bg-neutral-800 group"
+              >
                 <td className="p-2 space-x-2 flex items-center">
-                  <Link to={`/edit/${s.id}`} data-testid={`spell-link-${s.name.replace(/\s+/g, '-').toLowerCase()}`} className="text-blue-400 hover:underline">
+                  <Link
+                    to={`/edit/${s.id}`}
+                    data-testid={`spell-link-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
+                    className="text-blue-400 hover:underline"
+                  >
                     {s.name}
                   </Link>
                   {s.is_quest_spell === 1 && (
@@ -583,7 +600,7 @@ export default function Library() {
                   )}
                   <select
                     className="ml-2 w-4 h-4 text-xs bg-neutral-800 text-transparent hover:text-white rounded focus:w-auto focus:text-white transition-all"
-                    data-testid={`add-to-char-select-${s.name.replace(/\s+/g, '-').toLowerCase()}`}
+                    data-testid={`add-to-char-select-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
                     aria-label={`Add ${s.name} to character`}
                     onChange={(e) => addToCharacter(s.id, e.target.value)}
                     value=""
@@ -604,7 +621,11 @@ export default function Library() {
             ))}
             {spells.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-neutral-500" data-testid="no-spells-found">
+                <td
+                  colSpan={5}
+                  className="p-8 text-center text-neutral-500"
+                  data-testid="no-spells-found"
+                >
                   No spells found.
                 </td>
               </tr>

@@ -250,7 +250,11 @@ export default function SpellEditor() {
           </button>
         </div>
       </div>
-      {printStatus && <div className="text-xs text-neutral-400" data-testid="print-status-message">{printStatus}</div>}
+      {printStatus && (
+        <div className="text-xs text-neutral-400" data-testid="print-status-message">
+          {printStatus}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -260,14 +264,19 @@ export default function SpellEditor() {
           <input
             id="spell-name"
             data-testid="spell-name-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${isNameInvalid ? "border-red-500" : "border-neutral-700"
-              }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${
+              isNameInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
             placeholder="Spell Name"
             value={form.name}
             onChange={(e) => handleChange("name", e.target.value)}
             required
           />
-          {isNameInvalid && <p className="text-xs text-red-400 mt-1" data-testid="error-name-required">Name is required.</p>}
+          {isNameInvalid && (
+            <p className="text-xs text-red-400 mt-1" data-testid="error-name-required">
+              Name is required.
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor="spell-level" className="block text-sm text-neutral-400">
@@ -276,8 +285,9 @@ export default function SpellEditor() {
           <input
             id="spell-level"
             data-testid="spell-level-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${isLevelInvalid ? "border-red-500" : "border-neutral-700"
-              }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${
+              isLevelInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
             type="number"
             value={form.level}
             onChange={(e) => {
@@ -288,7 +298,9 @@ export default function SpellEditor() {
               if (clamped !== 8) handleChange("is_quest_spell", 0);
             }}
           />
-          <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">{getLevelDisplay(form.level)}</div>
+          <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">
+            {getLevelDisplay(form.level)}
+          </div>
           <div className="flex gap-4 mt-2">
             <label
               className={`flex items-center gap-2 cursor-pointer group ${form.level !== 0 ? "opacity-50 cursor-not-allowed" : ""}`}
@@ -319,15 +331,25 @@ export default function SpellEditor() {
               </span>
             </label>
           </div>
-          {isLevelInvalid && <p className="text-xs text-red-400 mt-1" data-testid="error-level-range">Level must be 0-12.</p>}
+          {isLevelInvalid && (
+            <p className="text-xs text-red-400 mt-1" data-testid="error-level-range">
+              Level must be 0-12.
+            </p>
+          )}
           {isEpicRestricted && (
-            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-epic-arcane">Epic levels (10-12) are Arcane only.</p>
+            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-epic-arcane">
+              Epic levels (10-12) are Arcane only.
+            </p>
           )}
           {isQuestRestricted && (
-            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-quest-divine">Quest spells are Divine only.</p>
+            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-quest-divine">
+              Quest spells are Divine only.
+            </p>
           )}
           {isConflictRestricted && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-epic-quest-conflict">Cannot be both Epic and Quest spell.</p>
+            <p className="text-xs text-red-400 mt-1" data-testid="error-epic-quest-conflict">
+              Cannot be both Epic and Quest spell.
+            </p>
           )}
         </div>
         <div>
@@ -526,14 +548,17 @@ export default function SpellEditor() {
         <textarea
           id="spell-description"
           data-testid="spell-description-textarea"
-          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
+            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
+          }`}
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
           required
         />
         {isDescriptionInvalid && (
-          <p className="text-xs text-red-400 mt-1" data-testid="error-description-required">Description is required.</p>
+          <p className="text-xs text-red-400 mt-1" data-testid="error-description-required">
+            Description is required.
+          </p>
         )}
       </div>
 

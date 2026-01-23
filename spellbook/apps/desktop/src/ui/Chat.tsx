@@ -31,14 +31,24 @@ export default function Chat() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
-      <button className="px-3 py-2 bg-neutral-800 rounded-md" data-testid="btn-ask-chat" onClick={ask} type="button">
+      <button
+        className="px-3 py-2 bg-neutral-800 rounded-md"
+        data-testid="btn-ask-chat"
+        onClick={ask}
+        type="button"
+      >
         Ask
       </button>
-      <div className="bg-neutral-900 border border-neutral-800 rounded-md p-3 text-sm whitespace-pre-wrap" data-testid="chat-response-area">
+      <div
+        className="bg-neutral-900 border border-neutral-800 rounded-md p-3 text-sm whitespace-pre-wrap"
+        data-testid="chat-response-area"
+      >
         {a}
       </div>
       {citations.length > 0 && (
-        <div className="text-xs text-neutral-400" data-testid="chat-citations">Citations: {citations.join(", ")}</div>
+        <div className="text-xs text-neutral-400" data-testid="chat-citations">
+          Citations: {citations.join(", ")}
+        </div>
       )}
     </div>
   );

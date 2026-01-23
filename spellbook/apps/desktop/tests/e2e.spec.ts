@@ -209,7 +209,9 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
     await app.importFile(importedPath, false);
 
     await app.openSpell(importedName);
-    await expect(page.getByTestId("spell-description-textarea")).toHaveValue("Imported description text.");
+    await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
+      "Imported description text.",
+    );
     await expect(page.getByTestId("spell-name-input")).toHaveValue(importedName);
     await expect(page.getByTestId("spell-school-input")).toHaveValue("Illusion");
     await expect(page.getByTestId("spell-classes-input")).toHaveValue("Mage");
@@ -226,7 +228,9 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
     await expect(page.getByTestId("spell-save-input")).toHaveValue("Negates");
     await expect(page.getByTestId("spell-material-components-input")).toHaveValue("a crystal lens");
     await expect(page.getByTestId("spell-tags-input")).toHaveValue("illusion, test");
-    await expect(page.getByTestId("spell-description-textarea")).toHaveValue("Imported description text.");
+    await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
+      "Imported description text.",
+    );
   });
 
   await test.step("Update extended fields and confirm persistence", async () => {
@@ -272,9 +276,13 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
     await expect(page.getByTestId("spell-author-input")).toHaveValue("Created Author");
     await expect(page.getByTestId("spell-license-input")).toHaveValue("CC-BY");
     await expect(page.getByTestId("chk-reversible")).toBeChecked();
-    await expect(page.getByTestId("spell-material-components-input")).toHaveValue("a drop of water");
+    await expect(page.getByTestId("spell-material-components-input")).toHaveValue(
+      "a drop of water",
+    );
     await expect(page.getByTestId("spell-tags-input")).toHaveValue("created, field");
-    await expect(page.getByTestId("spell-description-textarea")).toHaveValue("Created description text.");
+    await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
+      "Created description text.",
+    );
   });
 });
 

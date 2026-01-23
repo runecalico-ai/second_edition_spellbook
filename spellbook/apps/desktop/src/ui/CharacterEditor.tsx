@@ -181,7 +181,11 @@ export default function CharacterEditor() {
             </p>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <Link to="/character" data-testid="link-back-to-characters" className="text-neutral-500 hover:text-white transition-colors">
+            <Link
+              to="/character"
+              data-testid="link-back-to-characters"
+              className="text-neutral-500 hover:text-white transition-colors"
+            >
               ← Back
             </Link>
             <button
@@ -218,7 +222,10 @@ export default function CharacterEditor() {
         </header>
 
         {/* Identity Panel */}
-        <section className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6" data-testid="identity-section">
+        <section
+          className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6"
+          data-testid="identity-section"
+        >
           <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-blue-500" />
@@ -312,7 +319,10 @@ export default function CharacterEditor() {
         </section>
 
         {/* Abilities Panel */}
-        <section className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6" data-testid="abilities-section">
+        <section
+          className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6"
+          data-testid="abilities-section"
+        >
           <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-purple-500" />
@@ -653,10 +663,11 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                     setActiveTab(tab);
                     setSelectedRemoveIds(new Set());
                   }}
-                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${activeTab === tab
+                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${
+                    activeTab === tab
                       ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
                       : "text-neutral-600 hover:text-neutral-400"
-                    }`}
+                  }`}
                 >
                   {tab}
                 </button>

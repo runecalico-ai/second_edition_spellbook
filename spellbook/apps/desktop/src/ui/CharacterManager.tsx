@@ -88,10 +88,11 @@ export default function CharacterManager() {
                 type="button"
                 data-testid={`filter-type-${t.toLowerCase()}`}
                 onClick={() => setTypeFilter(t)}
-                className={`px-1.5 py-0.5 text-[10px] rounded border ${typeFilter === t
+                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                  typeFilter === t
                     ? "bg-blue-600 border-blue-500 text-white"
                     : "bg-neutral-900 border-neutral-700 text-neutral-500 hover:border-neutral-500"
-                  }`}
+                }`}
               >
                 {t}
               </button>
@@ -118,21 +119,30 @@ export default function CharacterManager() {
           </button>
         </div>
 
-        <div className="space-y-1 overflow-auto max-h-[calc(100vh-250px)]" data-testid="character-list">
+        <div
+          className="space-y-1 overflow-auto max-h-[calc(100vh-250px)]"
+          data-testid="character-list"
+        >
           {filteredCharacters.map((c) => (
             <Link
               key={c.id}
               to={`/character/${c.id}/edit`}
-              data-testid={`character-item-${c.name.replace(/\s+/g, '-').toLowerCase()}`}
+              data-testid={`character-item-${c.name.replace(/\s+/g, "-").toLowerCase()}`}
               className="block w-full text-left px-3 py-2 rounded text-neutral-300 hover:bg-neutral-800/50 group relative"
             >
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium group-hover:text-white transition-colors" data-testid="character-name-label">
+                  <span
+                    className="font-medium group-hover:text-white transition-colors"
+                    data-testid="character-name-label"
+                  >
                     {c.name}
                   </span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold px-1 rounded bg-neutral-800 text-neutral-500 uppercase tracking-tighter" data-testid="character-type-badge">
+                    <span
+                      className="text-[10px] font-bold px-1 rounded bg-neutral-800 text-neutral-500 uppercase tracking-tighter"
+                      data-testid="character-type-badge"
+                    >
                       {c.character_type}
                     </span>
                     <button
@@ -173,7 +183,10 @@ export default function CharacterManager() {
             </Link>
           ))}
           {filteredCharacters.length === 0 && (
-            <div className="p-4 text-center text-sm text-neutral-600 italic" data-testid="no-characters-found">
+            <div
+              className="p-4 text-center text-sm text-neutral-600 italic"
+              data-testid="no-characters-found"
+            >
               {typeFilter === "ALL" ? "No characters yet." : `No ${typeFilter} characters.`}
             </div>
           )}

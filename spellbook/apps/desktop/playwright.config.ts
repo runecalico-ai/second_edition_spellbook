@@ -6,7 +6,7 @@ export default defineConfig({
   timeout: 120000,
   // Maximum time expect() should wait for a condition to be met.
   expect: {
-    timeout: 5000
+    timeout: 5000,
   },
   workers: 1, // Do not run tests in parallel
   retries: 0,
@@ -22,5 +22,5 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   /* Folder for test artifacts such as screenshots, videos, traces, etc. */
-  outputDir: 'test-results/',
+  outputDir: "test-results/",
 });

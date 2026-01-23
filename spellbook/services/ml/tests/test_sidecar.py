@@ -69,3 +69,42 @@ def test_export_markdown(tmp_path: Path):
     output_path = Path(response["result"]["path"])
     assert output_path.exists()
     assert "Arcane Bolt" in output_path.read_text(encoding="utf-8")
+
+
+def test_export_camel_case(tmp_path: Path):
+    response = _run_sidecar(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "export",
+            "params": {
+                "spells": [
+                    {
+                        "name": "Camel Spell",
+                        "description": "Camel Case Test.",
+                        "classList": "Wizard, Sorcerer",
+                        "savingThrow": "Reflex half",
+                        "castingTime": "1 action",
+                        "materialComponents": "A bit of wool",
+                        "level": 3,
+                        "school": "Transmutation",
+                        "components": "V, S",
+                        "range": "60 ft",
+                        "duration": "Instantaneous",
+                    }
+                ],
+                "character": {"name": "Gandalf", "characterType": "Wizard"},
+                "format": "html",
+                "layout": "standard",
+                "mode": "spellbook",
+                "output_dir": str(tmp_path),
+            },
+        }
+    )
+    output_path = Path(response["result"]["path"])
+    content = output_path.read_text(encoding="utf-8")
+
+    # Check that the camelCase fields were rendered
+    assert "Wizard, Sorcerer" in content
+    assert "Reflex half" in content
+    assert "Wizard Spellbook" in content

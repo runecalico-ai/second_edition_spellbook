@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct Character {
     pub id: i64,
     pub name: String,
@@ -16,6 +17,7 @@ pub struct Character {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct CharacterAbilities {
     pub id: i64,
     pub character_id: i64,
@@ -30,6 +32,7 @@ pub struct CharacterAbilities {
 
 #[derive(Deserialize)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateAbilitiesInput {
     pub character_id: i64,
     pub str: i32,
@@ -43,6 +46,7 @@ pub struct UpdateAbilitiesInput {
 
 #[derive(Deserialize)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateCharacterDetailsInput {
     pub id: i64,
     pub name: String,
@@ -55,6 +59,7 @@ pub struct UpdateCharacterDetailsInput {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct CharacterClass {
     pub id: i64,
     pub character_id: i64,
@@ -65,6 +70,7 @@ pub struct CharacterClass {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct CharacterClassSpell {
     pub id: i64,
     pub character_class_id: i64,
@@ -75,6 +81,7 @@ pub struct CharacterClassSpell {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct CharacterSpellbookEntry {
     pub character_id: i64,
     pub spell_id: i64,
@@ -91,6 +98,7 @@ pub struct CharacterSpellbookEntry {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrintableCharacter {
     pub name: String,
     pub character_type: String,
@@ -99,6 +107,7 @@ pub struct PrintableCharacter {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrintableSpell {
     pub name: String,
     pub level: i64,
@@ -114,6 +123,7 @@ pub struct PrintableSpell {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrintableSpellbookEntry {
     pub id: i64,
     pub name: String,

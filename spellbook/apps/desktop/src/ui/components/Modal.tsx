@@ -2,7 +2,7 @@ import { useModal } from "../../store/useModal";
 import clsx from "classnames";
 
 export default function Modal() {
-  const { isOpen, type, title, message, buttons, hideModal } = useModal();
+  const { isOpen, type, title, message, buttons, dismissible = true, hideModal } = useModal();
 
   if (!isOpen) return null;
 
@@ -26,7 +26,11 @@ export default function Modal() {
         type="button"
         aria-label="Close modal"
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 border-none p-0 m-0 w-full h-full cursor-default"
-        onClick={hideModal}
+        onClick={() => {
+          if (dismissible) {
+            hideModal();
+          }
+        }}
       />
 
       {/* Modal Container */}

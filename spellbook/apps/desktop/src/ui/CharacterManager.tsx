@@ -65,15 +65,15 @@ export default function CharacterManager() {
 
   const filteredCharacters = characters.filter((c) => {
     if (typeFilter === "ALL") return true;
-    return c.character_type === typeFilter;
+    return c.characterType === typeFilter;
   });
 
   const getPrimaryClass = (charId: number) => {
     const classes = charClasses[charId];
     if (!classes || classes.length === 0) return null;
     // For simplicity, first class is "primary" or show multi-class string
-    if (classes.length === 1) return `${classes[0].class_name} ${classes[0].level}`;
-    return classes.map((c) => `${c.class_name.charAt(0)}${c.level}`).join("/");
+    if (classes.length === 1) return `${classes[0].className} ${classes[0].level}`;
+    return classes.map((c) => `${c.className.charAt(0)}${c.level}`).join("/");
   };
 
   return (
@@ -143,7 +143,7 @@ export default function CharacterManager() {
                       className="text-[10px] font-bold px-1 rounded bg-neutral-800 text-neutral-500 uppercase tracking-tighter"
                       data-testid="character-type-badge"
                     >
-                      {c.character_type}
+                      {c.characterType}
                     </span>
                     <button
                       type="button"

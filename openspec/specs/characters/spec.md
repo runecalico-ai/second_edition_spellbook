@@ -40,9 +40,6 @@ Characters SHALL support multiple classes, each with an independent level (no ma
 ### Requirement: Per-Class Spell Management
 Each class instance on a specific character SHALL maintain separate "Known" and "Prepared" spell lists that are unique to that character. Spell lists SHALL NOT be shared across different characters with the same class. Spells SHALL reference existing `spell` records, and each spell link MAY include per-spell notes. Any spell in the "Prepared" list MUST also exist in the "Known" list for that class.
 
-### Requirement: Character Spell Notes
-The system MUST allow users to add notes to spells assigned to a character class.
-
 #### Scenario: Adding Spell to Known List
 - **WHEN** the user adds "Magic Missile" to the Known list for the "Mage" class
 - **THEN** the spell SHALL be linked to that class with list_type "KNOWN"
@@ -61,10 +58,6 @@ The system MUST allow users to add notes to spells assigned to a character class
 - **WHEN** the user removes "Magic Missile" from the "Mage" Known list
 - **AND** "Magic Missile" is also in the "Mage" Prepared list
 - **THEN** the spell SHALL be automatically removed from the Prepared list as well
-
-#### Scenario: Per-Spell Notes
-- **WHEN** the user adds the note "Use against Trolls" to "Fireball" in the Prepared list
-- **THEN** the note SHALL be persisted and displayed with the spell in that class's Prepared list
 
 #### Scenario: Same Spell in Multiple Classes
 - **WHEN** a multi-class character has "Cure Light Wounds" in both the "Cleric" and "Druid" Known lists
@@ -105,6 +98,13 @@ The system MUST allow users to add notes to spells assigned to a character class
     - **Sphere**: "All Spheres" (empty string)
     - **Tags**: empty string
 - **AND** this reset SHALL occur regardless of what filter values were set in previous dialog sessions
+
+### Requirement: Character Spell Notes
+The system MUST allow users to add notes to spells assigned to a character class.
+
+#### Scenario: Per-Spell Notes
+- **WHEN** the user adds the note "Use against Trolls" to "Fireball" in the Prepared list
+- **THEN** the note SHALL be persisted and displayed with the spell in that class's Prepared list
 
 ### Requirement: Character Data Validation
 The application SHALL validate character data to ensure integrity: ability scores and levels MUST be non-negative integers, class names MUST match the core list or "Other", and COM SHALL only be displayed/editable when `com_enabled` is true.

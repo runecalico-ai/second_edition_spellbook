@@ -14,6 +14,7 @@ interface ModalState {
   title: string;
   message: string | string[];
   buttons: ModalButton[];
+  dismissible?: boolean;
   onClose?: () => void;
 }
 
@@ -52,6 +53,7 @@ export const useModal = create<ModalStore>((set, get) => ({
         title,
         message,
         type,
+        dismissible: false,
         buttons: [
           {
             label: "OK",
@@ -72,6 +74,7 @@ export const useModal = create<ModalStore>((set, get) => ({
         title,
         message,
         type: "warning",
+        dismissible: false,
         buttons: [
           {
             label: "Cancel",

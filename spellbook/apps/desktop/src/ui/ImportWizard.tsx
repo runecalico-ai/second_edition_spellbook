@@ -156,7 +156,7 @@ const conflictFieldLabels: Record<string, string> = {
 };
 
 const getConflictKey = (conflict: SpellConflict, index: number) =>
-  conflict.existing.id ? `${conflict.existing.id}` : `${conflict.incoming.name}-${index}`;
+  conflict.existing.id ? `${conflict.existing.id}-${index}` : `${conflict.incoming.name}-${index}`;
 
 export default function ImportWizard() {
   const { alert: modalAlert } = useModal();

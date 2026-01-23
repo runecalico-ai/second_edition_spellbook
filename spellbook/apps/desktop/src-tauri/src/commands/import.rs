@@ -191,8 +191,17 @@ pub async fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, App
     fs::create_dir_all(&dir)?;
 
     let mut paths = vec![];
+    let mut seen_names = HashMap::new();
     for file in files {
         let (safe_name, _) = sanitize_import_filename(&file.name);
+        if let Some(original) = seen_names.get(&safe_name) {
+            return Err(AppError::Validation(format!(
+                "Filename collision: '{}' and '{}' both sanitize to '{}'",
+                original, file.name, safe_name
+            )));
+        }
+        seen_names.insert(safe_name.clone(), file.name.clone());
+
         let path = dir.join(&safe_name);
         fs::write(&path, &file.content)?;
         paths.push(path);
@@ -250,8 +259,19 @@ pub async fn import_files(
 
     // Pre-save all files to disk (keep this fast and simple)
     let mut file_paths_map = HashMap::new();
+    let mut seen_names = HashMap::new();
+
     for file in &files {
         let (safe_name, changed) = sanitize_import_filename(&file.name);
+
+        if let Some(original) = seen_names.get(&safe_name) {
+            return Err(AppError::Validation(format!(
+                "Filename collision: '{}' and '{}' both sanitize to '{}'",
+                original, file.name, safe_name
+            )));
+        }
+        seen_names.insert(safe_name.clone(), file.name.clone());
+
         if changed {
             all_warnings.push(format!(
                 "Sanitized import file name '{}' to '{}'.",
@@ -382,11 +402,12 @@ pub async fn import_files(
                         }
 
                         conn.execute(
-                            "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?,
+                            "UPDATE spell SET name=?, level=?, source=?, school=?, sphere=?, class_list=?, range=?, components=?,
                             material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
                             reversible=?, description=?, tags=?, edition=?, author=?, license=?,
                             is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
                             params![
+                                spell.name, spell.level, spell.source,
                                 spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
                                 spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
                                 spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
@@ -505,18 +526,19 @@ pub async fn import_files(
                              }
                              continue;
                          }
-                         conn.execute(
-                            "UPDATE spell SET school=?, sphere=?, class_list=?, range=?, components=?,
-                            material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
-                            reversible=?, description=?, tags=?, edition=?, author=?, license=?,
-                            is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
-                            params![
-                                spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
-                                spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
-                                spell.is_quest_spell, spell.is_cantrip, Utc::now().to_rfc3339(), id
-                            ],
-                        )?;
+                          conn.execute(
+                             "UPDATE spell SET name=?, level=?, source=?, school=?, sphere=?, class_list=?, range=?, components=?,
+                             material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
+                             reversible=?, description=?, tags=?, edition=?, author=?, license=?,
+                             is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
+                             params![
+                                 spell.name, spell.level, spell.source,
+                                 spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
+                                 spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                 spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
+                                 spell.is_quest_spell, spell.is_cantrip, Utc::now().to_rfc3339(), id
+                             ],
+                         )?;
                         id
                     } else {
                         conn.execute(

@@ -8,7 +8,41 @@ The easier it is to find and interact with UI elements in tests, the more reliab
 
 ## Best Practices
 
-### 1. Use `data-testid` Attributes
+### 1. Tauri IPC & Casing
+Tauri bridges the gap between Rust and JavaScript by automatically converting parameter names.
+
+- **Command Arguments**: When using `invoke`, you **must** use `camelCase` for the argument keys, even if the Rust function uses `snake_case`.
+- **Return Values**: Backend models should be configured with `#[serde(rename_all = "camelCase")]`. Always expect and use `camelCase` properties in the frontend.
+
+**✅ Good:**
+```typescript
+await invoke("create_character", {
+  name: "Raistlin",
+  characterType: "PC", // camelCase
+});
+```
+
+**❌ Avoid:**
+```typescript
+await invoke("create_character", {
+  name: "Raistlin",
+  character_type: "PC", // snake_case will fail to match backend parameters
+});
+```
+
+> [!TIP]
+> **Type Safety Best Practice**: Always define TypeScript interfaces that match your Rust structs. If you use `#[serde(rename_all = "camelCase")]` on the backend, your interfaces should use the same `camelCase` properties to ensure end-to-end type safety and catch errors during development.
+>
+> ```typescript
+> // Match this to your Rust 'Character' struct
+> interface Character {
+>   id: number;
+>   characterType: string;
+>   notes?: string;
+> }
+> ```
+
+### 2. Use `data-testid` Attributes
 
 Add `data-testid` attributes to interactive elements and important containers. This is the **most reliable** way to locate elements in tests.
 
@@ -76,20 +110,25 @@ Use descriptive, kebab-case names that clearly indicate what the element is:
 - **Containers**: `{content}-row`, `{content}-section` (e.g., `class-row`, `abilities-section`)
 - **Modals/Dialogs**: `{name}-modal`, `{name}-dialog` (e.g., `confirm-modal`, `spell-picker`)
 
-### 4. When to Add `data-testid`
+### 4. When to Add `data-testid` (MANDATORY)
 
-Add `data-testid` when:
+> [!CRITICAL]
+> **ALL interactive elements MUST have `data-testid` attributes.** This is non-negotiable for automated testing.
 
-- ✅ The element is **interactive** (buttons, inputs, links)
-- ✅ The element contains **dynamic content** that tests need to verify
-- ✅ The element is **difficult to locate** using semantic selectors (role, label, text)
-- ✅ Multiple similar elements exist and you need to target a specific one
+**ALWAYS add `data-testid` for:**
 
-Don't add `data-testid` when:
+- ✅ **ALL buttons** (save, delete, cancel, submit, etc.)
+- ✅ **ALL form inputs** (text, number, checkbox, select, etc.)
+- ✅ **ALL links** that trigger navigation or actions
+- ✅ **Dynamic content containers** (rows, cards, panels with changing data)
+- ✅ **Interactive list items** (selectable, clickable, draggable)
+- ✅ **Modals and dialogs** (the container and action buttons)
 
-- ❌ The element is purely decorative
-- ❌ The element can be easily found using semantic selectors
-- ❌ It's a one-off element with unique, stable text content
+**Only skip `data-testid` when:**
+
+- ❌ The element is purely decorative (no interaction, no assertions needed)
+- ❌ The element is a one-time static heading with unique text
+- ❌ Using semantic `role` + text is more stable (e.g., `<button>Save</button>` with unique text)
 
 ### 5. Input Validation and Testing
 
@@ -118,15 +157,26 @@ await levelInput.fill("-1");
 await expect(levelInput).toHaveValue("0"); // Clamped to 0
 ```
 
-### 6. Avoid Brittle Selectors
+### 6. Locator Priority Hierarchy
 
-**❌ Brittle (avoid):**
+When writing Playwright tests, use locators in this priority order:
+
+| Priority | Method | Example | When to Use |
+|----------|--------|---------|-------------|
+| **1** | `getByTestId()` | `page.getByTestId('save-button')` | Interactive elements, dynamic content |
+| **2** | `getByRole()` | `page.getByRole('button', { name: 'Save' })` | Semantic HTML with clear roles |
+| **3** | `getByLabel()` | `page.getByLabel('Character Name')` | Form inputs with labels |
+| **4** | `getByPlaceholder()` | `page.getByPlaceholder('Search...')` | Inputs with placeholders |
+| **5** | `getByText()` | `page.getByText('Fireball')` | Unique static text |
+| **6** | `locator()` CSS | `page.locator('.modal')` | Last resort only |
+
+**❌ Avoid brittle CSS selectors:**
 ```typescript
 page.locator('div').filter({ has: page.locator('input') }).first()
 page.locator('.flex.items-center.gap-4 > div:nth-child(2)')
 ```
 
-**✅ Robust (prefer):**
+**✅ Use robust, semantic locators:**
 ```typescript
 page.getByTestId('class-row')
 page.getByLabel('Character Name')
@@ -193,11 +243,28 @@ const levelInput = classRow.getByTestId('class-level-input');
 
 Before committing UI changes, verify:
 
-- [ ] Interactive elements have `data-testid` or semantic attributes
-- [ ] Input validation works with direct input (not just UI buttons)
-- [ ] Dynamic content containers have stable identifiers
-- [ ] ARIA labels are present for icon-only buttons
-- [ ] Form inputs have associated labels
+- [ ] **`data-testid` attributes**: ALL interactive elements have `data-testid` attributes
+- [ ] **Input validation**: Works with direct input (typing), not just UI controls (buttons)
+- [ ] **Dynamic containers**: Have stable, descriptive `data-testid` identifiers
+- [ ] **ARIA labels**: Present for icon-only buttons and screenreader accessibility
+- [ ] **Form labels**: All inputs have associated `<label>` elements
+- [ ] **Verify in browser**: Open the component and check for `data-testid` in DevTools
+
+### Pre-Test Verification (For AI Agents)
+
+If you're writing tests for new UI elements, verify they can be located:
+
+```typescript
+// Check element exists
+const count = await page.getByTestId('new-element-id').count();
+console.log(`Found ${count} elements (should be 1)`);
+
+// List all available testids
+const testIds = await page.locator('[data-testid]').evaluateAll(
+  nodes => nodes.map(n => n.getAttribute('data-testid'))
+);
+console.log('Available testids:', testIds);
+```
 
 ## Resources
 

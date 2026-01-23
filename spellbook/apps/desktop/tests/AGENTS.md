@@ -22,6 +22,48 @@ tests/
 └── *.spec.ts           # Test files
 ```
 
+## Build Requirements Before Testing
+
+> [!CRITICAL]
+> **ALWAYS rebuild the application** before running tests after making code changes. Playwright tests launch the compiled binary, NOT source code.
+
+### Backend Changes (Rust)
+
+If you modified any files in `src-tauri/src/` or `Cargo.toml`:
+
+```powershell
+cd spellbook/apps/desktop
+pnpm tauri:build --debug
+```
+
+**Build time**: 30-90 seconds (full rebuild), 5-15 seconds (incremental)
+
+This compiles the Rust backend and bundles the frontend assets into `src-tauri/target/debug/`.
+
+### Frontend Changes (TypeScript/React)
+
+If you ONLY modified files in `src/`:
+
+```powershell
+cd spellbook/apps/desktop
+pnpm build
+```
+
+**Build time**: 5-20 seconds
+
+This creates the production bundle in `dist/` that the debug binary loads.
+
+### Both or Unsure
+
+When in doubt, perform a full rebuild:
+
+```powershell
+cd spellbook/apps/desktop
+pnpm tauri:build --debug
+```
+
+**Complete workflow documentation**: See `/test-workflow` for detailed rebuild and test instructions.
+
 ## Running Tests
 
 ### Windows (requires WebView2)
@@ -322,12 +364,30 @@ await page.waitForTimeout(300); // Settlement wait for modal close
 
 ### 6. Locator Strategy
 
-Prefer user-facing locators in this order:
-1. `page.getByRole()` - Most accessible
-2. `page.getByLabel()` - Form fields (e.g., `Tags`, `Description`)
-3. `page.getByPlaceholder()` - Inputs (e.g., `Components (V,S,M)`)
-4. `page.getByText()` - Static content
-5. `page.locator()` with CSS - Last resort
+Follow this priority hierarchy when writing locators:
+
+| Priority | Method | Use Case | Example |
+|----------|--------|----------|----------|
+| **1** | `getByTestId()` | Interactive elements, dynamic content | `page.getByTestId('save-button')` |
+| **2** | `getByRole()` | Semantic HTML elements | `page.getByRole('button', { name: 'Save' })` |
+| **3** | `getByLabel()` | Form fields with labels | `page.getByLabel('Tags')` |
+| **4** | `getByPlaceholder()` | Inputs with placeholders | `page.getByPlaceholder('Components (V,S,M)')` |
+| **5** | `getByText()` | Unique static text | `page.getByText('Fireball')` |
+| **6** | `locator()` with CSS | Last resort only | `page.locator('.modal')` |
+
+**When new UI elements are added**, verify they can be located:
+
+```typescript
+// Verify element exists before writing tests
+const count = await page.getByTestId('new-element').count();
+console.log(`Found ${count} elements (should be 1)`);
+
+// List all available testids
+const testIds = await page.locator('[data-testid]').evaluateAll(
+  nodes => nodes.map(n => n.getAttribute('data-testid'))
+);
+console.log('Available testids:', testIds);
+```
 
 ### 6.1 Settlement Waits
 After navigation or complex UI switches (like opening the Spell Editor), use a short settlement wait (e.g., 500ms) to ensure React state has settled before interaction:
@@ -355,6 +415,95 @@ test("Feature Test", async () => {
     // assertions
   });
 });
+```
+
+## Debugging Test Failures
+
+When tests fail, follow this systematic approach:
+
+### 1. View the HTML Report
+
+```powershell
+npx playwright show-report
+```
+
+The report provides:
+- Stack traces for failed assertions
+- Screenshots at failure points
+- Full execution traces with DOM snapshots
+- Network activity and console logs
+
+### 2. Analyze the Trace
+
+In the HTML report:
+1. Click the failed test
+2. Open the **Trace** tab
+3. Review:
+   - **DOM snapshots** at each step
+   - **Network requests** (failed API calls)
+   - **Console logs** (JavaScript errors)
+   - **Exact line** where test failed
+
+### 3. Extract Error Context
+
+When analyzing failures, document:
+- **Assertion that failed** (line number and message)
+- **DOM state** at failure (from trace or screenshot)
+- **Console errors** (check trace)
+- **Network failures** (from trace)
+- **Recent code changes** that might have caused it
+
+### 4. Common Failure Patterns
+
+| Error Pattern | Likely Cause | Solution |
+|---------------|--------------|----------|
+| `Timeout: element not found` | Missing `data-testid`, element doesn't exist | Check UI code, verify element exists, add `data-testid` |
+| `Strict mode violation` | Multiple elements match | Use filters to narrow scope |
+| `Navigation timeout` | App crashed or startup too slow | Check app logs, verify rebuild, increase timeout |
+| `Database is locked` | Previous test didn't clean up | Kill orphaned processes, check data isolation |
+
+### 5. Capture Debug Screenshots
+
+Add screenshots before failing assertions:
+
+```typescript
+// Add this before the assertion
+await page.screenshot({ path: 'tests/screenshots/debug.png', fullPage: true });
+
+// Then the assertion
+await expect(element).toBeVisible();
+```
+
+### 6. Use Playwright Inspector
+
+For interactive debugging:
+
+```powershell
+npx playwright test --debug
+```
+
+This allows you to:
+- Step through tests line-by-line
+- Inspect DOM at each step
+- Try different locators
+- See real-time screenshots
+
+### 7. Locator Debugging Tips
+
+If you can't find an element:
+
+```typescript
+// Check if element exists
+const count = await page.getByTestId('element-id').count();
+console.log(`Found ${count} elements`);
+
+// List all testids on page
+const allTestIds = await page.locator('[data-testid]').allTextContents();
+console.log('Available testids:', allTestIds);
+
+// Check if text exists anywhere
+const textExists = await page.locator('text=My Text').count();
+console.log(`Text found: ${textExists > 0}`);
 ```
 
 ### 8. Troubleshooting & Resource Cleanup

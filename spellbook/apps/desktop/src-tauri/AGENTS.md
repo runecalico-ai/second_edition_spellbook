@@ -78,11 +78,28 @@ let result = call_sidecar("action_name", json!({"key": value})).await?;
 3. Export from `commands/mod.rs`
 4. Register in `main.rs` `invoke_handler`
 
+### Tauri IPC Casing
+Tauri automatically converts command parameters from Rust's `snake_case` to JavaScript's `camelCase`.
+
+**Rust (Backend):**
+```rust
+#[tauri::command]
+pub async fn my_command(my_parameter_name: String) { ... }
+```
+
+**JavaScript (Frontend):**
+```javascript
+await invoke("my_command", { myParameterName: "value" });
+```
+
 ### Models
 - Use `#[derive(serde::Serialize, serde::Deserialize)]` for frontend communication.
-- **CRITICAL**: Always use `#[serde(crate = "serde")]` inside the `#[derive]` block to ensure macros resolve correctly in custom modules.
-- Use `#[serde(rename_all = "camelCase")]` for JS conventions.
+- **CRITICAL**: Always use `#[serde(crate = "serde")]` inside the `#[derive]` block to ensure macros resolve correctly.
+- **BEST PRACTICE**: Use `#[serde(rename_all = "camelCase")]` on all structs to ensure return objects use JS-friendly keys.
 - Add to `models/mod.rs` re-exports.
+
+> [!TIP]
+> **Type Safety Integration**: When modifying backend models, ensure you update the frontend to keep matching TypeScript interfaces in sync. This maintains end-to-end type safety. See `src/AGENTS.md` for more details.
 
 > [!CAUTION]
 > Avoid `ignore_unknown_fields` as a container attribute. Serde ignores unknown fields by default. Using invalid attributes can break macro expansion with cryptic "unsatisfied trait bound" errors.

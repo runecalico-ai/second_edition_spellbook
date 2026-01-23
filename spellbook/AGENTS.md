@@ -175,8 +175,8 @@ These tests use **Playwright** to drive the packaged Tauri application. They req
 **Prerequisites:**
 1. Build the desktop app in debug mode:
    ```bash
-   cd spellbook/apps/desktop/src-tauri
-   cargo build
+   cd spellbook/apps/desktop
+   pnpm tauri:build --debug
    ```
 2. Ensure dependencies are installed:
    ```bash

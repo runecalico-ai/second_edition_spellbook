@@ -1,6 +1,6 @@
 # library Spec Delta
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Modal Dialog Behavior
 

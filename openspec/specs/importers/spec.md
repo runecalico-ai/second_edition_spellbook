@@ -16,10 +16,13 @@ The UI SHALL provide a way for users to manually map unparsed or incorrectly ide
 - **THEN** the importer should apply this mapping to all spells in the current batch
 
 ### Requirement: Duplicate Merge Review
-The application SHALL provide a user interface to review and resolve duplicates by merging fields or skipping records.
-#### Scenario: Merging Spell Data
-- **WHEN** a duplicate spell is detected during import
-- **THEN** the user SHALL be presented with a diff view to choose which fields to keep from the new import vs. the existing library record
+
+The application SHALL provide a user interface to review and resolve duplicates by merging fields or skipping records. **Each conflict SHALL have a unique identifier even when multiple incoming files match the same existing spell.**
+
+#### Scenario: Resolving Multiple Conflicts for Same Spell
+- **WHEN** multiple incoming files match the same existing spell
+- **THEN** each conflict SHALL be displayed independently with unique resolution options
+- **AND** user selections for each conflict SHALL be preserved without overwriting
 
 ### Requirement: Deduplication
 The application SHALL detect and resolve duplicate spells during import using a canonical key (Name + Class + Level + Source).
@@ -73,4 +76,23 @@ The application SHALL display a notice when importing epic or quest spells, info
 - **WHEN** the user imports a file containing Level 10+ spells
 - **THEN** the import dialog SHALL display a warning about "High-Level Magic"
 - **AND** provide a checkbox to suppress future warnings
+
+### Requirement: Import Overwrite Behavior
+
+When importing with the "Overwrite" option enabled, the importer SHALL update all spell fields, including identity fields that match the record.
+
+#### Scenario: Overwriting Identity Fields
+- **WHEN** a user imports a spell with "Overwrite" enabled
+- **THEN** simple fields (school, sphere) SHALL be updated
+- **AND** identity fields (`name`, `level`, `source`) SHALL be updated to match the incoming file
+- **AND** the record SHALL be identified by its original ID found via match logic
+
+### Requirement: Import Filename Sanitization
+
+The importer SHALL detect filename collisions that result from sanitization and prevent silent data loss.
+
+#### Scenario: Colliding Filenames
+- **WHEN** importing multiple files that sanitize to the same destination filename (e.g. `spell.md` and `spell?.md` -> `spell.md`)
+- **THEN** the importer SHALL fail the operation with a clear validation error identifying the conflicting files
+- **AND** no data SHALL be overwritten silently
 

@@ -83,7 +83,7 @@ export default function CharacterEditor() {
         setAbilities(
           abs || {
             id: 0,
-            character_id: characterId,
+            characterId: characterId,
             str: 10,
             dex: 10,
             con: 10,
@@ -115,10 +115,10 @@ export default function CharacterEditor() {
         input: {
           id: character.id,
           name: character.name,
-          character_type: character.character_type,
+          characterType: character.characterType,
           race: character.race,
           alignment: character.alignment,
-          com_enabled: character.com_enabled ? 1 : 0,
+          comEnabled: character.comEnabled ? 1 : 0,
           notes: character.notes,
         },
       });
@@ -177,7 +177,7 @@ export default function CharacterEditor() {
               {character.name}
             </h1>
             <p className="text-sm text-neutral-500 font-mono">
-              Profile Foundation — {character.character_type}
+              Profile Foundation — {character.characterType}
             </p>
           </div>
           <div className="flex items-center gap-3 text-sm">
@@ -305,8 +305,8 @@ export default function CharacterEditor() {
                 id="toggle-com"
                 data-testid="toggle-com-checkbox"
                 className="sr-only peer"
-                checked={!!character.com_enabled}
-                onChange={(e) => setCharacter({ ...character, com_enabled: e.target.checked })}
+                checked={!!character.comEnabled}
+                onChange={(e) => setCharacter({ ...character, comEnabled: e.target.checked })}
               />
               <div className="w-10 h-5 bg-neutral-800 rounded-full peer peer-checked:bg-blue-600 relative transition-all">
                 <div className="absolute top-1 left-1 w-3 h-3 rounded-full bg-white transition-all peer-checked:left-6" />
@@ -347,7 +347,7 @@ export default function CharacterEditor() {
               { key: "int", label: "INT" },
               { key: "wis", label: "WIS" },
               { key: "cha", label: "CHA" },
-              { key: "com", label: "COM", hidden: !character.com_enabled },
+              { key: "com", label: "COM", hidden: !character.comEnabled },
             ].map((ability) =>
               ability.hidden ? null : (
                 <div
@@ -500,7 +500,7 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
   const removeClass = async () => {
     if (
       !(await modalConfirm(
-        `Are you sure you want to remove the ${cls.class_name} class? All associated spells will be unlinked.`,
+        `Are you sure you want to remove the ${cls.className} class? All associated spells will be unlinked.`,
         "Remove Class",
       ))
     )
@@ -517,14 +517,14 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
     <div className="flex items-center justify-between bg-neutral-950 border border-neutral-800 p-4 rounded-xl group hover:border-neutral-700 transition-all">
       <div className="flex items-center gap-4">
         <div className="h-10 w-10 bg-neutral-900 rounded-lg flex items-center justify-center font-bold text-neutral-400 group-hover:text-blue-500 transition-colors">
-          {cls.class_name.charAt(0)}
+          {cls.className.charAt(0)}
         </div>
         <div data-testid="class-row">
           <h4 className="font-semibold text-neutral-200">
-            {cls.class_name === "Other" && cls.class_label ? cls.class_label : cls.class_name}
+            {cls.className === "Other" && cls.classLabel ? cls.classLabel : cls.className}
           </h4>
           <span className="text-[10px] text-neutral-600 uppercase font-bold tracking-tighter">
-            {cls.class_name === "Other" ? "Custom Class" : "Class Identity"}
+            {cls.className === "Other" ? "Custom Class" : "Class Identity"}
           </span>
         </div>
       </div>
@@ -593,7 +593,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
   const [spells, setSpells] = useState<CharacterSpellbookEntry[]>([]);
   const [activeTab, setActiveTab] = useState<"KNOWN" | "PREPARED">("KNOWN");
   const [selectedRemoveIds, setSelectedRemoveIds] = useState<Set<number>>(new Set());
-  const [isCollapsed, setIsCollapsed] = useState(!canCast(charClass.class_name));
+  const [isCollapsed, setIsCollapsed] = useState(!canCast(charClass.className));
 
   const loadSpells = useCallback(async () => {
     try {
@@ -618,7 +618,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
   return (
     <section
       className="bg-neutral-900/60 border border-neutral-800 rounded-xl overflow-hidden flex flex-col"
-      aria-label={`Class section for ${charClass.class_name}`}
+      aria-label={`Class section for ${charClass.className}`}
     >
       <div className="w-full p-4 bg-neutral-950/50 border-b border-neutral-800 flex items-center justify-between">
         <div className="flex flex-col flex-1 gap-1">
@@ -628,10 +628,10 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
             onClick={() => setIsCollapsed(!isCollapsed)}
           >
             <div
-              className={`w-1 h-4 rounded-full ${canCast(charClass.class_name) ? "bg-blue-500" : "bg-neutral-700"}`}
+              className={`w-1 h-4 rounded-full ${canCast(charClass.className) ? "bg-blue-500" : "bg-neutral-700"}`}
             />
             <div className="flex items-center gap-2">
-              <h4 className="font-bold text-neutral-200">{charClass.class_name}</h4>
+              <h4 className="font-bold text-neutral-200">{charClass.className}</h4>
               <div
                 className={`text-neutral-500 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
               >
@@ -663,11 +663,10 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                     setActiveTab(tab);
                     setSelectedRemoveIds(new Set());
                   }}
-                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${
-                    activeTab === tab
-                      ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
-                      : "text-neutral-600 hover:text-neutral-400"
-                  }`}
+                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${activeTab === tab
+                    ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
+                    : "text-neutral-600 hover:text-neutral-400"
+                    }`}
                 >
                   {tab}
                 </button>
@@ -719,18 +718,18 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
         <div className="flex-1 overflow-auto p-4 space-y-2 min-h-[200px]">
           {filteredSpells.map((spell) => (
             <div
-              key={`${spell.spell_id}-${activeTab}`}
-              data-testid={`spell-row-${spell.spell_name}`}
+              key={`${spell.spellId}-${activeTab}`}
+              data-testid={`spell-row-${spell.spellName}`}
               className="flex items-center gap-3 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/50 group hover:border-neutral-700 transition-all"
             >
               <input
                 type="checkbox"
                 className="rounded border-neutral-800 bg-neutral-900 text-blue-600 focus:ring-0 h-3.5 w-3.5"
-                checked={selectedRemoveIds.has(spell.spell_id)}
+                checked={selectedRemoveIds.has(spell.spellId)}
                 onChange={() => {
                   const next = new Set(selectedRemoveIds);
-                  if (next.has(spell.spell_id)) next.delete(spell.spell_id);
-                  else next.add(spell.spell_id);
+                  if (next.has(spell.spellId)) next.delete(spell.spellId);
+                  else next.add(spell.spellId);
                   setSelectedRemoveIds(next);
                 }}
               />
@@ -738,9 +737,9 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-[10px] bg-neutral-800 px-1 rounded font-mono text-neutral-500">
-                      L{spell.spell_level}
+                      L{spell.spellLevel}
                     </span>
-                    <span className="text-sm font-medium">{spell.spell_name}</span>
+                    <span className="text-sm font-medium">{spell.spellName}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -751,7 +750,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                         try {
                           await invoke("update_character_spell_notes", {
                             characterClassId: charClass.id,
-                            spellId: spell.spell_id,
+                            spellId: spell.spellId,
                             listType: activeTab,
                             notes: e.target.value,
                           });
@@ -767,7 +766,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                         try {
                           await invoke("remove_character_spell", {
                             characterClassId: charClass.id,
-                            spellId: spell.spell_id,
+                            spellId: spell.spellId,
                             listType: activeTab,
                           });
                           loadSpells();
@@ -874,21 +873,21 @@ function SpellPicker({
       const lowerQuery = query.toLowerCase();
       const filtered = knownSpells
         .filter((s) => {
-          const sName = s.spell_name.toLowerCase();
+          const sName = s.spellName.toLowerCase();
           if (query && !sName.includes(lowerQuery)) return false;
 
-          const sSchool = s.spell_school || "";
+          const sSchool = s.spellSchool || "";
           if (filters.school && !sSchool.includes(filters.school)) return false;
 
-          const sSphere = s.spell_sphere || "";
+          const sSphere = s.spellSphere || "";
           if (filters.sphere && !sSphere.includes(filters.sphere)) return false;
 
-          const sLevel = s.spell_level;
+          const sLevel = s.spellLevel;
           if (filters.levelMin !== undefined && sLevel < filters.levelMin) return false;
           if (filters.levelMax !== undefined && sLevel > filters.levelMax) return false;
 
-          const isQuest = s.is_quest_spell === 1;
-          const isCantrip = s.is_cantrip === 1;
+          const isQuest = s.isQuestSpell === 1;
+          const isCantrip = s.isCantrip === 1;
 
           if (filters.isQuestSpell && !isQuest) return false;
           if (filters.isCantrip && !isCantrip) return false;
@@ -901,13 +900,13 @@ function SpellPicker({
         })
         .map((s): PickerSpell => {
           return {
-            id: s.spell_id,
-            name: s.spell_name,
-            level: s.spell_level,
-            school: s.spell_school,
-            sphere: s.spell_sphere,
-            is_quest_spell: s.is_quest_spell,
-            is_cantrip: s.is_cantrip,
+            id: s.spellId,
+            name: s.spellName,
+            level: s.spellLevel,
+            school: s.spellSchool,
+            sphere: s.spellSphere,
+            is_quest_spell: s.isQuestSpell,
+            is_cantrip: s.isCantrip,
             tags: s.tags,
           };
         });
@@ -959,7 +958,7 @@ function SpellPicker({
       let skipped = 0;
       for (const spellId of selectedIds) {
         if (listType === "PREPARED") {
-          const isKnown = knownSpells.some((ks) => ks.spell_id === spellId);
+          const isKnown = knownSpells.some((ks) => ks.spellId === spellId);
           if (!isKnown) {
             skipped++;
             continue;
@@ -1016,7 +1015,7 @@ function SpellPicker({
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl flex flex-col max-h-full shadow-2xl">
             <div className="p-6 border-b border-neutral-800 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold">Add to {charClass.class_name}</h3>
+                <h3 className="text-xl font-bold">Add to {charClass.className}</h3>
                 <p className="text-xs text-neutral-500 uppercase tracking-widest font-bold mt-1">
                   List: {listType}
                 </p>
@@ -1185,7 +1184,7 @@ function SpellPicker({
                     type="button"
                     onClick={async () => {
                       if (listType === "PREPARED") {
-                        const isKnown = knownSpells.some((ks) => ks.spell_id === spell.id);
+                        const isKnown = knownSpells.some((ks) => ks.spellId === spell.id);
                         if (!isKnown) {
                           modalAlert(
                             `"${spell.name}" must be in the Known list before it can be Prepared.`,

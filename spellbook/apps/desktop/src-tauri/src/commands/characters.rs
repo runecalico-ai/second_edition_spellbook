@@ -331,23 +331,25 @@ pub async fn get_character_class_spells(
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         let query = if list_type.is_some() {
-            "SELECT s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
+            "SELECT cc.character_id, s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
                     CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
                     CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
                     ccs.notes,
                     s.tags
              FROM character_class_spell ccs
              JOIN spell s ON s.id = ccs.spell_id
+             JOIN character_class cc ON cc.id = ccs.character_class_id
              WHERE ccs.character_class_id = ? AND ccs.list_type = ?
              ORDER BY s.level, s.name"
         } else {
-            "SELECT s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
+            "SELECT cc.character_id, s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
                     CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
                     CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
                     ccs.notes,
                     s.tags
              FROM character_class_spell ccs
              JOIN spell s ON s.id = ccs.spell_id
+             JOIN character_class cc ON cc.id = ccs.character_class_id
              WHERE ccs.character_class_id = ?
              ORDER BY s.level, s.name"
         };
@@ -356,18 +358,18 @@ pub async fn get_character_class_spells(
         if let Some(lt) = list_type {
             let rows = stmt.query_map(params![character_class_id, lt], |row| {
                 Ok(CharacterSpellbookEntry {
-                    character_id: 0,
-                    spell_id: row.get(0)?,
-                    spell_name: row.get(1)?,
-                    spell_level: row.get(2)?,
-                    spell_school: row.get(3)?,
-                    spell_sphere: row.get(4)?,
-                    is_quest_spell: row.get(5)?,
-                    is_cantrip: row.get(6)?,
-                    prepared: row.get(7)?,
-                    known: row.get(8)?,
-                    notes: row.get(9)?,
-                    tags: row.get(10)?,
+                    character_id: row.get(0)?,
+                    spell_id: row.get(1)?,
+                    spell_name: row.get(2)?,
+                    spell_level: row.get(3)?,
+                    spell_school: row.get(4)?,
+                    spell_sphere: row.get(5)?,
+                    is_quest_spell: row.get(6)?,
+                    is_cantrip: row.get(7)?,
+                    prepared: row.get(8)?,
+                    known: row.get(9)?,
+                    notes: row.get(10)?,
+                    tags: row.get(11)?,
                 })
             })?;
             let mut out = vec![];
@@ -378,18 +380,18 @@ pub async fn get_character_class_spells(
         } else {
             let rows = stmt.query_map(params![character_class_id], |row| {
                 Ok(CharacterSpellbookEntry {
-                    character_id: 0,
-                    spell_id: row.get(0)?,
-                    spell_name: row.get(1)?,
-                    spell_level: row.get(2)?,
-                    spell_school: row.get(3)?,
-                    spell_sphere: row.get(4)?,
-                    is_quest_spell: row.get(5)?,
-                    is_cantrip: row.get(6)?,
-                    prepared: row.get(7)?,
-                    known: row.get(8)?,
-                    notes: row.get(9)?,
-                    tags: row.get(10)?,
+                    character_id: row.get(0)?,
+                    spell_id: row.get(1)?,
+                    spell_name: row.get(2)?,
+                    spell_level: row.get(3)?,
+                    spell_school: row.get(4)?,
+                    spell_sphere: row.get(5)?,
+                    is_quest_spell: row.get(6)?,
+                    is_cantrip: row.get(7)?,
+                    prepared: row.get(8)?,
+                    known: row.get(9)?,
+                    notes: row.get(10)?,
+                    tags: row.get(11)?,
                 })
             })?;
             let mut out = vec![];

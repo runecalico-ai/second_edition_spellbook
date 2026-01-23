@@ -65,15 +65,15 @@ export default function CharacterManager() {
 
   const filteredCharacters = characters.filter((c) => {
     if (typeFilter === "ALL") return true;
-    return c.character_type === typeFilter;
+    return c.characterType === typeFilter;
   });
 
   const getPrimaryClass = (charId: number) => {
     const classes = charClasses[charId];
     if (!classes || classes.length === 0) return null;
     // For simplicity, first class is "primary" or show multi-class string
-    if (classes.length === 1) return `${classes[0].class_name} ${classes[0].level}`;
-    return classes.map((c) => `${c.class_name.charAt(0)}${c.level}`).join("/");
+    if (classes.length === 1) return `${classes[0].className} ${classes[0].level}`;
+    return classes.map((c) => `${c.className.charAt(0)}${c.level}`).join("/");
   };
 
   return (
@@ -88,11 +88,10 @@ export default function CharacterManager() {
                 type="button"
                 data-testid={`filter-type-${t.toLowerCase()}`}
                 onClick={() => setTypeFilter(t)}
-                className={`px-1.5 py-0.5 text-[10px] rounded border ${
-                  typeFilter === t
+                className={`px-1.5 py-0.5 text-[10px] rounded border ${typeFilter === t
                     ? "bg-blue-600 border-blue-500 text-white"
                     : "bg-neutral-900 border-neutral-700 text-neutral-500 hover:border-neutral-500"
-                }`}
+                  }`}
               >
                 {t}
               </button>
@@ -143,7 +142,7 @@ export default function CharacterManager() {
                       className="text-[10px] font-bold px-1 rounded bg-neutral-800 text-neutral-500 uppercase tracking-tighter"
                       data-testid="character-type-badge"
                     >
-                      {c.character_type}
+                      {c.characterType}
                     </span>
                     <button
                       type="button"

@@ -230,9 +230,9 @@ export default function SpellbookBuilder() {
     <div className="p-4 space-y-4 h-full overflow-auto">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Spellbook Builder</h2>
+          <h1 className="text-2xl font-bold">Spellbook Builder</h1>
           {character ? (
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-neutral-400" data-testid="character-summary-label">
               {character.name} · {character.type} spellbook
             </p>
           ) : (
@@ -242,6 +242,7 @@ export default function SpellbookBuilder() {
         <div className="flex items-center gap-3">
           <button
             type="button"
+            data-testid="btn-open-picker"
             onClick={() => setPickerOpen(true)}
             className="px-3 py-2 bg-blue-600 rounded hover:bg-blue-500 text-sm"
           >
@@ -250,6 +251,8 @@ export default function SpellbookBuilder() {
           <div className="flex gap-2">
             <select
               value={pageSize}
+              data-testid="print-page-size-select"
+              aria-label="Print page size"
               onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
               className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
             >
@@ -260,6 +263,7 @@ export default function SpellbookBuilder() {
               <button
                 key={layout.id}
                 type="button"
+                data-testid={`btn-print-spellbook-${layout.id}`}
                 onClick={() => printSpellbook(layout.id)}
                 className="px-2 py-1 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
               >
@@ -267,7 +271,11 @@ export default function SpellbookBuilder() {
               </button>
             ))}
           </div>
-          <Link to="/character" className="text-sm text-neutral-400 hover:text-white">
+          <Link
+            to="/character"
+            data-testid="link-back-to-characters"
+            className="text-sm text-neutral-400 hover:text-white"
+          >
             ← Characters
           </Link>
         </div>
@@ -293,11 +301,13 @@ export default function SpellbookBuilder() {
           {spellbook.map((entry) => (
             <tr
               key={entry.spell_id}
+              data-testid={`spellbook-row-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
               className="border-b border-neutral-800/30 hover:bg-neutral-800/30"
             >
               <td className="p-2 text-center">
                 <input
                   type="checkbox"
+                  data-testid={`chk-prepared-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
                   checked={!!entry.prepared}
                   onChange={() => {
                     const newPrepared = entry.prepared ? 0 : 1;
@@ -314,6 +324,7 @@ export default function SpellbookBuilder() {
               <td className="p-2 text-center">
                 <input
                   type="checkbox"
+                  data-testid={`chk-known-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
                   checked={!!entry.known}
                   onChange={() => {
                     const newKnown = entry.known ? 0 : 1;
@@ -348,6 +359,7 @@ export default function SpellbookBuilder() {
               <td className="p-2">
                 <input
                   className="w-full bg-transparent border-none p-0 text-neutral-300 placeholder-neutral-600 focus:ring-0"
+                  data-testid={`input-notes-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
                   value={entry.notes || ""}
                   placeholder="Add notes…"
                   onChange={(e) => {
@@ -359,6 +371,7 @@ export default function SpellbookBuilder() {
               <td className="p-2 text-right">
                 <button
                   type="button"
+                  data-testid={`btn-remove-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
                   onClick={() => removeSpell(entry)}
                   className="text-xs text-red-400 hover:text-red-300"
                 >
@@ -502,6 +515,7 @@ export default function SpellbookBuilder() {
                     return (
                       <tr
                         key={spell.id}
+                        data-testid={`picker-spell-row-${spell.name.replace(/\s+/g, "-").toLowerCase()}`}
                         className="border-b border-neutral-800/50 hover:bg-neutral-800"
                       >
                         <td className="p-2">
@@ -529,6 +543,7 @@ export default function SpellbookBuilder() {
                         <td className="p-2 text-right">
                           <button
                             type="button"
+                            data-testid={`btn-add-picker-${spell.name.replace(/\s+/g, "-").toLowerCase()}`}
                             onClick={() => addSpell(spell)}
                             className={`text-xs px-2 py-1 rounded ${
                               alreadyAdded

@@ -28,7 +28,7 @@ test.describe("Milestone Verification Flow", () => {
     await test.step("Verify duplicate name warning", async () => {
       const spellName = `Fireball ${runId}`;
       await app.navigate("Add Spell");
-      await page.getByLabel("Name").fill(spellName);
+      await page.getByTestId("spell-name-input").fill(spellName);
       // Depending on UI, check for warning text - just ensuring navigation for now
       await app.navigate("Library");
     });
@@ -137,16 +137,16 @@ test("Import conflict merge review flow", async ({ appContext, fileTracker }) =>
     );
 
     await app.navigate("Import");
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.getByTestId("import-file-input");
     await fileInput.setInputFiles(samplePath);
-    await page.getByRole("button", { name: "Preview →" }).click();
-    await page.getByRole("button", { name: "Skip Review →" }).click();
-    await page.getByRole("button", { name: "Start Import" }).click();
+    await page.getByTestId("btn-preview-import").click();
+    await page.getByTestId("btn-skip-review").click();
+    await page.getByTestId("btn-start-import").click();
 
     await expect(page.getByText("Resolve Conflicts")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Custom Merge" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Use Incoming" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Keep Existing" })).toBeVisible();
+    await expect(page.getByTestId("btn-custom-merge")).toBeVisible();
+    await expect(page.getByTestId("btn-use-incoming")).toBeVisible();
+    await expect(page.getByTestId("btn-keep-existing")).toBeVisible();
 
     await expect(page.getByRole("columnheader", { name: "Field" })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Existing" })).toBeVisible();
@@ -156,8 +156,8 @@ test("Import conflict merge review flow", async ({ appContext, fileTracker }) =>
     await expect(page.getByLabel("Existing").first()).toBeVisible();
     await expect(page.getByLabel("Incoming").first()).toBeVisible();
 
-    await page.getByRole("button", { name: "Use Incoming" }).first().click();
-    await page.getByRole("button", { name: "Apply Resolutions" }).click();
+    await page.getByTestId("btn-use-incoming").first().click();
+    await page.getByTestId("btn-apply-resolutions").click();
 
     await expect(page.getByRole("button", { name: "Import More Files" })).toBeVisible({
       timeout: TIMEOUTS.medium,
@@ -209,39 +209,43 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
     await app.importFile(importedPath, false);
 
     await app.openSpell(importedName);
-    await expect(page.getByLabel("Description")).toHaveValue("Imported description text.");
-    await expect(page.getByLabel("Name", { exact: true })).toHaveValue(importedName);
-    await expect(page.getByLabel("School")).toHaveValue("Illusion");
-    await expect(page.getByLabel("Classes (e.g. Mage, Cleric)")).toHaveValue("Mage");
-    await expect(page.getByLabel("Source")).toHaveValue("Test Source");
-    await expect(page.getByLabel("Edition")).toHaveValue("2e");
-    await expect(page.getByLabel("Author")).toHaveValue("Test Author");
-    await expect(page.getByLabel("License")).toHaveValue("OGL");
-    await expect(page.getByPlaceholder("Range")).toHaveValue("10 ft");
-    await expect(page.getByPlaceholder("Components (V,S,M)")).toHaveValue("V,S,M");
-    await expect(page.getByLabel("Reversible")).toBeChecked();
-    await expect(page.getByPlaceholder("Duration")).toHaveValue("1 turn");
-    await expect(page.getByPlaceholder("Casting Time")).toHaveValue("1 round");
-    await expect(page.getByPlaceholder("Area")).toHaveValue("10-ft radius");
-    await expect(page.getByPlaceholder("Save")).toHaveValue("Negates");
-    await expect(page.getByLabel("Material Components")).toHaveValue("a crystal lens");
-    await expect(page.getByLabel("Tags")).toHaveValue("illusion, test");
-    await expect(page.getByLabel("Description")).toHaveValue("Imported description text.");
+    await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
+      "Imported description text.",
+    );
+    await expect(page.getByTestId("spell-name-input")).toHaveValue(importedName);
+    await expect(page.getByTestId("spell-school-input")).toHaveValue("Illusion");
+    await expect(page.getByTestId("spell-classes-input")).toHaveValue("Mage");
+    await expect(page.getByTestId("spell-source-input")).toHaveValue("Test Source");
+    await expect(page.getByTestId("spell-edition-input")).toHaveValue("2e");
+    await expect(page.getByTestId("spell-author-input")).toHaveValue("Test Author");
+    await expect(page.getByTestId("spell-license-input")).toHaveValue("OGL");
+    await expect(page.getByTestId("spell-range-input")).toHaveValue("10 ft");
+    await expect(page.getByTestId("spell-components-input")).toHaveValue("V,S,M");
+    await expect(page.getByTestId("chk-reversible")).toBeChecked();
+    await expect(page.getByTestId("spell-duration-input")).toHaveValue("1 turn");
+    await expect(page.getByTestId("spell-casting-time-input")).toHaveValue("1 round");
+    await expect(page.getByTestId("spell-area-input")).toHaveValue("10-ft radius");
+    await expect(page.getByTestId("spell-save-input")).toHaveValue("Negates");
+    await expect(page.getByTestId("spell-material-components-input")).toHaveValue("a crystal lens");
+    await expect(page.getByTestId("spell-tags-input")).toHaveValue("illusion, test");
+    await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
+      "Imported description text.",
+    );
   });
 
   await test.step("Update extended fields and confirm persistence", async () => {
-    await page.getByLabel("Author").fill("Updated Author");
-    await page.getByPlaceholder("Range").fill("20 ft");
-    await page.getByLabel("Reversible").uncheck();
-    await page.getByLabel("Tags").fill("updated, tags");
-    await page.getByRole("button", { name: "Save Spell" }).click();
+    await page.getByTestId("spell-author-input").fill("Updated Author");
+    await page.getByTestId("spell-range-input").fill("20 ft");
+    await page.getByTestId("chk-reversible").uncheck();
+    await page.getByTestId("spell-tags-input").fill("updated, tags");
+    await page.getByTestId("btn-save-spell").click();
     await app.waitForLibrary();
 
     await app.openSpell(importedName);
-    await expect(page.getByLabel("Author")).toHaveValue("Updated Author");
-    await expect(page.getByPlaceholder("Range")).toHaveValue("20 ft");
-    await expect(page.getByLabel("Reversible")).not.toBeChecked();
-    await expect(page.getByLabel("Tags")).toHaveValue("updated, tags");
+    await expect(page.getByTestId("spell-author-input")).toHaveValue("Updated Author");
+    await expect(page.getByTestId("spell-range-input")).toHaveValue("20 ft");
+    await expect(page.getByTestId("chk-reversible")).not.toBeChecked();
+    await expect(page.getByTestId("spell-tags-input")).toHaveValue("updated, tags");
   });
 
   await test.step("Create new spell with extended fields", async () => {
@@ -268,13 +272,17 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
     });
 
     await app.openSpell(createdName);
-    await expect(page.getByLabel("Edition")).toHaveValue("1e");
-    await expect(page.getByLabel("Author")).toHaveValue("Created Author");
-    await expect(page.getByLabel("License")).toHaveValue("CC-BY");
-    await expect(page.getByLabel("Reversible")).toBeChecked();
-    await expect(page.getByLabel("Material Components")).toHaveValue("a drop of water");
-    await expect(page.getByLabel("Tags")).toHaveValue("created, field");
-    await expect(page.getByLabel("Description")).toHaveValue("Created description text.");
+    await expect(page.getByTestId("spell-edition-input")).toHaveValue("1e");
+    await expect(page.getByTestId("spell-author-input")).toHaveValue("Created Author");
+    await expect(page.getByTestId("spell-license-input")).toHaveValue("CC-BY");
+    await expect(page.getByTestId("chk-reversible")).toBeChecked();
+    await expect(page.getByTestId("spell-material-components-input")).toHaveValue(
+      "a drop of water",
+    );
+    await expect(page.getByTestId("spell-tags-input")).toHaveValue("created, field");
+    await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
+      "Created description text.",
+    );
   });
 });
 

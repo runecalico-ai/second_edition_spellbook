@@ -80,12 +80,13 @@ export default function CharacterManager() {
     <div className="flex h-full gap-6 p-4">
       <div className="w-80 border-r border-neutral-800 pr-4 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold">Characters</h2>
-          <div className="flex gap-1">
+          <h1 className="text-xl font-bold">Characters</h1>
+          <div className="flex gap-1" data-testid="character-type-filters">
             {(["ALL", "PC", "NPC"] as const).map((t) => (
               <button
                 key={t}
                 type="button"
+                data-testid={`filter-type-${t.toLowerCase()}`}
                 onClick={() => setTypeFilter(t)}
                 className={`px-1.5 py-0.5 text-[10px] rounded border ${
                   typeFilter === t
@@ -103,11 +104,14 @@ export default function CharacterManager() {
           <input
             className="w-full bg-neutral-900 border border-neutral-700 p-1 rounded text-sm placeholder-neutral-600"
             placeholder="New Name"
+            data-testid="new-character-name-input"
+            aria-label="New character name"
             value={newCharName}
             onChange={(e) => setNewCharName(e.target.value)}
           />
           <button
             type="button"
+            data-testid="btn-create-character"
             onClick={createCharacter}
             className="px-3 bg-blue-600 rounded text-sm hover:bg-blue-500 transition-colors"
           >
@@ -115,24 +119,35 @@ export default function CharacterManager() {
           </button>
         </div>
 
-        <div className="space-y-1 overflow-auto max-h-[calc(100vh-250px)]">
+        <div
+          className="space-y-1 overflow-auto max-h-[calc(100vh-250px)]"
+          data-testid="character-list"
+        >
           {filteredCharacters.map((c) => (
             <Link
               key={c.id}
               to={`/character/${c.id}/edit`}
+              data-testid={`character-item-${c.name.replace(/\s+/g, "-").toLowerCase()}`}
               className="block w-full text-left px-3 py-2 rounded text-neutral-300 hover:bg-neutral-800/50 group relative"
             >
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium group-hover:text-white transition-colors">
+                  <span
+                    className="font-medium group-hover:text-white transition-colors"
+                    data-testid="character-name-label"
+                  >
                     {c.name}
                   </span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold px-1 rounded bg-neutral-800 text-neutral-500 uppercase tracking-tighter">
+                    <span
+                      className="text-[10px] font-bold px-1 rounded bg-neutral-800 text-neutral-500 uppercase tracking-tighter"
+                      data-testid="character-type-badge"
+                    >
                       {c.character_type}
                     </span>
                     <button
                       type="button"
+                      data-testid="btn-delete-character"
                       onClick={(e) => deleteCharacter(e, c.id, c.name)}
                       className="opacity-0 group-hover:opacity-100 p-1 text-neutral-500 hover:text-red-500 transition-all"
                       title="Delete Character"
@@ -157,10 +172,10 @@ export default function CharacterManager() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-neutral-500">
-                  <span>
+                  <span data-testid="character-info-label">
                     {c.race || "No Race"} · {c.alignment || "No Align"}
                   </span>
-                  <span className="text-neutral-400 font-mono">
+                  <span className="text-neutral-400 font-mono" data-testid="character-class-label">
                     {getPrimaryClass(c.id) || "No Class"}
                   </span>
                 </div>
@@ -168,7 +183,10 @@ export default function CharacterManager() {
             </Link>
           ))}
           {filteredCharacters.length === 0 && (
-            <div className="p-4 text-center text-sm text-neutral-600 italic">
+            <div
+              className="p-4 text-center text-sm text-neutral-600 italic"
+              data-testid="no-characters-found"
+            >
               {typeFilter === "ALL" ? "No characters yet." : `No ${typeFilter} characters.`}
             </div>
           )}
@@ -177,6 +195,7 @@ export default function CharacterManager() {
         <div className="pt-4 border-t border-neutral-800">
           <Link
             to="/"
+            data-testid="link-back-to-library"
             className="text-xs text-neutral-500 hover:text-white flex items-center gap-1 transition-colors"
           >
             ← Back to Library

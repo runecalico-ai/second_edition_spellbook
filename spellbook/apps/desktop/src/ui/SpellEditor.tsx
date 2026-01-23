@@ -170,7 +170,7 @@ export default function SpellEditor() {
     <div className="p-4 max-w-2xl mx-auto space-y-4 overflow-auto h-full">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <h2 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h2>
+          <h1 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h1>
           <div className="flex gap-2">
             {form.is_quest_spell === 1 && (
               <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
@@ -194,6 +194,8 @@ export default function SpellEditor() {
             <>
               <select
                 value={pageSize}
+                data-testid="print-page-size-select"
+                aria-label="Print page size"
                 onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
                 className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
               >
@@ -202,6 +204,7 @@ export default function SpellEditor() {
               </select>
               <button
                 type="button"
+                data-testid="btn-print-compact"
                 onClick={() => printSpell("compact")}
                 className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
               >
@@ -209,6 +212,7 @@ export default function SpellEditor() {
               </button>
               <button
                 type="button"
+                data-testid="btn-print-stat-block"
                 onClick={() => printSpell("stat-block")}
                 className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
               >
@@ -219,6 +223,7 @@ export default function SpellEditor() {
           {!isNew && (
             <button
               id="btn-delete-spell"
+              data-testid="btn-delete-spell"
               type="button"
               onClick={handleDelete}
               className="px-3 py-2 text-red-400 hover:bg-neutral-800 rounded"
@@ -228,6 +233,7 @@ export default function SpellEditor() {
           )}
           <button
             type="button"
+            data-testid="btn-cancel-edit"
             onClick={() => navigate("/")}
             className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded"
           >
@@ -235,6 +241,7 @@ export default function SpellEditor() {
           </button>
           <button
             id="btn-save-spell"
+            data-testid="btn-save-spell"
             type="button"
             onClick={save}
             className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold"
@@ -243,7 +250,11 @@ export default function SpellEditor() {
           </button>
         </div>
       </div>
-      {printStatus && <div className="text-xs text-neutral-400">{printStatus}</div>}
+      {printStatus && (
+        <div className="text-xs text-neutral-400" data-testid="print-status-message">
+          {printStatus}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -252,6 +263,7 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-name"
+            data-testid="spell-name-input"
             className={`w-full bg-neutral-900 border p-2 rounded ${
               isNameInvalid ? "border-red-500" : "border-neutral-700"
             }`}
@@ -260,7 +272,11 @@ export default function SpellEditor() {
             onChange={(e) => handleChange("name", e.target.value)}
             required
           />
-          {isNameInvalid && <p className="text-xs text-red-400 mt-1">Name is required.</p>}
+          {isNameInvalid && (
+            <p className="text-xs text-red-400 mt-1" data-testid="error-name-required">
+              Name is required.
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor="spell-level" className="block text-sm text-neutral-400">
@@ -268,27 +284,30 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-level"
+            data-testid="spell-level-input"
             className={`w-full bg-neutral-900 border p-2 rounded ${
               isLevelInvalid ? "border-red-500" : "border-neutral-700"
             }`}
             type="number"
-            min={0}
-            max={12}
             value={form.level}
             onChange={(e) => {
-              const val = Number.parseInt(e.target.value) || 0;
-              handleChange("level", val);
-              if (val !== 0) handleChange("is_cantrip", 0);
-              if (val !== 8) handleChange("is_quest_spell", 0);
+              const val = e.target.valueAsNumber;
+              const clamped = Math.max(0, Math.min(12, Number.isNaN(val) ? 0 : Math.floor(val)));
+              handleChange("level", clamped);
+              if (clamped !== 0) handleChange("is_cantrip", 0);
+              if (clamped !== 8) handleChange("is_quest_spell", 0);
             }}
           />
-          <div className="text-xs text-neutral-500 mt-1">{getLevelDisplay(form.level)}</div>
+          <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">
+            {getLevelDisplay(form.level)}
+          </div>
           <div className="flex gap-4 mt-2">
             <label
               className={`flex items-center gap-2 cursor-pointer group ${form.level !== 0 ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               <input
                 type="checkbox"
+                data-testid="chk-cantrip"
                 disabled={form.level !== 0}
                 checked={form.is_cantrip === 1}
                 onChange={(e) => handleChange("is_cantrip", e.target.checked ? 1 : 0)}
@@ -301,6 +320,7 @@ export default function SpellEditor() {
             >
               <input
                 type="checkbox"
+                data-testid="chk-quest"
                 disabled={form.level !== 8}
                 checked={form.is_quest_spell === 1}
                 onChange={(e) => handleChange("is_quest_spell", e.target.checked ? 1 : 0)}
@@ -311,15 +331,25 @@ export default function SpellEditor() {
               </span>
             </label>
           </div>
-          {isLevelInvalid && <p className="text-xs text-red-400 mt-1">Level must be 0-12.</p>}
+          {isLevelInvalid && (
+            <p className="text-xs text-red-400 mt-1" data-testid="error-level-range">
+              Level must be 0-12.
+            </p>
+          )}
           {isEpicRestricted && (
-            <p className="text-xs text-yellow-500 mt-1">Epic levels (10-12) are Arcane only.</p>
+            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-epic-arcane">
+              Epic levels (10-12) are Arcane only.
+            </p>
           )}
           {isQuestRestricted && (
-            <p className="text-xs text-yellow-500 mt-1">Quest spells are Divine only.</p>
+            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-quest-divine">
+              Quest spells are Divine only.
+            </p>
           )}
           {isConflictRestricted && (
-            <p className="text-xs text-red-400 mt-1">Cannot be both Epic and Quest spell.</p>
+            <p className="text-xs text-red-400 mt-1" data-testid="error-epic-quest-conflict">
+              Cannot be both Epic and Quest spell.
+            </p>
           )}
         </div>
         <div>
@@ -328,6 +358,7 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-school"
+            data-testid="spell-school-input"
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded disabled:opacity-50 disabled:bg-neutral-800"
             value={form.school || ""}
             disabled={isDivine}
@@ -343,6 +374,7 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-sphere"
+            data-testid="spell-sphere-input"
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded disabled:opacity-50 disabled:bg-neutral-800"
             value={form.sphere || ""}
             disabled={isArcane}
@@ -358,6 +390,7 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-classes"
+            data-testid="spell-classes-input"
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.class_list || ""}
             onChange={(e) => handleChange("class_list", e.target.value)}
@@ -370,6 +403,7 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-source"
+            data-testid="spell-source-input"
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.source || ""}
             onChange={(e) => handleChange("source", e.target.value)}
@@ -381,6 +415,7 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-edition"
+            data-testid="spell-edition-input"
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.edition || ""}
             onChange={(e) => handleChange("edition", e.target.value)}
@@ -392,6 +427,7 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-author"
+            data-testid="spell-author-input"
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.author || ""}
             onChange={(e) => handleChange("author", e.target.value)}
@@ -403,6 +439,7 @@ export default function SpellEditor() {
           </label>
           <input
             id="spell-license"
+            data-testid="spell-license-input"
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.license || ""}
             onChange={(e) => handleChange("license", e.target.value)}
@@ -415,12 +452,16 @@ export default function SpellEditor() {
         <div className="grid grid-cols-3 gap-2 text-sm">
           <input
             placeholder="Range"
+            data-testid="spell-range-input"
+            aria-label="Range"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.range || ""}
             onChange={(e) => handleChange("range", e.target.value)}
           />
           <input
             placeholder="Components (V,S,M)"
+            data-testid="spell-components-input"
+            aria-label="Components"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.components || ""}
             onChange={(e) => handleChange("components", e.target.value)}
@@ -428,6 +469,7 @@ export default function SpellEditor() {
           <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700 p-2 rounded">
             <input
               id="spell-reversible"
+              data-testid="chk-reversible"
               type="checkbox"
               className="h-4 w-4"
               checked={Boolean(form.reversible)}
@@ -439,24 +481,32 @@ export default function SpellEditor() {
           </div>
           <input
             placeholder="Duration"
+            data-testid="spell-duration-input"
+            aria-label="Duration"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.duration || ""}
             onChange={(e) => handleChange("duration", e.target.value)}
           />
           <input
             placeholder="Casting Time"
+            data-testid="spell-casting-time-input"
+            aria-label="Casting time"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.casting_time || ""}
             onChange={(e) => handleChange("casting_time", e.target.value)}
           />
           <input
             placeholder="Area"
+            data-testid="spell-area-input"
+            aria-label="Area"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.area || ""}
             onChange={(e) => handleChange("area", e.target.value)}
           />
           <input
             placeholder="Save"
+            data-testid="spell-save-input"
+            aria-label="Saving throw"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
             value={form.saving_throw || ""}
             onChange={(e) => handleChange("saving_throw", e.target.value)}
@@ -470,6 +520,7 @@ export default function SpellEditor() {
         </label>
         <textarea
           id="spell-material-components"
+          data-testid="spell-material-components-input"
           className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
           value={form.material_components || ""}
           onChange={(e) => handleChange("material_components", e.target.value)}
@@ -482,6 +533,7 @@ export default function SpellEditor() {
         </label>
         <textarea
           id="spell-tags"
+          data-testid="spell-tags-input"
           className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
           placeholder="Comma-separated tags"
           value={form.tags || ""}
@@ -495,6 +547,7 @@ export default function SpellEditor() {
         </label>
         <textarea
           id="spell-description"
+          data-testid="spell-description-textarea"
           className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
             isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
           }`}
@@ -503,7 +556,9 @@ export default function SpellEditor() {
           required
         />
         {isDescriptionInvalid && (
-          <p className="text-xs text-red-400 mt-1">Description is required.</p>
+          <p className="text-xs text-red-400 mt-1" data-testid="error-description-required">
+            Description is required.
+          </p>
         )}
       </div>
 

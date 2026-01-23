@@ -173,19 +173,24 @@ export default function CharacterEditor() {
       <div className="flex-1 overflow-auto space-y-8 pr-4 custom-scrollbar">
         <header className="flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-white to-neutral-500 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-neutral-500 bg-clip-text text-transparent">
               {character.name}
-            </h2>
+            </h1>
             <p className="text-sm text-neutral-500 font-mono">
               Profile Foundation — {character.character_type}
             </p>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <Link to="/character" className="text-neutral-500 hover:text-white transition-colors">
+            <Link
+              to="/character"
+              data-testid="link-back-to-characters"
+              className="text-neutral-500 hover:text-white transition-colors"
+            >
               ← Back
             </Link>
             <button
               type="button"
+              data-testid="btn-reload-profile"
               onClick={() => window.location.reload()}
               className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 rounded text-xs font-medium transition-colors"
             >
@@ -193,6 +198,7 @@ export default function CharacterEditor() {
             </button>
             <button
               type="button"
+              data-testid="btn-delete-profile"
               onClick={async () => {
                 if (
                   await modalConfirm(
@@ -216,7 +222,10 @@ export default function CharacterEditor() {
         </header>
 
         {/* Identity Panel */}
-        <section className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6">
+        <section
+          className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6"
+          data-testid="identity-section"
+        >
           <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-blue-500" />
@@ -224,6 +233,7 @@ export default function CharacterEditor() {
             </h3>
             <button
               type="button"
+              data-testid="btn-save-identity"
               onClick={saveIdentity}
               disabled={saving}
               className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
@@ -242,6 +252,7 @@ export default function CharacterEditor() {
               </label>
               <input
                 id="char-name"
+                data-testid="char-name-input"
                 className="w-full bg-neutral-950 border border-neutral-800 focus:border-blue-600/50 focus:ring-1 focus:ring-blue-600/20 p-2.5 rounded-lg text-sm transition-all outline-none"
                 value={character.name}
                 onChange={(e) => setCharacter({ ...character, name: e.target.value })}
@@ -256,6 +267,7 @@ export default function CharacterEditor() {
               </label>
               <input
                 id="char-race"
+                data-testid="char-race-input"
                 className="w-full bg-neutral-950 border border-neutral-800 focus:border-blue-600/50 focus:ring-1 focus:ring-blue-600/20 p-2.5 rounded-lg text-sm transition-all outline-none"
                 value={character.race || ""}
                 onChange={(e) => setCharacter({ ...character, race: e.target.value })}
@@ -271,6 +283,7 @@ export default function CharacterEditor() {
               </label>
               <select
                 id="char-alignment"
+                data-testid="char-alignment-select"
                 className="w-full bg-neutral-950 border border-neutral-800 focus:border-blue-600/50 focus:ring-1 focus:ring-blue-600/20 p-2.5 rounded-lg text-sm transition-all outline-none appearance-none"
                 value={character.alignment || ""}
                 onChange={(e) => setCharacter({ ...character, alignment: e.target.value })}
@@ -290,6 +303,7 @@ export default function CharacterEditor() {
               <input
                 type="checkbox"
                 id="toggle-com"
+                data-testid="toggle-com-checkbox"
                 className="sr-only peer"
                 checked={!!character.com_enabled}
                 onChange={(e) => setCharacter({ ...character, com_enabled: e.target.checked })}
@@ -305,7 +319,10 @@ export default function CharacterEditor() {
         </section>
 
         {/* Abilities Panel */}
-        <section className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6">
+        <section
+          className="bg-neutral-900/40 border border-neutral-800 rounded-xl p-6 space-y-6"
+          data-testid="abilities-section"
+        >
           <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-purple-500" />
@@ -313,6 +330,7 @@ export default function CharacterEditor() {
             </h3>
             <button
               type="button"
+              data-testid="btn-save-abilities"
               onClick={saveAbilities}
               disabled={saving}
               className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
@@ -344,8 +362,9 @@ export default function CharacterEditor() {
                   </label>
                   <input
                     id={`ability-${ability.key}`}
+                    data-testid={`ability-${ability.key}-input`}
                     type="number"
-                    className="w-full bg-transparent text-center text-xl font-bold font-mono outline-none border-b border-transparent focus:border-blue-600/30 transition-all"
+                    className="w-full bg-transparent text-center text-xl font-bold font-mono outline-none border-b border-transparent focus:border-blue-600/30 transition-all font-mono"
                     value={abilities?.[ability.key as keyof CharacterAbilities] ?? 10}
                     onChange={(e) => {
                       if (!abilities) return;

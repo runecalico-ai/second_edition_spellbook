@@ -93,10 +93,7 @@ def test_export_camel_case(tmp_path: Path):
                         "duration": "Instantaneous",
                     }
                 ],
-                "character": {
-                    "name": "Gandalf",
-                    "characterType": "Wizard"
-                },
+                "character": {"name": "Gandalf", "characterType": "Wizard"},
                 "format": "html",
                 "layout": "standard",
                 "mode": "spellbook",

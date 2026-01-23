@@ -445,9 +445,7 @@ def _render_spell_block(spell: Dict[str, Any], layout: str, mode: str) -> str:
     school = html_escape(school_raw)
     level = html_escape(level_raw)
     description = html_escape(spell.get("description") or "").replace("\n", "<br/>")
-    class_list = html_escape(
-        spell.get("class_list") or spell.get("classList") or ""
-    )
+    class_list = html_escape(spell.get("class_list") or spell.get("classList") or "")
     range_text = html_escape(spell.get("range") or "")
     components = html_escape(spell.get("components") or "")
     duration = html_escape(spell.get("duration") or "")

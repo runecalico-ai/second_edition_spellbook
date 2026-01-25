@@ -24,6 +24,8 @@ pub fn run() {
             app.manage(Arc::new(pool));
             Ok(())
         })
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_spell,
             list_spells,
@@ -64,6 +66,11 @@ pub fn run() {
             print_spellbook,
             backup_vault,
             restore_vault,
+            export_character_bundle,
+            export_character_markdown_zip,
+            import_character_bundle,
+            preview_character_markdown_zip,
+            import_character_markdown_zip,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

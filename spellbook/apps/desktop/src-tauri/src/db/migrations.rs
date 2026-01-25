@@ -74,7 +74,14 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 8", [])?;
     }
-    eprintln!("DB VERSION END: 8");
+    if version < 9 {
+        eprintln!("Applying migration 0009...");
+        let sql = include_str!("../../../../../db/migrations/0009_add_artifact_table.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 9", [])?;
+    }
+
+    eprintln!("DB VERSION END: 9");
 
     Ok(())
 }

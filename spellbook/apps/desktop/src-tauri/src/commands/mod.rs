@@ -11,3 +11,5 @@ pub use import::*;
 pub use search::*;
 pub use spells::*;
 pub use vault::*;
+pub mod io_character;
+pub use io_character::*;

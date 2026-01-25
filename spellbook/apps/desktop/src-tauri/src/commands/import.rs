@@ -511,8 +511,8 @@ pub async fn import_files(
 
                 for spell in chunk_spells {
                      let existing_id: Option<i64> = conn.query_row(
-                        "SELECT id FROM spell WHERE name = ? AND level = ?",
-                        params![spell.name, spell.level],
+                        "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
+                        params![spell.name, spell.level, spell.source],
                         |row| row.get(0),
                     ).optional()?;
 

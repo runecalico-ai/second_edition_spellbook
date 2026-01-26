@@ -20,6 +20,10 @@ use std::sync::Arc;
 
 use tauri::State;
 
+fn normalize_key(path: &str) -> String {
+    path.to_lowercase().replace('\\', "/")
+}
+
 fn app_data_dir() -> Result<PathBuf, AppError> {
     if let Ok(override_dir) = std::env::var("SPELLBOOK_DATA_DIR") {
         let dir = PathBuf::from(override_dir);
@@ -333,12 +337,12 @@ pub async fn import_files(
                 let mut artifacts_by_path = HashMap::new();
 
                 for artifact in &parsed_artifacts {
-                    artifacts_by_path.insert(artifact.path.clone(), artifact.clone());
+                    artifacts_by_path.insert(normalize_key(&artifact.path), artifact.clone());
                 }
 
                 let spell_sources: Vec<Option<String>> = parsed_artifacts
                     .iter()
-                    .map(|artifact| Some(artifact.path.clone()))
+                    .map(|artifact| Some(normalize_key(&artifact.path)))
                     .collect();
 
                 let mut local_conflicts = batch_conflicts;
@@ -358,6 +362,8 @@ pub async fn import_files(
 
                             let source_path = spell.source_file.clone();
                             let artifact_opt = source_path
+                                .as_ref()
+                                .map(|p| normalize_key(p))
                                 .and_then(|p| artifacts_by_path.get(&p).cloned())
                                 .or_else(|| {
                                      spell_sources.get(i).and_then(|s| s.as_ref()).and_then(|p| artifacts_by_path.get(p).cloned())
@@ -447,13 +453,15 @@ pub async fn import_files(
 
                      let source_path = spell.source_file.clone();
                      let artifact_val = source_path
+                        .as_ref()
+                        .map(|p| normalize_key(p))
                         .and_then(|p| artifacts_by_path.get(&p))
                         .or_else(|| artifacts_by_path.get(&spell_sources.get(i).cloned().flatten().unwrap_or_default()));
 
                     if let Some(artifact_val) = artifact_val {
                         let _ = conn.execute(
                             "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
-                            ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
+                            ON CONFLICT(spell_id, path) WHERE spell_id IS NOT NULL DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
                             params![spell_id, artifact_val.r#type, artifact_val.path, artifact_val.hash, artifact_val.imported_at],
                         );
                     }
@@ -483,7 +491,7 @@ pub async fn import_files(
         // Lookup Setup
         let mut artifacts_by_path = HashMap::new();
         for artifact in &override_artifacts {
-            artifacts_by_path.insert(artifact.path.clone(), artifact.clone());
+            artifacts_by_path.insert(normalize_key(&artifact.path), artifact.clone());
         }
 
         all_conflicts = override_conflicts;
@@ -516,7 +524,10 @@ pub async fn import_files(
                                  local_skipped.push(spell.name.clone());
                              } else {
                                  let source_path = spell.source_file.clone();
-                                 let artifact_opt = source_path.and_then(|p| artifacts_map_clone.get(&p).cloned());
+                                 let artifact_opt = source_path
+                                    .as_ref()
+                                    .map(|p| normalize_key(p))
+                                    .and_then(|p| artifacts_map_clone.get(&p).cloned());
                                  local_conflicts.push(ImportConflict::Spell {
                                      existing: Box::new(existing_spell),
                                      incoming: Box::new(SpellDetail { id: None, name: spell.name.clone(), school: spell.school.clone(), sphere: spell.sphere.clone(), class_list: spell.class_list.clone(), level: spell.level, range: spell.range.clone(), components: spell.components.clone(), material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(), area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, description: spell.description.clone(), tags: spell.tags.clone(), source: spell.source.clone(), edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell, is_cantrip: spell.is_cantrip, artifacts: None }),
@@ -572,15 +583,17 @@ pub async fn import_files(
 
                      let source_path = spell.source_file.clone();
                      if let Some(p) = source_path {
-                         if let Some(artifact_val) = artifacts_map_clone.get(&p) {
+                         if let Some(artifact_val) = artifacts_map_clone.get(&normalize_key(&p)) {
                             let _ = conn.execute(
                                 "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
-                                ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
+                                ON CONFLICT(spell_id, path) WHERE spell_id IS NOT NULL DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
                                 params![spell_id, artifact_val.r#type, artifact_val.path, artifact_val.hash, artifact_val.imported_at],
                             );
                          }
                      }
                 }
+
+
 
                 Ok::<ImportResult, AppError>(ImportResult {
                     spells: local_imported,
@@ -644,7 +657,7 @@ pub async fn resolve_import_conflicts(
                     if let Some(artifact) = resolution.artifact {
                         if let Err(e) = conn.execute(
                             "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
-                             ON CONFLICT(spell_id, path) DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
+                             ON CONFLICT(spell_id, path) WHERE spell_id IS NOT NULL DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
                             params![
                                 spell.id,
                                 artifact.r#type,

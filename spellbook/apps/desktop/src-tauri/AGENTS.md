@@ -263,3 +263,18 @@ pub async fn remove_character_spell(
 1. **Type inference in closures**: Always use `Ok::<T, AppError>(value)` inside `spawn_blocking`
 2. **Migration paths**: Relative to the source file, currently `../../../../../db/migrations/`
 3. **Unused imports**: Run `cargo fix --lib` to auto-clean
+
+### Linting Best Practices (Clippy)
+
+#### Redundant Closures
+Avoiding redundant closures when mapping errors.
+
+**❌ Avoid:**
+```rust
+.map_err(|e| AppError::Io(e))?
+```
+
+**✅ Good:**
+```rust
+.map_err(AppError::Io)?
+```

@@ -267,11 +267,50 @@ console.log('Available testids:', testIds);
 ```
 
 ## Resources
+- See `spellbook/apps/desktop/tests/AGENTS.md` for E2E testing guidelines and patterns.
 
 - [Playwright Best Practices](https://playwright.dev/docs/best-practices)
 - [ARIA Labels Guide](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Attributes/aria-label)
 - [Semantic HTML](https://developer.mozilla.org/en-US/docs/Glossary/Semantics#semantics_in_html)
 
-## Questions?
+### 7. Linting & Compliance
 
-See `spellbook/apps/desktop/tests/AGENTS.md` for E2E testing guidelines and patterns.
+Follow these guidelines to keep the codebase clean and accessible.
+
+#### 7.1 Global Types & Window
+**NEVER** use `(window as any)` to access global properties. Instead, extend the `Window` interface in `src/globals.d.ts`.
+
+**❌ Avoid:**
+```typescript
+if ((window as any).__IS_PLAYWRIGHT__) { ... }
+```
+
+**✅ Good:**
+```typescript
+// src/globals.d.ts
+export {};
+declare global {
+  interface Window {
+    __IS_PLAYWRIGHT__?: boolean;
+  }
+}
+
+// In code
+if (window.__IS_PLAYWRIGHT__) { ... }
+```
+
+#### 7.2 Accessibility (A11y)
+- **SVGs**: Icons must have `role="img"` and a descriptive `aria-label`.
+- **Buttons**: All buttons must have an explicit `type` attribute (usually `type="button"` to prevent form submission).
+
+**✅ Good:**
+```tsx
+<button type="button" aria-label="Save">
+  <svg role="img" aria-label="Save Icon" ... />
+</button>
+```
+
+#### 7.3 React Best Practices
+- **Self-Closing Tags**: Use `<div />` instead of `<div></div>` for elements without children.
+- **Keys**: Avoid using array indices as keys. Use unique IDs or stable composite keys (e.g., `${className}-${level}`).
+

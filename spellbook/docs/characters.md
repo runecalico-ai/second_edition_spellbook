@@ -44,3 +44,24 @@ Each class you add gets its own independent spell lists:
 
 ### Non-Spellcasters
 For classes like Fighters or Thieves, the spell management section is automatically collapsed by default. You can expand it if your character has gained spellcasting abilities through special means.
+
+## Import / Export
+
+You can share your characters or back them up using the Export feature.
+
+### Exporting a Character
+1. On the **Characters** list, hover over a character row.
+2. Click the **Export** icon (arrow pointing down).
+3. Select your desired format:
+   - **JSON Bundle**: Best for backups or moving data to another Spellbook app. Contains all data.
+   - **Markdown + ZIP**: Best for sharing with others or printing. Creates a `.zip` file containing a readable `character.yml` and a folder of Markdown files for every spell.
+
+### Importing a Character
+1. Click the **Import** button at the top of the Character list.
+2. Select a `.json` or `.zip` file.
+3. Review the character preview.
+4. **Collision Handling**:
+   - If a character with the same name already exists, you will see an "Exists" warning.
+   - **Overwrite**: Check the box to update the existing character with the imported data.
+   - **Create Copy**: Leave the box unchecked to create a new character named "Name (Imported)".
+

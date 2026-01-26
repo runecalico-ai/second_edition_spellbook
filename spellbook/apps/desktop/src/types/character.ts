@@ -54,3 +54,35 @@ export interface CharacterSpellbookEntry {
   notes?: string | null;
   tags?: string | null;
 }
+
+export interface BundleClassSpell {
+  spell: {
+    name: string;
+    level: number;
+    source?: string | null;
+  };
+  listType: string;
+  notes?: string | null;
+}
+
+export interface BundleClass {
+  className: string;
+  classLabel?: string | null;
+  level: number;
+  spells: BundleClassSpell[];
+}
+
+export interface CharacterBundle {
+  format: string;
+  formatVersion: string;
+  name: string;
+  characterType: string;
+  race?: string | null;
+  alignment?: string | null;
+  comEnabled: number;
+  notes?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  abilities?: CharacterAbilities | null;
+  classes: BundleClass[];
+}

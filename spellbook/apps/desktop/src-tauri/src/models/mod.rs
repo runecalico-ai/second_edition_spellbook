@@ -8,3 +8,5 @@ pub use character::*;
 pub use import::*;
 pub use search::*;
 pub use spell::*;
+pub mod bundle;
+pub use bundle::*;

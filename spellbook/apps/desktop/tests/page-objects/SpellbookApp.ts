@@ -607,7 +607,8 @@ export class SpellbookApp {
     await this.navigate("Characters");
 
     // Hover over the character item to reveal the delete button
-    const charItem = this.page.getByRole("link", { name: new RegExp(name) });
+    const testId = `character-item-${name.replace(/\s+/g, "-").toLowerCase()}`;
+    const charItem = this.page.getByTestId(testId);
     await charItem.hover();
 
     // Handle confirmation dialog
@@ -620,7 +621,7 @@ export class SpellbookApp {
     await charItem.locator('button[title="Delete Character"]').click();
 
     // Verify gone
-    await expect(this.page.getByRole("link", { name: new RegExp(name) })).not.toBeVisible();
+    await expect(charItem).not.toBeVisible();
   }
   /** Remove a spell from a class list */
   async removeSpellFromClass(

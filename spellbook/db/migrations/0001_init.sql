@@ -53,16 +53,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS spell_vec USING vec0(
   v float[384]
 );
 
--- Provenance & versioning
-CREATE TABLE IF NOT EXISTS artifact (
-  id INTEGER PRIMARY KEY,
-  spell_id INTEGER REFERENCES spell(id) ON DELETE CASCADE,
-  type TEXT CHECK(type IN ('pdf','md','docx')),
-  path TEXT,
-  hash TEXT,
-  imported_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-  UNIQUE(spell_id, path)
-);
+
 
 CREATE TABLE IF NOT EXISTS change_log (
   id INTEGER PRIMARY KEY,

@@ -621,3 +621,33 @@ If tests fail with "Address already in use":
 Tests now use isolated `WEBVIEW2_USER_DATA_FOLDER` paths. If you see state leaking between runs:
 - Check `tests/tmp/data-w*` and clear them manually if the automatic cleanup fails.
 - Ensure `launchTauriApp()` is being called with its default parameters.
+
+## Linting & Imports
+
+### Node Protocol
+Always use the `node:` protocol for built-in Node.js modules.
+
+**❌ Avoid:**
+```typescript
+import * as fs from "fs";
+import path from "path";
+```
+
+**✅ Good:**
+```typescript
+import * as fs from "node:fs";
+import path from "node:path";
+```
+
+### Global Flags
+When injecting globals for testing (e.g., `__IS_PLAYWRIGHT__`), ensure the properties are defined in `src/globals.d.ts` (extend the `Window` interface) rather than casting to `any`.
+
+**❌ Avoid:**
+```typescript
+(window as any).__IS_PLAYWRIGHT__ = true;
+```
+
+**✅ Good:**
+```typescript
+window.__IS_PLAYWRIGHT__ = true;
+```

@@ -17,9 +17,10 @@ export default defineConfig({
     // Windows 11 has problems using localhost due to ipv6 resolution delays
     // baseURL: 'http://127.0.0.1:3000',
 
-    // Collect trace when retrying the failed test.
+    // Collect trace and screenshots for failed tests
     // See https://playwright.dev/docs/trace-viewer
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   /* Folder for test artifacts such as screenshots, videos, traces, etc. */
   outputDir: "test-results/",

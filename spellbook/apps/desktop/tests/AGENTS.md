@@ -421,7 +421,26 @@ test("Feature Test", async () => {
 
 When tests fail, follow this systematic approach:
 
-### 1. View the HTML Report
+> [!IMPORTANT]
+> **CDP Trace Limitation**: Playwright traces cannot capture screenshots when using CDP connections (required for Tauri apps). The trace viewer will show `about:blank` instead of visual snapshots. Use manual screenshot capture instead.
+
+### 1. Capture Screenshots for Visual Debugging
+
+Use the `captureDebugScreenshot()` helper to capture and attach screenshots to test reports:
+
+```typescript
+import { captureDebugScreenshot } from "./fixtures/test-fixtures";
+
+// Capture before the failing assertion
+await captureDebugScreenshot(page, "before-assertion");
+
+// Then the assertion
+await expect(element).toBeVisible();
+```
+
+**Automatic failure screenshots**: The `appContext` fixture automatically captures a full-page screenshot when tests fail. Check the "Attachments" section in the HTML report.
+
+### 2. View the HTML Report
 
 ```powershell
 npx playwright show-report
@@ -433,27 +452,21 @@ The report provides:
 - Full execution traces with DOM snapshots
 - Network activity and console logs
 
-### 2. Analyze the Trace
+### 3. Analyze the Trace
 
 In the HTML report:
 1. Click the failed test
 2. Open the **Trace** tab
 3. Review:
-   - **DOM snapshots** at each step
+   - **DOM snapshots** at each step (screenshots not available with CDP)
    - **Network requests** (failed API calls)
    - **Console logs** (JavaScript errors)
    - **Exact line** where test failed
 
-### 3. Extract Error Context
+> [!NOTE]
+> Visual screenshots are not available in traces when using CDP. Check the "Attachments" section for manual and automatic failure screenshots instead.
 
-When analyzing failures, document:
-- **Assertion that failed** (line number and message)
-- **DOM state** at failure (from trace or screenshot)
-- **Console errors** (check trace)
-- **Network failures** (from trace)
-- **Recent code changes** that might have caused it
-
-### 4. Common Failure Patterns
+### 4. Extract Error Context
 
 | Error Pattern | Likely Cause | Solution |
 |---------------|--------------|----------|

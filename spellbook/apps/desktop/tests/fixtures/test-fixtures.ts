@@ -4,7 +4,12 @@
  */
 import { test as base } from "@playwright/test";
 import type { FileTracker, TauriAppContext } from "./tauri-fixture";
-import { cleanupTauriApp, createFileTracker, launchTauriApp } from "./tauri-fixture";
+import {
+  captureDebugScreenshot,
+  cleanupTauriApp,
+  createFileTracker,
+  launchTauriApp,
+} from "./tauri-fixture";
 
 /**
  * Extended test fixtures for Tauri E2E tests.
@@ -68,6 +73,19 @@ export const test = base.extend<TauriTestFixtures>({
     // Provide the context to the test
     await use(ctx);
 
+    // Auto-capture screenshot on test failure (CDP traces don't capture screenshots)
+    if (testInfo.status !== testInfo.expectedStatus) {
+      try {
+        const screenshot = await ctx.page.screenshot({ fullPage: true });
+        await testInfo.attach("failure-screenshot", {
+          body: screenshot,
+          contentType: "image/png",
+        });
+      } catch (error) {
+        console.warn("Failed to capture failure screenshot:", error);
+      }
+    }
+
     // Cleanup after the test
     await cleanupTauriApp(ctx);
   },
@@ -90,3 +108,9 @@ export const test = base.extend<TauriTestFixtures>({
  * This allows tests to import both test and expect from the same file.
  */
 export { expect } from "@playwright/test";
+
+/**
+ * Re-export screenshot helper for manual screenshot capture.
+ * Use this for visual debugging since CDP traces don't capture screenshots automatically.
+ */
+export { captureDebugScreenshot };

@@ -75,7 +75,48 @@ test.describe("My Feature", () => {
 });
 ```
 
+## Visual Debugging with Screenshots
+
+> [!IMPORTANT]
+> **CDP Trace Limitation**: When using `connectOverCDP` to test Tauri apps, Playwright traces **cannot capture screenshots automatically**. The trace viewer will show `about:blank` instead of visual snapshots. This is a fundamental limitation of CDP connections, not a configuration issue.
+
+**What still works in traces:**
+- ✅ DOM snapshots (inspect page structure)
+- ✅ Network activity
+- ✅ Console logs
+- ✅ Test actions and timing
+
+**Workaround**: Use manual screenshot capture for visual debugging.
+
+### Manual Screenshot Capture
+
+Use the `captureDebugScreenshot()` helper to capture and attach screenshots to test reports:
+
+```typescript
+import { captureDebugScreenshot, expect, test } from "./fixtures/test-fixtures";
+
+test("my test", async ({ appContext }) => {
+  const { page } = appContext;
+
+  // Capture screenshot at key points
+  await captureDebugScreenshot(page, "before-action");
+
+  // Perform action
+  await page.getByRole("button", { name: "Delete" }).click();
+
+  // Capture result
+  await captureDebugScreenshot(page, "after-action", { fullPage: true });
+});
+```
+
+Screenshots appear in the HTML report under the "Attachments" section.
+
+### Automatic Failure Screenshots
+
+The `appContext` fixture **automatically captures a full-page screenshot** when tests fail. No manual action needed - just check the "Attachments" section in the HTML report after a test failure.
+
 ## Core Infrastructure
+
 
 ### Playwright Fixtures (Automatic Lifecycle)
 
@@ -297,7 +338,26 @@ npx playwright show-report
 
 When tests fail, follow this systematic approach to gather useful debug information:
 
-### 1. View the HTML Report
+> [!IMPORTANT]
+> **CDP Trace Limitation**: Playwright traces cannot capture screenshots when using CDP connections (required for Tauri). Use manual screenshot capture instead.
+
+### 1. Capture Screenshots Manually
+
+Add screenshots at key points in your test to visualize what's happening:
+
+```typescript
+import { captureDebugScreenshot } from "./fixtures/test-fixtures";
+
+// Before the failing assertion
+await captureDebugScreenshot(page, "before-assertion");
+
+// Then the assertion
+await expect(element).toBeVisible();
+```
+
+**Automatic failure screenshots**: The `appContext` fixture automatically captures a full-page screenshot when tests fail. Check the "Attachments" section in the HTML report.
+
+### 2. View the HTML Report
 
 ```powershell
 npx playwright show-report

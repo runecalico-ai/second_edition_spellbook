@@ -338,9 +338,9 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
 
   // Additional wait for UI to be ready
   try {
-    await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
+    await page.waitForLoadState("load", { timeout: 10000 });
   } catch {
-    console.log("DOMContentLoaded timeout - continuing anyway");
+    console.log("load timeout - continuing anyway");
   }
 
   // Wait for the page to be in a ready state
@@ -481,6 +481,32 @@ function copySqliteVecToDataDir(dataDir: string): void {
 export interface FileTracker {
   track: (filePath: string) => string;
   cleanup: () => void;
+}
+
+/**
+ * Captures a screenshot and attaches it to the test report.
+ * Use this for visual debugging since CDP traces don't capture screenshots automatically.
+ *
+ * @param page - The Playwright page object
+ * @param name - Name for the screenshot attachment (e.g., "after-import", "error-state")
+ * @param options - Screenshot options
+ * @example
+ * ```typescript
+ * await captureDebugScreenshot(page, "before-delete", { fullPage: true });
+ * ```
+ */
+export async function captureDebugScreenshot(
+  page: Page,
+  name: string,
+  options?: { fullPage?: boolean },
+): Promise<void> {
+  const screenshot = await page.screenshot({
+    fullPage: options?.fullPage ?? true,
+  });
+  await test.info().attach(name, {
+    body: screenshot,
+    contentType: "image/png",
+  });
 }
 
 /** Helper to track files for cleanup */

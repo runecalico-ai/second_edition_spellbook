@@ -8,7 +8,9 @@
       "**/target/**",
       "**/gen/**",
       "**/*.sqlite3*",
-      "**/*.zip"
+      "**/*.zip",
+      "**/playwright-report/**",
+      "**/test-results/**"
     ]
   },
   "organizeImports": {

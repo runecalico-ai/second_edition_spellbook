@@ -498,7 +498,7 @@ export interface FileTracker {
 export async function captureDebugScreenshot(
   page: Page,
   name: string,
-  options?: { fullPage?: boolean }
+  options?: { fullPage?: boolean },
 ): Promise<void> {
   const screenshot = await page.screenshot({
     fullPage: options?.fullPage ?? true,

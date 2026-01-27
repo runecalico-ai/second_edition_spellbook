@@ -4,7 +4,12 @@
  */
 import { test as base } from "@playwright/test";
 import type { FileTracker, TauriAppContext } from "./tauri-fixture";
-import { captureDebugScreenshot, cleanupTauriApp, createFileTracker, launchTauriApp } from "./tauri-fixture";
+import {
+  captureDebugScreenshot,
+  cleanupTauriApp,
+  createFileTracker,
+  launchTauriApp,
+} from "./tauri-fixture";
 
 /**
  * Extended test fixtures for Tauri E2E tests.

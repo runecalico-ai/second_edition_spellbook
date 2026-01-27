@@ -25,9 +25,9 @@ export default defineConfig({
     // - Test actions and timing
     trace: {
       mode: "retain-on-failure",
-      screenshots: false,  // Disabled - CDP can't capture these (use captureDebugScreenshot instead)
-      snapshots: true,     // Enabled - DOM snapshots work with CDP
-      sources: true,       // Enabled - Include source code in traces
+      screenshots: false, // Disabled - CDP can't capture these (use captureDebugScreenshot instead)
+      snapshots: true, // Enabled - DOM snapshots work with CDP
+      sources: true, // Enabled - Include source code in traces
     },
     // Manual screenshots still work via page.screenshot() and are auto-captured on failure
     screenshot: "only-on-failure",

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useModal } from "../store/useModal";
+import PrintOptionsDialog, { type PrintOptions } from "./components/PrintOptionsDialog";
 import type {
   Character,
   CharacterAbilities,
@@ -66,6 +67,14 @@ export default function CharacterEditor() {
   const [saving, setSaving] = useState(false);
   const [isAddingClass, setIsAddingClass] = useState(false);
 
+  // Print dialog state
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [printDialogMode, setPrintDialogMode] = useState<"character_sheet" | "spellbook_pack">(
+    "character_sheet",
+  );
+  const [printDialogTitle, setPrintDialogTitle] = useState("");
+  const [printTargetClass, setPrintTargetClass] = useState<string | null>(null);
+
   const loadData = useCallback(
     async (isSilent = false) => {
       if (!Number.isFinite(characterId)) return;
@@ -106,6 +115,53 @@ export default function CharacterEditor() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Handle print confirmation from dialog
+  const handlePrintConfirm = async (options: PrintOptions) => {
+    if (!character) return;
+
+    try {
+      setSaving(true);
+      let path: string;
+
+      if (printDialogMode === "character_sheet") {
+        path = await invoke<string>("export_character_sheet", {
+          characterId: character.id,
+          format: options.format,
+          includeCom: options.includeCom,
+          includeNotes: options.includeNotes,
+        });
+      } else {
+        // spellbook_pack
+        if (!printTargetClass) {
+          modalAlert("No class selected for spellbook pack", "Error", "error");
+          return;
+        }
+        path = await invoke<string>("export_character_spellbook_pack", {
+          characterId: character.id,
+          className: printTargetClass,
+          layout: options.layout || "compact",
+          format: options.format,
+          includeNotes: options.includeNotes,
+        });
+      }
+
+      const docType = printDialogMode === "character_sheet" ? "Character sheet" : "Spellbook pack";
+      modalAlert(`${docType} saved to: ${path}`, "Print Success", "success");
+    } catch (e) {
+      modalAlert(`Print failed: ${e}`, "Error", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handler for opening print dialog from nested components
+  const handleOpenPrintDialog = (className: string) => {
+    setPrintDialogMode("spellbook_pack");
+    setPrintDialogTitle(`Print Spellbook Pack - ${className}`);
+    setPrintTargetClass(className);
+    setPrintDialogOpen(true);
+  };
 
   const saveIdentity = async () => {
     if (!character) return;
@@ -195,6 +251,19 @@ export default function CharacterEditor() {
               className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 rounded text-xs font-medium transition-colors"
             >
               Reload
+            </button>
+            <button
+              type="button"
+              data-testid="btn-print-sheet"
+              onClick={() => {
+                setPrintDialogMode("character_sheet");
+                setPrintDialogTitle("Print Character Sheet");
+                setPrintTargetClass(null);
+                setPrintDialogOpen(true);
+              }}
+              className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 rounded text-xs font-medium transition-colors"
+            >
+              Print Sheet
             </button>
             <button
               type="button"
@@ -311,7 +380,10 @@ export default function CharacterEditor() {
               <div className="w-10 h-5 bg-neutral-800 rounded-full peer peer-checked:bg-blue-600 relative transition-all">
                 <div className="absolute top-1 left-1 w-3 h-3 rounded-full bg-white transition-all peer-checked:left-6" />
               </div>
-              <span className="ml-3 text-sm font-medium text-neutral-400 group-hover:text-neutral-200 transition-colors">
+              <span
+                className="ml-3 text-sm font-medium text-neutral-400 group-hover:text-neutral-200 transition-colors"
+                title="Optional 2nd Edition ability score for physical attractiveness. Impact depends on your campaign rules."
+              >
                 Enable Comeliness (COM)
               </span>
             </label>
@@ -390,6 +462,7 @@ export default function CharacterEditor() {
             <div className="flex gap-2">
               <select
                 id="new-class-select"
+                data-testid="new-class-select"
                 className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-1 text-xs outline-none disabled:opacity-50"
                 defaultValue=""
                 disabled={isAddingClass}
@@ -451,7 +524,12 @@ export default function CharacterEditor() {
         {classes.length > 0 && (
           <section className="space-y-6 pb-12">
             <div className="flex items-center gap-2 px-2">
-              <h3 className="text-lg font-semibold">Spell Management</h3>
+              <h3
+                className="text-lg font-semibold"
+                title="Manage spells for each class independently. Use KNOWN for your spellbook/repertoire and PREPARED for daily memorization."
+              >
+                Spell Management
+              </h3>
               <span className="text-[10px] text-neutral-600 uppercase tracking-widest font-bold">
                 Per Class
               </span>
@@ -459,12 +537,25 @@ export default function CharacterEditor() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {classes.map((cls) => (
-                <ClassSpellList key={cls.id} charClass={cls} />
+                <ClassSpellList
+                  key={cls.id}
+                  charClass={cls}
+                  onOpenPrintDialog={handleOpenPrintDialog}
+                />
               ))}
             </div>
           </section>
         )}
       </div>
+
+      {/* Print Options Dialog */}
+      <PrintOptionsDialog
+        isOpen={printDialogOpen}
+        onClose={() => setPrintDialogOpen(false)}
+        onConfirm={handlePrintConfirm}
+        mode={printDialogMode}
+        title={printDialogTitle}
+      />
     </div>
   );
 }
@@ -514,12 +605,15 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
   };
 
   return (
-    <div className="flex items-center justify-between bg-neutral-950 border border-neutral-800 p-4 rounded-xl group hover:border-neutral-700 transition-all">
+    <div
+      className="flex items-center justify-between bg-neutral-950 border border-neutral-800 p-4 rounded-xl group hover:border-neutral-700 transition-all"
+      data-testid="class-row"
+    >
       <div className="flex items-center gap-4">
         <div className="h-10 w-10 bg-neutral-900 rounded-lg flex items-center justify-center font-bold text-neutral-400 group-hover:text-blue-500 transition-colors">
           {cls.className.charAt(0)}
         </div>
-        <div data-testid="class-row">
+        <div data-testid="class-info">
           <h4 className="font-semibold text-neutral-200">
             {cls.className === "Other" && cls.classLabel ? cls.classLabel : cls.className}
           </h4>
@@ -534,6 +628,7 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
           <div className="flex items-center gap-2">
             <button
               type="button"
+              data-testid="btn-class-level-down"
               onClick={() => updateLevel(Math.max(0, level - 1))}
               className="h-6 w-6 rounded bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-500 hover:text-white"
             >
@@ -551,6 +646,7 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
             />
             <button
               type="button"
+              data-testid="btn-class-level-up"
               onClick={() => updateLevel(level + 1)}
               className="h-6 w-6 rounded bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-500 hover:text-white"
             >
@@ -561,6 +657,7 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
 
         <button
           type="button"
+          data-testid="btn-remove-class"
           onClick={removeClass}
           className="p-2 text-neutral-700 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
           title="Remove Class"
@@ -588,7 +685,13 @@ function ClassRow({ cls, onUpdate }: { cls: CharacterClass; onUpdate: () => void
   );
 }
 
-function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
+function ClassSpellList({
+  charClass,
+  onOpenPrintDialog,
+}: {
+  charClass: CharacterClass;
+  onOpenPrintDialog: (className: string) => void;
+}) {
   const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const [spells, setSpells] = useState<CharacterSpellbookEntry[]>([]);
   const [activeTab, setActiveTab] = useState<"KNOWN" | "PREPARED">("KNOWN");
@@ -624,6 +727,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
         <div className="flex flex-col flex-1 gap-1">
           <button
             type="button"
+            data-testid="btn-toggle-class-section"
             className="flex items-center gap-3 cursor-pointer group text-left w-full bg-transparent border-none p-0"
             onClick={() => setIsCollapsed(!isCollapsed)}
           >
@@ -655,10 +759,22 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
           </button>
           {!isCollapsed && (
             <div className="flex gap-2 pl-4">
+              <button
+                type="button"
+                data-testid="btn-print-pack"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenPrintDialog(charClass.className);
+                }}
+                className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all text-neutral-600 hover:text-neutral-400 hover:bg-neutral-800"
+              >
+                Print Pack
+              </button>
               {(["KNOWN", "PREPARED"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
+                  data-testid={`tab-${tab.toLowerCase()}`}
                   onClick={() => {
                     setActiveTab(tab);
                     setSelectedRemoveIds(new Set());
@@ -699,6 +815,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                   modalAlert(`Bulk remove failed: ${e}`, "Error", "error");
                 }
               }}
+              data-testid="btn-bulk-remove-spells"
               className="px-2 py-1 bg-red-900/20 hover:bg-red-900/40 text-red-500 border border-red-500/30 rounded text-xs transition-all"
             >
               REMOVE {selectedRemoveIds.size}
@@ -725,6 +842,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
             >
               <input
                 type="checkbox"
+                data-testid={`checkbox-select-spell-${spell.spellId}`}
                 className="rounded border-neutral-800 bg-neutral-900 text-blue-600 focus:ring-0 h-3.5 w-3.5"
                 checked={selectedRemoveIds.has(spell.spellId)}
                 onChange={() => {
@@ -746,6 +864,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                     <input
                       className="bg-transparent border-b border-neutral-800 text-[10px] text-neutral-400 focus:text-white focus:border-blue-500 outline-none px-1 py-0.5 transition-all w-32 placeholder:text-neutral-700"
                       placeholder="Add notes..."
+                      data-testid={`input-spell-notes-${spell.spellId}`}
                       value={spell.notes || ""}
                       onChange={async (e) => {
                         try {
@@ -763,6 +882,7 @@ function ClassSpellList({ charClass }: { charClass: CharacterClass }) {
                     />
                     <button
                       type="button"
+                      data-testid={`btn-remove-spell-${spell.spellId}`}
                       onClick={async () => {
                         try {
                           await invoke("remove_character_spell", {
@@ -1003,6 +1123,7 @@ function SpellPicker({
           }
           setOpen(true);
         }}
+        data-testid="btn-open-spell-picker"
         className="px-3 py-1 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/30 rounded-lg text-[11px] font-bold transition-all"
       >
         + ADD
@@ -1023,6 +1144,7 @@ function SpellPicker({
               </div>
               <button
                 type="button"
+                data-testid="btn-close-spell-picker"
                 onClick={() => setOpen(false)}
                 className="text-neutral-500 hover:text-white transition-colors"
               >
@@ -1048,6 +1170,7 @@ function SpellPicker({
             <div className="p-6 border-b border-neutral-800 bg-neutral-950/20 space-y-4">
               <input
                 id="spell-search-input"
+                data-testid="spell-picker-search-input"
                 className="w-full bg-neutral-950 border border-neutral-800 focus:border-blue-600/50 focus:ring-1 focus:ring-blue-600/20 p-3 rounded-xl text-sm transition-all outline-none"
                 placeholder="Search spells by name..."
                 value={query}
@@ -1058,6 +1181,7 @@ function SpellPicker({
                 <label className="flex items-center gap-2 cursor-pointer group">
                   <input
                     type="checkbox"
+                    data-testid="filter-is-quest"
                     className="rounded border-neutral-800 bg-neutral-950 text-blue-600 focus:ring-0"
                     checked={filters.isQuestSpell}
                     onChange={(e) => setFilters({ ...filters, isQuestSpell: e.target.checked })}
@@ -1069,6 +1193,7 @@ function SpellPicker({
                 <label className="flex items-center gap-2 cursor-pointer group">
                   <input
                     type="checkbox"
+                    data-testid="filter-is-cantrip"
                     className="rounded border-neutral-800 bg-neutral-950 text-blue-600 focus:ring-0"
                     checked={filters.isCantrip}
                     onChange={(e) => setFilters({ ...filters, isCantrip: e.target.checked })}
@@ -1080,6 +1205,7 @@ function SpellPicker({
 
                 <select
                   className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-[10px] uppercase font-bold text-neutral-400 outline-none"
+                  data-testid="filter-school-select"
                   value={filters.school}
                   onChange={(e) => setFilters({ ...filters, school: e.target.value })}
                 >
@@ -1096,6 +1222,7 @@ function SpellPicker({
 
                 <select
                   className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-[10px] uppercase font-bold text-neutral-400 outline-none"
+                  data-testid="filter-sphere-select"
                   value={filters.sphere}
                   onChange={(e) => setFilters({ ...filters, sphere: e.target.value })}
                 >
@@ -1112,6 +1239,7 @@ function SpellPicker({
                   <input
                     type="number"
                     placeholder="Min"
+                    data-testid="filter-level-min"
                     className="w-12 bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-[10px] text-neutral-400 outline-none"
                     value={filters.levelMin ?? ""}
                     onChange={(e) =>
@@ -1124,6 +1252,7 @@ function SpellPicker({
                   <input
                     type="number"
                     placeholder="Max"
+                    data-testid="filter-level-max"
                     className="w-12 bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-[10px] text-neutral-400 outline-none"
                     value={filters.levelMax ?? ""}
                     onChange={(e) =>
@@ -1138,6 +1267,7 @@ function SpellPicker({
                 <input
                   type="text"
                   placeholder="TAGS..."
+                  data-testid="filter-tags-input"
                   className="bg-neutral-950 border border-neutral-800 rounded px-2 py-1 text-[10px] uppercase font-bold text-neutral-400 outline-none w-24"
                   value={filters.tags}
                   onChange={(e) => setFilters({ ...filters, tags: e.target.value })}
@@ -1155,6 +1285,7 @@ function SpellPicker({
                   <div className="flex items-center gap-4">
                     <input
                       type="checkbox"
+                      data-testid={`checkbox-select-spell-${spell.id}`}
                       className="rounded border-neutral-800 bg-neutral-900 text-blue-600 focus:ring-0 h-4 w-4"
                       checked={selectedIds.has(spell.id)}
                       onChange={() => toggleId(spell.id)}
@@ -1208,6 +1339,7 @@ function SpellPicker({
                         modalAlert(`Error: ${e}`, "Error", "error");
                       }
                     }}
+                    data-testid={`btn-add-spell-${spell.id}`}
                     className="px-4 py-1 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/30 rounded-lg text-xs font-bold transition-all"
                   >
                     ADD
@@ -1223,6 +1355,7 @@ function SpellPicker({
               <div className="flex gap-3">
                 <button
                   type="button"
+                  data-testid="btn-cancel-picker"
                   onClick={() => setOpen(false)}
                   className="px-4 py-2 text-xs font-bold text-neutral-500 hover:text-white transition-colors"
                 >
@@ -1232,6 +1365,7 @@ function SpellPicker({
                   type="button"
                   disabled={selectedIds.size === 0}
                   onClick={bulkAdd}
+                  data-testid="btn-bulk-add-spells"
                   className="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-xs font-bold transition-all shadow-lg"
                 >
                   BULK ADD

@@ -57,3 +57,34 @@ pub struct ChatResponse {
     pub citations: Vec<String>,
     pub meta: serde_json::Value,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CharacterSearchFilters {
+    pub race: Option<String>,
+    pub character_type: Option<String>,
+    pub min_level: Option<i32>,
+    pub max_level: Option<i32>,
+    pub class_name: Option<String>,
+    pub query: Option<String>,
+    // Ability Filters (min values)
+    pub min_str: Option<i32>,
+    pub min_dex: Option<i32>,
+    pub min_con: Option<i32>,
+    pub min_int: Option<i32>,
+    pub min_wis: Option<i32>,
+    pub min_cha: Option<i32>,
+    pub min_com: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CharacterSearchResult {
+    pub id: i64,
+    pub name: String,
+    pub character_type: String,
+    pub race: Option<String>,
+    pub alignment: Option<String>,
+    pub level_summary: String,
+    pub classes: Vec<String>,
+}

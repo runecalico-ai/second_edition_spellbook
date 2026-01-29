@@ -102,8 +102,14 @@ pub struct CharacterSpellbookEntry {
 pub struct PrintableCharacter {
     pub name: String,
     pub character_type: String,
+    pub race: Option<String>,
+    pub alignment: Option<String>,
     pub notes: Option<String>,
-    pub spells: Vec<PrintableSpell>,
+    pub character_spells: Vec<PrintableSpellbookEntry>,
+    pub abilities: Option<CharacterAbilities>,
+    pub classes: Vec<CharacterClass>,
+    pub include_com: bool,
+    pub include_notes: bool,
 }
 
 #[derive(Serialize)]
@@ -138,4 +144,5 @@ pub struct PrintableSpellbookEntry {
     pub prepared: i64,
     pub known: i64,
     pub notes: Option<String>,
+    pub class_name: Option<String>, // Added to associate with specific class in character sheet
 }

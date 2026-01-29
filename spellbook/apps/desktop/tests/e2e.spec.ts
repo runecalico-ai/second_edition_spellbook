@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
+import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId, getTestDirname } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 

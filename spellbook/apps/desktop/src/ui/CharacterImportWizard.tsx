@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useModal } from "../store/useModal";
 import type { Character, CharacterBundle } from "../types/character";
 

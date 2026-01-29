@@ -1,0 +1,97 @@
+{
+  "format": "adnd2e-character",
+  "formatVersion": "1.0.0",
+  "name": "REDACTED_NAME",
+  "characterType": "PC",
+  "race": "Elf",
+  "alignment": "Chaotic Good",
+  "comEnabled": 1,
+  "notes": "",
+  "createdAt": "REDACTED",
+  "updatedAt": "REDACTED",
+  "abilities": {
+    "id": 1,
+    "characterId": 1,
+    "str": 10,
+    "dex": 15,
+    "con": 12,
+    "int": 18,
+    "wis": 14,
+    "cha": 8,
+    "com": 13
+  },
+  "classes": [
+    {
+      "className": "Mage",
+      "classLabel": null,
+      "level": 5,
+      "spells": [
+        {
+          "spell": {
+            "id": "REDACTED",
+            "name": "REDACTED_SPELL",
+            "school": "Evocation",
+            "sphere": null,
+            "class_list": null,
+            "level": 1,
+            "range": null,
+            "components": null,
+            "material_components": null,
+            "casting_time": null,
+            "duration": null,
+            "area": null,
+            "saving_throw": null,
+            "reversible": 0,
+            "description": "Snapshot spell description.",
+            "tags": null,
+            "source": null,
+            "edition": null,
+            "author": null,
+            "license": null,
+            "is_quest_spell": 0,
+            "is_cantrip": 0,
+            "artifacts": null
+          },
+          "listType": "KNOWN",
+          "notes": "",
+          "characterClassId": "REDACTED",
+          "spellId": "REDACTED"
+        },
+        {
+          "spell": {
+            "id": "REDACTED",
+            "name": "REDACTED_SPELL",
+            "school": "Evocation",
+            "sphere": null,
+            "class_list": null,
+            "level": 1,
+            "range": null,
+            "components": null,
+            "material_components": null,
+            "casting_time": null,
+            "duration": null,
+            "area": null,
+            "saving_throw": null,
+            "reversible": 0,
+            "description": "Snapshot spell description.",
+            "tags": null,
+            "source": null,
+            "edition": null,
+            "author": null,
+            "license": null,
+            "is_quest_spell": 0,
+            "is_cantrip": 0,
+            "artifacts": null
+          },
+          "listType": "PREPARED",
+          "notes": "",
+          "characterClassId": "REDACTED",
+          "spellId": "REDACTED"
+        }
+      ],
+      "id": "REDACTED",
+      "characterId": "REDACTED"
+    }
+  ],
+  "id": "REDACTED"
+}

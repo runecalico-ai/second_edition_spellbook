@@ -2,7 +2,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 import uuid
 from datetime import datetime
@@ -277,8 +276,8 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
     fmt = params.get("format") or "md"
     mode = params.get("mode") or "list"
     layout = params.get("layout") or "compact"
-    page_size = params.get("page_size") or "letter"  # a4 or letter
     character = params.get("character") or {}
+    class_name = params.get("class_name")  # For spellbook pack
     output_dir = Path(params.get("output_dir") or os.getcwd())
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -287,13 +286,21 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
     output_path = output_dir / filename
 
     if fmt == "md":
-        lines = []
-        for spell in spells:
-            lines.append(f"# {spell.get('name')}")
-            lines.append("")
-            lines.append(spell.get("description", "").strip())
-            lines.append("")
-        output_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+        if mode == "character_sheet":
+            text = _render_character_sheet_markdown(character)
+        elif mode == "spellbook_pack":
+            text = _render_spellbook_pack_markdown(spells, character, class_name)
+        else:
+            # Default/List mode
+            lines = []
+            for spell in spells:
+                lines.append(f"# {spell.get('name')}")
+                lines.append("")
+                lines.append(spell.get("description", "").strip())
+                lines.append("")
+            text = "\n".join(lines).strip() + "\n"
+
+        output_path.write_text(text, encoding="utf-8")
         return {"path": str(output_path), "format": "md"}
 
     if fmt == "html":
@@ -303,45 +310,26 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
         return {"path": str(html_path), "format": "html"}
 
     if fmt == "pdf":
+        # Generate print-optimized HTML instead of PDF
+        # Users can use browser "Print to PDF" for actual PDF output
         html_path = output_dir / f"spellbook_export_{unique_id}.html"
-        html = _render_print_html(spells, mode, layout, character)
+        if mode == "character_sheet":
+            html = _render_character_sheet_html(character)
+        elif mode == "spellbook_pack":
+            html = _render_spellbook_pack_html(spells, character, class_name, layout)
+        else:
+            html = _render_print_html(spells, mode, layout, character)
+
         html_path.write_text(html, encoding="utf-8")
 
-        try:
-            _render_pdf_with_pandoc(html_path, output_path, page_size)
-            return {"path": str(output_path), "format": "pdf"}
-        except Exception as e:
-            # Fallback to HTML if PDF generation fails
-            return {
-                "path": str(html_path),
-                "format": "html",
-                "warning": f"PDF generation failed, using HTML fallback: {str(e)}",
-            }
+        # Return HTML path with note that it's print-optimized
+        return {
+            "path": str(html_path),
+            "format": "html",
+            "note": "Print-optimized HTML generated. Use browser 'Print to PDF' for PDF output.",
+        }
 
     raise ValueError(f"Unsupported export format: {fmt}")
-
-
-def _render_pdf_with_pandoc(html_path: Path, pdf_path: Path, page_size: str) -> None:
-    try:
-        subprocess.run(
-            ["pandoc", "--version"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-        raise RuntimeError("Pandoc is not installed or not working correctly.") from exc
-
-    paper_opt = "a4paper" if page_size.lower() == "a4" else "letterpaper"
-
-    # We use geometry to set paper size
-    result = subprocess.run(
-        ["pandoc", str(html_path), "-V", f"geometry:{paper_opt}", "-o", str(pdf_path)],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Pandoc failed: {result.stderr.strip()}")
 
 
 def _render_print_html(
@@ -420,7 +408,164 @@ def _render_print_html(
     }}
   </style>
 </head>
+    {body}
+</body>
+</html>
+"""
+
+
+def _render_character_sheet_html(character: Dict[str, Any]) -> str:
+    name = html_escape(character.get("name") or "Unnamed Character")
+    char_type = html_escape(character.get("characterType") or "PC")
+    race = html_escape(character.get("race") or "-")
+    alignment = html_escape(character.get("alignment") or "-")
+    notes = html_escape(character.get("notes") or "")
+
+    include_com = character.get("includeCom", False)
+    include_notes = character.get("includeNotes", True)
+
+    # Abilities
+    abilities = character.get("abilities") or {}
+
+    # Classes
+    classes = character.get("classes") or []
+
+    # Spells grouped by class
+    all_spells = character.get("characterSpells") or []
+    spells_by_class: Dict[str, List[Dict[str, Any]]] = {}
+    for spell in all_spells:
+        cls_name = spell.get("className") or "Other"
+        if cls_name not in spells_by_class:
+            spells_by_class[cls_name] = []
+        spells_by_class[cls_name].append(spell)
+
+    sections_html = ""
+    for cls in classes:
+        c_name = cls.get("className") or "Unknown"
+        c_lbl = cls.get("classLabel") or c_name
+        c_lvl = cls.get("level") or 1
+
+        cls_spells = spells_by_class.get(c_name, [])
+        spell_table = ""
+        if cls_spells:
+            spell_rows = ""
+            for s in cls_spells:
+                s_name = html_escape(s.get("name") or "Untitled")
+                s_lvl = s.get("level") or 0
+                s_type = "Prepared" if s.get("prepared") else "Known"
+                s_notes = html_escape(s.get("notes") or "") if include_notes else ""
+                notes_cell = (
+                    f"<br/><small><em>{s_notes}</em></small>" if s_notes else ""
+                )
+
+                spell_rows += f"<tr><td>{s_name}{notes_cell}</td><td>{s_lvl}</td><td>{s_type}</td></tr>"
+
+            spell_table = f"""
+            <table class="spell-table">
+                <thead><tr><th>Spell</th><th>Lvl</th><th>Status</th></tr></thead>
+                <tbody>{spell_rows}</tbody>
+            </table>
+            """
+
+        sections_html += f"""
+        <div class="section">
+            <h2>{html_escape(c_lbl)} (Level {c_lvl})</h2>
+            {spell_table if spell_table else "<p>No spells recorded.</p>"}
+        </div>
+        """
+
+    com_box = ""
+    if include_com:
+        com_box = f'<div class="ability-box"><div class="ability-val">{abilities.get("com", 10)}</div><div class="ability-lbl">COM</div></div>'
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{name} - Character Sheet</title>
+  <style>
+    body {{ font-family: "Inter", -apple-system, sans-serif; color: #111; margin: 40px; line-height: 1.5; }}
+    h1 {{ border-bottom: 2px solid #333; padding-bottom: 8px; margin-top: 0; }}
+    h2 {{ background: #f4f4f4; padding: 6px 12px; margin-top: 24px; font-size: 1.2rem; border-left: 4px solid #333; }}
+    .header-grid {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }}
+    .ability-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 8px; text-align: center; }}
+    .ability-box {{ border: 1px solid #ccc; padding: 10px 4px; border-radius: 6px; background: #fafafa; }}
+    .ability-val {{ font-size: 20px; font-weight: bold; color: #222; }}
+    .ability-lbl {{ font-size: 11px; text-transform: uppercase; color: #666; font-weight: 600; margin-top: 2px; }}
+    .section {{ margin-bottom: 30px; }}
+    .spell-table {{ width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }}
+    .spell-table th {{ text-align: left; background: #eee; padding: 6px 8px; border: 1px solid #ddd; }}
+    .spell-table td {{ padding: 6px 8px; border: 1px solid #ddd; vertical-align: top; }}
+    .notes-box {{ border: 1px solid #ddd; padding: 12px; background: #fffcf0; white-space: pre-wrap; margin-top: 10px; font-size: 14px; }}
+    @media print {{
+      body {{ margin: 0; }}
+      .section {{ page-break-inside: avoid; }}
+    }}
+  </style>
+</head>
 <body>
+  <h1>{name}</h1>
+
+  <div class="header-grid">
+    <div><strong>Type:</strong> {char_type}</div>
+    <div><strong>Race:</strong> {race}</div>
+    <div><strong>Alignment:</strong> {alignment}</div>
+  </div>
+
+  <div class="section">
+    <div class="ability-grid">
+      <div class="ability-box"><div class="ability-val">{abilities.get("str", 10)}</div><div class="ability-lbl">STR</div></div>
+      <div class="ability-box"><div class="ability-val">{abilities.get("dex", 10)}</div><div class="ability-lbl">DEX</div></div>
+      <div class="ability-box"><div class="ability-val">{abilities.get("con", 10)}</div><div class="ability-lbl">CON</div></div>
+      <div class="ability-box"><div class="ability-val">{abilities.get("int", 10)}</div><div class="ability-lbl">INT</div></div>
+      <div class="ability-box"><div class="ability-val">{abilities.get("wis", 10)}</div><div class="ability-lbl">WIS</div></div>
+      <div class="ability-box"><div class="ability-val">{abilities.get("cha", 10)}</div><div class="ability-lbl">CHA</div></div>
+      {com_box}
+    </div>
+  </div>
+
+  {sections_html}
+
+  {f'<div class="section"><h2>Notes</h2><div class="notes-box">{notes}</div></div>' if include_notes and notes else ""}
+</body>
+</html>
+"""
+
+
+def _render_spellbook_pack_html(
+    spells: List[Dict[str, Any]],
+    character: Dict[str, Any],
+    class_name: str,
+    layout: str,
+) -> str:
+    char_name = html_escape(character.get("name") or "Character")
+    title = f"{char_name}'s Spellbook - {html_escape(class_name or 'General')}"
+
+    spell_blocks = []
+    for spell in spells:
+        spell_blocks.append(_render_spell_block(spell, layout, "pack"))
+
+    body = "\n".join(spell_blocks)
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{title}</title>
+  <style>
+    body {{ font-family: "Inter", sans-serif; color: #111; margin: 32px; }}
+    h1 {{ margin: 0 0 4px 0; }}
+    .subtitle {{ color: #555; margin-bottom: 24px; font-style: italic; }}
+    .spell {{ border-bottom: 1px solid #ddd; padding: 16px 0; page-break-inside: avoid; }}
+    .spell-header {{ display: flex; justify-content: space-between; align-items: baseline; }}
+    .pill {{ background: #f2f2f2; border-radius: 999px; padding: 2px 8px; font-size: 11px; }}
+    .details-table {{ width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }}
+    .details-table td {{ padding: 4px 6px; border: 1px solid #e2e2e2; }}
+  </style>
+</head>
+<body>
+  <h1>{char_name}'s Spellbook</h1>
+  <div class="subtitle">Class: {html_escape(class_name or 'All')}</div>
   {body}
 </body>
 </html>
@@ -508,6 +653,135 @@ def _render_spell_block(spell: Dict[str, Any], layout: str, mode: str) -> str:
   {notes_block}
 </section>
 """
+
+
+def _render_character_sheet_markdown(character: Dict[str, Any]) -> str:
+    name = character.get("name") or "Unnamed Character"
+    char_type = character.get("characterType") or "PC"
+    race = character.get("race") or "-"
+    alignment = character.get("alignment") or "-"
+    notes = character.get("notes") or ""
+
+    include_com = character.get("includeCom", False)
+    include_notes = character.get("includeNotes", True)
+
+    lines = []
+    lines.append(f"# {name}")
+    lines.append(
+        f"**Type:** {char_type} | **Race:** {race} | **Alignment:** {alignment}"
+    )
+    lines.append("")
+
+    # Abilities
+    abilities = character.get("abilities") or {}
+    lines.append("## Abilities")
+    if include_com:
+        lines.append("| STR | DEX | CON | INT | WIS | CHA | COM |")
+        lines.append("|:---:|:---:|:---:|:---:|:---:|:---:|:---:|")
+        lines.append(
+            f"| {abilities.get('str', 10)} | {abilities.get('dex', 10)} | {abilities.get('con', 10)} | {abilities.get('int', 10)} | {abilities.get('wis', 10)} | {abilities.get('cha', 10)} | {abilities.get('com', 10)} |"
+        )
+    else:
+        lines.append("| STR | DEX | CON | INT | WIS | CHA |")
+        lines.append("|:---:|:---:|:---:|:---:|:---:|:---:|")
+        lines.append(
+            f"| {abilities.get('str', 10)} | {abilities.get('dex', 10)} | {abilities.get('con', 10)} | {abilities.get('int', 10)} | {abilities.get('wis', 10)} | {abilities.get('cha', 10)} |"
+        )
+    lines.append("")
+
+    # Spells grouped by class
+    all_spells = character.get("characterSpells") or []
+    spells_by_class: Dict[str, List[Dict[str, Any]]] = {}
+    for spell in all_spells:
+        cls_name = spell.get("className") or "Other"
+        if cls_name not in spells_by_class:
+            spells_by_class[cls_name] = []
+        spells_by_class[cls_name].append(spell)
+
+    # Classes & Spell Tables
+    lines.append("## Classes")
+    classes = character.get("classes") or []
+    if not classes:
+        lines.append("*No classes assigned.*")
+    else:
+        for cls in classes:
+            c_name = cls.get("className") or "Unknown"
+            c_lbl = cls.get("classLabel") or c_name
+            c_lvl = cls.get("level") or 1
+            lines.append(f"### {c_lbl} (Level {c_lvl})")
+
+            cls_spells = spells_by_class.get(c_name, [])
+            if cls_spells:
+                lines.append("| Spell | Lvl | Status |")
+                lines.append("|:---|:---:|:---|")
+                for s in cls_spells:
+                    s_name = s.get("name") or "Untitled"
+                    s_lvl = s.get("level") or 0
+                    s_type = "Prepared" if s.get("prepared") else "Known"
+                    row = f"| {s_name} | {s_lvl} | {s_type} |"
+                    lines.append(row)
+                    if include_notes and s.get("notes"):
+                        lines.append(f"| > *Notes:* | | *{s.get('notes')}* |")
+            else:
+                lines.append("*No spells recorded.*")
+            lines.append("")
+
+    # Notes
+    if include_notes and notes:
+        lines.append("## Notes")
+        lines.append(notes)
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _render_spellbook_pack_markdown(
+    spells: List[Dict[str, Any]], character: Dict[str, Any], class_name: str
+) -> str:
+    char_name = character.get("name") or "Character"
+    title = f"{char_name}'s Spellbook - {class_name or 'General'}"
+    layout = (
+        character.get("layout") or "compact"
+    )  # Passed via character object in pack mode
+    include_notes = character.get("includeNotes", True)
+
+    lines = []
+    lines.append(f"# {title}")
+    lines.append("")
+
+    for spell in spells:
+        name = spell.get("name") or "Untitled"
+        level = spell.get("level") or 0
+        school = spell.get("school") or ""
+        desc = spell.get("description") or ""
+
+        lines.append(f"## {name}")
+
+        if layout == "full":
+            lines.append(f"**Level:** {level} | **School:** {school}")
+            lines.append(
+                f"**Range:** {spell.get('range', '-')} | **Duration:** {spell.get('duration', '-')}"
+            )
+            lines.append(f"**Components:** {spell.get('components', '-')}")
+            lines.append("")
+            lines.append(desc.strip())
+        else:
+            # Compact
+            lines.append(f"*Level {level} {school}*")
+            lines.append("")
+            # Short description if too long? Or just full description. Compact usually still needs the text.
+            lines.append(desc.strip())
+
+        notes = spell.get("notes")
+        if include_notes and notes:
+            lines.append("")
+            lines.append(f"> **Notes:** {notes}")
+
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def main() -> None:

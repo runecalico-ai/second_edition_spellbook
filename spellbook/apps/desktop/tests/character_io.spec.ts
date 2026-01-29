@@ -1,9 +1,9 @@
-import { expect, test } from "./fixtures/test-fixtures";
-import { SpellbookApp } from "./page-objects/SpellbookApp";
-import { generateRunId } from "./fixtures/test-utils";
 import * as fs from "node:fs";
-import { handleCustomModal } from "./utils/dialog-handler";
 import path from "node:path";
+import { expect, test } from "./fixtures/test-fixtures";
+import { generateRunId } from "./fixtures/test-utils";
+import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { handleCustomModal } from "./utils/dialog-handler";
 
 test.describe("Character Import/Export", () => {
   test.beforeEach(async ({ appContext }) => {
@@ -236,5 +236,33 @@ test.describe("Character Import/Export", () => {
 
     await handleCustomModal(page, "OK");
     await app.deleteCharacterFromList(charName);
+  });
+
+  test("should print character sheet and spellbook pack (PDF)", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const charName = `Print_${runId}`;
+
+    await app.createCharacter(charName);
+    await app.openCharacterEditor(charName);
+    await app.addClass("Mage");
+    await app.addClass("Cleric");
+
+    // Print Character Sheet
+    console.log("Testing Character Sheet Print...");
+    await page.getByTestId("btn-print-sheet").click();
+    await expect(page.getByText("Character sheet saved to:")).toBeVisible({ timeout: 20000 });
+    await handleCustomModal(page, "OK");
+
+    // Print Spellbook Pack (Mage)
+    console.log("Testing Spellbook Pack Print (Mage)...");
+    const mageSection = page.locator('[aria-label="Class section for Mage"]');
+    await mageSection.getByTestId("btn-print-pack").click();
+    await expect(page.getByText("Spellbook pack saved to:")).toBeVisible({ timeout: 20000 });
+    await handleCustomModal(page, "OK");
+
+    await app.deleteCurrentCharacter();
+    await handleCustomModal(page, "Confirm");
   });
 });

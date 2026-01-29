@@ -8,7 +8,7 @@
   - [ ] C2.2.2 Support compact and full stat block layouts
   - [ ] C2.2.3 Integrate with existing Pandoc export engine
 - [ ] C2.3 Implement Rust backend commands for printing
-  - [ ] C2.3.1 Add `export_character_sheet` command (format: PDF/MD)
+  - [ ] C2.3.1 Add `export_character_sheet` command (format: html/MD)
   - [ ] C2.3.2 Add `export_character_spellbook_pack` command
   - [ ] C2.3.3 Wire up to existing export utilities
 - [ ] C2.4 Build Print UI
@@ -16,7 +16,7 @@
   - [ ] C2.4.2 Add "Print Spellbook Pack" button with class selection
   - [ ] C2.4.3 Add print options dialog (format, layout, toggles)
 - [ ] C2.5 Write E2E tests for printing
-  - [ ] C2.5.1 Test character sheet export (PDF and MD)
+  - [ ] C2.5.1 Test character sheet export (html and MD)
   - [ ] C2.5.2 Test spellbook pack export
   - [ ] C2.5.3 Verify output file generation and content
 
@@ -62,7 +62,7 @@
 - [ ] C5.3 Snapshot tests for print outputs
   - [ ] C5.3.1 Create snapshot tests for character sheet Markdown
   - [ ] C5.3.2 Create snapshot tests for spellbook pack Markdown
-  - [ ] C5.3.3 Verify PDF generation consistency
+  - [ ] C5.3.3 Verify html generation consistency
 - [ ] C5.4 Documentation
   - [ ] C5.4.1 Update user documentation with character profile features
   - [ ] C5.4.2 Add developer documentation for character bundle format

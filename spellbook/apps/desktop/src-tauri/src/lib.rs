@@ -71,6 +71,9 @@ pub fn run() {
             import_character_bundle,
             preview_character_markdown_zip,
             import_character_markdown_zip,
+            export_character_sheet,
+            export_character_spellbook_pack,
+            search_characters,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -314,3 +314,45 @@ if (window.__IS_PLAYWRIGHT__) { ... }
 - **Self-Closing Tags**: Use `<div />` instead of `<div></div>` for elements without children.
 - **Keys**: Avoid using array indices as keys. Use unique IDs or stable composite keys (e.g., `${className}-${level}`).
 
+#### 7.4 Common Linting Rules
+- **Node.js Imports**: Always use the `node:` protocol for builtin modules.
+  - ✅ `import * as fs from 'node:fs';`
+  - ❌ `import * as fs from 'fs';`
+- **No `any`**: Avoid using `any` type. Use `unknown` with narrowing or definite types.
+
+## 8. Testing Patterns
+
+### 8.1 Snapshot Testing (JSON/Data)
+For complex data exports (like Character JSON), prefer **Snapshot Testing** over manual assertion of every field. This ensures backward compatibility and detects structural regressions.
+
+**✅ Good:**
+```typescript
+const content = await app.exportCharacter("Raistlin", "json");
+const json = JSON.parse(content);
+
+// Sanitize non-deterministic fields
+const safeJson = {
+  ...json,
+  id: "REDACTED",
+  createdAt: "REDACTED"
+};
+
+// Assert against stored snapshot
+expect(JSON.stringify(safeJson, null, 2)).toMatchSnapshot("character-export.json");
+```
+
+### 8.2 Master Workflows
+Use "Master Workflow" tests (`tests/character_master_workflow.spec.ts`) as comprehensive smoke tests that cover the full user journey (Create -> Edit -> Search -> Export -> Delete). These tests verify the integration of multiple features.
+
+### 8.3 Waiting for Async Operations
+Avoid fixed sleeps. Use explicit waits for UI state changes:
+
+**✅ Good:**
+```typescript
+await app.getClassLevelInput("Mage").blur();
+// Wait for specific side-effect if not immediate
+await page.waitForResponse(resp => resp.url().includes("update_character_class_level"));
+// OR wait for UI update
+await expect(page.getByText("Level 5")).toBeVisible();
+```
+

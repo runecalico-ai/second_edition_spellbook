@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures/test-fixtures";
+import { expect, test } from "./fixtures/test-fixtures";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 test.describe("Character Spell Notes Persistence", () => {

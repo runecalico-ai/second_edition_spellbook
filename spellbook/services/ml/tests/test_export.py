@@ -50,8 +50,8 @@ def test_handle_export_pdf_fallback_to_html(tmp_path, monkeypatch):
     result = handle_export(params)
 
     assert result["format"] == "html"
-    assert "warning" in result
-    assert "PDF generation failed" in result["warning"]
+    assert "note" in result
+    assert "Print-optimized HTML generated" in result["note"]
     path = Path(result["path"])
     assert path.exists()
     assert path.suffix == ".html"

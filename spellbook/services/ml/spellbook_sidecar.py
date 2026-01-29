@@ -344,11 +344,13 @@ def _render_print_html(
     elif mode == "spellbook":
         title = character.get("name") or title
 
+    include_notes = character.get("includeNotes", True)
+
     body_parts: List[str] = []
     if mode == "spellbook":
         body_parts.append(_render_spellbook_header(character))
     for spell in spells:
-        body_parts.append(_render_spell_block(spell, layout, mode))
+        body_parts.append(_render_spell_block(spell, layout, mode, include_notes))
 
     body = "\n".join(body_parts)
     return f"""<!doctype html>
@@ -540,10 +542,11 @@ def _render_spellbook_pack_html(
 ) -> str:
     char_name = html_escape(character.get("name") or "Character")
     title = f"{char_name}'s Spellbook - {html_escape(class_name or 'General')}"
+    include_notes = character.get("includeNotes", True)
 
     spell_blocks = []
     for spell in spells:
-        spell_blocks.append(_render_spell_block(spell, layout, "pack"))
+        spell_blocks.append(_render_spell_block(spell, layout, "pack", include_notes))
 
     body = "\n".join(spell_blocks)
 
@@ -577,13 +580,16 @@ def _render_spellbook_header(character: Dict[str, Any]) -> str:
     character_type = html_escape(
         character.get("type") or character.get("characterType") or ""
     )
-    notes = html_escape(character.get("notes") or "")
+    include_notes = character.get("includeNotes", True)
+    notes = html_escape(character.get("notes") or "") if include_notes else ""
     meta = f"{character_type} Spellbook" if character_type else "Spellbook"
     notes_block = f"<p class='meta'>{notes}</p>" if notes else ""
     return f"<h1>{name}</h1><p class='meta'>{meta}</p>{notes_block}"
 
 
-def _render_spell_block(spell: Dict[str, Any], layout: str, mode: str) -> str:
+def _render_spell_block(
+    spell: Dict[str, Any], layout: str, mode: str, include_notes: bool = True
+) -> str:
     name = html_escape(spell.get("name") or "Untitled")
     school_raw = spell.get("school") or ""
     level_raw = str(spell.get("level") or "")
@@ -599,7 +605,7 @@ def _render_spell_block(spell: Dict[str, Any], layout: str, mode: str) -> str:
     )
     prepared = spell.get("prepared")
     known = spell.get("known")
-    notes = html_escape(spell.get("notes") or "")
+    notes = html_escape(spell.get("notes") or "") if include_notes else ""
 
     status_bits = []
     if mode == "spellbook":

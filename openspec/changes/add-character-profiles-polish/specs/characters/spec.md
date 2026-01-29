@@ -1,15 +1,15 @@
 ## ADDED Requirements
 
 ### Requirement: Character Printing
-The application SHALL support printing character sheets (identity + abilities + per-class spell lists) and per-class spellbook packs (compact or full stat blocks) in PDF and Markdown formats.
+The application SHALL support printing character sheets (identity + abilities + per-class spell lists) and per-class spellbook packs (compact or full stat blocks) in html and Markdown formats.
 
 #### Scenario: Printing Character Sheet
 - **WHEN** the user prints a character sheet for a multi-class character
-- **THEN** a Markdown/PDF document SHALL be generated with identity, abilities, classes, and per-class Known/Prepared spell tables
+- **THEN** a Markdown/html document SHALL be generated with identity, abilities, classes, and per-class Known/Prepared spell tables
 
 #### Scenario: Printing Spellbook Pack
 - **WHEN** the user prints a spellbook pack for the "Mage" class with "Full" layout
-- **THEN** a Markdown/PDF document SHALL be generated with full spell stat blocks for all Known and Prepared spells in that class
+- **THEN** a Markdown/html document SHALL be generated with full spell stat blocks for all Known and Prepared spells in that class
 
 #### Scenario: Print Options
 - **WHEN** the user selects "Include COM" and "Include Notes" options

@@ -224,9 +224,17 @@ All character management is via Tauri commands in `src-tauri/src/commands/charac
 - **Abilities**: `update_character_abilities(character_id, str, dex, ...)`
 - **Classes**: `add_character_class`, `remove_character_class`, `get_character_classes`
 - **Spells**: `add_character_spell` (with notes), `remove_character_spell`, `get_character_class_spells`, `update_character_spell_notes`
+- **Search Optimization**: Uses SQLite **FTS5** via the `character_fts` table for lightning-fast keyword matching on Name and Notes. Filters (Race, Alignment, Ability Scores) are optimized via B-tree indexes.
 
 > [!IMPORTANT]
 > The legacy `spellbook` table is deprecated. Spells are now associated with a specific `character_class_id`.
+
+### Printing System
+
+Character sheets and spellbook packs use the Python sidecar for rendering:
+- **Formats**: Primary output is **HTML** (for premium visuals) and **Markdown** (for portable text).
+- **Structure**: Character sheets categorize spells by class, providing a clean tabular layout for Multi-class profiles.
+- **Toggles**: Backend supports `includeCom` and `includeNotes` parameters to customize output.
 
 ### Example CRUD Flow (Frontend)
 

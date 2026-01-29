@@ -348,6 +348,10 @@ export async function launchTauriApp(options: LaunchOptions = {}): Promise<Tauri
   const title = await page.title();
   console.log(`Connected to page: "${title}" at ${finalUrl}`);
 
+  // Inject testing flag for current and future navigations
+  await context.addInitScript("window.__IS_PLAYWRIGHT__ = true;");
+  await page.evaluate("window.__IS_PLAYWRIGHT__ = true;");
+
   // Verify we're on the app page
   if (finalUrl === "about:blank") {
     console.warn("Warning: Page is still about:blank - app may not have loaded properly");

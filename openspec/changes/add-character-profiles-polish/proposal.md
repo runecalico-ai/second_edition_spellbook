@@ -10,7 +10,7 @@ This implements the final requirements from `spec_3_character_profiles_feature.m
 **Completes**: Full Character Profiles feature
 
 ## What Changes
-- **Character Sheet Printing**: Generate PDF/Markdown character sheets with identity, abilities, and per-class spell tables
+- **Character Sheet Printing**: Generate html/Markdown character sheets with identity, abilities, and per-class spell tables
 - **Spellbook Pack Printing**: Generate per-class spell packs with compact or full stat block layouts
 - **Search & Filtering**: Find characters by name, type, race, class, level range, and ability thresholds
 - **Performance Optimization**: Ensure search < 150ms (P95), add database indexes

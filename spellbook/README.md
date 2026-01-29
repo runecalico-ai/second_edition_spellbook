@@ -11,6 +11,7 @@ This repository houses the local-only AD&D 2e spellbook app. The desktop client 
 - Rust toolchain (stable)
 - Python 3.14 (for the `services/ml` sidecar)
 - Tauri 2 CLI: `npm i -g @tauri-apps/cli@latest` (or use npx)
+- Pandoc (for PDF export)
 
 2) Install JS deps
 ```bash
@@ -101,6 +102,32 @@ Each spellcasting class on a character has two independent spell lists:
 2. Hover over a character to reveal the delete button
 3. Click the delete button and confirm
 4. All associated data (abilities, classes, spell lists) will be permanently removed
+
+### Character Search & Filtering
+
+Large character rosters can be managed using the search and filter tools on the main Characters page:
+
+- **Search**: Real-time filtering by character name.
+- **Advanced Filters**: Click the filter icon to filter by:
+  - **Class**: e.g. "Mage", "Fighter"
+  - **Level Range**: e.g. Level 5-10
+  - **Race**: e.g. "Elf"
+  - **Result Limit**: Adjust the number of displayed results (50, 100, etc.)
+
+### Exporting & Printing
+
+#### Exporting Characters
+You can export characters for backup, sharing, or use in other tools:
+- **JSON Export**: Complete data dump standard for backups or re-importing.
+- **Markdown ZIP**: Optimized for Notes apps (Obsidian, Notion) or LLM context.
+  - Includes a summary `README.md`.
+  - Individual Markdown files for each spell.
+  - Folder structure organized by Class -> Level.
+
+#### Printing
+The app generates printer-friendly layouts directly from the character editor:
+- **Character Sheet**: Generates a standard styled character sheet with stats and save tables.
+- **Spellbook Pack**: Generates a compact "Spellbook" PDF containing full descriptions of all Known/Prepared spells, organized by class and level. Ideal for printing physical spell cards or booklets.
 
 ## Linting and formatting
 

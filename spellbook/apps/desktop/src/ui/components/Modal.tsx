@@ -1,5 +1,5 @@
-import { useModal } from "../../store/useModal";
 import clsx from "classnames";
+import { useModal } from "../../store/useModal";
 
 export default function Modal() {
   const { isOpen, type, title, message, buttons, dismissible = true, hideModal } = useModal();

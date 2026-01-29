@@ -86,3 +86,22 @@ export interface CharacterBundle {
   abilities?: CharacterAbilities | null;
   classes: BundleClass[];
 }
+
+export interface CharacterSearchFilters {
+  race?: string;
+  characterType?: string;
+  minLevel?: number;
+  maxLevel?: number;
+  className?: string;
+  query?: string;
+}
+
+export interface CharacterSearchResult {
+  id: number;
+  name: string;
+  characterType: string;
+  race?: string | null;
+  alignment?: string | null;
+  levelSummary: string;
+  classes: string[];
+}

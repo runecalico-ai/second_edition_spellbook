@@ -152,7 +152,7 @@ rectangle "ResolveEffectiveSpellSet(class_id)" {
 2) Apply overrides `GRANT/FORBID`.
 3) Add explicit **INCLUDE/EXCLUDE** rules for exceptions (e.g., deity-granted spells).
 
-### Validation with Characters (SPEC-3)
+### Validation with Characters (SPEC-4)
 - On add to **Known/Prepared**, check membership in `ResolveEffectiveSpellSet(class_id)`.
 - If not allowed, show reason: barred school, sphere=none, explicit forbid, or not in curated list.
 

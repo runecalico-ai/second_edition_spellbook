@@ -291,7 +291,7 @@ export class SpellbookApp {
   async selectCharacter(name: string): Promise<void> {
     console.log(`Selecting character: ${name}`);
     await this.navigate("Characters");
-    await this.page.getByRole("link", { name: new RegExp(name) }).click();
+    await this.page.getByRole("link", { name: name }).click();
   }
 
   /** Create a new character */
@@ -302,20 +302,20 @@ export class SpellbookApp {
     await nameInput.fill(name);
     await this.page.getByRole("button", { name: "+", exact: true }).click();
     // Wait for the character to appear in the sidebar list
-    await expect(this.page.getByRole("link", { name: new RegExp(name) })).toBeVisible();
+    await expect(this.page.getByRole("link", { name: name })).toBeVisible();
   }
 
   /** Get a spell row in the library table */
   getSpellRow(spellName: string) {
     console.log(`Getting spell row: ${spellName}`);
-    return this.page.getByRole("row", { name: new RegExp(spellName) });
+    return this.page.getByRole("row", { name: spellName });
   }
 
   /** Open character editor by name */
   async openCharacterEditor(name: string): Promise<void> {
     console.log(`Opening character editor: ${name}`);
     await this.navigate("Characters");
-    const link = this.page.getByRole("link", { name: new RegExp(name) });
+    const link = this.page.getByRole("link", { name: name });
     await expect(link).toBeVisible();
     await link.click();
     await expect(this.page).toHaveURL(/\/character\/\d+\/edit/);
@@ -680,7 +680,7 @@ export class SpellbookApp {
   async openSpellbookBuilder(name: string): Promise<void> {
     console.log(`Opening spellbook builder for: ${name}`);
     await this.navigate("Characters");
-    const charItem = this.page.getByRole("link", { name: new RegExp(name) });
+    const charItem = this.page.getByRole("link", { name: name });
     await charItem.hover();
     await charItem.locator('a[title="Spellbook Builder"]').click();
     await expect(this.page.getByRole("heading", { name: "Spellbook Builder" })).toBeVisible();

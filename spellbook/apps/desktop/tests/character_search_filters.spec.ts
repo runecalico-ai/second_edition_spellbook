@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures/test-fixtures";
-import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { generateRunId } from "./fixtures/test-utils";
+import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import FieldMapper, { type ParsedSpell } from "./FieldMapper";
 import { useModal } from "../store/useModal";
+import FieldMapper, { type ParsedSpell } from "./FieldMapper";
 
 type ImportFile = {
   name: string;

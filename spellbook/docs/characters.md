@@ -39,11 +39,35 @@ Each class you add gets its own independent spell lists:
 5. Add individual spells by clicking **ADD** or select multiple and use **BULK ADD**.
 
 ### Managing Spells & Notes
-- **Notes**: Each spell entry has a "Add notes..." field for per-spell annotation (e.g., "From magic item" or "Bonus spell").
+- **Notes**: Each spell entry has a "Add notes..." field for per-spell annotation (e.g., "From magic item" or "Bonus spell"). These notes can be optionally included when printing.
 - **Removing**: Click the trash icon for a single spell, or select multiple and click **REMOVE X** for bulk removal.
 
 ### Non-Spellcasters
 For classes like Fighters or Thieves, the spell management section is automatically collapsed by default. You can expand it if your character has gained spellcasting abilities through special means.
+
+## Printing
+You can generate print-ready documents for your character and spellbooks.
+
+### Character Sheet
+Click **Print Sheet** in the character header to generate a full character sheet including:
+- **Identity**: Name, Race, Alignment, Notes
+- **Abilities**: STR, DEX, CON, INT, WIS, CHA, COM
+- **Classes**: List of all classes and levels
+- **Formats**:
+  - **HTML (Print-ready)**: Generates a premium HTML character sheet with per-class spell tables.
+  - **Markdown**: A clean markdown text file of your character data.
+
+- **Options**:
+  - **Include COM**: Add Comeliness scores and help text to the output.
+  - **Include Notes**: Include your custom spell notes in the printed tables.
+
+### Spellbook Pack
+For each class, you can print a specialized "Spellbook Pack" containing just that class's spells.
+1. Expand the class panel (e.g., "Mage").
+2. Click **PRINT PACK** at the top of the spell list.
+3. Choose your options:
+   - **Compact Layout**: Condensed list useful for reference.
+   - **Full Layout**: Complete stat blocks for every spell.
 
 ## Import / Export
 

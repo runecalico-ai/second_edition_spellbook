@@ -1,48 +1,91 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { useModal } from "../store/useModal";
-import type { Character, CharacterBundle, CharacterClass } from "../types/character";
-import CharacterImportWizard from "./CharacterImportWizard";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { useDebounce } from "../hooks/useDebounce"; // Assuming this exists or I'll implement a simple one
+import { useModal } from "../store/useModal";
+import type {
+  Character,
+  CharacterBundle,
+  CharacterClass,
+  CharacterSearchResult,
+} from "../types/character";
+import CharacterImportWizard from "./CharacterImportWizard";
 
 export default function CharacterManager() {
   const { alert: modalAlert } = useModal();
-  const [characters, setCharacters] = useState<Character[]>([]);
-  const [charClasses, setCharClasses] = useState<Record<number, CharacterClass[]>>({});
+  const [characters, setCharacters] = useState<CharacterSearchResult[]>([]);
+  // const [charClasses, setCharClasses] = useState<Record<number, CharacterClass[]>>({}); // No longer needed
   const [newCharName, setNewCharName] = useState("");
   const [newCharType, setNewCharType] = useState<"PC" | "NPC">("PC");
+
+  // Search Filters
+  const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"ALL" | "PC" | "NPC">("ALL");
+  const [searching, setSearching] = useState(false);
+  const debouncedQuery = useDebounce(searchQuery, 300);
+
+  // Advanced filters (toggleable?)
+  const [showFilters, setShowFilters] = useState(false);
+  const [raceFilter, setRaceFilter] = useState("");
+  const [classFilter, setClassFilter] = useState("");
+  const [minLevel, setMinLevel] = useState<string>("");
+  const [maxLevel, setMaxLevel] = useState<string>("");
+  const [minStr, setMinStr] = useState<string>("");
+  const [minDex, setMinDex] = useState<string>("");
+  const [minCon, setMinCon] = useState<string>("");
+  const [minInt, setMinInt] = useState<string>("");
+  const [minWis, setMinWis] = useState<string>("");
+  const [minCha, setMinCha] = useState<string>("");
+  const [minCom, setMinCom] = useState<string>("");
+
   const [showImportWizard, setShowImportWizard] = useState(false);
 
   // State for export modal
   const [exportTarget, setExportTarget] = useState<{ id: number; name: string } | null>(null);
 
   const loadCharacters = useCallback(async () => {
+    setSearching(true);
     try {
-      const list = await invoke<Character[]>("list_characters");
-      setCharacters(list);
-
-      // Load classes for all characters in parallel to show primary class information
-      const classMap: Record<number, CharacterClass[]> = {};
-      await Promise.all(
-        list.map(async (char) => {
-          try {
-            const classes = await invoke<CharacterClass[]>("get_character_classes", {
-              characterId: char.id,
-            });
-            classMap[char.id] = classes;
-          } catch (e) {
-            console.error(`Failed to load classes for ${char.name}:`, e);
-          }
-        }),
-      );
-      setCharClasses(classMap);
+      const results = await invoke<CharacterSearchResult[]>("search_characters", {
+        filters: {
+          query: debouncedQuery || null,
+          characterType: typeFilter === "ALL" ? null : typeFilter,
+          race: raceFilter || null,
+          className: classFilter || null,
+          minLevel: minLevel ? Number.parseInt(minLevel, 10) : null,
+          maxLevel: maxLevel ? Number.parseInt(maxLevel, 10) : null,
+          minStr: minStr ? Number.parseInt(minStr, 10) : null,
+          minDex: minDex ? Number.parseInt(minDex, 10) : null,
+          minCon: minCon ? Number.parseInt(minCon, 10) : null,
+          minInt: minInt ? Number.parseInt(minInt, 10) : null,
+          minWis: minWis ? Number.parseInt(minWis, 10) : null,
+          minCha: minCha ? Number.parseInt(minCha, 10) : null,
+          minCom: minCom ? Number.parseInt(minCom, 10) : null,
+        },
+      });
+      setCharacters(results);
     } catch (e) {
       console.error("Failed to load characters:", e);
+    } finally {
+      setSearching(false);
     }
-  }, []);
+  }, [
+    debouncedQuery,
+    typeFilter,
+    raceFilter,
+    classFilter,
+    minLevel,
+    maxLevel,
+    minStr,
+    minDex,
+    minCon,
+    minInt,
+    minWis,
+    minCha,
+    minCom,
+  ]);
 
   useEffect(() => {
     loadCharacters();
@@ -185,18 +228,8 @@ export default function CharacterManager() {
     }
   };
 
-  const filteredCharacters = characters.filter((c) => {
-    if (typeFilter === "ALL") return true;
-    return c.characterType === typeFilter;
-  });
-
-  const getPrimaryClass = (charId: number) => {
-    const classes = charClasses[charId];
-    if (!classes || classes.length === 0) return null;
-    // For simplicity, first class is "primary" or show multi-class string
-    if (classes.length === 1) return `${classes[0].className} ${classes[0].level}`;
-    return classes.map((c) => `${c.className.charAt(0)}${c.level}`).join("/");
-  };
+  // No Client-side filtering needed anymore
+  // getPrimaryClass is not needed, using levelSummary
 
   return (
     <div className="flex h-full gap-6 p-4">
@@ -204,21 +237,28 @@ export default function CharacterManager() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold">Characters</h1>
           <div className="flex gap-1" data-testid="character-type-filters">
-            {(["ALL", "PC", "NPC"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                data-testid={`filter-type-${t.toLowerCase()}`}
-                onClick={() => setTypeFilter(t)}
-                className={`px-1.5 py-0.5 text-[10px] rounded border ${
-                  typeFilter === t
-                    ? "bg-blue-600 border-blue-500 text-white"
-                    : "bg-neutral-900 border-neutral-700 text-neutral-500 hover:border-neutral-500"
-                }`}
+            <button
+              type="button"
+              data-testid="btn-toggle-filters"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`p-1 rounded text-neutral-400 hover:text-white ${showFilters ? "bg-neutral-800 text-white" : ""}`}
+              title="Toggle Search Filters"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
               >
-                {t}
-              </button>
-            ))}
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+            </button>
             <button
               type="button"
               onClick={() => setShowImportWizard(true)}
@@ -228,6 +268,179 @@ export default function CharacterManager() {
               Import
             </button>
           </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <input
+                className="w-full bg-neutral-900 border border-neutral-700 p-1.5 pl-7 rounded text-sm placeholder-neutral-600 outline-none focus:border-blue-600/50"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                data-testid="character-search-input"
+                aria-label="Search characters"
+              />
+              <div className="absolute left-2 top-1.5 text-neutral-600">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex bg-neutral-900 rounded border border-neutral-700 p-0.5">
+              {(["ALL", "PC", "NPC"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  data-testid={`filter-type-${t.toLowerCase()}`}
+                  onClick={() => setTypeFilter(t)}
+                  className={`px-1.5 py-0.5 text-[10px] rounded ${
+                    typeFilter === t
+                      ? "bg-blue-600 text-white font-medium"
+                      : "text-neutral-500 hover:text-neutral-300"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {showFilters && (
+            <div
+              className="bg-neutral-900/50 border border-neutral-800 rounded p-2 grid grid-cols-2 gap-2 text-xs"
+              data-testid="character-advanced-filters"
+            >
+              <input
+                className="bg-neutral-950 border border-neutral-800 rounded p-1"
+                placeholder="Race..."
+                data-testid="filter-race-input"
+                value={raceFilter}
+                onChange={(e) => setRaceFilter(e.target.value)}
+                aria-label="Filter by race"
+              />
+              <input
+                className="bg-neutral-950 border border-neutral-800 rounded p-1"
+                placeholder="Class..."
+                data-testid="filter-class-input"
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                aria-label="Filter by class"
+              />
+              <div className="col-span-2 flex gap-2 items-center">
+                <span className="text-neutral-600 uppercase text-[9px] font-bold">Level</span>
+                <input
+                  className="bg-neutral-950 border border-neutral-800 rounded p-1 w-full"
+                  placeholder="Min"
+                  type="number"
+                  min="0"
+                  data-testid="filter-level-min-input"
+                  value={minLevel}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") setMinLevel("");
+                    else {
+                      const num = Number.parseInt(val, 10);
+                      if (!Number.isNaN(num)) setMinLevel(Math.max(0, num).toString());
+                    }
+                  }}
+                  aria-label="Minimum level"
+                />
+                <span className="text-neutral-600">-</span>
+                <input
+                  className="bg-neutral-950 border border-neutral-800 rounded p-1 w-full"
+                  placeholder="Max"
+                  type="number"
+                  min="0"
+                  data-testid="filter-level-max-input"
+                  value={maxLevel}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") setMaxLevel("");
+                    else {
+                      const num = Number.parseInt(val, 10);
+                      if (!Number.isNaN(num)) setMaxLevel(Math.max(0, num).toString());
+                    }
+                  }}
+                  aria-label="Maximum level"
+                />
+              </div>
+
+              <div className="col-span-2 flex flex-wrap gap-2 items-center pt-2 border-t border-neutral-800">
+                <span className="text-neutral-500 w-full text-[9px] uppercase font-bold tracking-wider">
+                  Minimum Abilities
+                </span>
+                {(["Str", "Dex", "Con", "Int", "Wis", "Cha", "Com"] as const).map((ab) => {
+                  const val =
+                    ab === "Str"
+                      ? minStr
+                      : ab === "Dex"
+                        ? minDex
+                        : ab === "Con"
+                          ? minCon
+                          : ab === "Int"
+                            ? minInt
+                            : ab === "Wis"
+                              ? minWis
+                              : ab === "Cha"
+                                ? minCha
+                                : minCom;
+                  const setVal =
+                    ab === "Str"
+                      ? setMinStr
+                      : ab === "Dex"
+                        ? setMinDex
+                        : ab === "Con"
+                          ? setMinCon
+                          : ab === "Int"
+                            ? setMinInt
+                            : ab === "Wis"
+                              ? setMinWis
+                              : ab === "Cha"
+                                ? setMinCha
+                                : setMinCom;
+                  return (
+                    <div key={ab} className="flex flex-col w-12">
+                      <label
+                        htmlFor={`filter-min-${ab.toLowerCase()}`}
+                        className="text-[10px] text-neutral-500 text-center"
+                      >
+                        {ab.toUpperCase()}
+                      </label>
+                      <input
+                        id={`filter-min-${ab.toLowerCase()}`}
+                        className="bg-neutral-950 border border-neutral-800 rounded p-1 text-center text-xs"
+                        placeholder="-"
+                        type="number"
+                        min="0"
+                        value={val}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const num = Number.parseInt(v, 10);
+                          if (v === "" || Number.isNaN(num)) setVal("");
+                          else setVal(Math.max(0, num).toString());
+                        }}
+                        aria-label={`Minimum ${ab}`}
+                        data-testid={`filter-min-${ab.toLowerCase()}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -253,7 +466,14 @@ export default function CharacterManager() {
           className="space-y-1 overflow-auto max-h-[calc(100vh-250px)]"
           data-testid="character-list"
         >
-          {filteredCharacters.map((c) => (
+          {searching && characters.length === 0 && (
+            <div className="p-4 flex flex-col items-center gap-2 animate-pulse">
+              <div className="h-10 w-full bg-neutral-800 rounded-lg" />
+              <div className="h-10 w-full bg-neutral-800 rounded-lg" />
+              <div className="h-10 w-full bg-neutral-800 rounded-lg" />
+            </div>
+          )}
+          {characters.map((c) => (
             <Link
               key={c.id}
               to={`/character/${c.id}/edit`}
@@ -331,18 +551,18 @@ export default function CharacterManager() {
                     {c.race || "No Race"} · {c.alignment || "No Align"}
                   </span>
                   <span className="text-neutral-400 font-mono" data-testid="character-class-label">
-                    {getPrimaryClass(c.id) || "No Class"}
+                    {c.levelSummary || "Level 1"}
                   </span>
                 </div>
               </div>
             </Link>
           ))}
-          {filteredCharacters.length === 0 && (
+          {characters.length === 0 && (
             <div
               className="p-4 text-center text-sm text-neutral-600 italic"
               data-testid="no-characters-found"
             >
-              {typeFilter === "ALL" ? "No characters yet." : `No ${typeFilter} characters.`}
+              No characters found matching logic.
             </div>
           )}
         </div>

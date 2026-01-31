@@ -4,6 +4,8 @@ use sha2::{Digest, Sha256};
 
 use std::fmt::Write as FmtWrite;
 
+pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 // Note: Fields are mapped to canonical JSON names.
@@ -227,6 +229,18 @@ impl CanonicalSpell {
 
         let instance =
             serde_json::to_value(self).map_err(|e| format!("Serialization error: {}", e))?;
+
+        // Version Validation
+        if self.schema_version < 1 {
+            return Err(format!(
+                "Incompatible schema version: {}. Minimum supported version is 1.",
+                self.schema_version
+            ));
+        }
+        if self.schema_version > CURRENT_SCHEMA_VERSION {
+            eprintln!("WARNING: Spell '{}' uses a newer schema version ({}). This application supports up to version {}. Forward compatibility is not guaranteed.",
+                 self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
+        }
 
         let result = compiled.validate(&instance);
         if let Err(errors) = result {
@@ -867,5 +881,35 @@ mod tests {
             err.contains("Must have a School"),
             "Error message should mention School requirement"
         );
+    }
+
+    #[test]
+    fn test_validate_schema_version_current() {
+        let mut spell = CanonicalSpell::new("V1".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.schema_version = CURRENT_SCHEMA_VERSION;
+        assert!(spell.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_schema_version_future_warning() {
+        let mut spell = CanonicalSpell::new("V100".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.schema_version = CURRENT_SCHEMA_VERSION + 1;
+        // Should still be OK but will print a warning to stderr
+        assert!(spell.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_schema_version_incompatible() {
+        let mut spell = CanonicalSpell::new("V0".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.schema_version = 0; // Incompatible
+        let result = spell.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Incompatible schema version"));
     }
 }

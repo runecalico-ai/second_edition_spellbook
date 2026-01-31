@@ -68,3 +68,6 @@ We use an "Expand and Contract" pattern:
 
 ### Handling Parsing Failures
 Parsers are designed to fallback gracefully. If a pattern isn't recognized, the parser returns a "Special" unit with the original text preserved in the `text` field. This ensures no data is lost even if parsing "fails" to find a specific structure.
+
+> [!WARNING]
+> **Developer Note on Column Ordering**: When modifying `SELECT` statements in `migration_manager.rs`, ensure that the `row.get(N)` indices in the mapping block **exactly match** the column order in the SQL query. A mismatch between the query and mapping (e.g., swapping `level` and `school`) will lead to incorrect hash computation and data corruption. Always run the `test_migration_column_mapping_regression` test after modifying these queries.

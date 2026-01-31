@@ -497,3 +497,117 @@ pub fn export_migration_report(data_dir: &Path) -> Result<(), Box<dyn std::error
     println!("Exported migration report to {:?}", export_path);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_migration_column_mapping_regression() -> Result<(), Box<dyn std::error::Error>> {
+        let db = Connection::open_in_memory()?;
+        db.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER DEFAULT 0,
+                is_cantrip INTEGER DEFAULT 0,
+                content_hash TEXT,
+                canonical_data TEXT
+            );
+            "#,
+        )?;
+
+        // Insert a spell with distinct values to verify mapping
+        db.execute(
+            r#"INSERT INTO spell (
+                name, level, school, sphere, class_list, description, range, duration, casting_time
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
+            params![
+                "Test Mapping Spell",
+                5,
+                "Conjuration",
+                "Creation",
+                "Wizard, Cleric",
+                "Detailed description here.",
+                "100.5 feet",
+                "1 hour",
+                "1 segment"
+            ],
+        )?;
+
+        let temp = tempdir()?;
+        run_hash_backfill(&db, temp.path())?;
+
+        let (hash, json): (Option<String>, Option<String>) = db.query_row(
+            "SELECT content_hash, canonical_data FROM spell WHERE name='Test Mapping Spell'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+
+        let hash_val = hash.expect("Hash should be populated");
+        let json_val = json.expect("JSON should be populated");
+
+        assert!(!hash_val.is_empty(), "Hash should not be empty");
+
+        // Verify critical fields were mapped correctly
+        assert!(
+            json_val.contains(r#""name":"Test Mapping Spell""#),
+            "Name mismatch, JSON: {}",
+            json_val
+        );
+        assert!(
+            json_val.contains(r#""level":5"#),
+            "Level mismatch, JSON: {}",
+            json_val
+        );
+        assert!(
+            json_val.contains(r#""school":"Conjuration""#),
+            "School mismatch, JSON: {}",
+            json_val
+        );
+        assert!(
+            json_val.contains(r#""sphere":"Creation""#),
+            "Sphere mismatch, JSON: {}",
+            json_val
+        );
+        assert!(
+            json_val.contains(r#""class_list":["Cleric","Wizard"]"#),
+            "Class list mismatch, JSON: {}",
+            json_val
+        );
+
+        // Verify parser results (secondary check)
+        assert!(
+            json_val.contains(r#""base_value":100.5"#),
+            "Range base_value mismatch, JSON: {}",
+            json_val
+        );
+        assert!(
+            json_val.contains(r#""unit":"Feet""#),
+            "Range unit mismatch, JSON: {}",
+            json_val
+        );
+
+        Ok(())
+    }
+}

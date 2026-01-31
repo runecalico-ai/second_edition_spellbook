@@ -568,6 +568,7 @@ export default function SpellEditor() {
             <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
             <button
               type="button"
+              data-testid="btn-reparse-artifact"
               onClick={async () => {
                 if (!form.artifacts || form.artifacts.length === 0) return;
                 const artifactId = form.artifacts[0].id;

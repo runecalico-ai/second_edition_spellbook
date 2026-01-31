@@ -90,7 +90,7 @@ fn default_one() -> f64 {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CanonicalSpell {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing, skip_deserializing, default)]
     pub id: Option<String>,
     pub name: String,
     pub tradition: String,
@@ -638,5 +638,54 @@ mod tests {
         detail.sphere = Some("Protection".into());
         let canon = CanonicalSpell::from(detail);
         assert_eq!(canon.tradition, "BOTH");
+    }
+
+    #[test]
+    fn test_id_assigned_does_not_change_hash() {
+        let mut spell = CanonicalSpell::new(
+            "ID Stability".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Hash should not change with ID".to_string(),
+        );
+        spell.school = Some("Abjuration".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+
+        let hash_no_id = spell.compute_hash().unwrap();
+
+        // Assign an ID
+        spell.id = Some("existing-id".to_string());
+        let hash_with_id = spell.compute_hash().unwrap();
+
+        assert_eq!(
+            hash_no_id, hash_with_id,
+            "Hash must remain identical even when an ID is assigned"
+        );
+    }
+
+    #[test]
+    fn test_damage_without_cap_level_passes() {
+        let mut spell = CanonicalSpell::new(
+            "Damage Cap Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Testing null cap level".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+        spell.damage = Some(SpellDamage {
+            text: "1d6".into(),
+            base_dice: "0".into(),
+            per_level_dice: "0".into(),
+            level_divisor: 1.0,
+            cap_level: None, // This will serialize to null
+        });
+
+        let result = spell.validate();
+        assert!(
+            result.is_ok(),
+            "Validation failed for null cap_level: {:?}",
+            result.err()
+        );
     }
 }

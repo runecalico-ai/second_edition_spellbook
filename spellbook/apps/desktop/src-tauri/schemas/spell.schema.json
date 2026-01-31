@@ -18,10 +18,17 @@
     "tradition": {
       "type": "string",
       "description": "The magical tradition of the spell.",
-      "enum": ["ARCANE", "DIVINE", "BOTH"]
+      "enum": [
+        "ARCANE",
+        "DIVINE",
+        "BOTH"
+      ]
     },
     "school": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The primary mechanical school of magic (for specialist rules).",
       "enum": [
         "Abjuration",
@@ -69,7 +76,10 @@
       "default": []
     },
     "sphere": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The divine sphere of influence (access control).",
       "enum": [
         "All",
@@ -136,7 +146,15 @@
         },
         "unit": {
           "type": "string",
-          "enum": ["Touch", "Yards", "Feet", "Miles", "Special", "Unlimited", "Sight"],
+          "enum": [
+            "Touch",
+            "Yards",
+            "Feet",
+            "Miles",
+            "Special",
+            "Unlimited",
+            "Sight"
+          ],
           "default": "Yards"
         },
         "base_value": {
@@ -155,7 +173,10 @@
           "default": 1
         }
       },
-      "required": ["text", "unit"],
+      "required": [
+        "text",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "components": {
@@ -176,10 +197,17 @@
       },
       "description": "Components required to cast the spell.",
       "additionalProperties": false,
-      "required": ["verbal", "somatic", "material"]
+      "required": [
+        "verbal",
+        "somatic",
+        "material"
+      ]
     },
     "material_components": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Description of material components.",
       "default": null
     },
@@ -192,7 +220,14 @@
         },
         "unit": {
           "type": "string",
-          "enum": ["Segment", "Round", "Turn", "Hour", "Special", "Instantaneous"],
+          "enum": [
+            "Segment",
+            "Round",
+            "Turn",
+            "Hour",
+            "Special",
+            "Instantaneous"
+          ],
           "default": "Segment"
         },
         "base_value": {
@@ -211,7 +246,10 @@
           "default": 1
         }
       },
-      "required": ["text", "unit"],
+      "required": [
+        "text",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "duration": {
@@ -253,7 +291,10 @@
           "default": 1
         }
       },
-      "required": ["text", "unit"],
+      "required": [
+        "text",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "area": {
@@ -298,7 +339,10 @@
           "default": 1
         }
       },
-      "required": ["text", "unit"],
+      "required": [
+        "text",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "damage": {
@@ -324,22 +368,36 @@
           "default": 1
         },
         "cap_level": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "Maximum caster level to count for scaling."
         }
       },
-      "required": ["text"],
+      "required": [
+        "text"
+      ],
       "additionalProperties": false
     },
     "saving_throw": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Saving throw allowance (e.g., 'None', '1/2').",
       "default": null
     },
     "reversible": {
-      "type": ["integer", "null"],
+      "type": [
+        "integer",
+        "null"
+      ],
       "description": "Whether the spell is reversible (0 = No, 1 = Yes).",
-      "enum": [0, 1],
+      "enum": [
+        0,
+        1
+      ],
       "default": 0
     },
     "description": {
@@ -371,25 +429,40 @@
             "description": "Book title or collection name (e.g. 'Player's Handbook', 'Homebrew')."
           },
           "page": {
-            "type": ["integer", "string", "null"],
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ],
             "description": "Page number."
           },
           "note": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Additional notes (e.g. 'errata')."
           }
         },
-        "required": ["book"]
+        "required": [
+          "book"
+        ]
       },
       "default": []
     },
     "edition": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Game edition (e.g., '2e').",
       "default": null
     },
     "author": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Author credit.",
       "default": null
     },
@@ -400,24 +473,38 @@
       "default": "1.0.0"
     },
     "license": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "License information (e.g., 'OGL').",
       "default": null
     },
     "is_quest_spell": {
       "type": "integer",
       "description": "Whether this is a Quest spell (0 = No, 1 = Yes).",
-      "enum": [0, 1],
+      "enum": [
+        0,
+        1
+      ],
       "default": 0
     },
     "is_cantrip": {
       "type": "integer",
       "description": "Whether this is a Cantrip (0 = No, 1 = Yes).",
-      "enum": [0, 1],
+      "enum": [
+        0,
+        1
+      ],
       "default": 0
     }
   },
-  "required": ["name", "level", "description", "tradition"],
+  "required": [
+    "name",
+    "level",
+    "description",
+    "tradition"
+  ],
   "additionalProperties": false,
   "allOf": [
     {
@@ -429,7 +516,9 @@
         }
       },
       "then": {
-        "required": ["school"],
+        "required": [
+          "school"
+        ],
         "properties": {
           "sphere": {
             "const": null
@@ -446,7 +535,9 @@
         }
       },
       "then": {
-        "required": ["sphere"],
+        "required": [
+          "sphere"
+        ],
         "properties": {
           "school": {
             "const": null
@@ -463,7 +554,10 @@
         }
       },
       "then": {
-        "required": ["school", "sphere"]
+        "required": [
+          "school",
+          "sphere"
+        ]
       }
     }
   ]

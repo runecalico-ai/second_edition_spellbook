@@ -192,8 +192,8 @@ pub fn run_hash_backfill(
             let json_result = canonical.to_canonical_json();
             if let Ok(json) = json_result {
                 let rows = tx.execute(
-                    "UPDATE spell SET canonical_data = ?1, content_hash = ?2 WHERE id = ?3",
-                    params![json, hash, detail.id],
+                    "UPDATE spell SET canonical_data = ?1, content_hash = ?2, schema_version = ?3 WHERE id = ?4",
+                    params![json, hash, canonical.schema_version, detail.id],
                 )?;
                 if rows == 0 {
                     eprintln!("WARNING: Update for spell {:?} affected 0 rows!", detail.id);
@@ -321,8 +321,8 @@ pub fn recompute_all_hashes(
             if Some(&new_hash) != old_hash.as_ref() {
                 if let Ok(json) = canonical.to_canonical_json() {
                     tx.execute(
-                        "UPDATE spell SET canonical_data = ?1, content_hash = ?2 WHERE id = ?3",
-                        params![json, new_hash, detail.id],
+                        "UPDATE spell SET canonical_data = ?1, content_hash = ?2, schema_version = ?3 WHERE id = ?4",
+                        params![json, new_hash, canonical.schema_version, detail.id],
                     )?;
                     writeln!(
                         log_file,
@@ -532,7 +532,8 @@ mod tests {
                 is_quest_spell INTEGER DEFAULT 0,
                 is_cantrip INTEGER DEFAULT 0,
                 content_hash TEXT,
-                canonical_data TEXT
+                canonical_data TEXT,
+                schema_version INTEGER
             );
             "#,
         )?;
@@ -540,8 +541,8 @@ mod tests {
         // Insert a spell with distinct values to verify mapping
         db.execute(
             r#"INSERT INTO spell (
-                name, level, school, sphere, class_list, description, range, duration, casting_time
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
+                name, level, school, sphere, class_list, description, range, duration, casting_time, is_quest_spell, is_cantrip
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#,
             params![
                 "Test Mapping Spell",
                 5,
@@ -551,23 +552,29 @@ mod tests {
                 "Detailed description here.",
                 "100.5 feet",
                 "1 hour",
-                "1 segment"
+                "1 segment",
+                1,
+                0
             ],
         )?;
 
         let temp = tempdir()?;
         run_hash_backfill(&db, temp.path())?;
 
-        let (hash, json): (Option<String>, Option<String>) = db.query_row(
-            "SELECT content_hash, canonical_data FROM spell WHERE name='Test Mapping Spell'",
+        let (hash, json, schema_version, qs, ct): (Option<String>, Option<String>, Option<i64>, i64, i64) = db.query_row(
+            "SELECT content_hash, canonical_data, schema_version, is_quest_spell, is_cantrip FROM spell WHERE name='Test Mapping Spell'",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
         )?;
 
         let hash_val = hash.expect("Hash should be populated");
         let json_val = json.expect("JSON should be populated");
+        let schema_val = schema_version.expect("Schema version should be populated");
 
         assert!(!hash_val.is_empty(), "Hash should not be empty");
+        assert_eq!(schema_val, 1, "Schema version should be 1");
+        assert_eq!(qs, 1);
+        assert_eq!(ct, 0);
 
         // Verify critical fields were mapped correctly
         assert!(

@@ -23,6 +23,7 @@ pub struct SpellRange {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SpellComponents {
     pub verbal: bool,
     pub somatic: bool,
@@ -30,6 +31,7 @@ pub struct SpellComponents {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SpellCastingTime {
     pub text: String,
     pub unit: String,
@@ -42,6 +44,7 @@ pub struct SpellCastingTime {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SpellDuration {
     pub text: String,
     pub unit: String,
@@ -54,6 +57,7 @@ pub struct SpellDuration {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SpellArea {
     pub text: String,
     pub unit: String,
@@ -66,6 +70,7 @@ pub struct SpellArea {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SpellDamage {
     pub text: String,
     #[serde(default)]
@@ -79,6 +84,7 @@ pub struct SpellDamage {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SourceRef {
     pub system: Option<String>,
     pub book: String,
@@ -207,7 +213,17 @@ impl CanonicalSpell {
         // Note: Nested structs (Range, etc.) are objects, which BTreeMap handles
         // for key sorting, but we don't have arrays inside them that need nested sorting yet.
 
-        to_jcs_string(&clone).map_err(|err| err.to_string())
+        let mut value = serde_json::to_value(&clone).map_err(|err| err.to_string())?;
+
+        // Metadata Exclusion: source_refs, edition, author, version, license, and schema_version
+        // are strictly excluded from the canonical JSON used for hashing.
+        // source_refs, edition, author, version, license are already skipped via #[serde(skip_serializing)].
+        // schema_version is NOT skipped in the struct (for export), so we remove it here.
+        if let Some(obj) = value.as_object_mut() {
+            obj.remove("schema_version");
+        }
+
+        to_jcs_string(&value).map_err(|err| err.to_string())
     }
 
     pub fn compute_hash(&self) -> Result<String, String> {
@@ -328,13 +344,19 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
             level_divisor: 1.0,
         });
 
-        // Components parsing (basic heuristic)
+        // Components parsing (exact token matching)
         if let Some(comp_str) = &detail.components {
             let lower = comp_str.to_lowercase();
+            let tokens: Vec<&str> = lower
+                .split(|c: char| c == ',' || c.is_whitespace() || c == ';')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+
             spell.components = Some(SpellComponents {
-                verbal: lower.contains('v'),
-                somatic: lower.contains('s'),
-                material: lower.contains('m'),
+                verbal: tokens.iter().any(|&t| t == "v" || t == "verbal"),
+                somatic: tokens.iter().any(|&t| t == "s" || t == "somatic"),
+                material: tokens.iter().any(|&t| t == "m" || t == "material"),
             });
         }
 
@@ -609,7 +631,10 @@ mod tests {
         // Non-skipped Option::None fields appear as `null` if not skipped
         assert!(!json.contains("\"material_components\""));
         assert!(json.contains("\"is_cantrip\":0")); // is_cantrip is i64, 0 for level 1
-        assert!(json.contains("\"schema_version\":1")); // Now included
+        assert!(
+            !json.contains("\"schema_version\""),
+            "schema_version should be excluded from canonical JSON"
+        );
     }
 
     #[test]
@@ -765,9 +790,10 @@ mod tests {
     }
 
     #[test]
-    fn test_regression_schema_version_presence() {
-        // Bug: schema_version was declared but valid as skipped, making it useless for versioning.
-        // Fix: Added explicit schema_version field to JSON validation and struct serialization.
+    fn test_regression_schema_version_exclusion_from_canonical_json() {
+        // Bug: schema_version was included in canonical JSON, making hashes change per schema version.
+        // Fix: schema_version is now removed during canonicalization for hashing.
+        // Note: It is STILL present in standard serialization for export/validation.
         let spell = CanonicalSpell::new(
             "Version Test".to_string(),
             1,
@@ -777,10 +803,16 @@ mod tests {
 
         let json = spell.to_canonical_json().unwrap();
 
-        // Must be present and strictly 1 (integer)
         assert!(
-            json.contains("\"schema_version\":1"),
-            "schema_version:1 must be present in canonical JSON"
+            !json.contains("\"schema_version\""),
+            "schema_version must be EXCLUDED from canonical JSON"
+        );
+
+        // Verify it IS present in standard serialization
+        let standard_json = serde_json::to_string(&spell).unwrap();
+        assert!(
+            standard_json.contains("\"schema_version\":1"),
+            "schema_version must be PRESENT in standard JSON for export"
         );
     }
     #[test]
@@ -802,11 +834,11 @@ mod tests {
             material_components: None,
             casting_time: Some("1".into()),
             duration: Some("Instantaneous".into()),
-            area: None,
-            saving_throw: None,
+            area: Some("20 ft. radius".into()),
+            saving_throw: Some("1/2".into()),
             reversible: Some(0),
-            description: "Desc".into(),
-            tags: Some("Fire, Fire".into()), // Duplicates here too
+            description: "Big boom".into(),
+            tags: Some("Fire, Fire".into()),
             source: Some("PHB".into()),
             edition: Some("2e".into()),
             author: None,
@@ -911,5 +943,254 @@ mod tests {
         let result = spell.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Incompatible schema version"));
+    }
+
+    #[test]
+    fn test_hash_stability_across_schema_versions() {
+        let mut spell1 = CanonicalSpell::new("Stability".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.schema_version = 1;
+
+        let mut spell2 = spell1.clone();
+        spell2.schema_version = 2; // Hypothetical future version
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Hash must be identical across schema versions"
+        );
+    }
+
+    #[test]
+    fn test_nested_deny_unknown_fields() {
+        // Test SpellComponents
+        let json =
+            r#"{"verbal": true, "somatic": true, "material": false, "unknown_field": "error"}"#;
+        let res: Result<SpellComponents, _> = serde_json::from_str(json);
+        assert!(
+            res.is_err(),
+            "Should reject unknown field in SpellComponents"
+        );
+
+        // Test SpellCastingTime
+        let json = r#"{"text": "1", "unit": "Round", "unknown_field": "error"}"#;
+        let res: Result<SpellCastingTime, _> = serde_json::from_str(json);
+        assert!(
+            res.is_err(),
+            "Should reject unknown field in SpellCastingTime"
+        );
+
+        // Test SpellRange
+        let json = r#"{"text": "10 yards", "unit": "Yards", "unknown_field": "error"}"#;
+        let res: Result<SpellRange, _> = serde_json::from_str(json);
+        assert!(res.is_err(), "Should reject unknown field in SpellRange");
+
+        // Test CanonicalSpell top-level
+        let json = r#"{
+            "name": "Test",
+            "level": 1,
+            "tradition": "ARCANE",
+            "description": "Desc",
+            "unknown_top_level": "error"
+        }"#;
+        let res: Result<CanonicalSpell, _> = serde_json::from_str(json);
+        assert!(
+            res.is_err(),
+            "Should reject unknown field in CanonicalSpell"
+        );
+    }
+
+    #[test]
+    fn test_validation_strictly_rejects_unknown_properties() {
+        // This test ensures that the schema itself is strict, even if Serde didn't catch something
+        let mut spell = CanonicalSpell::new("Strict".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        // Confirm valid first
+        assert!(spell.validate().is_ok());
+
+        // Now manually create a JSON value with an extra field at top level
+        let mut value = serde_json::to_value(&spell).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("extra".to_string(), serde_json::json!("field"));
+
+        // Compile and validate
+        const SCHEMA_STR: &str = include_str!("../../schemas/spell.schema.json");
+        let schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR).unwrap();
+        let compiled = jsonschema::JSONSchema::compile(&schema).unwrap();
+
+        let result = compiled.validate(&value);
+        assert!(
+            result.is_err(),
+            "Schema should reject additionalProperties: false at top level"
+        );
+
+        // Test nested additional properties (e.g. range)
+        let mut spell =
+            CanonicalSpell::new("Strict Nested".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.range = Some(SpellRange {
+            text: "Touch".into(),
+            unit: "Touch".into(),
+            base_value: 0.0,
+            per_level: 0.0,
+            level_divisor: 1.0,
+        });
+
+        let mut value = serde_json::to_value(&spell).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .get_mut("range")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert("extra".to_string(), serde_json::json!("field"));
+
+        let result = compiled.validate(&value);
+        assert!(
+            result.is_err(),
+            "Schema should reject additionalProperties: false in range"
+        );
+    }
+
+    #[test]
+    fn test_is_quest_spell_is_cantrip_enum_constraint() {
+        let mut spell = CanonicalSpell::new("Enum Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        // 0 and 1 are valid
+        spell.is_quest_spell = 0;
+        spell.is_cantrip = 1;
+        assert!(spell.validate().is_ok());
+
+        spell.is_quest_spell = 1;
+        spell.is_cantrip = 0;
+        assert!(spell.validate().is_ok());
+
+        // Anything other than 0 or 1 should fail
+        let mut value = serde_json::to_value(&spell).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("is_quest_spell".into(), serde_json::json!(2));
+
+        const SCHEMA_STR: &str = include_str!("../../schemas/spell.schema.json");
+        let schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR).unwrap();
+        let compiled = jsonschema::JSONSchema::compile(&schema).unwrap();
+
+        assert!(
+            compiled.validate(&value).is_err(),
+            "Should reject 2 for is_quest_spell"
+        );
+
+        let mut value = serde_json::to_value(&spell).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("is_cantrip".into(), serde_json::json!(false));
+        assert!(
+            compiled.validate(&value).is_err(),
+            "Should reject boolean for is_cantrip"
+        );
+    }
+
+    #[test]
+    fn test_component_parsing_exact_match() {
+        use crate::models::spell::SpellDetail;
+
+        let mut detail = SpellDetail {
+            id: Some(1),
+            name: "Somatic Test".into(),
+            school: Some("Abjuration".into()),
+            sphere: None,
+            class_list: None,
+            level: 1,
+            range: None,
+            components: Some("Somatic".into()), // Should NOT match 'M'
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            saving_throw: None,
+            reversible: None,
+            description: "Desc".into(),
+            tags: None,
+            source: None,
+            edition: None,
+            author: None,
+            license: None,
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            artifacts: None,
+        };
+
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(!comps.verbal);
+        assert!(comps.somatic);
+        assert!(
+            !comps.material,
+            "Somatic should NOT set material=true despite containing 'm'"
+        );
+
+        detail.components = Some("V, S, M".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal);
+        assert!(comps.somatic);
+        assert!(comps.material);
+
+        detail.components = Some("verbal ; somatic".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal);
+        assert!(comps.somatic);
+        assert!(!comps.material);
+
+        // Case: Mixed case and extra whitespace
+        detail.components = Some("  vErBaL ,   S  ".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal);
+        assert!(comps.somatic);
+        assert!(!comps.material);
+
+        // Case: Unknown tokens and full words
+        detail.components = Some("V, Material, Focus".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal);
+        assert!(!comps.somatic);
+        assert!(comps.material);
+
+        // Case: Empty or nonsensical tokens
+        detail.components = Some(", ; ,".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(!comps.verbal);
+        assert!(!comps.somatic);
+        assert!(!comps.material);
+
+        detail.components = Some("".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(!comps.verbal);
+        assert!(!comps.somatic);
+        assert!(!comps.material);
+
+        // Case: Combined string without separators (should NOT match)
+        detail.components = Some("VSM".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(!comps.verbal);
+        assert!(!comps.somatic);
+        assert!(!comps.material);
     }
 }

@@ -20,8 +20,7 @@ Fields representing unordered sets must have their elements sorted lexicographic
 - `descriptors`: Sorted (A-Z).
 
 ### 2.2 Nulls vs Omitted
-- **Omitted (skip_serializing_if)**: Optional complex objects (`range`, `casting_time`, `duration`, `area`, `damage`, `components`) are **omitted** if `None`. This ensures compliance with the official schema's type constraints and `additionalProperties: false`.
-- **Nullable**: Fields like `school`, `sphere`, `saving_throw`, and `reversible` are serialized as `null` if empty, as per schema definitions.
+- **Omitted (skip_serializing_if)**: Optional fields (both complex objects like `range` and nullable strings like `school`, `sphere`, `saving_throw`, `reversible`) are **omitted** from the JSON if they are `None`. This ensures compliance with the strict schema constraints and deterministic hashing.
 - **Metadata Exclusion**: `source_refs`, `edition`, `author`, `version`, `license`, and `schema_version` are strictly excluded from the canonical JSON.
 
 ### 2.3 Integers for Booleans

@@ -415,6 +415,11 @@
       "description": "Whether this is a Cantrip (0 = No, 1 = Yes).",
       "enum": [0, 1],
       "default": 0
+    },
+    "schema_version": {
+      "type": "integer",
+      "description": "The validation schema version used for this record.",
+      "default": 1
     }
   },
   "required": ["name", "level", "description", "tradition"],

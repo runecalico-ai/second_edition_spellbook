@@ -3,6 +3,7 @@ pub mod db;
 pub mod error;
 pub mod models;
 pub mod sidecar;
+pub mod utils;
 
 use commands::*;
 use db::init_db;
@@ -19,7 +20,7 @@ pub fn run() {
                 .map(PathBuf::from)
                 .or_else(|| app.path().resource_dir().ok());
 
-            let pool = init_db(resource_dir.as_deref())
+            let pool = init_db(resource_dir.as_deref(), true)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
             app.manage(Arc::new(pool));
             Ok(())

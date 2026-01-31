@@ -93,7 +93,14 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 11", [])?;
     }
 
-    eprintln!("DB VERSION END: 11");
+    if version < 12 {
+        eprintln!("Applying migration 0012...");
+        let sql = include_str!("../../../../../db/migrations/0012_add_hash_columns.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 12", [])?;
+    }
+
+    eprintln!("DB VERSION END: 12");
 
     Ok(())
 }

@@ -72,6 +72,7 @@ pub struct SpellDamage {
     pub per_level_dice: String,
     #[serde(default = "default_one")]
     pub level_divisor: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cap_level: Option<f64>,
 }
 
@@ -108,6 +109,7 @@ pub struct CanonicalSpell {
     pub range: Option<SpellRange>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub components: Option<SpellComponents>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub material_components: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub casting_time: Option<SpellCastingTime>,
@@ -117,7 +119,9 @@ pub struct CanonicalSpell {
     pub area: Option<SpellArea>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub damage: Option<SpellDamage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub saving_throw: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reversible: Option<i64>, // 0 or 1
     pub description: String,
     pub tags: Vec<String>,
@@ -139,7 +143,8 @@ pub struct CanonicalSpell {
 
     // We explicitly omit schema_version from the serialised JSON because
     // the official schema (v1) has additionalProperties: false and does not define it.
-    #[serde(skip_serializing, default = "default_schema_version")]
+    // UPDATE: Schema now defines it, so we include it.
+    #[serde(default = "default_schema_version")]
     pub schema_version: i64,
 }
 
@@ -245,22 +250,28 @@ fn parse_comma_list(input: &Option<String>) -> Vec<String> {
     input
         .as_ref()
         .map(|s| {
-            s.split(',')
+            let mut vec: Vec<String> = s
+                .split(',')
                 .map(|item| item.trim().to_string())
                 .filter(|item| !item.is_empty())
-                .collect::<Vec<String>>()
+                .collect();
+            vec.sort();
+            vec.dedup();
+            vec
         })
         .unwrap_or_default()
 }
 
-impl From<crate::models::spell::SpellDetail> for CanonicalSpell {
-    fn from(detail: crate::models::spell::SpellDetail) -> Self {
+impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
+    type Error = String;
+
+    fn try_from(detail: crate::models::spell::SpellDetail) -> Result<Self, Self::Error> {
         // Tradition Inference
         let tradition = match (&detail.school, &detail.sphere) {
             (Some(_), Some(_)) => "BOTH".to_string(),
             (Some(_), None) => "ARCANE".to_string(),
             (None, Some(_)) => "DIVINE".to_string(),
-            _ => "ARCANE".to_string(), // Default to ARCANE if unknown
+            (None, None) => return Err(format!("Spell '{}' (ID {:?}) is invalid: Must have a School (Arcane) or Sphere (Divine) defined.", detail.name, detail.id)),
         };
 
         let mut spell = Self::new(detail.name, detail.level, tradition, detail.description);
@@ -333,7 +344,7 @@ impl From<crate::models::spell::SpellDetail> for CanonicalSpell {
         spell.is_quest_spell = detail.is_quest_spell;
         spell.is_cantrip = detail.is_cantrip;
 
-        spell
+        Ok(spell)
     }
 }
 
@@ -582,8 +593,9 @@ mod tests {
         );
 
         // Non-skipped Option::None fields appear as `null` if not skipped
-        assert!(json.contains("\"material_components\":null"));
+        assert!(!json.contains("\"material_components\""));
         assert!(json.contains("\"is_cantrip\":0")); // is_cantrip is i64, 0 for level 1
+        assert!(json.contains("\"schema_version\":1")); // Now included
     }
 
     #[test]
@@ -617,7 +629,7 @@ mod tests {
             artifacts: None,
         };
 
-        let canon = CanonicalSpell::from(detail.clone());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
         assert_eq!(canon.tradition, "ARCANE");
         assert_eq!(canon.school, Some("Evocation".to_string()));
         assert_eq!(canon.sphere, None);
@@ -630,14 +642,20 @@ mod tests {
         // 2. Divine Inference (Sphere only)
         detail.school = None;
         detail.sphere = Some("Healing".into());
-        let canon = CanonicalSpell::from(detail.clone());
+        // Since school is None, tradition defaults based on Sphere
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
         assert_eq!(canon.tradition, "DIVINE");
+        assert_eq!(canon.school, None);
+        assert_eq!(canon.sphere, Some("Healing".to_string()));
 
         // 3. Both Inference
         detail.school = Some("Abjuration".into());
-        detail.sphere = Some("Protection".into());
-        let canon = CanonicalSpell::from(detail);
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
         assert_eq!(canon.tradition, "BOTH");
+        assert_eq!(canon.school, Some("Abjuration".to_string()));
+        assert_eq!(canon.sphere, Some("Healing".to_string()));
+
+        // 4. Default / Fallback tests moved to regression test
     }
 
     #[test]
@@ -686,6 +704,168 @@ mod tests {
             result.is_ok(),
             "Validation failed for null cap_level: {:?}",
             result.err()
+        );
+    }
+
+    #[test]
+    fn test_regression_canonical_json_null_omission() {
+        // Bug: Optional fields were serializing as `null`, breaking deterministic hashing.
+        // Fix: Added `skip_serializing_if = "Option::is_none"`.
+        let mut spell = CanonicalSpell::new(
+            "Null Regression Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        // Explicitly set these to None to trigger potential null serialization
+        spell.material_components = None;
+        spell.saving_throw = None;
+        spell.reversible = None;
+        spell.damage = Some(SpellDamage {
+            text: "1d6".into(),
+            base_dice: "0".into(),
+            per_level_dice: "0".into(),
+            level_divisor: 1.0,
+            cap_level: None, // This specifically was the issue for nested structs
+        });
+
+        let json = spell.to_canonical_json().unwrap();
+
+        // Verify total absence of keys
+        assert!(
+            !json.contains("\"material_components\""),
+            "material_components should be omitted"
+        );
+        assert!(
+            !json.contains("\"saving_throw\""),
+            "saving_throw should be omitted"
+        );
+        assert!(
+            !json.contains("\"reversible\""),
+            "reversible should be omitted"
+        );
+        assert!(
+            !json.contains("\"cap_level\""),
+            "cap_level inside damage should be omitted"
+        );
+    }
+
+    #[test]
+    fn test_regression_schema_version_presence() {
+        // Bug: schema_version was declared but valid as skipped, making it useless for versioning.
+        // Fix: Added explicit schema_version field to JSON validation and struct serialization.
+        let spell = CanonicalSpell::new(
+            "Version Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+
+        let json = spell.to_canonical_json().unwrap();
+
+        // Must be present and strictly 1 (integer)
+        assert!(
+            json.contains("\"schema_version\":1"),
+            "schema_version:1 must be present in canonical JSON"
+        );
+    }
+    #[test]
+    fn test_regression_duplicate_array_items_fail_validation() {
+        // Bug: parse_comma_list didn't deduplicate, schema has uniqueItems: true.
+        // If duplicates exist, validation fails, preventing hashing.
+
+        // Setup a spell with duplicates in class_list
+        let detail = crate::models::spell::SpellDetail {
+            id: Some(1),
+            name: "Duplicate Test".into(),
+            school: Some("Evocation".into()),
+            sphere: None,
+            // Duplicates here:
+            class_list: Some("Wizard, Wizard, Sorcerer".into()),
+            level: 3,
+            range: Some("100 yards".into()),
+            components: Some("V".into()),
+            material_components: None,
+            casting_time: Some("1".into()),
+            duration: Some("Instantaneous".into()),
+            area: None,
+            saving_throw: None,
+            reversible: Some(0),
+            description: "Desc".into(),
+            tags: Some("Fire, Fire".into()), // Duplicates here too
+            source: Some("PHB".into()),
+            edition: Some("2e".into()),
+            author: None,
+            license: None,
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            artifacts: None,
+        };
+
+        let canon = CanonicalSpell::try_from(detail).expect("Should convert successfully");
+
+        // Before Fix: this should FAIL validation because duplicates are present
+        // After Fix: this should PASS validation because duplicates are removed during conversion
+        let result = canon.validate();
+
+        // We assert true here because we WANT it to pass.
+        // If the bug exists, this test will fail, confirming the need for a fix.
+        assert!(
+            result.is_ok(),
+            "Validation failed due to duplicates: {:?}",
+            result.err()
+        );
+
+        // Verify dedup happened
+        assert_eq!(
+            canon.class_list.len(),
+            2,
+            "Class list should be deduped to 2 items"
+        );
+        assert_eq!(canon.tags.len(), 1, "Tags should be deduped to 1 item");
+    }
+
+    #[test]
+    fn test_regression_invalid_tradition_inference() {
+        // Bug: If School and Sphere are both None, tradition defaults to ARCANE but School is None.
+        // Fix: TryFrom should fail if neither is present.
+        let detail = crate::models::spell::SpellDetail {
+            id: Some(1),
+            name: "Ambiguous Spell".into(),
+            school: None,
+            sphere: None,
+            class_list: Some("Wizard".into()),
+            level: 1,
+            range: None,
+            components: None,
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            saving_throw: None,
+            reversible: None,
+            description: "Desc".into(),
+            tags: None,
+            source: None,
+            edition: None,
+            author: None,
+            license: None,
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            artifacts: None,
+        };
+
+        let result = CanonicalSpell::try_from(detail);
+
+        // Verify refactor: conversion MUST fail
+        assert!(
+            result.is_err(),
+            "Conversion should fail for spell with no School or Sphere"
+        );
+        let err = result.err().unwrap();
+        assert!(
+            err.contains("Must have a School"),
+            "Error message should mention School requirement"
         );
     }
 }

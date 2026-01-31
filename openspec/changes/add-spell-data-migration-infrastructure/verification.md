@@ -3,32 +3,32 @@
 ## Unit Tests
 
 ### String-to-Structured Parser
-- [ ] **Test: Parse simple range**
+- [x] **Test: Parse simple range**
   - GIVEN string "10 yards"
   - WHEN parsed
   - THEN `{text: "10 yards", unit: "Yards", base_value: 10, per_level: 0}`
 
-- [ ] **Test: Parse variable range**
+- [x] **Test: Parse variable range**
   - GIVEN string "10 + 5/level yards"
   - WHEN parsed
   - THEN `{text: "10 + 5/level yards", unit: "Yards", base_value: 10, per_level: 5}`
 
-- [ ] **Test: Parse special range**
+- [x] **Test: Parse special range**
   - GIVEN string "Touch"
   - WHEN parsed
   - THEN `{text: "Touch", unit: "Touch", base_value: 0, per_level: 0}`
 
-- [ ] **Test: Parse components**
+- [x] **Test: Parse components**
   - GIVEN string "V, S, M"
   - WHEN parsed
   - THEN `{verbal: true, somatic: true, material: true}`
 
-- [ ] **Test: Parse damage with cap**
+- [x] **Test: Parse damage with cap**
   - GIVEN string "1d6/level (max 10d6)"
   - WHEN parsed
   - THEN `{per_level_dice: "1d6", cap_level: 10}`
 
-- [ ] **Test: Unparseable fallback**
+- [x] **Test: Unparseable fallback**
   - GIVEN string "Special (see description)"
   - WHEN parsing fails
   - THEN `{text: "Special (see description)", unit: "Special", base_value: 0}`
@@ -36,20 +36,20 @@
 ## Integration Tests
 
 ### Database Migration
-- [ ] **Test: Hash backfill on startup**
+- [x] **Test: Hash backfill on startup**
   - GIVEN database with 100 spells, all `content_hash = NULL`
   - WHEN application starts
   - THEN all spells MUST have non-null `content_hash`
   - AND no hash collisions (all unique)
 
-- [ ] **Test: Unique constraint enforcement**
+- [x] **Test: Unique constraint enforcement**
   - GIVEN spell with hash "abc123..."
   - WHEN attempting to insert duplicate spell with same hash
   - THEN database MUST reject with constraint violation
   - AND error MUST be logged
 
 ### Migration Performance
-- [ ] **Test: Migration time for large database**
+- [x] **Test: Migration time for large database**
   - GIVEN database with 10,000 spells
   - WHEN running hash backfill migration
   - THEN migration MUST complete within 60 seconds
@@ -58,7 +58,7 @@
 ## End-to-End Workflows
 
 ### Workflow: Legacy User Upgrades Database
-- [ ] **E2E: Complete Migration Experience**
+- [x] **E2E: Complete Migration Experience**
   1. Start with database of 1,000 legacy spells (string-only fields)
   2. Launch application (automatic migration triggers)
   3. Verify migration progress indicator appears
@@ -75,7 +75,7 @@
 ### Error Scenarios
 
 #### Error: Migration Failures
-- [ ] **E2E: Handle Unparseable Legacy Data**
+- [x] **E2E: Handle Unparseable Legacy Data**
   - GIVEN spell with range "Special (varies, see DM)"
   - WHEN migration runs
   - THEN parser falls back to `{text: original, unit: "Special", base_value: 0}`
@@ -83,7 +83,7 @@
   - WHEN user opens spell in editor
   - THEN warning shows: "Could not parse range automatically. Please review."
 
-- [ ] **E2E: Corrupted Data Migration**
+- [x] **E2E: Corrupted Data Migration**
   - GIVEN database with corrupted spell record (missing required field)
   - WHEN migration attempts to process
   - THEN error logged: "Skipping spell ID 456: missing required field 'name'"

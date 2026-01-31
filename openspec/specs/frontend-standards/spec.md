@@ -1,7 +1,7 @@
 # frontend-standards Specification
 
 ## Purpose
-Frontend standards for the application.
+This specification defines the collective frontend development standards for the application, ensuring consistency, accessibility, and robust testability through mandatory patterns like data-testid attributes, semantic HTML structures, and strict input validation.
 ## Requirements
 ### Requirement: Frontend Identifiability
 All interactive UI elements and list items SHALL use `data-testid` attributes to ensure stable testability.

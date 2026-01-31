@@ -1,0 +1,118 @@
+## C2 – Printing
+- [x] C2.1 Design character sheet template
+  - [x] C2.1.1 Create Markdown template for character sheet (identity + abilities + classes)
+  - [x] C2.1.2 Add per-class Known/Prepared spell tables
+  - [x] C2.1.3 Add toggle options (include COM, include notes)
+- [x] C2.2 Design spellbook pack template
+  - [x] C2.2.1 Create per-class spell pack template
+  - [x] C2.2.2 Support compact and full stat block layouts
+  - [x] C2.2.3 Integrate with existing Pandoc export engine
+- [x] C2.3 Implement Rust backend commands for printing
+  - [x] C2.3.1 Add `export_character_sheet` command (format: html/MD)
+  - [x] C2.3.2 Add `export_character_spellbook_pack` command
+  - [x] C2.3.3 Wire up to existing export utilities
+- [x] C2.4 Build Print UI
+  - [x] C2.4.1 Add "Print Character Sheet" button to Character Editor
+  - [x] C2.4.2 Add "Print Spellbook Pack" button with class selection
+  - [x] C2.4.3 Add print options dialog (format, layout, toggles)
+- [x] C2.5 Write E2E tests for printing
+  - [x] C2.5.1 Test character sheet export (html and MD)
+  - [x] C2.5.2 Test spellbook pack export
+  - [x] C2.5.3 Verify output file generation and content
+
+## C4 – Search & UX Polish
+- [x] C4.1 Implement character search backend
+  - [x] C4.1.1 Add `search_characters` command with filters (type, class, race, level range)
+  - [x] C4.1.2 Add ability threshold filters (min/max per ability)
+  - [x] C4.1.3 Optional: Create `character_fts` virtual table for full-text search
+  - [x] C4.1.4 Optimize queries for P95 < 150ms
+- [x] C4.2 Build Search & Filter UI
+  - [x] C4.2.1 Add search box to Characters Index
+  - [x] C4.2.2 Add filter panel (type, class multi-select, race, level range)
+  - [x] C4.2.3 Add ability threshold sliders/inputs
+  - [x] C4.2.4 Implement real-time filtering
+- [x] C4.3 UX Polish
+  - [x] C4.3.1 Add loading states and error handling
+  - [x] C4.3.2 Add confirmation dialogs for destructive actions (delete character, remove class)
+  - [x] C4.3.3 Ensure accessibility (keyboard navigation, ARIA labels)
+  - [x] C4.3.4 Apply consistent theming with main app
+  - [x] C4.3.5 Add tooltips and help text for complex fields (COM, multi-class)
+- [x] C4.4 Performance optimization
+  - [x] C4.4.1 Add database indexes for common queries
+  - [x] C4.4.2 Implement pagination for character list (if needed)
+  - [x] C4.4.3 Optimize spell list queries (eager loading, joins)
+- [x] C4.5 Write E2E tests for search
+  - [x] C4.5.1 Test filtering by type, class, race
+  - [x] C4.5.2 Test level range filtering
+  - [x] C4.5.3 Test ability threshold filtering
+  - [x] C4.5.4 Test search performance with many characters
+
+## C5 – Beta Hardening
+- [x] C5.1 Edge case testing
+  - [x] C5.1.1 Test very high ability values (1000+, INT_MAX)
+  - [x] C5.1.2 Test many classes on single character (10+)
+  - [x] C5.1.3 Test character with 500+ spells across classes
+  - [x] C5.1.4 Test special characters in names, notes, race, alignment
+  - [x] C5.1.5 Test COM enabled/disabled toggling with existing data
+- [x] C5.2 Validation hardening
+  - [x] C5.2.1 Add backend validation for ability scores (>= 0, integer)
+  - [x] C5.2.2 Add backend validation for class levels (>= 0)
+  - [x] C5.2.3 Add backend validation for unique class names per character
+  - [x] C5.2.4 Add frontend validation with clear error messages
+- [x] C5.3 Snapshot tests for print outputs
+  - [x] C5.3.1 Create snapshot tests for character sheet Markdown
+  - [x] C5.3.2 Create snapshot tests for spellbook pack Markdown
+  - [x] C5.3.3 Verify html generation consistency
+- [x] C5.4 Documentation
+  - [x] C5.4.1 Update user documentation with character profile features
+  - [x] C5.4.2 Add developer documentation for character bundle format
+  - [x] C5.4.3 Update AGENTS.md with character profile patterns
+- [x] C5.5 Comprehensive UI Workflow E2E Test
+  - [x] C5.5.1 Create end-to-end workflow test covering complete user journey:
+    - [x] C5.5.1.1 Create new character with identity (name, type, race, alignment)
+    - [x] C5.5.1.2 Set all abilities (STR/DEX/CON/INT/WIS/CHA) and enable COM
+    - [x] C5.5.1.3 Add multiple classes (e.g., Mage level 5, Cleric level 3)
+    - [x] C5.5.1.4 Add spells to Known list for each class
+    - [x] C5.5.1.5 Add spells to Prepared list for each class
+    - [x] C5.5.1.6 Add per-spell notes
+    - [x] C5.5.1.7 Export character as JSON bundle
+    - [x] C5.5.1.8 Export character as Markdown bundle
+    - [x] C5.5.1.9 Print character sheet (verify file creation)
+    - [x] C5.5.1.10 Print spellbook pack for one class (verify file creation)
+    - [x] C5.5.1.11 Search for character using filters
+    - [x] C5.5.1.12 Update character details (change race, level up a class)
+    - [x] C5.5.1.13 Remove a spell from Prepared list
+    - [x] C5.5.1.14 Delete character and verify cleanup
+  - [x] C5.5.2 Create multi-character data isolation test:
+    - [x] C5.5.2.1 Create Character A with Mage class
+    - [x] C5.5.2.2 Create Character B with Mage class
+    - [x] C5.5.2.3 Add "Fireball" to Character A's Known list
+    - [x] C5.5.2.4 Verify "Fireball" does NOT appear in Character B's list
+    - [x] C5.5.2.5 Add "Fireball" to Character B's Known list independently
+    - [x] C5.5.2.6 Verify both characters have independent spell lists
+- [x] C5.6 Final integration testing
+  - [x] C5.6.1 Run full E2E test suite
+  - [x] C5.6.2 Manual testing on Windows
+  - [x] C5.6.3 Verify backward compatibility with existing characters
+  - [x] C5.6.4 Performance testing (search, import, export)
+
+## Documentation
+- [x] D1 Update user documentation
+  - [x] D1.1 Document printing workflow (character sheets and spellbook packs)
+  - [x] D1.2 Document search and filtering features
+  - [x] D1.3 Document complete character profile feature (all parts)
+  - [x] D1.4 Add troubleshooting guide for common issues
+- [x] D2 Update developer documentation
+  - [x] D2.1 Document printing templates and customization
+  - [x] D2.2 Document search query optimization patterns
+  - [x] D2.3 Document complete character profile architecture
+- [x] D3 Update AGENTS.md
+  - [x] D3.1 Document character profile patterns and best practices
+  - [x] D3.2 Document printing system integration
+  - [x] D3.3 Document search performance considerations
+
+## Notes
+- **Total tasks**: ~70 (updated from ~60 to include expanded documentation)
+- **Estimated effort**: 1-2 weeks
+- **Dependencies**: Parts 1 and 2 must be completed
+- **Completes**: Full Character Profiles feature

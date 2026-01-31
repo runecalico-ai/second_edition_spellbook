@@ -16,6 +16,7 @@ To ensure consistent content-addressable identification of spells across the app
     *   **Included in Hash (Content)**:
         -   All game-mechanical fields: `name`, `tradition`, `school`, `sphere`, `level`, `range`, `components`, `material_components`, `casting_time`, `duration`, `area`, `damage`, `saving_throw`, `reversible`, `description`
         -   Taxonomic fields: `class_list`, `tags`, `subschools`, `descriptors`
+        -   `schema_version`
         -   Special flags: `is_quest_spell`, `is_cantrip`
 3.  **Key Sorting**: Object keys MUST be sorted lexicographically (A-Z) recursively (at every depth).
 4.  **Array Sorting**: Arrays that represent unordered sets MUST be sorted lexicographically by value.

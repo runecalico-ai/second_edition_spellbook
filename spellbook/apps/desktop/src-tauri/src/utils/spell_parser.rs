@@ -11,6 +11,7 @@ pub struct SpellParser {
     damage_scaling_regex: Regex,
     damage_capped_regex: Regex,
     area_regex: Regex,
+    duration_divisor_regex: Regex,
 }
 
 impl Default for SpellParser {
@@ -23,24 +24,21 @@ impl SpellParser {
     pub fn new() -> Self {
         Self {
             // Pattern 1: Fixed Value Only
-            // Matches "10 yards", "60.5 ft.", "3"
-            range_simple_regex: Regex::new(r"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.]+)$").unwrap(),
+            // Matches "10 yards", "60.5 ft.", "3", "10'"
+            range_simple_regex: Regex::new(r#"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.'"]+)$"#).unwrap(),
 
             // Pattern 2: Variable Scaling
-            // Matches "10 + 5/level yards", "10 + 10/level"
+            // Matches "10 yards + 5/level yards", "10 + 10/level", "10 yards + 5 yards/level"
             range_variable_regex: Regex::new(
-                r"(?i)^(\d+(?:\.\d+)?)\s*\+\s*(\d+(?:\.\d+)?)/level(?:\s*([a-z\.]+))?$",
+                r#"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.'"]+)?\s*\+\s*(\d+(?:\.\d+)?)(?:\s*([a-z\.'"]+))?/level(?:\s*([a-z\.'"]+))?$"#,
             )
             .unwrap(),
 
-            // Pattern 3: Per N Levels (Not previously captured separately)
-            // Matches "1 round / 2 levels" (handled as special case in logic or separate regex)
-            // But we can reuse duration simple for "1 round" part and custom logic for "/ level" checks?
-            // Actually spec has specific pattern:
-            // ^(\d+(?:\.\d+)?)\s*/\s*(\d+)\s*levels?\s*(\w+)?$
-            // Let's rely on standard logic but maybe add specialized one if needed.
-            // For now, let's keep it simple with existing + expanded simple regex.
+            // Pattern 3: Simple Duration/Casting Time
             duration_simple_regex: Regex::new(r"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.]+)$").unwrap(),
+
+            // Pattern 4: Per N Levels (e.g., "1 round / 2 levels")
+            duration_divisor_regex: Regex::new(r"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.]+)?\s*/\s*(\d+)\s*levels?$").unwrap(),
 
             // Damage Patterns
             // 1. Fixed: "1d6", "2d4+1"
@@ -54,7 +52,7 @@ impl SpellParser {
             damage_capped_regex: Regex::new(r"(?i)^(\d+d\d+)/level\s*\(max\s*(\d+d\d+)\)$")
                 .unwrap(),
 
-            area_regex: Regex::new(r"(?i)^(\d+(?:\.\d+)?)\s*[\s\-]*([a-z\.]+)(?:\s+([a-z\.]+))?$")
+            area_regex: Regex::new(r#"(?i)^(\d+(?:\.\d+)?)\s*[\s\-]*([a-z\.'"]+)(?:\s+([a-z\.]+))?$"#)
                 .unwrap(),
         }
     }
@@ -89,11 +87,21 @@ impl SpellParser {
                 .get(1)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
             let per_level = caps
-                .get(2)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit = caps
                 .get(3)
-                .map_or("Special".to_string(), |m| title_case(m.as_str()));
+                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+
+            // Unit can be in group 2 (base unit), 4 (per-level unit), or 5 (trailing unit)
+            let unit_raw = caps
+                .get(5)
+                .or(caps.get(4))
+                .or(caps.get(2))
+                .map_or("Special", |m| m.as_str());
+
+            let unit = match unit_raw {
+                "'" => "Ft.".to_string(),
+                "\"" => "In.".to_string(),
+                _ => title_case(unit_raw),
+            };
 
             return SpellRange {
                 text: input.to_string(),
@@ -109,9 +117,13 @@ impl SpellParser {
             let base = caps
                 .get(1)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit = caps
-                .get(2)
-                .map_or("Special".to_string(), |m| title_case(m.as_str()));
+            let unit_raw = caps.get(2).map_or("Special", |m| m.as_str());
+
+            let unit = match unit_raw {
+                "'" => "Ft.".to_string(),
+                "\"" => "In.".to_string(),
+                _ => title_case(unit_raw),
+            };
 
             return SpellRange {
                 text: input.to_string(),
@@ -153,6 +165,27 @@ impl SpellParser {
                 base_value: 0.0,
                 per_level: 0.0,
                 level_divisor: 1.0,
+            };
+        }
+
+        // Pattern 4: Per N Levels "1 round / 2 levels"
+        if let Some(caps) = self.duration_divisor_regex.captures(input_clean) {
+            let per_level = caps
+                .get(1)
+                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+            let unit = caps
+                .get(2)
+                .map_or("Round".to_string(), |m| title_case(m.as_str()));
+            let divisor = caps
+                .get(3)
+                .map_or(1.0, |m| m.as_str().parse().unwrap_or(1.0));
+
+            return SpellDuration {
+                text: input.to_string(),
+                unit,
+                base_value: 0.0,
+                per_level,
+                level_divisor: divisor,
             };
         }
 
@@ -222,16 +255,30 @@ impl SpellParser {
             let base = caps
                 .get(1)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            // 2nd group usually unit like "ft"
-            let _dist_unit = caps.get(2).map_or("", |m| m.as_str());
-            // 3rd group shape like "radius"
+
+            let dist_unit = caps
+                .get(2)
+                .map(|m| m.as_str().to_lowercase())
+                .unwrap_or_default();
             let shape = caps
                 .get(3)
-                .map_or("Special".to_string(), |m| title_case(m.as_str()));
+                .map(|m| m.as_str().to_lowercase())
+                .unwrap_or_default();
+
+            let unit = match (dist_unit.as_str(), shape.as_str()) {
+                ("foot" | "ft." | "ft" | "'", "radius") => "Foot Radius".to_string(),
+                ("yard" | "yd." | "yd", "radius") => "Yard Radius".to_string(),
+                ("mile" | "mi." | "mi", "radius") => "Mile Radius".to_string(),
+                ("foot" | "ft." | "ft" | "'", "cube") => "Foot Cube".to_string(),
+                ("yard" | "yd." | "yd", "cube") => "Yard Cube".to_string(),
+                (_, "radius") => "Foot Radius".to_string(), // Default shape if unit unknown
+                (_, "cube") => "Foot Cube".to_string(),
+                _ => "Special".to_string(),
+            };
 
             return SpellArea {
                 text: input.to_string(),
-                unit: shape, // using shape as "unit" per legacy behavior decisions
+                unit,
                 base_value: base,
                 per_level: 0.0,
                 level_divisor: 1.0,
@@ -256,14 +303,19 @@ impl SpellParser {
         // Remove parentheticals for the basic check if they are "M (msg)" etc?
         // Actually, components are often "V, S, M (worth 500gp)".
         // Splitting by comma is safest.
-        let parts: Vec<&str> = lower.split(',').collect();
+        let parts: Vec<&str> = lower
+            .split(|c: char| c == ',' || c == ';' || c == '+' || c.is_whitespace())
+            .collect();
         for part in parts {
             let p = part.trim();
-            if p.starts_with('v') || p.starts_with("verbal") {
+            if p.is_empty() {
+                continue;
+            }
+            if p == "v" || p == "verbal" {
                 v = true;
-            } else if p.starts_with('s') || p.starts_with("somatic") {
+            } else if p == "s" || p == "somatic" {
                 s = true;
-            } else if p.starts_with('m') || p.starts_with("material") {
+            } else if p == "m" || p == "material" {
                 m = true;
             }
         }
@@ -520,11 +572,11 @@ mod tests {
         let parser = SpellParser::new();
         let res = parser.parse_area("20-foot radius");
         assert_eq!(res.base_value, 20.0);
-        assert_eq!(res.unit, "Radius"); // Shape is captured as unit per current logic
+        assert_eq!(res.unit, "Foot Radius"); // Shape is captured as unit per current logic
 
         let res2 = parser.parse_area("30 ft. cone");
         assert_eq!(res2.base_value, 30.0);
-        assert_eq!(res2.unit, "Cone");
+        assert_eq!(res2.unit, "Special");
     }
 
     #[test]
@@ -553,5 +605,33 @@ mod tests {
         assert!(!res4.verbal);
         assert!(!res4.somatic);
         assert!(!res4.material);
+    }
+
+    #[test]
+    fn test_parse_shorthand_units() {
+        let parser = SpellParser::new();
+
+        // Range Shorthand
+        let res = parser.parse_range("10'");
+        assert_eq!(res.base_value, 10.0);
+        assert_eq!(res.unit, "Ft.");
+
+        let res2 = parser.parse_range("6\"");
+        assert_eq!(res2.base_value, 6.0);
+        assert_eq!(res2.unit, "In.");
+
+        let res3 = parser.parse_range("10' + 5'/level");
+        assert_eq!(res3.base_value, 10.0);
+        assert_eq!(res3.per_level, 5.0);
+        assert_eq!(res3.unit, "Ft.");
+
+        // Area Shorthand
+        let area = parser.parse_area("20' radius");
+        assert_eq!(area.base_value, 20.0);
+        assert_eq!(area.unit, "Foot Radius");
+
+        let area2 = parser.parse_area("10' cube");
+        assert_eq!(area2.base_value, 10.0);
+        assert_eq!(area2.unit, "Foot Cube");
     }
 }

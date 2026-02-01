@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json_canonicalizer::to_string as to_jcs_string;
 use sha2::{Digest, Sha256};
 
+use crate::utils::spell_parser::SpellParser;
 use std::fmt::Write as FmtWrite;
 
 pub const CURRENT_SCHEMA_VERSION: i64 = 1;
@@ -86,9 +87,12 @@ pub struct SpellDamage {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SourceRef {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<String>,
     pub book: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<serde_json::Value>, // Can be string or int
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
@@ -99,7 +103,7 @@ fn default_one() -> f64 {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CanonicalSpell {
-    #[serde(skip_serializing, skip_deserializing, default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub name: String,
     pub tradition: String,
@@ -134,16 +138,16 @@ pub struct CanonicalSpell {
     pub description: String,
     pub tags: Vec<String>,
 
-    // Metadata - Skipped when hashing/serializing to canonical JSON
-    #[serde(skip_serializing, default)]
+    // Metadata - Skipped when hashing to canonical JSON, but kept for database/export
+    #[serde(default)]
     pub source_refs: Vec<SourceRef>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub edition: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
-    #[serde(skip_serializing, default = "default_version")]
+    #[serde(default = "default_version")]
     pub version: String,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
 
     pub is_quest_spell: i64, // 0 or 1
@@ -193,7 +197,7 @@ impl CanonicalSpell {
             license: None,
             is_quest_spell: 0,
             is_cantrip: (level == 0) as i64,
-            schema_version: 1,
+            schema_version: CURRENT_SCHEMA_VERSION,
         }
     }
 
@@ -215,11 +219,15 @@ impl CanonicalSpell {
 
         let mut value = serde_json::to_value(&clone).map_err(|err| err.to_string())?;
 
-        // Metadata Exclusion: source_refs, edition, author, version, license, and schema_version
-        // are strictly excluded from the canonical JSON used for hashing.
-        // source_refs, edition, author, version, license are already skipped via #[serde(skip_serializing)].
-        // schema_version is NOT skipped in the struct (for export), so we remove it here.
+        // Metadata Exclusion: id, source_refs, edition, author, version, license, and schema_version
+        // are strictly excluded from the canonical JSON used for hashing to ensure hash stability.
         if let Some(obj) = value.as_object_mut() {
+            obj.remove("id");
+            obj.remove("source_refs");
+            obj.remove("edition");
+            obj.remove("author");
+            obj.remove("version");
+            obj.remove("license");
             obj.remove("schema_version");
         }
 
@@ -311,53 +319,17 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
         spell.class_list = parse_comma_list(&detail.class_list);
         spell.tags = parse_comma_list(&detail.tags);
 
-        // Map complex fields to basic text-only objects for now
-        spell.range = detail.range.map(|text| SpellRange {
-            text,
-            unit: "Special".into(),
-            base_value: 0.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
-        });
+        let parser = SpellParser::new();
 
-        spell.casting_time = detail.casting_time.map(|text| SpellCastingTime {
-            text,
-            unit: "Special".into(),
-            base_value: 1.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
-        });
+        spell.range = detail.range.map(|s| parser.parse_range(&s));
+        spell.casting_time = detail.casting_time.map(|s| parser.parse_casting_time(&s));
+        spell.duration = detail.duration.map(|s| parser.parse_duration(&s));
+        spell.area = detail.area.map(|s| parser.parse_area(&s));
+        spell.damage = None; // Legacy schema does not have a dedicated damage field
 
-        spell.duration = detail.duration.map(|text| SpellDuration {
-            text,
-            unit: "Special".into(),
-            base_value: 0.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
-        });
-
-        spell.area = detail.area.map(|text| SpellArea {
-            text,
-            unit: "Special".into(),
-            base_value: 0.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
-        });
-
-        // Components parsing (exact token matching)
+        // Components parsing
         if let Some(comp_str) = &detail.components {
-            let lower = comp_str.to_lowercase();
-            let tokens: Vec<&str> = lower
-                .split(|c: char| c == ',' || c.is_whitespace() || c == ';')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .collect();
-
-            spell.components = Some(SpellComponents {
-                verbal: tokens.iter().any(|&t| t == "v" || t == "verbal"),
-                somatic: tokens.iter().any(|&t| t == "s" || t == "somatic"),
-                material: tokens.iter().any(|&t| t == "m" || t == "material"),
-            });
+            spell.components = Some(parser.parse_components(comp_str));
         }
 
         spell.material_components = detail.material_components;
@@ -710,8 +682,8 @@ mod tests {
 
         let hash_no_id = spell.compute_hash().unwrap();
 
-        // Assign an ID
-        spell.id = Some("existing-id".to_string());
+        // Assign an ID (must match schema pattern: 64 hex chars)
+        spell.id = Some("a".repeat(64));
         let hash_with_id = spell.compute_hash().unwrap();
 
         assert_eq!(
@@ -1192,5 +1164,103 @@ mod tests {
         assert!(!comps.verbal);
         assert!(!comps.somatic);
         assert!(!comps.material);
+    }
+
+    #[test]
+    fn test_metadata_preservation_for_storage() {
+        let mut spell =
+            CanonicalSpell::new("Metadata Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.author = Some("Test Author".into());
+        spell.edition = Some("2e".into());
+
+        // 1. Verify Standard Serialization KEEPS metadata
+        let standard_json = serde_json::to_string(&spell).unwrap();
+        assert!(
+            standard_json.contains("\"author\":\"Test Author\""),
+            "Standard JSON must contain author"
+        );
+        assert!(
+            standard_json.contains("\"edition\":\"2e\""),
+            "Standard JSON must contain edition"
+        );
+
+        // 2. Verify Canonical Serialization REMOVES metadata for hashing
+        let canonical_json = spell.to_canonical_json().unwrap();
+        assert!(
+            !canonical_json.contains("\"author\""),
+            "Canonical JSON must EXCLUDE author"
+        );
+        assert!(
+            !canonical_json.contains("\"edition\""),
+            "Canonical JSON must EXCLUDE edition"
+        );
+    }
+
+    #[test]
+    fn test_new_uses_current_schema_version() {
+        let spell = CanonicalSpell::new("V".into(), 1, "ARCANE".into(), "D".into());
+        assert_eq!(spell.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+    #[test]
+    fn test_complex_field_structuring_regression() {
+        use crate::models::spell::SpellDetail;
+
+        let detail = SpellDetail {
+            id: Some(1),
+            name: "Complex Scaling Spell".to_string(),
+            level: 3,
+            school: Some("Evocation".to_string()),
+            sphere: None,
+            class_list: Some("Wizard".to_string()),
+            range: Some("10 yards + 5 yards/level".to_string()),
+            components: Some("V, S, M (gem)".to_string()),
+            material_components: Some("Gem".to_string()),
+            casting_time: Some("1 action".to_string()),
+            duration: Some("1 round / 2 levels".to_string()),
+            area: Some("20-foot radius".to_string()),
+            saving_throw: Some("None".to_string()),
+            reversible: Some(0),
+            description: "Desc".to_string(),
+            tags: Some("tag".to_string()),
+            source: Some("Test".to_string()),
+            edition: Some("2e".to_string()),
+            author: Some("Me".to_string()),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            license: None,
+            artifacts: None,
+        };
+
+        let spell = CanonicalSpell::try_from(detail).unwrap();
+
+        // Range
+        let r = spell.range.unwrap();
+        assert_eq!(r.base_value, 10.0);
+        assert_eq!(r.per_level, 5.0);
+        assert_eq!(r.unit, "Yards");
+
+        // Duration
+        let d = spell.duration.unwrap();
+        assert_eq!(d.per_level, 1.0);
+        assert_eq!(d.level_divisor, 2.0);
+        assert_eq!(d.unit, "Round");
+
+        // Area
+        let a = spell.area.unwrap();
+        assert_eq!(a.base_value, 20.0);
+        assert_eq!(a.unit, "Foot Radius");
+
+        // Casting Time
+        let ct = spell.casting_time.unwrap();
+        assert_eq!(ct.base_value, 1.0);
+        assert_eq!(ct.unit, "Action");
+
+        // Components
+        let c = spell.components.unwrap();
+        assert!(c.verbal);
+        assert!(c.somatic);
+        assert!(c.material);
     }
 }

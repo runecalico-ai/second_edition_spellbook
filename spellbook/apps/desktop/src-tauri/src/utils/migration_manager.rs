@@ -189,7 +189,8 @@ pub fn run_hash_backfill(
 
         let hash_result = canonical.compute_hash();
         if let Ok(hash) = hash_result {
-            let json_result = canonical.to_canonical_json();
+            canonical.id = Some(hash.clone()); // Store hash in the record
+            let json_result = serde_json::to_string(&canonical); // Full serialization (with metadata)
             if let Ok(json) = json_result {
                 let rows = tx.execute(
                     "UPDATE spell SET canonical_data = ?1, content_hash = ?2, schema_version = ?3 WHERE id = ?4",
@@ -319,7 +320,8 @@ pub fn recompute_all_hashes(
 
         if let Ok(new_hash) = canonical.compute_hash() {
             if Some(&new_hash) != old_hash.as_ref() {
-                if let Ok(json) = canonical.to_canonical_json() {
+                canonical.id = Some(new_hash.clone());
+                if let Ok(json) = serde_json::to_string(&canonical) {
                     tx.execute(
                         "UPDATE spell SET canonical_data = ?1, content_hash = ?2, schema_version = ?3 WHERE id = ?4",
                         params![json, new_hash, canonical.schema_version, detail.id],
@@ -614,6 +616,96 @@ mod tests {
             "Range unit mismatch, JSON: {}",
             json_val
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_metadata_persistence_and_id_storage_regression(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let db = Connection::open_in_memory()?;
+        db.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                tradition TEXT,
+                description TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER DEFAULT 0,
+                is_cantrip INTEGER DEFAULT 0,
+                content_hash TEXT,
+                canonical_data TEXT,
+                schema_version INTEGER
+            );
+            "#,
+        )?;
+
+        db.execute(
+            r#"INSERT INTO spell (name, level, tradition, description, school, edition, author)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
+            params![
+                "Preserve Me",
+                1,
+                "ARCANE",
+                "Desc",
+                "Abjuration",
+                "2e",
+                "Test Author"
+            ],
+        )?;
+
+        let temp = tempdir()?;
+        run_hash_backfill(&db, temp.path())?;
+
+        let (hash, json): (String, String) =
+            db.query_row("SELECT content_hash, canonical_data FROM spell", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?;
+
+        // Verify JSON contains Metadata (edition/author) and ID (hash)
+        assert!(
+            json.contains("\"edition\":\"2e\""),
+            "Metadata 'edition' was lost!"
+        );
+        assert!(
+            json.contains("\"author\":\"Test Author\""),
+            "Metadata 'author' was lost!"
+        );
+        assert!(
+            json.contains(&format!("\"id\":\"{}\"", hash)),
+            "Hash ID was not stored in JSON!"
+        );
+
+        // Verify hashing still works (checking stability)
+        let canon: CanonicalSpell = serde_json::from_str(&json)?;
+        let recomputed = canon.compute_hash()?;
+        assert_eq!(
+            hash, recomputed,
+            "Stored hash should match computation from stored JSON"
+        );
+
+        // Verify canonical JSON for hashing EXCLUDES metadata and ID
+        let canonical_json = canon.to_canonical_json()?;
+        assert!(!canonical_json.contains("\"edition\""));
+        assert!(!canonical_json.contains("\"author\""));
+        assert!(!canonical_json.contains("\"id\""));
 
         Ok(())
     }

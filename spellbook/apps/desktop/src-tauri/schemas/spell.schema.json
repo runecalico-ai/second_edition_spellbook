@@ -434,12 +434,7 @@
         }
       },
       "then": {
-        "required": ["school"],
-        "properties": {
-          "sphere": {
-            "const": null
-          }
-        }
+        "required": ["school"]
       }
     },
     {
@@ -451,12 +446,7 @@
         }
       },
       "then": {
-        "required": ["sphere"],
-        "properties": {
-          "school": {
-            "const": null
-          }
-        }
+        "required": ["sphere"]
       }
     },
     {

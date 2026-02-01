@@ -66,11 +66,21 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
 ```json
 {
   "area": {
-    "base_value": 0,
-    "level_divisor": 1,
-    "per_level": 0,
-    "text": "Special",
-    "unit": "Special"
+    "kind": "radius_circle",
+    "notes": null,
+    "radius": {
+      "cap_level": null,
+      "cap_value": null,
+      "max_level": null,
+      "min_level": null,
+      "mode": "fixed",
+      "per_level": null,
+      "rounding": null,
+      "value": 20
+    },
+    "scalar": null,
+    "shape_unit": null,
+    "unit": "ft"
   },
   "casting_time": {
     "base_value": 1,
@@ -104,11 +114,22 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
   "level": 3,
   "name": "Fireball",
   "range": {
-    "base_value": 10,
-    "level_divisor": 1,
-    "per_level": 10,
-    "text": "10 yards + 10 yards/level",
-    "unit": "Yards"
+    "anchor": null,
+    "distance": {
+      "cap_level": null,
+      "cap_value": null,
+      "max_level": null,
+      "min_level": null,
+      "mode": "per_level",
+      "per_level": 10,
+      "rounding": null,
+      "value": 10
+    },
+    "kind": "distance",
+    "notes": null,
+    "region_unit": null,
+    "requires": null,
+    "unit": "yd"
   },
   "school": "Evocation",
   "tags": [

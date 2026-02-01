@@ -1,4 +1,4 @@
-use crate::models::canonical_spell::CanonicalSpell;
+use crate::models::canonical_spell::{AreaKind, CanonicalSpell};
 use crate::models::spell::SpellDetail;
 use crate::utils::spell_parser::SpellParser;
 use chrono::Utc;
@@ -113,7 +113,7 @@ pub fn run_hash_backfill(
         // Apply parsers to structure the data
         if let Some(range_str) = &detail.range {
             let res = parser.parse_range(range_str);
-            if res.unit == "Special"
+            if res.kind == crate::models::canonical_spell::RangeKind::Special
                 && range_str.to_lowercase() != "special"
                 && !range_str.trim().is_empty()
             {
@@ -167,21 +167,23 @@ pub fn run_hash_backfill(
         }
         if let Some(area_str) = &detail.area {
             let res = parser.parse_area(area_str);
-            if res.unit == "Special"
-                && area_str.to_lowercase() != "special"
-                && !area_str.trim().is_empty()
-            {
-                if let Some(log) = &mut log_file {
-                    let _ = writeln!(
-                        log,
-                        "[{}] Spell {}: Failed to parse area '{}'",
-                        Utc::now(),
-                        detail.id.unwrap_or_default(),
-                        area_str
-                    );
+            if let Some(spec) = &res {
+                if spec.kind == AreaKind::Special
+                    && area_str.to_lowercase() != "special"
+                    && !area_str.trim().is_empty()
+                {
+                    if let Some(log) = &mut log_file {
+                        let _ = writeln!(
+                            log,
+                            "[{}] Spell {}: Failed to parse area '{}'",
+                            Utc::now(),
+                            detail.id.unwrap_or_default(),
+                            area_str
+                        );
+                    }
                 }
             }
-            canonical.area = Some(res);
+            canonical.area = res;
         }
         if let Some(comp_str) = &detail.components {
             canonical.components = Some(parser.parse_components(comp_str));
@@ -312,7 +314,7 @@ pub fn recompute_all_hashes(
             canonical.casting_time = Some(parser.parse_casting_time(s));
         }
         if let Some(s) = &detail.area {
-            canonical.area = Some(parser.parse_area(s));
+            canonical.area = parser.parse_area(s);
         }
         if let Some(s) = &detail.components {
             canonical.components = Some(parser.parse_components(s));
@@ -605,14 +607,19 @@ mod tests {
             json_val
         );
 
-        // Verify parser results (secondary check)
+        // Verify parser results (range structure)
         assert!(
-            json_val.contains(r#""base_value":100.5"#),
-            "Range base_value mismatch, JSON: {}",
+            json_val.contains(r#""kind":"distance""#),
+            "Range kind mismatch, JSON: {}",
             json_val
         );
         assert!(
-            json_val.contains(r#""unit":"Feet""#),
+            json_val.contains(r#""value":100.5"#),
+            "Range distance value mismatch, JSON: {}",
+            json_val
+        );
+        assert!(
+            json_val.contains(r#""unit":"ft""#),
             "Range unit mismatch, JSON: {}",
             json_val
         );

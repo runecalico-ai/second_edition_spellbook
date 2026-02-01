@@ -291,7 +291,7 @@ pub fn canonicalize_spell_detail(
         canonical.casting_time = Some(parser.parse_casting_time(s));
     }
     if let Some(s) = &detail.area {
-        canonical.area = Some(parser.parse_area(s));
+        canonical.area = parser.parse_area(s);
     }
     if let Some(s) = &detail.components {
         canonical.components = Some(parser.parse_components(s));

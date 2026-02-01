@@ -10,6 +10,19 @@ All spells processed by the backend MUST support mapping to the Strict Spell Sch
 - WHEN converted to `CanonicalSpell`
 - THEN it MUST conform to `spell.schema.json` structure.
 
+#### Scenario: Complex Area Parsing
+- GIVEN a spell with area text "20 ft. radius"
+- WHEN converted to `CanonicalSpell`
+- THEN it MUST be structured as an `AreaSpec` object with `kind="radius_circle"`
+- AND `radius` MUST be `{"mode": "fixed", "value": 20}`.
+
+#### Scenario: Complex Range Parsing
+- GIVEN a spell with range text "100 ft + 10 ft/level"
+- WHEN converted to `CanonicalSpell`
+- THEN it MUST be structured as a `RangeSpec` object with `kind="distance"`
+- AND `distance` scalar MUST be `{"mode": "per_level", "value": 100, "per_level": 10}`
+- AND `unit` MUST be `"ft"` (normalized).
+
 ### Requirement: Deterministic Identity
 A spell's identity MUST be defined by the SHA-256 hash of its canonical JSON representation.
 

@@ -150,6 +150,7 @@
                         "Touch",
                         "Yards",
                         "Feet",
+                        "Inches",
                         "Miles",
                         "Special",
                         "Unlimited",
@@ -225,6 +226,8 @@
                         "Round",
                         "Turn",
                         "Hour",
+                        "Minutes",
+                        "Actions",
                         "Special",
                         "Instantaneous"
                     ],
@@ -271,7 +274,8 @@
                         "Month",
                         "Year",
                         "Permanent",
-                        "Special"
+                        "Special",
+                        "Minutes"
                     ],
                     "default": "Round"
                 },
@@ -298,52 +302,8 @@
             "additionalProperties": false
         },
         "area": {
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "Display area text (e.g. '10 ft. radius / level')."
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": [
-                        "Special",
-                        "None",
-                        "Square Feet",
-                        "Cubic Feet",
-                        "Square Yards",
-                        "Cubic Yards",
-                        "Foot Radius",
-                        "Yard Radius",
-                        "Mile Radius",
-                        "Foot Cube",
-                        "Yard Cube",
-                        "Creature(s)",
-                        "Path"
-                    ],
-                    "default": "Special"
-                },
-                "base_value": {
-                    "type": "number",
-                    "description": "Fixed base area amount.",
-                    "default": 0
-                },
-                "per_level": {
-                    "type": "number",
-                    "description": "Variable area added per increment.",
-                    "default": 0
-                },
-                "level_divisor": {
-                    "type": "number",
-                    "description": "Level increment divisor.",
-                    "default": 1
-                }
-            },
-            "required": [
-                "text",
-                "unit"
-            ],
-            "additionalProperties": false
+            "$ref": "#/$defs/AreaSpec",
+            "description": "The area of effect."
         },
         "damage": {
             "type": "object",
@@ -611,5 +571,535 @@
                 ]
             }
         }
-    ]
+    ],
+    "$defs": {
+        "scalar": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "mode"
+            ],
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "fixed",
+                        "per_level"
+                    ]
+                },
+                "value": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "per_level": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "min_level": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "max_level": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "cap_value": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "cap_level": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "rounding": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "floor",
+                        "ceil",
+                        "nearest"
+                    ]
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "mode": {
+                                "const": "fixed"
+                            }
+                        },
+                        "required": [
+                            "mode"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "value"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "mode": {
+                                "const": "per_level"
+                            }
+                        },
+                        "required": [
+                            "mode"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "per_level"
+                        ]
+                    }
+                }
+            ]
+        },
+        "AreaSpec": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "kind"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "point",
+                        "radius_circle",
+                        "radius_sphere",
+                        "cone",
+                        "line",
+                        "rect",
+                        "rect_prism",
+                        "cylinder",
+                        "wall",
+                        "cube",
+                        "volume",
+                        "surface",
+                        "tiles",
+                        "creatures",
+                        "objects",
+                        "region",
+                        "scope",
+                        "special"
+                    ]
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "ft",
+                        "yd",
+                        "mi",
+                        "ft2",
+                        "yd2",
+                        "square",
+                        "ft3",
+                        "yd3",
+                        "hex",
+                        "room",
+                        "floor"
+                    ]
+                },
+                "shape_unit": {
+                    "type": "string",
+                    "enum": [
+                        "ft",
+                        "yd",
+                        "mi"
+                    ],
+                    "description": "Unit for geometric dimensions (radii/length/height/width/etc.)."
+                },
+                "radius": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "diameter": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "length": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "width": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "height": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "thickness": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "edge": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "angle_deg": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 360,
+                    "description": "Cone/fan angle when explicitly given or normalized."
+                },
+                "surface_area": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "volume": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "tile_unit": {
+                    "type": "string",
+                    "enum": [
+                        "hex",
+                        "room",
+                        "floor",
+                        "square"
+                    ]
+                },
+                "tile_count": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "count": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "count_subject": {
+                    "type": "string",
+                    "enum": [
+                        "creature",
+                        "undead",
+                        "ally",
+                        "enemy",
+                        "object",
+                        "structure"
+                    ],
+                    "description": "What is being counted when kind is creatures/objects."
+                },
+                "region_unit": {
+                    "type": "string",
+                    "enum": [
+                        "object",
+                        "structure",
+                        "building",
+                        "bridge",
+                        "ship",
+                        "fortress",
+                        "clearing",
+                        "grove",
+                        "field",
+                        "waterbody",
+                        "cavesystem",
+                        "valley",
+                        "region",
+                        "domain",
+                        "demiplane",
+                        "plane"
+                    ]
+                },
+                "scope_unit": {
+                    "type": "string",
+                    "enum": [
+                        "los",
+                        "loe",
+                        "within_range",
+                        "within_spell_range",
+                        "within_sight",
+                        "within_hearing",
+                        "aura",
+                        "sanctified_ground",
+                        "desecrated_ground",
+                        "portfolio_defined"
+                    ]
+                },
+                "moves_with": {
+                    "type": "string",
+                    "enum": [
+                        "caster",
+                        "target",
+                        "object",
+                        "fixed"
+                    ],
+                    "description": "Normalized motion behavior."
+                },
+                "notes": {
+                    "type": "string"
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "radius_circle"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "radius",
+                            "shape_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "radius_sphere"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "radius",
+                            "shape_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "line"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "length",
+                            "width",
+                            "shape_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "rect"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "length",
+                            "width",
+                            "shape_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "rect_prism"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "length",
+                            "width",
+                            "height",
+                            "shape_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "cylinder"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "radius",
+                            "height",
+                            "shape_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "wall"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "length",
+                            "height",
+                            "thickness",
+                            "shape_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "cube"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "edge",
+                            "shape_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "surface"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "surface_area",
+                            "unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "volume"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "volume",
+                            "unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "tiles"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "tile_unit",
+                            "tile_count"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "creatures"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "count",
+                            "count_subject"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "objects"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "count",
+                            "count_subject"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "region"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "region_unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "scope"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "scope_unit"
+                        ]
+                    }
+                }
+            ]
+        }
+    }
 }

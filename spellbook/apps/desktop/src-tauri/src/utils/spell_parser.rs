@@ -1,10 +1,12 @@
 use crate::models::canonical_spell::{
-    SpellArea, SpellCastingTime, SpellComponents, SpellDamage, SpellDuration, SpellRange,
+    AreaKind, AreaShapeUnit, AreaSpec, AreaUnit, RangeKind, RangeSpec, RangeUnit, Scalar,
+    ScalarMode, SpellCastingTime, SpellComponents, SpellDamage, SpellDuration,
 };
 use regex::Regex;
 
 pub struct SpellParser {
     range_simple_regex: Regex,
+
     range_variable_regex: Regex,
     duration_simple_regex: Regex,
     damage_fixed_regex: Regex,
@@ -57,58 +59,111 @@ impl SpellParser {
         }
     }
 
-    pub fn parse_range(&self, input: &str) -> SpellRange {
+    pub fn parse_range(&self, input: &str) -> RangeSpec {
         let input_clean = input.trim();
         let lower = input_clean.to_lowercase();
 
         if lower == "touch" {
-            return SpellRange {
-                text: input.to_string(),
-                unit: "Touch".to_string(),
-                base_value: 0.0,
-                per_level: 0.0,
-                level_divisor: 1.0,
+            return RangeSpec {
+                kind: RangeKind::Touch,
+                unit: None,
+                distance: None,
+                requires: None,
+                anchor: None,
+                region_unit: None,
+                notes: None,
             };
         }
 
         if lower == "unlimited" {
-            return SpellRange {
-                text: input.to_string(),
-                unit: "Unlimited".to_string(),
-                base_value: 0.0,
-                per_level: 0.0,
-                level_divisor: 1.0,
+            return RangeSpec {
+                kind: RangeKind::Unlimited,
+                unit: None,
+                distance: None,
+                requires: None,
+                anchor: None,
+                region_unit: None,
+                notes: None,
             };
         }
+
+        if lower == "personal" || lower == "0" {
+            return RangeSpec {
+                kind: RangeKind::Personal,
+                unit: None,
+                distance: None,
+                requires: None,
+                anchor: None,
+                region_unit: None,
+                notes: None,
+            };
+        }
+
+        // Helper to map units
+        let map_unit = |u: &str| -> Option<RangeUnit> {
+            match u.to_lowercase().as_str() {
+                "ft" | "ft." | "foot" | "feet" | "'" => Some(RangeUnit::Ft),
+                "yd" | "yd." | "yard" | "yards" => Some(RangeUnit::Yd),
+                "mi" | "mi." | "mile" | "miles" => Some(RangeUnit::Mi),
+                "in" | "in." | "inch" | "inches" | "\"" => Some(RangeUnit::Inches),
+                _ => None,
+            }
+        };
 
         // Pattern 2: Variable Scaling "10 + 5/level yards"
         if let Some(caps) = self.range_variable_regex.captures(input_clean) {
             let base = caps
                 .get(1)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+            // Group 3 is the per_level value
             let per_level = caps
                 .get(3)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
 
-            // Unit can be in group 2 (base unit), 4 (per-level unit), or 5 (trailing unit)
+            // Unit extraction logic from original parser
             let unit_raw = caps
                 .get(5)
                 .or(caps.get(4))
                 .or(caps.get(2))
-                .map_or("Special", |m| m.as_str());
+                .map_or("", |m| m.as_str());
 
-            let unit = match unit_raw {
-                "'" => "Ft.".to_string(),
-                "\"" => "In.".to_string(),
-                _ => title_case(unit_raw),
+            let unit = map_unit(unit_raw);
+            let kind = if unit.is_some() {
+                RangeKind::Distance
+            } else {
+                RangeKind::Special
             };
 
-            return SpellRange {
-                text: input.to_string(),
+            // Create scalar manually as make_scalar might be simple
+            let scalar = Scalar {
+                mode: if per_level != 0.0 {
+                    ScalarMode::PerLevel
+                } else {
+                    ScalarMode::Fixed
+                },
+                value: Some(base),
+                per_level: Some(per_level),
+                min_level: None,
+                max_level: None,
+                cap_value: None,
+                cap_level: None,
+                rounding: None,
+            };
+
+            let notes = if unit.is_none() {
+                Some(input.to_string())
+            } else {
+                None
+            };
+
+            return RangeSpec {
+                kind,
                 unit,
-                base_value: base,
-                per_level,
-                level_divisor: 1.0,
+                distance: Some(scalar),
+                requires: None,
+                anchor: None,
+                region_unit: None,
+                notes,
             };
         }
 
@@ -117,30 +172,43 @@ impl SpellParser {
             let base = caps
                 .get(1)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit_raw = caps.get(2).map_or("Special", |m| m.as_str());
+            let unit_raw = caps.get(2).map_or("", |m| m.as_str());
 
-            let unit = match unit_raw {
-                "'" => "Ft.".to_string(),
-                "\"" => "In.".to_string(),
-                _ => title_case(unit_raw),
-            };
+            let unit = map_unit(unit_raw);
 
-            return SpellRange {
-                text: input.to_string(),
-                unit,
-                base_value: base,
-                per_level: 0.0,
-                level_divisor: 1.0,
-            };
+            // If unit is recognized, it's Distance. Else Special.
+            if let Some(u) = unit {
+                let scalar = Scalar {
+                    mode: ScalarMode::Fixed,
+                    value: Some(base),
+                    per_level: None,
+                    min_level: None,
+                    max_level: None,
+                    cap_value: None,
+                    cap_level: None,
+                    rounding: None,
+                };
+                return RangeSpec {
+                    kind: RangeKind::Distance,
+                    unit: Some(u),
+                    distance: Some(scalar),
+                    requires: None,
+                    anchor: None,
+                    region_unit: None,
+                    notes: None,
+                };
+            }
         }
 
         // Fallback
-        SpellRange {
-            text: input.to_string(),
-            unit: "Special".to_string(),
-            base_value: 0.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
+        RangeSpec {
+            kind: RangeKind::Special,
+            unit: None,
+            distance: None,
+            requires: None,
+            anchor: None,
+            region_unit: None,
+            notes: Some(input.to_string()),
         }
     }
 
@@ -249,48 +317,151 @@ impl SpellParser {
         }
     }
 
-    pub fn parse_area(&self, input: &str) -> SpellArea {
+    pub fn parse_area(&self, input: &str) -> Option<AreaSpec> {
         let input_clean = input.trim();
+        if input_clean.is_empty() {
+            return None;
+        }
+
         if let Some(caps) = self.area_regex.captures(input_clean) {
-            let base = caps
+            let val = caps
                 .get(1)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
 
-            let dist_unit = caps
+            let unit_raw = caps
                 .get(2)
                 .map(|m| m.as_str().to_lowercase())
                 .unwrap_or_default();
-            let shape = caps
+            let shape_raw = caps
                 .get(3)
                 .map(|m| m.as_str().to_lowercase())
                 .unwrap_or_default();
 
-            let unit = match (dist_unit.as_str(), shape.as_str()) {
-                ("foot" | "ft." | "ft" | "'", "radius") => "Foot Radius".to_string(),
-                ("yard" | "yd." | "yd", "radius") => "Yard Radius".to_string(),
-                ("mile" | "mi." | "mi", "radius") => "Mile Radius".to_string(),
-                ("foot" | "ft." | "ft" | "'", "cube") => "Foot Cube".to_string(),
-                ("yard" | "yd." | "yd", "cube") => "Yard Cube".to_string(),
-                (_, "radius") => "Foot Radius".to_string(), // Default shape if unit unknown
-                (_, "cube") => "Foot Cube".to_string(),
-                _ => "Special".to_string(),
+            // Normalize unit first
+            let parsed_unit = match unit_raw.as_str() {
+                "foot" | "ft." | "ft" | "'" => Some((AreaUnit::Ft, AreaShapeUnit::Ft)),
+                "yard" | "yd." | "yd" => Some((AreaUnit::Yd, AreaShapeUnit::Yd)),
+                "mile" | "mi." | "mi" => Some((AreaUnit::Mi, AreaShapeUnit::Mi)),
+                _ => None,
             };
 
-            return SpellArea {
-                text: input.to_string(),
-                unit,
-                base_value: base,
-                per_level: 0.0,
-                level_divisor: 1.0,
+            let (kind, unit, shape_unit, radius, length, width, edge) =
+                match (parsed_unit, shape_raw.as_str()) {
+                    // Radius
+                    (Some((u, su)), "radius") => (
+                        AreaKind::RadiusCircle,
+                        Some(u),
+                        Some(su),
+                        Some(val),
+                        None,
+                        None,
+                        None,
+                    ),
+                    (None, "radius") => (
+                        AreaKind::RadiusCircle,
+                        Some(AreaUnit::Ft),
+                        Some(AreaShapeUnit::Ft),
+                        Some(val),
+                        None,
+                        None,
+                        None,
+                    ),
+
+                    // Cube
+                    (Some((u, su)), "cube") => (
+                        AreaKind::Cube,
+                        Some(u),
+                        Some(su),
+                        None,
+                        None,
+                        None,
+                        Some(val),
+                    ),
+
+                    // Cone
+                    (Some((u, su)), "cone") => (
+                        AreaKind::Cone,
+                        Some(u),
+                        Some(su),
+                        None,
+                        Some(val), // Length
+                        None,
+                        None,
+                    ),
+                    (None, "cone") => (
+                        AreaKind::Cone,
+                        Some(AreaUnit::Ft),
+                        Some(AreaShapeUnit::Ft),
+                        None,
+                        Some(val),
+                        None,
+                        None,
+                    ),
+
+                    _ => (AreaKind::Special, None, None, None, None, None, None),
+                };
+
+            // Helper to create Scalar
+            let make_scalar = |v: f64| Scalar {
+                mode: ScalarMode::Fixed,
+                value: Some(v),
+                per_level: None,
+                min_level: None,
+                max_level: None,
+                cap_value: None,
+                cap_level: None,
+                rounding: None,
             };
+
+            return Some(AreaSpec {
+                kind,
+                unit,
+                shape_unit,
+                radius: radius.map(make_scalar),
+                diameter: None,
+                length: length.map(make_scalar),
+                width: width.map(make_scalar),
+                height: None,
+                thickness: None,
+                edge: edge.map(make_scalar),
+                angle_deg: None,
+                surface_area: None,
+                volume: None,
+                tile_unit: None,
+                tile_count: None,
+                count: None,
+                count_subject: None,
+                region_unit: None,
+                scope_unit: None,
+                moves_with: None,
+                notes: Some(input.to_string()), // Preserve original text in notes
+            });
         }
-        SpellArea {
-            text: input.to_string(),
-            unit: "Special".to_string(),
-            base_value: 0.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
-        }
+
+        // Fallback for non-regex matches
+        Some(AreaSpec {
+            kind: AreaKind::Special,
+            unit: None,
+            shape_unit: None,
+            radius: None,
+            diameter: None,
+            length: None,
+            width: None,
+            height: None,
+            thickness: None,
+            edge: None,
+            angle_deg: None,
+            surface_area: None,
+            volume: None,
+            tile_unit: None,
+            tile_count: None,
+            count: None,
+            count_subject: None,
+            region_unit: None,
+            scope_unit: None,
+            moves_with: None,
+            notes: Some(input.to_string()),
+        })
     }
 
     pub fn parse_components(&self, input: &str) -> SpellComponents {
@@ -421,39 +592,40 @@ mod tests {
     fn test_parse_simple_range() {
         let parser = SpellParser::new();
         let res = parser.parse_range("10 yards");
-        assert_eq!(res.text, "10 yards");
-        assert_eq!(res.unit, "Yards");
-        assert_eq!(res.base_value, 10.0);
-        assert_eq!(res.per_level, 0.0);
+        assert_eq!(res.kind, RangeKind::Distance);
+        assert_eq!(res.unit, Some(RangeUnit::Yd));
+        assert_eq!(res.distance.unwrap().value.unwrap(), 10.0);
     }
 
     #[test]
     fn test_parse_float_range() {
         let parser = SpellParser::new();
         let res = parser.parse_range("60.5 ft.");
-        assert_eq!(res.base_value, 60.5);
-        assert_eq!(res.unit, "Ft.");
+        assert_eq!(res.distance.unwrap().value.unwrap(), 60.5);
+        assert_eq!(res.unit, Some(RangeUnit::Ft));
     }
 
     #[test]
     fn test_parse_variable_range_ft_per_level() {
         let parser = SpellParser::new();
         let res = parser.parse_range("10 + 5/level yards");
-        assert_eq!(res.base_value, 10.0);
-        assert_eq!(res.per_level, 5.0);
-        assert_eq!(res.unit, "Yards");
+        let dist = res.distance.unwrap();
+        assert_eq!(dist.value.unwrap(), 10.0);
+        assert_eq!(dist.per_level.unwrap(), 5.0);
+        assert_eq!(res.unit, Some(RangeUnit::Yd));
 
         let res2 = parser.parse_range("10 + 5.5/level yards");
-        assert_eq!(res2.base_value, 10.0);
-        assert_eq!(res2.per_level, 5.5);
+        let dist2 = res2.distance.unwrap();
+        assert_eq!(dist2.value.unwrap(), 10.0);
+        assert_eq!(dist2.per_level.unwrap(), 5.5);
     }
 
     #[test]
     fn test_parse_touch() {
         let parser = SpellParser::new();
         let res = parser.parse_range("Touch");
-        assert_eq!(res.unit, "Touch");
-        assert_eq!(res.base_value, 0.0);
+        assert_eq!(res.kind, RangeKind::Touch);
+        assert_eq!(res.unit, None);
     }
 
     #[test]
@@ -525,8 +697,8 @@ mod tests {
     fn test_unparseable_fallback() {
         let parser = SpellParser::new();
         let res = parser.parse_range("Special (see description)");
-        assert_eq!(res.unit, "Special");
-        assert_eq!(res.text, "Special (see description)");
+        assert_eq!(res.kind, RangeKind::Special);
+        assert_eq!(res.notes.unwrap(), "Special (see description)");
     }
 
     #[test]
@@ -570,13 +742,15 @@ mod tests {
     #[test]
     fn test_parse_area() {
         let parser = SpellParser::new();
-        let res = parser.parse_area("20-foot radius");
-        assert_eq!(res.base_value, 20.0);
-        assert_eq!(res.unit, "Foot Radius"); // Shape is captured as unit per current logic
+        let res = parser.parse_area("20-foot radius").unwrap();
+        assert_eq!(res.radius.unwrap().value.unwrap(), 20.0);
+        assert_eq!(res.kind, AreaKind::RadiusCircle);
+        assert_eq!(res.unit.unwrap(), AreaUnit::Ft);
 
-        let res2 = parser.parse_area("30 ft. cone");
-        assert_eq!(res2.base_value, 30.0);
-        assert_eq!(res2.unit, "Special");
+        let res2 = parser.parse_area("30 ft. cone").unwrap();
+        assert_eq!(res2.length.unwrap().value.unwrap(), 30.0);
+        assert_eq!(res2.kind, AreaKind::Cone);
+        assert_eq!(res2.unit.unwrap(), AreaUnit::Ft);
     }
 
     #[test]
@@ -613,25 +787,28 @@ mod tests {
 
         // Range Shorthand
         let res = parser.parse_range("10'");
-        assert_eq!(res.base_value, 10.0);
-        assert_eq!(res.unit, "Ft.");
+        assert_eq!(res.distance.unwrap().value.unwrap(), 10.0);
+        assert_eq!(res.unit, Some(RangeUnit::Ft));
 
         let res2 = parser.parse_range("6\"");
-        assert_eq!(res2.base_value, 6.0);
-        assert_eq!(res2.unit, "In.");
+        assert_eq!(res2.distance.unwrap().value.unwrap(), 6.0);
+        assert_eq!(res2.unit, Some(RangeUnit::Inches));
 
         let res3 = parser.parse_range("10' + 5'/level");
-        assert_eq!(res3.base_value, 10.0);
-        assert_eq!(res3.per_level, 5.0);
-        assert_eq!(res3.unit, "Ft.");
+        let dist3 = res3.distance.unwrap();
+        assert_eq!(dist3.value.unwrap(), 10.0);
+        assert_eq!(dist3.per_level.unwrap(), 5.0);
+        assert_eq!(res3.unit, Some(RangeUnit::Ft));
 
         // Area Shorthand
-        let area = parser.parse_area("20' radius");
-        assert_eq!(area.base_value, 20.0);
-        assert_eq!(area.unit, "Foot Radius");
+        let area = parser.parse_area("20' radius").unwrap();
+        assert_eq!(area.radius.unwrap().value.unwrap(), 20.0);
+        assert_eq!(area.kind, AreaKind::RadiusCircle);
+        assert_eq!(area.unit.unwrap(), AreaUnit::Ft);
 
-        let area2 = parser.parse_area("10' cube");
-        assert_eq!(area2.base_value, 10.0);
-        assert_eq!(area2.unit, "Foot Cube");
+        let area2 = parser.parse_area("10' cube").unwrap();
+        assert_eq!(area2.edge.unwrap().value.unwrap(), 10.0);
+        assert_eq!(area2.kind, AreaKind::Cube);
+        assert_eq!(area2.unit.unwrap(), AreaUnit::Ft);
     }
 }

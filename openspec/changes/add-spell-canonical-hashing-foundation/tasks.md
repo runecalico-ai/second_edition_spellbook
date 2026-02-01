@@ -3,6 +3,8 @@
 ## Specification
 - [x] Define JSON Schema (`spell.schema.json`).
 - [x] Define Serialization Contract (`canonical-serialization.md`).
+- [x] Integrate `AreaSpec` into schema (`spell.schema.json`).
+- [x] Integrate `RangeSpec` into schema (`spell.schema.json`).
 
 ## Backend Implementation
 ### Schema Validation
@@ -19,6 +21,20 @@
     - [x] Test Divine without sphere rejected.
     - [x] Test tradition BOTH requires both school and sphere.
     - [x] Test nested object defaults in `range`, `casting_time`, and `duration`.
+
+### Area Parsing & Validation (Spec V2)
+- [x] Implement strict `AreaSpec` parsing:
+    - [x] Map natural language areas to discriminators (cone, line, radius, etc.).
+    - [x] Extract scalar values (radius, length, width) with unit normalization.
+    - [x] Support complex scaling (per creature, per level).
+- [x] Implement AreaSpec validation tests.
+
+### Range Parsing & Validation (Spec V2)
+- [x] Implement strict `RangeSpec` parsing:
+    - [x] Map natural language ranges to discriminators (touch, distance, personal, etc.).
+    - [x] Extract scalar values with unit normalization.
+    - [x] Support structured scaling (fixed, per_level).
+- [x] Implement RangeSpec validation tests.
 
 ### Hash Computation
 - [x] Implement SHA-256 hashing:

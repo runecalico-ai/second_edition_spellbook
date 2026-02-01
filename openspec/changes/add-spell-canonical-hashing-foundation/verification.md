@@ -130,6 +130,30 @@
   - AND GIVEN both `school` and `sphere` are non-null
   - THEN validation MUST succeed
 
+### Range Parsing
+- [x] **Test: Parse Distance Range**
+  - GIVEN a range string "120 yards"
+  - WHEN parsed
+  - THEN it MUST be `kind="distance"`
+  - AND `unit` MUST be `RangeUnit::Yd`
+  - AND `distance` scalar MUST be `120`.
+
+- [x] **Test: Parse Touch Range**
+  - GIVEN a range string "Touch"
+  - WHEN parsed
+  - THEN it MUST be `kind="touch"`
+  - AND `unit` MUST be `None`.
+
+- [x] **Test: Parse Personal Range**
+  - GIVEN a range string "Personal" or "0"
+  - WHEN parsed
+  - THEN it MUST be `kind="personal"`.
+
+- [x] **Test: Parse Special Range**
+  - GIVEN a complex range string "Special"
+  - WHEN parsed
+  - THEN it MUST be `kind="special"`.
+
 ## Integration Tests
 
 ### Database Schema

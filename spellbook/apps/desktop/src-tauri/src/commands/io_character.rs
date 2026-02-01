@@ -1,3 +1,4 @@
+use crate::commands::spells::canonicalize_spell_detail;
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::{
@@ -335,15 +336,18 @@ fn import_character_bundle_logic(
             let final_spell_id = if let Some(sid) = spell_id {
                 sid
             } else {
+                let (canonical, hash, json) = canonicalize_spell_detail(s.clone())?;
                 tx.execute(
                     "INSERT INTO spell (name, level, school, sphere, range, components, material_components,
                                         casting_time, duration, area, saving_throw, reversible, description,
-                                        tags, source, edition, author, license, is_quest_spell, is_cantrip, class_list)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                        tags, source, edition, author, license, is_quest_spell, is_cantrip, class_list,
+                                        canonical_data, content_hash, schema_version)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     params![
                         s.name, s.level, s.school, s.sphere, s.range, s.components, s.material_components,
                         s.casting_time, s.duration, s.area, s.saving_throw, s.reversible, s.description,
-                        s.tags, s.source, s.edition, s.author, s.license, s.is_quest_spell, s.is_cantrip, s.class_list
+                        s.tags, s.source, s.edition, s.author, s.license, s.is_quest_spell, s.is_cantrip, s.class_list,
+                        json, hash, canonical.schema_version
                     ],
                 )?;
                 tx.last_insert_rowid()

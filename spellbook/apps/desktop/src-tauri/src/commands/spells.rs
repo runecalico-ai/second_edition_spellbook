@@ -1,6 +1,8 @@
 use crate::db::Pool;
 use crate::error::AppError;
+use crate::models::canonical_spell::CanonicalSpell;
 use crate::models::{SpellArtifact, SpellCreate, SpellDetail, SpellSummary, SpellUpdate};
+use crate::utils::spell_parser::SpellParser;
 use chrono::Utc;
 use rusqlite::params;
 use rusqlite::{Connection, OptionalExtension};
@@ -273,6 +275,38 @@ fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, Str
     changes
 }
 
+pub fn canonicalize_spell_detail(
+    detail: SpellDetail,
+) -> Result<(CanonicalSpell, String, String), AppError> {
+    let parser = SpellParser::new();
+    let mut canonical = CanonicalSpell::try_from(detail.clone()).map_err(AppError::Validation)?;
+
+    if let Some(s) = &detail.range {
+        canonical.range = Some(parser.parse_range(s));
+    }
+    if let Some(s) = &detail.duration {
+        canonical.duration = Some(parser.parse_duration(s));
+    }
+    if let Some(s) = &detail.casting_time {
+        canonical.casting_time = Some(parser.parse_casting_time(s));
+    }
+    if let Some(s) = &detail.area {
+        canonical.area = Some(parser.parse_area(s));
+    }
+    if let Some(s) = &detail.components {
+        canonical.components = Some(parser.parse_components(s));
+    }
+
+    let hash = canonical
+        .compute_hash()
+        .map_err(|e| AppError::Validation(format!("Hash error: {}", e)))?;
+    let json = canonical
+        .to_canonical_json()
+        .map_err(|e| AppError::Validation(format!("JSON error: {}", e)))?;
+
+    Ok((canonical, hash, json))
+}
+
 fn log_changes(
     conn: &Connection,
     spell_id: i64,
@@ -304,11 +338,39 @@ pub fn apply_spell_update_with_conn(
         log_changes(conn, spell.id, changes)?;
     }
 
+    let detail = SpellDetail {
+        id: Some(spell.id),
+        name: spell.name.clone(),
+        school: spell.school.clone(),
+        sphere: spell.sphere.clone(),
+        class_list: spell.class_list.clone(),
+        level: spell.level,
+        range: spell.range.clone(),
+        components: spell.components.clone(),
+        material_components: spell.material_components.clone(),
+        casting_time: spell.casting_time.clone(),
+        duration: spell.duration.clone(),
+        area: spell.area.clone(),
+        saving_throw: spell.saving_throw.clone(),
+        reversible: spell.reversible,
+        description: spell.description.clone(),
+        tags: spell.tags.clone(),
+        source: spell.source.clone(),
+        edition: spell.edition.clone(),
+        author: spell.author.clone(),
+        license: spell.license.clone(),
+        is_quest_spell: spell.is_quest_spell,
+        is_cantrip: spell.is_cantrip,
+        artifacts: None,
+    };
+    let (canonical, hash, json) = canonicalize_spell_detail(detail)?;
+
     conn.execute(
         "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
          components=?, material_components=?, casting_time=?, duration=?, area=?,
          saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?,
-         author=?, license=?, is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
+         author=?, license=?, is_quest_spell=?, is_cantrip=?, updated_at=?,
+         canonical_data=?, content_hash=?, schema_version=? WHERE id=?",
         params![
             spell.name,
             spell.school,
@@ -332,6 +394,9 @@ pub fn apply_spell_update_with_conn(
             spell.is_quest_spell,
             spell.is_cantrip,
             Utc::now().to_rfc3339(),
+            json,
+            hash,
+            canonical.schema_version,
             spell.id,
         ],
     )?;
@@ -408,12 +473,40 @@ pub async fn create_spell(
             spell.is_cantrip != 0,
         )?;
 
+        let detail = SpellDetail {
+            id: None,
+            name: spell.name.clone(),
+            school: spell.school.clone(),
+            sphere: spell.sphere.clone(),
+            class_list: spell.class_list.clone(),
+            level: spell.level,
+            range: spell.range.clone(),
+            components: spell.components.clone(),
+            material_components: spell.material_components.clone(),
+            casting_time: spell.casting_time.clone(),
+            duration: spell.duration.clone(),
+            area: spell.area.clone(),
+            saving_throw: spell.saving_throw.clone(),
+            reversible: spell.reversible,
+            description: spell.description.clone(),
+            tags: spell.tags.clone(),
+            source: spell.source.clone(),
+            edition: spell.edition.clone(),
+            author: spell.author.clone(),
+            license: spell.license.clone(),
+            is_quest_spell: spell.is_quest_spell,
+            is_cantrip: spell.is_cantrip,
+            artifacts: None,
+        };
+        let (canonical, hash, json) = canonicalize_spell_detail(detail)?;
+
         let conn = pool.get()?;
         conn.execute(
             "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
              material_components, casting_time, duration, area, saving_throw, reversible,
-             description, tags, source, edition, author, license, is_quest_spell, is_cantrip)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
+             canonical_data, content_hash, schema_version)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 spell.name,
                 spell.school,
@@ -436,6 +529,9 @@ pub async fn create_spell(
                 spell.license,
                 spell.is_quest_spell,
                 spell.is_cantrip,
+                json,
+                hash,
+                canonical.schema_version,
             ],
         )?;
         Ok::<i64, AppError>(conn.last_insert_rowid())
@@ -493,12 +589,15 @@ pub async fn upsert_spell(
 
         let conn = pool.get()?;
 
+        let (canonical, hash, json) = canonicalize_spell_detail(spell.clone())?;
+
         if let Some(id) = spell.id {
             conn.execute(
                 "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
                  components=?, material_components=?, casting_time=?, duration=?, area=?,
                  saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?,
-                 author=?, license=?, is_quest_spell=?, is_cantrip=?, updated_at=? WHERE id=?",
+                  author=?, license=?, is_quest_spell=?, is_cantrip=?, updated_at=?,
+                 canonical_data=?, content_hash=?, schema_version=? WHERE id=?",
                 params![
                     spell.name,
                     spell.school,
@@ -522,6 +621,9 @@ pub async fn upsert_spell(
                     spell.is_quest_spell,
                     spell.is_cantrip,
                     Utc::now().to_rfc3339(),
+                    json,
+                    hash,
+                    canonical.schema_version,
                     id,
                 ],
             )?;
@@ -530,8 +632,9 @@ pub async fn upsert_spell(
             conn.execute(
                 "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
                  material_components, casting_time, duration, area, saving_throw, reversible,
-                 description, tags, source, edition, author, license, is_quest_spell, is_cantrip)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
+                 canonical_data, content_hash, schema_version)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![
                     spell.name,
                     spell.school,
@@ -554,6 +657,9 @@ pub async fn upsert_spell(
                     spell.license,
                     spell.is_quest_spell,
                     spell.is_cantrip,
+                    json,
+                    hash,
+                    canonical.schema_version,
                 ],
             )?;
             Ok::<i64, AppError>(conn.last_insert_rowid())
@@ -563,4 +669,43 @@ pub async fn upsert_spell(
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_cantrip_level() {
+        // Cantrip must be level 0
+        assert!(validate_epic_and_quest_spells(0, &None, false, true).is_ok());
+        assert!(validate_epic_and_quest_spells(1, &None, false, true).is_err());
+    }
+
+    #[test]
+    fn test_validate_quest_spell_restrictions() {
+        // Quest spells must be level 8 (Quest level in this app)
+        assert!(validate_epic_and_quest_spells(8, &Some("Priest".into()), true, false).is_ok());
+        assert!(validate_epic_and_quest_spells(10, &Some("Priest".into()), true, false).is_err());
+        assert!(validate_epic_and_quest_spells(1, &Some("Priest".into()), true, false).is_err());
+
+        // Quest spells must be for Divine classes
+        assert!(validate_epic_and_quest_spells(8, &Some("Priest".into()), true, false).is_ok());
+        assert!(validate_epic_and_quest_spells(8, &Some("Cleric".into()), true, false).is_ok());
+        assert!(validate_epic_and_quest_spells(8, &Some("Druid".into()), true, false).is_ok());
+        assert!(validate_epic_and_quest_spells(8, &Some("Paladin".into()), true, false).is_ok());
+        assert!(validate_epic_and_quest_spells(8, &Some("Ranger".into()), true, false).is_ok());
+
+        // Not a divine class
+        assert!(validate_epic_and_quest_spells(8, &Some("Wizard".into()), true, false).is_err());
+        assert!(validate_epic_and_quest_spells(8, &Some("Fighter".into()), true, false).is_err());
+    }
+
+    #[test]
+    fn test_validate_epic_spell_restrictions() {
+        // Spells > 9 must be for Arcane classes (Wizard/Mage)
+        assert!(validate_epic_and_quest_spells(10, &Some("Wizard".into()), false, false).is_ok());
+        assert!(validate_epic_and_quest_spells(10, &Some("Mage".into()), false, false).is_ok());
+        assert!(validate_epic_and_quest_spells(10, &Some("Priest".into()), false, false).is_err());
+    }
 }

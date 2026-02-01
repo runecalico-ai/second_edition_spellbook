@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub type Pool = r2d2::Pool<SqliteConnectionManager>;
 
-fn app_data_dir() -> Result<PathBuf, AppError> {
+pub fn app_data_dir() -> Result<PathBuf, AppError> {
     if let Ok(override_dir) = std::env::var("SPELLBOOK_DATA_DIR") {
         let dir = PathBuf::from(override_dir);
         fs::create_dir_all(&dir)?;
@@ -116,7 +116,7 @@ fn try_load_sqlite_vec(conn: &Connection, data_dir: &Path) {
     let _ = conn.load_extension_disable();
 }
 
-pub fn init_db(resource_dir: Option<&Path>) -> Result<Pool, AppError> {
+pub fn init_db(resource_dir: Option<&Path>, run_backfill: bool) -> Result<Pool, AppError> {
     let data_dir = app_data_dir()?;
     let _ = install_sqlite_vec_if_needed(&data_dir, resource_dir)?;
     let db_path = data_dir.join("spellbook.sqlite3");
@@ -127,6 +127,11 @@ pub fn init_db(resource_dir: Option<&Path>) -> Result<Pool, AppError> {
         conn.execute_batch("PRAGMA foreign_keys=ON;")?;
         try_load_sqlite_vec(&conn, &data_dir);
         super::migrations::load_migrations(&conn)?;
+        if run_backfill {
+            if let Err(e) = crate::utils::migration_manager::run_hash_backfill(&conn, &data_dir) {
+                eprintln!("Hash backfill failed: {}", e);
+            }
+        }
     }
     Ok(pool)
 }

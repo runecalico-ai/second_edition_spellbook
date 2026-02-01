@@ -104,11 +104,38 @@ await invoke("my_command", { myParameterName: "value" });
 > [!CAUTION]
 > Avoid `ignore_unknown_fields` as a container attribute. Serde ignores unknown fields by default. Using invalid attributes can break macro expansion with cryptic "unsatisfied trait bound" errors.
 
+### Data Integrity & Validation
+We use the `TryFrom` pattern to enforce strict data integrity during model conversion.
+
+```rust
+impl TryFrom<SpellDetail> for CanonicalSpell {
+    type Error = String;
+    fn try_from(detail: SpellDetail) -> Result<Self, Self::Error> {
+        // Perform strict validation here
+        if condition { return Err("Validation failed".into()); }
+        Ok(Self { ... })
+    }
+}
+```
+
+**CRITICAL**: Always use `CanonicalSpell::try_from` when ingesting data from the database or external sources to ensure it meets the latest schema requirements.
+
 ## Database
 
 - **Engine**: SQLite with `rusqlite` and `r2d2_sqlite` pooling
 - **Vector Search**: `sqlite-vec` extension for semantic search
-- **Migrations**: Located at `spellbook/db/migrations/`, loaded via `include_str!`
+
+### Migration System
+The application uses a "Hash Backfill" system (`src/utils/migration_manager.rs`) to maintain data integrity across core updates.
+
+- **Hashing**: All spells have a `content_hash` derived from their `CanonicalSpell` representation.
+- **Backfill**: Run during app start via `init_db(..., true)`. CLI commands should use `false` to avoid unintended mutations.
+- **Backup**: `migration_manager.rs` automatically performs a `VACUUM INTO` backup before starting any structural migration.
+
+**CLI Recovery Tools**:
+- `--check-integrity`: Verify hashes and find collisions.
+- `--recompute-hashes`: Force refresh of all structured data.
+- `--rollback-migration`: Revert to the latest automatic backup.
 
 ## Dependencies
 

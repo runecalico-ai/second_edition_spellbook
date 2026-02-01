@@ -17,8 +17,8 @@
     - [x] Test invalid tradition rejected.
     - [x] Test Arcane without school rejected.
     - [x] Test Divine without sphere rejected.
-    - [ ] Test tradition BOTH requires both school and sphere.
-    - [ ] Test nested object defaults in `range`, `casting_time`, and `duration`.
+    - [x] Test tradition BOTH requires both school and sphere.
+    - [x] Test nested object defaults in `range`, `casting_time`, and `duration`.
 
 ### Hash Computation
 - [x] Implement SHA-256 hashing:
@@ -30,20 +30,20 @@
     - [x] Test field order independence.
     - [x] Test metadata exclusion.
     - [x] Test array normalization (sorting).
-    - [ ] Test number normalization (float vs integer representation).
-    - [ ] Test string normalization (line endings, trimming).
-    - [ ] Test null value omission for all nullable fields.
-- [ ] Audit existing implementation against new strict normalization rules (Number/String).
-- [ ] Verify `cap_level` nullable handling (omission when null).
-- [ ] Verify `schema_version` exclusion from content hash.
-- [ ] Implement Unicode **NFC** normalization for all string fields.
-- [ ] Implement array **deduplication** for unordered sets.
-- [ ] Enforce **6-decimal precision** for floating point numbers.
-- [ ] Implement **RFC 8785 (JCS)** physical serialization logic.
-- [ ] Implement **Enum normalization** (exact casing from schema).
-- [ ] Implement **Empty array `[]` inclusion** in canonical JSON.
-- [ ] Implement **Whitespace collapsing** for short text fields.
-- [ ] Implement schema version compatibility check (Accept/Warn/Reject logic).
+    - [x] Test number normalization (float vs integer representation).
+    - [x] Test string normalization (line endings, trimming).
+    - [x] Test null value omission for all nullable fields.
+- [x] Audit existing implementation against new strict normalization rules (Number/String).
+- [x] Verify `cap_level` nullable handling (omission when null).
+- [x] Verify `schema_version` exclusion from content hash.
+- [x] Implement Unicode **NFC** normalization for all string fields.
+- [x] Implement array **deduplication** for unordered sets.
+- [x] Enforce **6-decimal precision** for floating point numbers.
+- [x] Implement **RFC 8785 (JCS)** physical serialization logic.
+- [x] Implement **Enum normalization** (exact casing from schema).
+- [x] Implement **Empty array `[]` inclusion** in canonical JSON.
+- [x] Implement **Whitespace collapsing** for short text fields.
+- [x] Implement schema version compatibility check (Accept/Warn/Reject logic).
 
 ## Database
 - [x] Add `schema_version` column to spell table (INTEGER, default 1).

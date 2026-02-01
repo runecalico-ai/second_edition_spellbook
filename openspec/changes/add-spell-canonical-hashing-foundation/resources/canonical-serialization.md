@@ -25,7 +25,7 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     *   **Excluded from Hash (Metadata)**:
         -   `id` (the hash itself)
         -   `artifacts` (provenance metadata)
-        -   `created_at`, `updated_at`, `last_synced_at` (temporal metadata)
+        -   `created_at`, `updated_at` (temporal metadata)
         -   `source_refs` (bibliographic provenance - order may vary without affecting spell content)
         -   `edition`, `author`, `version`, `license` (publishing metadata)
         -   `schema_version` (internal validation metadata)

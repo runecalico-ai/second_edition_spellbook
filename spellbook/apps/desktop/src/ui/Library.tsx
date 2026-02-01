@@ -8,19 +8,19 @@ type SpellSummary = {
   name: string;
   school?: string;
   level: number;
-  class_list?: string;
+  classList?: string;
   components?: string;
   duration?: string;
   source?: string;
-  is_quest_spell: number;
-  is_cantrip: number;
+  isQuestSpell: number;
+  isCantrip: number;
 };
 
 type Facets = {
   schools: string[];
   sources: string[];
   levels: number[];
-  class_list: string[];
+  classList: string[];
   components: string[];
   tags: string[];
 };
@@ -51,8 +51,8 @@ type Character = {
 type SavedSearch = {
   id: number;
   name: string;
-  filter_json: string;
-  created_at: string;
+  filterJson: string;
+  createdAt: string;
 };
 
 export default function Library() {
@@ -64,7 +64,7 @@ export default function Library() {
     schools: [],
     sources: [],
     levels: [],
-    class_list: [],
+    classList: [],
     components: [],
     tags: [],
   });
@@ -143,7 +143,7 @@ export default function Library() {
 
   const loadSearch = (saved: SavedSearch) => {
     try {
-      const parsed = JSON.parse(saved.filter_json) as Partial<SavedSearchPayload & SearchFilters>;
+      const parsed = JSON.parse(saved.filterJson) as Partial<SavedSearchPayload & SearchFilters>;
       const isPayload =
         parsed && typeof parsed === "object" && "filters" in parsed && parsed.filters !== undefined;
       if (isPayload) {
@@ -409,7 +409,7 @@ export default function Library() {
           onChange={(e) => setClassListFilter(e.target.value)}
         >
           <option value="">All classes</option>
-          {facets.class_list.map((className) => (
+          {facets.classList.map((className) => (
             <option key={className} value={className}>
               {className}
             </option>
@@ -583,7 +583,7 @@ export default function Library() {
                   >
                     {s.name}
                   </Link>
-                  {s.is_quest_spell === 1 && (
+                  {s.isQuestSpell === 1 && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
                       Quest
                     </span>
@@ -593,7 +593,7 @@ export default function Library() {
                       Epic
                     </span>
                   )}
-                  {s.level === 0 && s.is_cantrip === 1 && (
+                  {s.level === 0 && s.isCantrip === 1 && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                       Cantrip
                     </span>
@@ -615,7 +615,7 @@ export default function Library() {
                 </td>
                 <td className="p-2">{s.school}</td>
                 <td className="p-2 text-center">{s.level}</td>
-                <td className="p-2">{s.class_list}</td>
+                <td className="p-2">{s.classList}</td>
                 <td className="p-2 text-center">{s.components}</td>
               </tr>
             ))}

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json_canonicalizer::to_string as to_jcs_string;
 use sha2::{Digest, Sha256};
+use unicode_normalization::UnicodeNormalization;
 
 use crate::utils::spell_parser::SpellParser;
 use std::fmt::Write as FmtWrite;
@@ -153,11 +154,17 @@ pub struct CanonicalSpell {
     pub is_quest_spell: i64, // 0 or 1
     pub is_cantrip: i64,     // 0 or 1
 
-    // We explicitly omit schema_version from the serialised JSON because
-    // the official schema (v1) has additionalProperties: false and does not define it.
-    // UPDATE: Schema now defines it, so we include it.
     #[serde(default = "default_schema_version")]
     pub schema_version: i64,
+
+    // Temporal Metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<serde_json::Value>, // Simplified for now as it's skipped in hash
 }
 
 fn default_version() -> String {
@@ -198,24 +205,16 @@ impl CanonicalSpell {
             is_quest_spell: 0,
             is_cantrip: (level == 0) as i64,
             schema_version: CURRENT_SCHEMA_VERSION,
+            created_at: None,
+            updated_at: None,
+            artifacts: None,
         }
     }
 
-    /// Canonicalize the spell:
-    /// 1. Sort array fields (done on construction or here safety).
-    /// 2. Convert to serde_json::Value (which uses BTreeMap for objects, sorting keys).
-    /// 3. Serialize to string.
     pub fn to_canonical_json(&self) -> Result<String, String> {
         let mut clone = self.clone();
-
-        // Canonical sorting of arrays
-        clone.class_list.sort();
-        clone.tags.sort();
-        clone.subschools.sort();
-        clone.descriptors.sort();
-
-        // Note: Nested structs (Range, etc.) are objects, which BTreeMap handles
-        // for key sorting, but we don't have arrays inside them that need nested sorting yet.
+        // Heavy Normalization (includes sorting/deduplication of arrays and materialization of defaults)
+        clone.normalize();
 
         let mut value = serde_json::to_value(&clone).map_err(|err| err.to_string())?;
 
@@ -229,14 +228,20 @@ impl CanonicalSpell {
             obj.remove("version");
             obj.remove("license");
             obj.remove("schema_version");
+            obj.remove("created_at");
+            obj.remove("updated_at");
+            obj.remove("artifacts");
         }
 
         to_jcs_string(&value).map_err(|err| err.to_string())
     }
 
     pub fn compute_hash(&self) -> Result<String, String> {
-        self.validate()?;
-        let canonical_json = self.to_canonical_json()?;
+        let mut normalized_clone = self.clone();
+        normalized_clone.normalize();
+        normalized_clone.validate()?;
+
+        let canonical_json = normalized_clone.to_canonical_json()?;
         let mut hasher = Sha256::new();
         hasher.update(canonical_json.as_bytes());
         let result = hasher.finalize();
@@ -244,12 +249,15 @@ impl CanonicalSpell {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        const SCHEMA_STR: &str = include_str!("../../schemas/spell.schema.json");
-        let schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR)
-            .map_err(|e| format!("Invalid schema definition: {}", e))?;
+        use std::sync::OnceLock;
+        static COMPILED_SCHEMA: OnceLock<jsonschema::JSONSchema> = OnceLock::new();
 
-        let compiled = jsonschema::JSONSchema::compile(&schema)
-            .map_err(|e| format!("Schema compilation error: {:?}", e))?;
+        let compiled = COMPILED_SCHEMA.get_or_init(|| {
+            const SCHEMA_STR: &str = include_str!("../../schemas/spell.schema.json");
+            let schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR)
+                .expect("Invalid embedded schema definition");
+            jsonschema::JSONSchema::compile(&schema).expect("Schema compilation error")
+        });
 
         let instance =
             serde_json::to_value(self).map_err(|e| format!("Serialization error: {}", e))?;
@@ -281,6 +289,156 @@ impl CanonicalSpell {
 
         Ok(())
     }
+
+    /// Recursively normalizes all string and number fields for deterministic hashing.
+    /// Also sorts and deduplicates unordered arrays.
+    pub fn normalize(&mut self) {
+        self.name = normalize_string(&self.name, true);
+        self.tradition = normalize_string(&self.tradition, true).to_uppercase();
+        self.school = self.school.as_ref().map(|s| match_schema_case(s));
+        self.description = normalize_string(&self.description, false); // Preserve whitespace structure
+        self.material_components = self
+            .material_components
+            .as_ref()
+            .map(|s| normalize_string(s, false));
+        self.saving_throw = self
+            .saving_throw
+            .as_ref()
+            .map(|s| normalize_string(s, true));
+        self.sphere = self.sphere.as_ref().map(|s| match_schema_case(s));
+
+        // Materialize Defaults according to Rule 48 of canonicalization contract
+        if self.reversible.is_none() {
+            self.reversible = Some(0);
+        }
+
+        self.class_list = self
+            .class_list
+            .iter()
+            .map(|s| normalize_string(s, true))
+            .collect();
+        self.tags = self
+            .tags
+            .iter()
+            .map(|s| normalize_string(s, true))
+            .collect();
+        self.subschools = self
+            .subschools
+            .iter()
+            .map(|s| normalize_string(s, true))
+            .collect();
+        self.descriptors = self
+            .descriptors
+            .iter()
+            .map(|s| normalize_string(s, true))
+            .collect();
+
+        // Sort and deduplicate after normalization to catch duplicates created by normalization (e.g. whitespace collapse)
+        self.class_list.sort();
+        self.class_list.dedup();
+        self.tags.sort();
+        self.tags.dedup();
+        self.subschools.sort();
+        self.subschools.dedup();
+        self.descriptors.sort();
+        self.descriptors.dedup();
+
+        if let Some(r) = &mut self.range {
+            r.text = normalize_string(&r.text, true);
+            r.unit = match_schema_case(&r.unit);
+            r.base_value = clamp_precision(r.base_value);
+            r.per_level = clamp_precision(r.per_level);
+            r.level_divisor = clamp_precision(r.level_divisor);
+        }
+
+        if let Some(ct) = &mut self.casting_time {
+            ct.text = normalize_string(&ct.text, true);
+            ct.unit = match_schema_case(&ct.unit);
+            ct.base_value = clamp_precision(ct.base_value);
+            ct.per_level = clamp_precision(ct.per_level);
+            ct.level_divisor = clamp_precision(ct.level_divisor);
+        }
+
+        if let Some(d) = &mut self.duration {
+            d.text = normalize_string(&d.text, true);
+            d.unit = match_schema_case(&d.unit);
+            d.base_value = clamp_precision(d.base_value);
+            d.per_level = clamp_precision(d.per_level);
+            d.level_divisor = clamp_precision(d.level_divisor);
+        }
+
+        if let Some(a) = &mut self.area {
+            a.text = normalize_string(&a.text, true);
+            a.unit = match_schema_case(&a.unit);
+            a.base_value = clamp_precision(a.base_value);
+            a.per_level = clamp_precision(a.per_level);
+            a.level_divisor = clamp_precision(a.level_divisor);
+        }
+
+        if let Some(dmg) = &mut self.damage {
+            dmg.text = normalize_string(&dmg.text, true);
+            dmg.base_dice = normalize_string(&dmg.base_dice, true);
+            dmg.per_level_dice = normalize_string(&dmg.per_level_dice, true);
+            dmg.level_divisor = clamp_precision(dmg.level_divisor);
+            dmg.cap_level = dmg.cap_level.map(clamp_precision);
+        }
+    }
+}
+
+/// Normalizes a string: NFC, trim, and optionally collapse internal whitespace.
+fn normalize_string(s: &str, collapse: bool) -> String {
+    let nfc: String = s.nfc().collect();
+    let trimmed = nfc.trim();
+    if collapse {
+        // Replace multiple spaces with one
+        trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// Matches a string against schema-defined enums case-insensitively, or falls back to Title Case.
+fn match_schema_case(s: &str) -> String {
+    let normalized = normalize_string(s, true);
+    let lower = normalized.to_lowercase();
+
+    // Common complex enums from schema
+    match lower.as_str() {
+        "foot radius" => "Foot Radius".to_string(),
+        "yard radius" => "Yard Radius".to_string(),
+        "mile radius" => "Mile Radius".to_string(),
+        "foot cube" => "Foot Cube".to_string(),
+        "yard cube" => "Yard Cube".to_string(),
+        "square feet" => "Square Feet".to_string(),
+        "cubic feet" => "Cubic Feet".to_string(),
+        "square yards" => "Square Yards".to_string(),
+        "cubic yards" => "Cubic Yards".to_string(),
+        "instantaneous" => "Instantaneous".to_string(),
+        "conjuration/summoning" => "Conjuration/Summoning".to_string(),
+        "enchantment/charm" => "Enchantment/Charm".to_string(),
+        "illusion/phantasm" => "Illusion/Phantasm".to_string(),
+        "invocation/evocation" => "Invocation/Evocation".to_string(),
+        "mind-affecting" => "Mind-Affecting".to_string(),
+        "elemental air" => "Elemental Air".to_string(),
+        "elemental earth" => "Elemental Earth".to_string(),
+        "elemental fire" => "Elemental Fire".to_string(),
+        "elemental water" => "Elemental Water".to_string(),
+        "elemental rain" => "Elemental Rain".to_string(),
+        "elemental sun" => "Elemental Sun".to_string(),
+        _ => {
+            // Fallback to simple title case for standard one-word enums
+            let mut c = normalized.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        }
+    }
+}
+
+/// Clamps floating point precision to 6 decimal places.
+fn clamp_precision(val: f64) -> f64 {
+    (val * 1_000_000.0).round() / 1_000_000.0
 }
 
 /// Helper to parse comma-separated strings into sorted Vecs
@@ -334,7 +492,7 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
 
         spell.material_components = detail.material_components;
         spell.saving_throw = detail.saving_throw;
-        spell.reversible = detail.reversible;
+        spell.reversible = Some(detail.reversible.unwrap_or(0));
 
         // Metadata
         if let Some(book) = detail.source {
@@ -693,6 +851,158 @@ mod tests {
     }
 
     #[test]
+    fn test_normalization_nfc() {
+        // "e" + acute accent (U+0065 U+0301) vs "é" (U+00E9)
+        let s1_name = "Fiance\u{0301}";
+        let s2_name = "Fianc\u{00e9}";
+
+        let mut spell1 = CanonicalSpell::new(s1_name.into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+
+        let mut spell2 = CanonicalSpell::new(s2_name.into(), 1, "ARCANE".into(), "Desc".into());
+        spell2.school = Some("Abjuration".into());
+        spell2.class_list = vec!["Wizard".into()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "NFD and NFC strings must hash identically"
+        );
+    }
+
+    #[test]
+    fn test_normalization_whitespace_collapse() {
+        let mut spell1 = CanonicalSpell::new("Spell".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.range = Some(SpellRange {
+            text: "10  yards".into(),
+            unit: "Yards".into(),
+            base_value: 10.0,
+            per_level: 0.0,
+            level_divisor: 1.0,
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.range.as_mut().unwrap().text = "10 yards".into();
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Internal whitespace must be collapsed"
+        );
+    }
+
+    #[test]
+    fn test_normalization_float_precision() {
+        let mut spell1 = CanonicalSpell::new("Spell".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.range = Some(SpellRange {
+            text: "10.0000001 yards".into(),
+            unit: "Yards".into(),
+            base_value: 10.0000001,
+            per_level: 0.0,
+            level_divisor: 1.0,
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.range.as_mut().unwrap().base_value = 10.0000004;
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Floats must be rounded to 6 decimal places"
+        );
+
+        let mut spell3 = spell1.clone();
+        spell3.range.as_mut().unwrap().base_value = 10.000001;
+        assert_ne!(
+            spell1.compute_hash().unwrap(),
+            spell3.compute_hash().unwrap(),
+            "Different values beyond 6 decimals must be different"
+        );
+    }
+
+    #[test]
+    fn test_array_deduplication() {
+        let mut spell1 =
+            CanonicalSpell::new("Deduplicate".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into(), "Wizard".into()];
+        spell1.tags = vec!["TagA".into(), "TagA".into()];
+
+        let mut spell2 = spell1.clone();
+        spell2.class_list = vec!["Wizard".into()];
+        spell2.tags = vec!["TagA".into()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Arrays must be deduplicated"
+        );
+    }
+
+    #[test]
+    fn test_casing_normalization_tradition() {
+        let mut spell1 = CanonicalSpell::new("Casing".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+
+        let mut spell2 = spell1.clone();
+        spell2.tradition = "arcane".into();
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Tradition 'arcane' must be normalized to 'ARCANE'"
+        );
+    }
+
+    #[test]
+    fn test_casing_normalization_enums() {
+        let mut spell1 = CanonicalSpell::new("Enums".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.range = Some(SpellRange {
+            text: "10 yards".into(),
+            unit: "Yards".into(),
+            base_value: 10.0,
+            per_level: 0.0,
+            level_divisor: 1.0,
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.range.as_mut().unwrap().unit = "yards".into();
+        spell2.school = Some("abjuration".into());
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Unit 'yards' and school 'abjuration' must be corrected to Title Case"
+        );
+    }
+
+    #[test]
+    fn test_reversible_materialization() {
+        let mut spell1 =
+            CanonicalSpell::new("Reversible".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.reversible = Some(0);
+
+        let mut spell2 = spell1.clone();
+        spell2.reversible = None;
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "None reversible must hash identically to Some(0) due to default materialization"
+        );
+    }
+
+    #[test]
     fn test_damage_without_cap_level_passes() {
         let mut spell = CanonicalSpell::new(
             "Damage Cap Test".to_string(),
@@ -742,7 +1052,7 @@ mod tests {
 
         let json = spell.to_canonical_json().unwrap();
 
-        // Verify total absence of keys
+        // Verify total absence of keys for fields with null defaults
         assert!(
             !json.contains("\"material_components\""),
             "material_components should be omitted"
@@ -752,12 +1062,14 @@ mod tests {
             "saving_throw should be omitted"
         );
         assert!(
-            !json.contains("\"reversible\""),
-            "reversible should be omitted"
-        );
-        assert!(
             !json.contains("\"cap_level\""),
             "cap_level inside damage should be omitted"
+        );
+
+        // Verify PRESENCE of fields with non-null defaults (Materialization Rule)
+        assert!(
+            json.contains("\"reversible\":0"),
+            "reversible should be materialized to 0"
         );
     }
 

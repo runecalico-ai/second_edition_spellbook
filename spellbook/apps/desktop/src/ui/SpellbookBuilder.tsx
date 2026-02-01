@@ -15,10 +15,10 @@ type Character = {
 };
 
 type CharacterSpellbookEntry = {
-  spell_id: number;
-  spell_name: string;
-  spell_level: number;
-  spell_school?: string;
+  spellId: number;
+  spellName: string;
+  spellLevel: number;
+  spellSchool?: string;
   prepared: number;
   known: number;
   notes?: string;
@@ -29,7 +29,7 @@ type SpellSummary = {
   name: string;
   school?: string;
   level: number;
-  is_quest_spell: number;
+  isQuestSpell: number;
 };
 
 type Facets = {
@@ -64,7 +64,7 @@ export default function SpellbookBuilder() {
   const [statusMessage, setStatusMessage] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
 
-  const spellIds = useMemo(() => new Set(spellbook.map((entry) => entry.spell_id)), [spellbook]);
+  const spellIds = useMemo(() => new Set(spellbook.map((entry) => entry.spellId)), [spellbook]);
 
   const loadCharacter = useCallback(async () => {
     if (!Number.isFinite(characterId)) return;
@@ -143,7 +143,7 @@ export default function SpellbookBuilder() {
     try {
       await invoke("remove_character_spell", {
         characterId: character.id,
-        spellId: entry.spell_id,
+        spellId: entry.spellId,
       });
       await loadSpellbook();
     } catch (e) {
@@ -159,16 +159,16 @@ export default function SpellbookBuilder() {
     try {
       await invoke("update_character_spell", {
         characterId: character.id,
-        spellId: entry.spell_id,
+        spellId: entry.spellId,
         prepared: entry.prepared,
         known: entry.known,
         notes: entry.notes,
       });
     } catch (e) {
-      setStatusMessage(`Failed to update ${entry.spell_name}: ${e}`);
+      setStatusMessage(`Failed to update ${entry.spellName}: ${e}`);
       if (previousEntry) {
         setSpellbook((prev) =>
-          prev.map((spell) => (spell.spell_id === previousEntry.spell_id ? previousEntry : spell)),
+          prev.map((spell) => (spell.spellId === previousEntry.spellId ? previousEntry : spell)),
         );
       }
     }
@@ -176,12 +176,12 @@ export default function SpellbookBuilder() {
 
   const updateNotes = (spellId: number, notes: string) => {
     setSpellbook((prev) =>
-      prev.map((spell) => (spell.spell_id === spellId ? { ...spell, notes } : spell)),
+      prev.map((spell) => (spell.spellId === spellId ? { ...spell, notes } : spell)),
     );
   };
 
   const persistNotes = (spellId: number) => {
-    const entry = spellbook.find((spell) => spell.spell_id === spellId);
+    const entry = spellbook.find((spell) => spell.spellId === spellId);
     if (entry) {
       updateSpell(entry);
     }
@@ -300,78 +300,77 @@ export default function SpellbookBuilder() {
         <tbody>
           {spellbook.map((entry) => (
             <tr
-              key={entry.spell_id}
-              data-testid={`spellbook-row-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
+              key={entry.spellId}
+              data-testid={`spellbook-row-${entry.spellName.replace(/\s+/g, "-").toLowerCase()}`}
               className="border-b border-neutral-800/30 hover:bg-neutral-800/30"
             >
               <td className="p-2 text-center">
                 <input
                   type="checkbox"
-                  data-testid={`chk-prepared-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
+                  data-testid={`chk-prepared-${entry.spellName.replace(/\s+/g, "-").toLowerCase()}`}
                   checked={!!entry.prepared}
                   onChange={() => {
                     const newPrepared = entry.prepared ? 0 : 1;
                     const updated = { ...entry, prepared: newPrepared };
                     setSpellbook((prev) =>
-                      prev.map((spell) => (spell.spell_id === entry.spell_id ? updated : spell)),
+                      prev.map((spell) => (spell.spellId === entry.spellId ? updated : spell)),
                     );
                     updateSpell(updated, entry);
                   }}
-                  aria-label={`Prepared ${entry.spell_name}`}
+                  aria-label={`Prepared ${entry.spellName}`}
                   className="rounded bg-neutral-900 border-neutral-700"
                 />
               </td>
               <td className="p-2 text-center">
                 <input
                   type="checkbox"
-                  data-testid={`chk-known-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
+                  data-testid={`chk-known-${entry.spellName.replace(/\s+/g, "-").toLowerCase()}`}
                   checked={!!entry.known}
                   onChange={() => {
                     const newKnown = entry.known ? 0 : 1;
                     const updated = { ...entry, known: newKnown };
                     setSpellbook((prev) =>
-                      prev.map((spell) => (spell.spell_id === entry.spell_id ? updated : spell)),
+                      prev.map((spell) => (spell.spellId === entry.spellId ? updated : spell)),
                     );
                     updateSpell(updated, entry);
                   }}
-                  aria-label={`Known ${entry.spell_name}`}
+                  aria-label={`Known ${entry.spellName}`}
                   className="rounded bg-neutral-900 border-neutral-700"
                 />
               </td>
               <td className="p-2">
                 <div className="flex items-center gap-2">
-                  <span>{entry.spell_name}</span>
-                  {entry.spell_level >= 10 && (
+                  <span>{entry.spellName}</span>
+                  {entry.spellLevel >= 10 && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
                       Epic
                     </span>
                   )}
-                  {entry.spell_level === 0 && (
+                  {entry.spellLevel === 0 && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                       Cantrip
                     </span>
                   )}
-                  {/* Note: CharacterSpellbookEntry doesnt have is_quest_spell yet, but it should be displayed if we had it */}
                 </div>
               </td>
-              <td className="p-2">{entry.spell_level}</td>
-              <td className="p-2">{entry.spell_school}</td>
+              <td className="p-2">{entry.spellLevel}</td>
+              <td className="p-2">{entry.spellSchool}</td>
               <td className="p-2">
                 <input
                   className="w-full bg-transparent border-none p-0 text-neutral-300 placeholder-neutral-600 focus:ring-0"
-                  data-testid={`input-notes-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
+                  data-testid={`input-notes-${entry.spellName.replace(/\s+/g, "-").toLowerCase()}`}
                   value={entry.notes || ""}
                   placeholder="Add notes…"
                   onChange={(e) => {
-                    updateNotes(entry.spell_id, e.target.value);
+                    updateNotes(entry.spellId, e.target.value);
                   }}
-                  onBlur={() => persistNotes(entry.spell_id)}
+                  onBlur={() => persistNotes(entry.spellId)}
                 />
               </td>
               <td className="p-2 text-right">
                 <button
                   type="button"
-                  data-testid={`btn-remove-${entry.spell_name.replace(/\s+/g, "-").toLowerCase()}`}
+                  data-testid={`btn-remove-${entry.spellName.replace(/\s+/g, "-").toLowerCase()}`}
                   onClick={() => removeSpell(entry)}
                   className="text-xs text-red-400 hover:text-red-300"
                 >
@@ -521,7 +520,7 @@ export default function SpellbookBuilder() {
                         <td className="p-2">
                           <div className="flex items-center gap-2">
                             <span>{spell.name}</span>
-                            {spell.is_quest_spell === 1 && (
+                            {spell.isQuestSpell === 1 && (
                               <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
                                 Quest
                               </span>

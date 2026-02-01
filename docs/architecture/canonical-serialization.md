@@ -28,6 +28,9 @@ To maintain compatibility with the canonical resource specification, boolean fla
 - `is_cantrip`: `0` (false) or `1` (true).
 - `is_quest_spell`: `0` (false) or `1` (true).
 
+### 2.4 Hashing Casing Standard
+**All fields in the `CanonicalSpell` object MUST use `snake_case`.** This is a deliberate choice to ensure interoperability with the official JSON Schema and to distinguish between high-integrity content (snake_case) and transient IPC data (camelCase).
+
 ## 3. Hashing Process
 1. Validate `CanonicalSpell` against `spell.schema.json`.
 2. Normalize (sort arrays, convert booleans to integers).

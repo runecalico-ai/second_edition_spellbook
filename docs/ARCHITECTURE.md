@@ -14,12 +14,13 @@ To ensure spell uniqueness and version tracking, we use a Canonical Spell Hashin
 - **Schema**: `schemas/spell.schema.json` (aligned with the official OpenSpec resource).
 - **Serialization**: RFC 8785 (JCS) with sorted keys and array normalization.
 - **Hashing**: SHA-256 of the canonical JSON string.
+- **Casing Standard**: **All canonical data MUST use `snake_case`.** This distinguishes it from IPC data, which uses `camelCase`.
 
 ### Hashing Flow
 ```mermaid
 graph TD
-    A["Spell Detail (Legacy)"] --> B{"TryFrom"}
-    B --> C["CanonicalSpell (Rust Struct)"]
+    A["Spell Detail (IPC: camelCase)"] --> B{"TryFrom mapping"}
+    B --> C["CanonicalSpell (Rust: snake_case)"]
     C --> D{"Validate (JSON Schema)"}
     D -->|Valid| E["Standard JSON (DB/Export)"]
     D -->|Valid| F["Clone & Remove Metadata"]

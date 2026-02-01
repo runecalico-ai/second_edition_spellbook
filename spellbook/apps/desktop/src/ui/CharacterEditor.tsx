@@ -192,7 +192,7 @@ export default function CharacterEditor() {
     try {
       await invoke("update_character_abilities", {
         input: {
-          character_id: Number.parseInt(id ?? "0", 10),
+          characterId: Number.parseInt(id ?? "0", 10),
           ...abilities,
         },
       });
@@ -937,8 +937,8 @@ interface PickerSpell {
   level: number;
   school?: string | null;
   sphere?: string | null;
-  is_quest_spell: number;
-  is_cantrip: number;
+  isQuestSpell: number;
+  isCantrip: number;
   tags?: string | null;
 }
 
@@ -1026,8 +1026,8 @@ function SpellPicker({
             level: s.spellLevel,
             school: s.spellSchool,
             sphere: s.spellSphere,
-            is_quest_spell: s.isQuestSpell,
-            is_cantrip: s.isCantrip,
+            isQuestSpell: s.isQuestSpell,
+            isCantrip: s.isCantrip,
             tags: s.tags,
           };
         });
@@ -1296,12 +1296,12 @@ function SpellPicker({
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">{spell.name}</span>
-                        {spell.is_quest_spell === 1 && (
+                        {spell.isQuestSpell === 1 && (
                           <span className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
                             Q
                           </span>
                         )}
-                        {spell.is_cantrip === 1 && (
+                        {spell.isCantrip === 1 && (
                           <span className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                             C
                           </span>

@@ -502,6 +502,52 @@
             "type": "integer",
             "description": "The validation schema version used for this record.",
             "default": 1
+        },
+        "created_at": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "description": "ISO-8601 timestamp of record creation.",
+            "format": "date-time"
+        },
+        "updated_at": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "description": "ISO-8601 timestamp of last update.",
+            "format": "date-time"
+        },
+        "artifacts": {
+            "type": "array",
+            "description": "List of associated artifacts (files, images).",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "path": {
+                        "type": "string"
+                    },
+                    "hash": {
+                        "type": "string"
+                    },
+                    "imported_at": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "type",
+                    "path",
+                    "hash"
+                ]
+            }
         }
     },
     "required": [

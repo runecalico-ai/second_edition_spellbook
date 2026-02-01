@@ -7,14 +7,14 @@ export type ParsedSpell = {
   level: number;
   school?: string;
   sphere?: string;
-  class_list?: string;
+  classList?: string;
   range?: string;
   components?: string;
-  material_components?: string;
-  casting_time?: string;
+  materialComponents?: string;
+  castingTime?: string;
   duration?: string;
   area?: string;
-  saving_throw?: string;
+  savingThrow?: string;
   reversible?: number;
   description: string;
   tags?: string;
@@ -22,8 +22,8 @@ export type ParsedSpell = {
   edition?: string;
   author?: string;
   license?: string;
-  is_quest_spell?: number;
-  is_cantrip?: number;
+  isQuestSpell?: number;
+  isCantrip?: number;
   _confidence: Record<string, number>; // 0-1 confidence per field
   _source_file: string;
   _raw_text?: string;

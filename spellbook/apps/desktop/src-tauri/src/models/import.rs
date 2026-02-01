@@ -7,18 +7,23 @@ use std::collections::HashMap;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct ImportSpell {
     pub name: String,
     pub school: Option<String>,
     pub sphere: Option<String>,
+    #[serde(alias = "class_list")]
     pub class_list: Option<String>,
     pub level: i64,
     pub range: Option<String>,
     pub components: Option<String>,
+    #[serde(alias = "material_components")]
     pub material_components: Option<String>,
+    #[serde(alias = "casting_time")]
     pub casting_time: Option<String>,
     pub duration: Option<String>,
     pub area: Option<String>,
+    #[serde(alias = "saving_throw")]
     pub saving_throw: Option<String>,
     pub reversible: Option<i64>,
     pub description: String,
@@ -29,24 +34,27 @@ pub struct ImportSpell {
     pub license: Option<String>,
     #[serde(rename = "_source_file")]
     pub source_file: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "is_quest_spell")]
     pub is_quest_spell: i64,
-    #[serde(default)]
+    #[serde(default, alias = "is_cantrip")]
     pub is_cantrip: i64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct ImportArtifact {
     #[serde(rename = "type")]
     pub r#type: String,
     pub path: String,
     pub hash: String,
+    #[serde(alias = "imported_at")]
     pub imported_at: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct ImportConflictField {
     pub field: String,
     pub existing: Option<String>,
@@ -54,7 +62,7 @@ pub struct ImportConflictField {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(crate = "serde", tag = "type", rename_all = "snake_case")]
+#[serde(crate = "serde", tag = "type", rename_all = "camelCase")]
 pub enum ImportConflict {
     Parse {
         path: String,
@@ -70,6 +78,7 @@ pub enum ImportConflict {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct ParseConflict {
     pub path: String,
     pub reason: String,
@@ -77,6 +86,7 @@ pub struct ParseConflict {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct ImportFile {
     pub name: String,
     pub content: Vec<u8>,
@@ -84,6 +94,7 @@ pub struct ImportFile {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct ImportResult {
     pub spells: Vec<SpellDetail>,
     pub artifacts: Vec<Value>,
@@ -94,8 +105,10 @@ pub struct ImportResult {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct ImportConflictResolution {
     pub action: String,
+    #[serde(alias = "existing_id")]
     pub existing_id: i64,
     pub spell: Option<SpellUpdate>,
     pub artifact: Option<ImportArtifact>,
@@ -103,6 +116,7 @@ pub struct ImportConflictResolution {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct ResolveImportResult {
     pub resolved: Vec<String>,
     pub skipped: Vec<String>,
@@ -111,18 +125,23 @@ pub struct ResolveImportResult {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewSpell {
     pub name: String,
     pub level: i64,
     pub school: Option<String>,
     pub sphere: Option<String>,
+    #[serde(alias = "class_list")]
     pub class_list: Option<String>,
     pub range: Option<String>,
     pub components: Option<String>,
+    #[serde(alias = "material_components")]
     pub material_components: Option<String>,
+    #[serde(alias = "casting_time")]
     pub casting_time: Option<String>,
     pub duration: Option<String>,
     pub area: Option<String>,
+    #[serde(alias = "saving_throw")]
     pub saving_throw: Option<String>,
     pub reversible: Option<i64>,
     pub description: String,
@@ -137,14 +156,15 @@ pub struct PreviewSpell {
     pub raw_text: Option<String>,
     #[serde(rename = "_source_file")]
     pub source_file: String,
-    #[serde(default)]
+    #[serde(default, alias = "is_quest_spell")]
     pub is_quest_spell: i64,
-    #[serde(default)]
+    #[serde(default, alias = "is_cantrip")]
     pub is_cantrip: i64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
 pub struct PreviewResult {
     pub spells: Vec<PreviewSpell>,
     pub artifacts: Vec<ImportArtifact>,

@@ -9,15 +9,15 @@ type SpellDetail = {
   name: string;
   school?: string;
   sphere?: string;
-  class_list?: string;
+  classList?: string;
   level: number;
   range?: string;
   components?: string;
-  material_components?: string;
-  casting_time?: string;
+  materialComponents?: string;
+  castingTime?: string;
   duration?: string;
   area?: string;
-  saving_throw?: string;
+  savingThrow?: string;
   reversible?: number;
   description: string;
   tags?: string;
@@ -25,8 +25,8 @@ type SpellDetail = {
   edition?: string;
   author?: string;
   license?: string;
-  is_quest_spell: number;
-  is_cantrip: number;
+  isQuestSpell: number;
+  isCantrip: number;
   artifacts?: {
     id: number;
     type: string;
@@ -49,8 +49,8 @@ export default function SpellEditor() {
     level: 1,
     description: "",
     reversible: 0,
-    is_quest_spell: 0,
-    is_cantrip: 0,
+    isQuestSpell: 0,
+    isCantrip: 0,
   });
   const [printStatus, setPrintStatus] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
@@ -80,23 +80,23 @@ export default function SpellEditor() {
   const isDivine = !!form.sphere;
 
   const getLevelDisplay = (level: number) => {
-    if (level === 0 && form.is_cantrip) return "Cantrip";
+    if (level === 0 && form.isCantrip) return "Cantrip";
     if (level >= 10 && isArcane) {
       const circle = level === 10 ? "10th" : level === 11 ? "11th" : "12th";
       return `${circle} Circle`;
     }
-    if (level === 8 && form.is_quest_spell) return "Quest";
+    if (level === 8 && form.isQuestSpell) return "Quest";
     return `Level ${level}`;
   };
 
   const divineClasses = ["priest", "cleric", "druid", "paladin", "ranger"];
-  const classesLower = form.class_list?.toLowerCase() || "";
+  const classesLower = form.classList?.toLowerCase() || "";
   const hasDivine = divineClasses.some((c) => classesLower.includes(c));
 
   const isEpicRestricted = form.level >= 10 && (isDivine || !isArcane);
-  const isQuestRestricted = form.is_quest_spell === 1 && (isArcane || !isDivine);
-  const isConflictRestricted = form.level >= 10 && form.is_quest_spell === 1;
-  const isCantripRestricted = form.is_cantrip === 1 && form.level !== 0;
+  const isQuestRestricted = form.isQuestSpell === 1 && (isArcane || !isDivine);
+  const isConflictRestricted = form.level >= 10 && form.isQuestSpell === 1;
+  const isCantripRestricted = form.isCantrip === 1 && form.level !== 0;
 
   const validationErrors = [
     isNameInvalid && "Name is required",
@@ -172,7 +172,7 @@ export default function SpellEditor() {
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h1>
           <div className="flex gap-2">
-            {form.is_quest_spell === 1 && (
+            {form.isQuestSpell === 1 && (
               <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
                 Quest
               </span>
@@ -182,7 +182,7 @@ export default function SpellEditor() {
                 Epic
               </span>
             )}
-            {form.level === 0 && form.is_cantrip === 1 && (
+            {form.level === 0 && form.isCantrip === 1 && (
               <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                 Cantrip
               </span>
@@ -294,8 +294,8 @@ export default function SpellEditor() {
               const val = e.target.valueAsNumber;
               const clamped = Math.max(0, Math.min(12, Number.isNaN(val) ? 0 : Math.floor(val)));
               handleChange("level", clamped);
-              if (clamped !== 0) handleChange("is_cantrip", 0);
-              if (clamped !== 8) handleChange("is_quest_spell", 0);
+              if (clamped !== 0) handleChange("isCantrip", 0);
+              if (clamped !== 8) handleChange("isQuestSpell", 0);
             }}
           />
           <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">
@@ -309,8 +309,8 @@ export default function SpellEditor() {
                 type="checkbox"
                 data-testid="chk-cantrip"
                 disabled={form.level !== 0}
-                checked={form.is_cantrip === 1}
-                onChange={(e) => handleChange("is_cantrip", e.target.checked ? 1 : 0)}
+                checked={form.isCantrip === 1}
+                onChange={(e) => handleChange("isCantrip", e.target.checked ? 1 : 0)}
                 className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
               />
               <span className="text-sm text-neutral-400 group-hover:text-neutral-300">Cantrip</span>
@@ -322,8 +322,8 @@ export default function SpellEditor() {
                 type="checkbox"
                 data-testid="chk-quest"
                 disabled={form.level !== 8}
-                checked={form.is_quest_spell === 1}
-                onChange={(e) => handleChange("is_quest_spell", e.target.checked ? 1 : 0)}
+                checked={form.isQuestSpell === 1}
+                onChange={(e) => handleChange("isQuestSpell", e.target.checked ? 1 : 0)}
                 className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
               />
               <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
@@ -392,8 +392,8 @@ export default function SpellEditor() {
             id="spell-classes"
             data-testid="spell-classes-input"
             className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.class_list || ""}
-            onChange={(e) => handleChange("class_list", e.target.value)}
+            value={form.classList || ""}
+            onChange={(e) => handleChange("classList", e.target.value)}
           />
         </div>
         {/* Add more fields as needed for MVP */}
@@ -492,8 +492,8 @@ export default function SpellEditor() {
             data-testid="spell-casting-time-input"
             aria-label="Casting time"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.casting_time || ""}
-            onChange={(e) => handleChange("casting_time", e.target.value)}
+            value={form.castingTime || ""}
+            onChange={(e) => handleChange("castingTime", e.target.value)}
           />
           <input
             placeholder="Area"
@@ -508,8 +508,8 @@ export default function SpellEditor() {
             data-testid="spell-save-input"
             aria-label="Saving throw"
             className="bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.saving_throw || ""}
-            onChange={(e) => handleChange("saving_throw", e.target.value)}
+            value={form.savingThrow || ""}
+            onChange={(e) => handleChange("savingThrow", e.target.value)}
           />
         </div>
       </div>
@@ -522,8 +522,8 @@ export default function SpellEditor() {
           id="spell-material-components"
           data-testid="spell-material-components-input"
           className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
-          value={form.material_components || ""}
-          onChange={(e) => handleChange("material_components", e.target.value)}
+          value={form.materialComponents || ""}
+          onChange={(e) => handleChange("materialComponents", e.target.value)}
         />
       </div>
 

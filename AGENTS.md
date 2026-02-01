@@ -1,21 +1,12 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
+# AI Agent Access Guide
 
-These instructions are for AI assistants working in this project.
+This repository uses a structured documentation system for AI agents. Please refer to the specialized guides below based on your current task:
 
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
+- **Planning & Proposals**: Refer to [OpenSpec AGENTS.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/openspec/AGENTS.md) for instructions on change proposals and spec-driven development.
+- **Development & Workflows**: Refer to [DEVELOPMENT.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/docs/DEVELOPMENT.md) for setup, repo layout, casing standards, and linting/formatting rules.
+- **Security & Provenance**: The mandatory security principles for dependencies are located below in the reference section.
 
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
-
-Keep this managed block so 'openspec update' can refresh the instructions.
-
-<!-- OPENSPEC:END -->
+---
 
 # AGENTS.md
 
@@ -34,7 +25,7 @@ These rules apply to **planning, recommending, adding, or modifying dependencies
 3. **No new dependency is “minor” or “obvious.”**
 4. **When uncertain, stop and escalate instead of proceeding.**
 
-Failure mode preference:  
+Failure mode preference:
 **Reject the change rather than risk introducing an unverified package.**
 
 ---

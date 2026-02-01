@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")] // Standardize frontend communication
 pub struct SearchFilters {
-    #[serde(rename = "schools")]
     pub schools: Option<Vec<String>>,
-    #[serde(rename = "spheres")]
     pub spheres: Option<Vec<String>>,
     // Handled by rename_all="camelCase"
     pub level_min: Option<i64>,
@@ -19,6 +17,7 @@ pub struct SearchFilters {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedSearch {
     pub id: i64,
     pub name: String,
@@ -34,6 +33,7 @@ pub enum SearchMode {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedSearchPayload {
     pub query: String,
     pub mode: SearchMode,
@@ -41,6 +41,7 @@ pub struct SavedSearchPayload {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Facets {
     pub schools: Vec<String>,
     pub spheres: Vec<String>,

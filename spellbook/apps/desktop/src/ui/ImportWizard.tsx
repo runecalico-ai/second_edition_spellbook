@@ -10,18 +10,18 @@ type ImportFile = {
 
 type SpellArtifact = {
   id: number;
-  spell_id: number;
+  spellId: number;
   type: string;
   path: string;
   hash: string;
-  imported_at: string;
+  importedAt: string;
 };
 
 type ImportArtifact = {
   type: string;
   path: string;
   hash: string;
-  imported_at: string;
+  importedAt: string;
 };
 
 type ImportConflictField = {
@@ -35,15 +35,15 @@ type SpellDetail = {
   name: string;
   school?: string;
   sphere?: string;
-  class_list?: string;
+  classList?: string;
   level: number;
   range?: string;
   components?: string;
-  material_components?: string;
-  casting_time?: string;
+  materialComponents?: string;
+  castingTime?: string;
   duration?: string;
   area?: string;
-  saving_throw?: string;
+  savingThrow?: string;
   reversible?: number;
   description: string;
   tags?: string;
@@ -51,8 +51,8 @@ type SpellDetail = {
   edition?: string;
   author?: string;
   license?: string;
-  is_quest_spell?: number;
-  is_cantrip?: number;
+  isQuestSpell?: number;
+  isCantrip?: number;
   artifacts?: SpellArtifact[];
 };
 
@@ -61,15 +61,15 @@ type SpellUpdate = {
   name: string;
   school?: string;
   sphere?: string;
-  class_list?: string;
+  classList?: string;
   level: number;
   range?: string;
   components?: string;
-  material_components?: string;
-  casting_time?: string;
+  materialComponents?: string;
+  castingTime?: string;
   duration?: string;
   area?: string;
-  saving_throw?: string;
+  savingThrow?: string;
   reversible?: number;
   description: string;
   tags?: string;
@@ -77,8 +77,8 @@ type SpellUpdate = {
   edition?: string;
   author?: string;
   license?: string;
-  is_quest_spell: number;
-  is_cantrip: number;
+  isQuestSpell: number;
+  isCantrip: number;
 };
 
 type ParseConflict = {
@@ -137,15 +137,15 @@ const conflictFieldLabels: Record<string, string> = {
   name: "Name",
   school: "School",
   sphere: "Sphere",
-  class_list: "Classes",
+  classList: "Classes",
   level: "Level",
   range: "Range",
   components: "Components",
-  material_components: "Material Components",
-  casting_time: "Casting Time",
+  materialComponents: "Material Components",
+  castingTime: "Casting Time",
   duration: "Duration",
   area: "Area",
-  saving_throw: "Saving Throw",
+  savingThrow: "Saving Throw",
   reversible: "Reversible",
   description: "Description",
   tags: "Tags",
@@ -257,15 +257,15 @@ export default function ImportWizard() {
     name: spell.name,
     school: spell.school,
     sphere: spell.sphere,
-    class_list: spell.class_list,
+    classList: spell.classList,
     level: spell.level,
     range: spell.range,
     components: spell.components,
-    material_components: spell.material_components,
-    casting_time: spell.casting_time,
+    materialComponents: spell.materialComponents,
+    castingTime: spell.castingTime,
     duration: spell.duration,
     area: spell.area,
-    saving_throw: spell.saving_throw,
+    savingThrow: spell.savingThrow,
     reversible: spell.reversible,
     description: spell.description,
     tags: spell.tags,
@@ -273,8 +273,8 @@ export default function ImportWizard() {
     edition: spell.edition,
     author: spell.author,
     license: spell.license,
-    is_quest_spell: spell.is_quest_spell || 0,
-    is_cantrip: spell.is_cantrip || 0,
+    isQuestSpell: spell.isQuestSpell || 0,
+    isCantrip: spell.isCantrip || 0,
   });
 
   const applyFieldFromSpell = (target: SpellUpdate, field: string, source: SpellDetail) => {
@@ -288,8 +288,8 @@ export default function ImportWizard() {
       case "sphere":
         target.sphere = source.sphere;
         break;
-      case "class_list":
-        target.class_list = source.class_list;
+      case "classList":
+        target.classList = source.classList;
         break;
       case "level":
         target.level = source.level;
@@ -300,11 +300,11 @@ export default function ImportWizard() {
       case "components":
         target.components = source.components;
         break;
-      case "material_components":
-        target.material_components = source.material_components;
+      case "materialComponents":
+        target.materialComponents = source.materialComponents;
         break;
-      case "casting_time":
-        target.casting_time = source.casting_time;
+      case "castingTime":
+        target.castingTime = source.castingTime;
         break;
       case "duration":
         target.duration = source.duration;
@@ -312,8 +312,8 @@ export default function ImportWizard() {
       case "area":
         target.area = source.area;
         break;
-      case "saving_throw":
-        target.saving_throw = source.saving_throw;
+      case "savingThrow":
+        target.savingThrow = source.savingThrow;
         break;
       case "reversible":
         target.reversible = source.reversible;
@@ -336,11 +336,11 @@ export default function ImportWizard() {
       case "license":
         target.license = source.license;
         break;
-      case "is_quest_spell":
-        target.is_quest_spell = source.is_quest_spell || 0;
+      case "isQuestSpell":
+        target.isQuestSpell = source.isQuestSpell || 0;
         break;
-      case "is_cantrip":
-        target.is_cantrip = source.is_cantrip || 0;
+      case "isCantrip":
+        target.isCantrip = source.isCantrip || 0;
         break;
       default:
         break;
@@ -389,7 +389,7 @@ export default function ImportWizard() {
       setPreviewArtifacts(response.artifacts);
       setPreviewConflicts(response.conflicts);
 
-      const hasHighLevel = response.spells.some((s) => (s.level || 0) >= 10 || s.is_quest_spell);
+      const hasHighLevel = response.spells.some((s) => (s.level || 0) >= 10 || s.isQuestSpell);
       if (hasHighLevel && !suppressWarning) {
         setShowHighLevelWarning(true);
       }
@@ -455,7 +455,7 @@ export default function ImportWizard() {
           throw new Error("Missing existing spell id.");
         }
         if (!selection || selection.action === "skip") {
-          return { action: "skip", existing_id: existingId };
+          return { action: "skip", existingId: existingId };
         }
         const resolvedSpell =
           selection.action === "overwrite"
@@ -463,7 +463,7 @@ export default function ImportWizard() {
             : mergeConflictSpell(conflict, selection);
         return {
           action: selection.action,
-          existing_id: existingId,
+          existingId: existingId,
           spell: resolvedSpell,
           artifact: conflict.artifact,
         };

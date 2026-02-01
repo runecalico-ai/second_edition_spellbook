@@ -19,7 +19,7 @@ A local-only, privacy-first desktop application for managing AD&D 2nd Edition sp
   - Both use the same `biome.json` configuration
 - **Rust**: Use `cargo clippy` and `rustfmt`.
 - **Python**: Use `ruff` for linting and formatting.
-- **Naming**: Use `snake_case` for Rust backend commands and `camelCase` for React frontend code.
+- **Naming**: Use `snake_case` for Rust backend commands and internal logic, and `camelCase` for React frontend code. **All IPC serialized data (Tauri commands/events) MUST use `camelCase`.**
 
 ### Architecture Patterns
 - **Monorepo**: Application lives in `spellbook/apps/desktop`.

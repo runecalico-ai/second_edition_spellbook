@@ -30,17 +30,75 @@
 
 - [x] **Test: Null value handling**
   - GIVEN spell with `school = null`
-  - AND spell with `school` field omitted (if omitted during generation)
-  - THEN both canonical representations MUST be identical (serialised as `null` if nullable)
+  - AND spell with `school` field omitted
+  - THEN both canonical representations MUST be identical (completely omitted from output)
+  - AND this MUST apply to all nullable fields (e.g., `sphere`, `material_components`, `saving_throw`, `edition`, `author`, `license`)
 
-- [x] **Test: Field omission for optional complexes**
-  - GIVEN spell with `range = null` (Rust `None`)
-  - WHEN serialised to canonical JSON
-  - THEN the `range` key MUST be completely omitted (to comply with `additionalProperties: false`)
+- [ ] **Test: Number normalization**
+  - GIVEN a spell with `level_divisor = 1.0`
+  - AND another with `level_divisor = 1`
+  - THEN both hashes MUST be identical (shortest representation)
 
-- [x] **Test: Default value inclusion (Integer booleans)**
-  - GIVEN spell with `is_cantrip = 0` (false)
-  - THEN canonical JSON MUST include `"is_cantrip": 0`
+- [ ] **Test: String normalization**
+  - GIVEN a spell with description containing Windows line endings (`\r\n`)
+  - AND another with Unix line endings (`\n`)
+  - THEN both hashes MUST be identical
+  - AND leading/trailing whitespace MUST be trimmed before hashing
+
+- [ ] **Test: Default value inclusion (Nested Objects)**
+  - GIVEN a spell with `range = { "text": "Touch", "unit": "Touch" }`
+  - THEN canonical JSON MUST include default fields: `"base_value": 0`, `"per_level": 0`, `"level_divisor": 1`
+
+- [ ] **Test: Null value handling (cap_level)**
+  - GIVEN a spell with `damage = { "text": "1d6", "cap_level": null }`
+  - AND another with `damage = { "text": "1d6" }`
+  - THEN both canonical representations MUST be identical (omitted)
+
+- [ ] **Test: Metadata exclusion (schema_version)**
+  - GIVEN a spell with `schema_version = 1`
+  - WHEN `schema_version` is changed to `2`
+  - THEN hash MUST remain unchanged
+
+- [ ] **Test: Unicode normalization (NFC)**
+  - GIVEN a spell with name "Fiancé" (encoded as `e` + ` ́` / NFD)
+  - AND another with "Fiancé" (encoded as `é` / NFC)
+  - THEN both hashes MUST be identical
+
+- [ ] **Test: Array deduplication**
+  - GIVEN a spell with `tags = ["Fire", "Fire", "Damage"]`
+  - AND another with `tags = ["Damage", "Fire"]`
+  - THEN both hashes MUST be identical (deduplicated + sorted)
+
+- [ ] **Test: Floating point precision**
+  - GIVEN a spell with `base_value = 1.0000001`
+  - AND another with `base_value = 1.0000004`
+  - THEN both hashes MUST be identical (limit 6 decimal places)
+
+- [ ] **Test: Enum casing normalization**
+  - GIVEN a spell with `tradition = "arcane"`
+  - AND another with `tradition = "ARCANE"`
+  - THEN both hashes MUST be identical (normalized to schema case)
+
+- [ ] **Test: Empty array inclusion**
+  - GIVEN a spell with `tags = []`
+  - THEN the canonical JSON MUST include `"tags": []`
+
+- [ ] **Test: Whitespace collapse (Short text)**
+  - GIVEN a spell with `range = { "text": "10  yards  +  10  yards/level", "unit": "Yards" }`
+  - AND another with `range = { "text": "10 yards + 10 yards/level", "unit": "Yards" }`
+  - THEN both hashes MUST be identical (internal spaces collapsed)
+
+- [ ] **Test: Materialize defaults**
+  - GIVEN a spell missing an optional field that has a default (e.g., `reversible` is missing)
+  - WHEN canonicalized
+  - THEN the output MUST include the schema default (`"reversible": 0`)
+  - AND hashes for records with explicit vs implicit defaults MUST be identical
+
+- [ ] **Test: Prohibited field omission**
+  - GIVEN an Arcane spell with `"school": "Evocation"` and `"sphere": null`
+  - WHEN canonicalized
+  - THEN the output MUST OMIT the `"sphere"` key
+  - AND the hash MUST be identical to the same spell where `"sphere"` was never present
 
 ### Schema Validation
 - [x] **Test: Valid spell passes validation**
@@ -62,6 +120,15 @@
   - GIVEN spell with `tradition = "DIVINE"` and `sphere = null`
   - WHEN validated
   - THEN validation MUST fail
+
+- [ ] **Test: Both tradition requires school and sphere**
+  - GIVEN spell with `tradition = "BOTH"`
+  - AND `school = "Evocation"` but `sphere = null`
+  - THEN validation MUST fail
+  - AND GIVEN `school = null` but `sphere = "All"`
+  - THEN validation MUST fail
+  - AND GIVEN both `school` and `sphere` are non-null
+  - THEN validation MUST succeed
 
 ## Integration Tests
 

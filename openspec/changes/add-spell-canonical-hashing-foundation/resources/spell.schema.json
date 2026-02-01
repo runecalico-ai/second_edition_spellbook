@@ -368,7 +368,10 @@
                     "default": 1
                 },
                 "cap_level": {
-                    "type": "number",
+                    "type": [
+                        "number",
+                        "null"
+                    ],
                     "description": "Maximum caster level to count for scaling."
                 }
             },
@@ -494,6 +497,11 @@
                 1
             ],
             "default": 0
+        },
+        "schema_version": {
+            "type": "integer",
+            "description": "The validation schema version used for this record.",
+            "default": 1
         }
     },
     "required": [

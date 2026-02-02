@@ -11,7 +11,9 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
 3.  **Sanitize**:
     -   **NFC Normalize** all strings.
     -   **Trim** all strings (leading/trailing).
-    -   **Collapse Spaces** in "Short Text" fields.
+    -   **Collapse Spaces**:
+        -   **Structured Mode**: Collapses all internal whitespace AND newlines into single spaces (Game-mechanical fields).
+        -   **Textual Mode**: Collapses internal horizontal whitespace but preserves newlines (Narrative fields).
     -   **Normalize Enums** to match schema casing.
     -   **Limit Precision** for all `number` fields to 6 decimal places.
 4.  **Collection Logic**: Deduplicate and sort all unordered arrays (`tags`, etc.).
@@ -42,8 +44,9 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
 8.  **String Normalization**:
     *   **Unicode**: MUST be normalized to **NFC (Normalization Form C)**.
     *   **Whitespace Trimming**: Leading and trailing whitespace MUST be trimmed.
-    *   **Internal Whitespace (Short Text)**: For mechanical text fields (e.g. `range.text`, `duration.text`), multiple internal spaces MUST be collapsed into a single space.
-    *   **Internal Whitespace (Descriptions)**: Longer text fields MUST preserve structure, using `\n` for line endings.
+    *   **Structured Normalization**: For game-mechanical strings (e.g., `name`, `tradition`, `school`, `sphere`, `saving_throw`, `casting_time.text`, and `damage.text`), all internal whitespace AND newlines MUST be collapsed into a single space.
+    *   **Textual Normalization**: For narrative strings (e.g., `description`, `material_components`, and all `.notes` or `.condition` fields in `area`, `range`, `duration`), multiple internal spaces MUST be collapsed, but distinct paragraphs (split by one or more empty lines) MUST be preserved as a single `\n` separator. Line endings MUST be normalized to `\n` (LFs).
+11. **Unit Preservation**: All game-mechanical units (e.g., `ft`, `yd`, `mi`, `inches`, `round`, `turn`) MUST be preserved exactly as presented in the record. No automatic conversion or scaling between units (e.g., converting "10 yards" to "30 feet") SHALL be performed during canonicalization. This preserves the semantic intent and mechanical distinction defined by the game system.
 9.  **Decimal Precision**: Limit all `number` fields to a maximum of 6 decimal places. NaN/Infinity are prohibited.
 10. **Materialize Defaults**: Any mechanical field missing in the source but having a `default` in the current schema MUST be included using that default value.
 
@@ -103,11 +106,21 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
   },
   "description": "Explosion.\nLine two.",
   "duration": {
-    "base_value": 0,
-    "level_divisor": 1,
-    "per_level": 1,
-    "text": "1 round/level",
-    "unit": "Round"
+    "condition": null,
+    "duration": {
+      "cap_level": null,
+      "cap_value": null,
+      "max_level": null,
+      "min_level": null,
+      "mode": "per_level",
+      "per_level": 1,
+      "rounding": null,
+      "value": 0
+    },
+    "kind": "time",
+    "notes": null,
+    "unit": "round",
+    "uses": null
   },
   "is_cantrip": 0,
   "is_quest_spell": 0,

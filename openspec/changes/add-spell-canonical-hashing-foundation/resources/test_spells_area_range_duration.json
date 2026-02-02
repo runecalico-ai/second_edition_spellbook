@@ -6,7 +6,8 @@
     {
       "id": "testspell-001",
       "name": "Aegis Ward",
-      "tradition": "priest",
+      "description": "Aegis Ward",
+      "tradition": "DIVINE",
       "level": 2,
       "sphere": "Protection",
       "range": {
@@ -34,7 +35,8 @@
     {
       "id": "testspell-002",
       "name": "Mending Touch",
-      "tradition": "priest",
+      "description": "Mending Touch",
+      "tradition": "DIVINE",
       "level": 1,
       "sphere": "Healing",
       "range": {
@@ -55,7 +57,8 @@
     {
       "id": "testspell-003",
       "name": "Arcane Emberburst",
-      "tradition": "wizard",
+      "description": "Arcane Emberburst",
+      "tradition": "ARCANE",
       "level": 3,
       "school": "Evocation",
       "range": {
@@ -81,7 +84,8 @@
     {
       "id": "testspell-004",
       "name": "Whisper Chain",
-      "tradition": "wizard",
+      "description": "Whisper Chain",
+      "tradition": "ARCANE",
       "level": 2,
       "school": "Enchantment/Charm",
       "range": {
@@ -114,7 +118,8 @@
     {
       "id": "testspell-005",
       "name": "Frost Line",
-      "tradition": "wizard",
+      "description": "Frost Line",
+      "tradition": "ARCANE",
       "level": 4,
       "school": "Evocation",
       "range": {
@@ -149,7 +154,8 @@
     {
       "id": "testspell-006",
       "name": "Stone Wall Sigil",
-      "tradition": "wizard",
+      "description": "Stone Wall Sigil",
+      "tradition": "ARCANE",
       "level": 5,
       "school": "Alteration",
       "range": {
@@ -184,7 +190,8 @@
     {
       "id": "testspell-007",
       "name": "Sanctum Cube",
-      "tradition": "priest",
+      "description": "Sanctum Cube",
+      "tradition": "DIVINE",
       "level": 4,
       "sphere": "Protection",
       "range": {
@@ -216,7 +223,8 @@
     {
       "id": "testspell-008",
       "name": "Hex Mist",
-      "tradition": "wizard",
+      "description": "Hex Mist",
+      "tradition": "ARCANE",
       "level": 3,
       "school": "Conjuration/Summoning",
       "range": {
@@ -248,7 +256,8 @@
     {
       "id": "testspell-009",
       "name": "Domain Benediction",
-      "tradition": "priest",
+      "description": "Domain Benediction",
+      "tradition": "DIVINE",
       "level": 7,
       "sphere": "Summoning",
       "range": {
@@ -269,7 +278,8 @@
     {
       "id": "testspell-010",
       "name": "Ethereal Sightline",
-      "tradition": "wizard",
+      "description": "Ethereal Sightline",
+      "tradition": "ARCANE",
       "level": 6,
       "school": "Divination",
       "range": {

@@ -138,47 +138,8 @@
             "maximum": 12
         },
         "range": {
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "Display range text (e.g. '10 yards + 10 yards / level')."
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": [
-                        "Touch",
-                        "Yards",
-                        "Feet",
-                        "Inches",
-                        "Miles",
-                        "Special",
-                        "Unlimited",
-                        "Sight"
-                    ],
-                    "default": "Yards"
-                },
-                "base_value": {
-                    "type": "number",
-                    "description": "Fixed base range.",
-                    "default": 0
-                },
-                "per_level": {
-                    "type": "number",
-                    "description": "Variable range added per increment.",
-                    "default": 0
-                },
-                "level_divisor": {
-                    "type": "number",
-                    "description": "Level increment divisor.",
-                    "default": 1
-                }
-            },
-            "required": [
-                "text",
-                "unit"
-            ],
-            "additionalProperties": false
+            "$ref": "#/$defs/RangeSpec",
+            "description": "The range of the spell."
         },
         "components": {
             "type": "object",
@@ -256,50 +217,8 @@
             "additionalProperties": false
         },
         "duration": {
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "Display duration text (e.g. '1 round / level')."
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": [
-                        "Instantaneous",
-                        "Round",
-                        "Turn",
-                        "Hour",
-                        "Day",
-                        "Week",
-                        "Month",
-                        "Year",
-                        "Permanent",
-                        "Special",
-                        "Minutes"
-                    ],
-                    "default": "Round"
-                },
-                "base_value": {
-                    "type": "number",
-                    "description": "Fixed base duration.",
-                    "default": 0
-                },
-                "per_level": {
-                    "type": "number",
-                    "description": "Variable duration added per increment.",
-                    "default": 0
-                },
-                "level_divisor": {
-                    "type": "number",
-                    "description": "Level increment divisor (e.g. 2 for 'per 2 levels').",
-                    "default": 1
-                }
-            },
-            "required": [
-                "text",
-                "unit"
-            ],
-            "additionalProperties": false
+            "$ref": "#/$defs/DurationSpec",
+            "description": "The duration of the spell."
         },
         "area": {
             "$ref": "#/$defs/AreaSpec",
@@ -709,7 +628,8 @@
                     "enum": [
                         "ft",
                         "yd",
-                        "mi"
+                        "mi",
+                        "inches"
                     ],
                     "description": "Unit for geometric dimensions (radii/length/height/width/etc.)."
                 },
@@ -874,7 +794,6 @@
                     "then": {
                         "required": [
                             "length",
-                            "width",
                             "shape_unit"
                         ]
                     }
@@ -912,8 +831,6 @@
                     "then": {
                         "required": [
                             "length",
-                            "width",
-                            "height",
                             "shape_unit"
                         ]
                     }
@@ -932,7 +849,6 @@
                     "then": {
                         "required": [
                             "radius",
-                            "height",
                             "shape_unit"
                         ]
                     }
@@ -951,8 +867,6 @@
                     "then": {
                         "required": [
                             "length",
-                            "height",
-                            "thickness",
                             "shape_unit"
                         ]
                     }
@@ -1097,6 +1011,393 @@
                         "required": [
                             "scope_unit"
                         ]
+                    }
+                }
+            ]
+        },
+        "RangeSpec": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "kind"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "personal",
+                        "touch",
+                        "distance",
+                        "distance_los",
+                        "distance_loe",
+                        "los",
+                        "loe",
+                        "sight",
+                        "hearing",
+                        "voice",
+                        "senses",
+                        "same_room",
+                        "same_structure",
+                        "same_dungeon_level",
+                        "wilderness",
+                        "same_plane",
+                        "interplanar",
+                        "anywhere_on_plane",
+                        "domain",
+                        "unlimited",
+                        "special"
+                    ]
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "ft",
+                        "yd",
+                        "mi",
+                        "inches"
+                    ],
+                    "description": "Linear unit for numeric ranges."
+                },
+                "distance": {
+                    "$ref": "#/$defs/scalar"
+                },
+                "requires": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "los",
+                            "loe"
+                        ]
+                    },
+                    "uniqueItems": true,
+                    "description": "Additional hard constraints."
+                },
+                "anchor": {
+                    "type": "string",
+                    "enum": [
+                        "caster",
+                        "target",
+                        "object",
+                        "fixed"
+                    ],
+                    "description": "If range is relative to something other than the caster."
+                },
+                "region_unit": {
+                    "type": "string",
+                    "enum": [
+                        "structure",
+                        "building",
+                        "bridge",
+                        "ship",
+                        "fortress",
+                        "region",
+                        "domain",
+                        "demiplane",
+                        "plane"
+                    ],
+                    "description": "When kind=domain or similar, optional explicit qualifier."
+                },
+                "notes": {
+                    "type": "string"
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "enum": [
+                                    "distance",
+                                    "distance_los",
+                                    "distance_loe"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "distance",
+                            "unit"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "personal"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "not": {
+                            "anyOf": [
+                                {
+                                    "required": [
+                                        "distance"
+                                    ]
+                                },
+                                {
+                                    "required": [
+                                        "unit"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "touch"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "not": {
+                            "anyOf": [
+                                {
+                                    "required": [
+                                        "distance"
+                                    ]
+                                },
+                                {
+                                    "required": [
+                                        "unit"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "distance_los"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "properties": {
+                            "requires": {
+                                "contains": {
+                                    "const": "los"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "distance_loe"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "properties": {
+                            "requires": {
+                                "contains": {
+                                    "const": "loe"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "DurationSpec": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "kind"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "instant",
+                        "time",
+                        "concentration",
+                        "conditional",
+                        "permanent",
+                        "until_dispelled",
+                        "until_triggered",
+                        "usage_limited",
+                        "planar",
+                        "special"
+                    ]
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": [
+                        "segment",
+                        "round",
+                        "turn",
+                        "minute",
+                        "hour",
+                        "day",
+                        "week",
+                        "month",
+                        "year"
+                    ],
+                    "description": "Time unit used when kind = time."
+                },
+                "duration": {
+                    "$ref": "#/$defs/scalar",
+                    "description": "Primary duration scalar (fixed or per-level)."
+                },
+                "condition": {
+                    "type": "string",
+                    "description": "Narrative or rules-based condition that ends the duration."
+                },
+                "uses": {
+                    "$ref": "#/$defs/scalar",
+                    "description": "Number of uses, strikes, discharges, or activations before expiration."
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Freeform clarification; must not contain mechanical formulas."
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "time"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "unit",
+                            "duration"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "enum": [
+                                    "instant",
+                                    "permanent"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "not": {
+                            "anyOf": [
+                                {
+                                    "required": [
+                                        "unit"
+                                    ]
+                                },
+                                {
+                                    "required": [
+                                        "duration"
+                                    ]
+                                },
+                                {
+                                    "required": [
+                                        "uses"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "enum": [
+                                    "conditional",
+                                    "until_triggered",
+                                    "planar"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "condition"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "usage_limited"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "uses"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "kind": {
+                                "const": "until_dispelled"
+                            }
+                        },
+                        "required": [
+                            "kind"
+                        ]
+                    },
+                    "then": {
+                        "not": {
+                            "anyOf": [
+                                {
+                                    "required": [
+                                        "unit"
+                                    ]
+                                },
+                                {
+                                    "required": [
+                                        "duration"
+                                    ]
+                                }
+                            ]
+                        }
                     }
                 }
             ]

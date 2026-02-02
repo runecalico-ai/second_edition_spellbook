@@ -52,7 +52,8 @@
             "enum": [
                 "ft",
                 "yd",
-                "mi"
+                "mi",
+                "inches"
             ],
             "description": "Unit for geometric dimensions (radii/length/height/width/etc.)."
         },
@@ -217,7 +218,6 @@
             "then": {
                 "required": [
                     "length",
-                    "width",
                     "shape_unit"
                 ]
             }
@@ -255,8 +255,6 @@
             "then": {
                 "required": [
                     "length",
-                    "width",
-                    "height",
                     "shape_unit"
                 ]
             }
@@ -275,7 +273,6 @@
             "then": {
                 "required": [
                     "radius",
-                    "height",
                     "shape_unit"
                 ]
             }
@@ -294,8 +291,6 @@
             "then": {
                 "required": [
                     "length",
-                    "height",
-                    "thickness",
                     "shape_unit"
                 ]
             }

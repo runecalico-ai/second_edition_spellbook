@@ -23,6 +23,13 @@ All spells processed by the backend MUST support mapping to the Strict Spell Sch
 - AND `distance` scalar MUST be `{"mode": "per_level", "value": 100, "per_level": 10}`
 - AND `unit` MUST be `"ft"` (normalized).
 
+#### Scenario: Complex Duration Parsing
+- GIVEN a spell with duration text "1 round / level"
+- WHEN converted to `CanonicalSpell`
+- THEN it MUST be structured as a `DurationSpec` object with `kind="time"`
+- AND `duration` scalar MUST be `{"mode": "per_level", "value": 0, "per_level": 1}`
+- AND `unit` MUST be `"round"` (normalized).
+
 ### Requirement: Deterministic Identity
 A spell's identity MUST be defined by the SHA-256 hash of its canonical JSON representation.
 
@@ -31,6 +38,11 @@ A spell's identity MUST be defined by the SHA-256 hash of its canonical JSON rep
 - BUT different key ordering
 - WHEN hashed
 - THEN they MUST produce the exact same SHA-256 hash.
+-
+- #### Scenario: Unit-Based Identity
+- - GIVEN two spells with equivalent physical distances (e.g., "10 yd" vs "30 ft")
+- - WHEN converted to `CanonicalSpell` and hashed
+- - THEN they MUST produce **different** SHA-256 hashes (preserving unit distinction).
 
 #### Scenario: Array Normalization
 - GIVEN unordered metadata (e.g. `tags = ["Fire", "Fire", "Damage"]`)
@@ -67,6 +79,12 @@ A spell's identity MUST be defined by the SHA-256 hash of its canonical JSON rep
 - WHEN hashed
 - THEN multiple internal spaces MUST be collapsed to a single space (Result: `"10 yards"`)
 - AND produce the exact same hash.
+-
+- #### Scenario: Narrative Paragraph Preservation
+- - GIVEN a description with multiple paragraphs separated by a blank line
+- - WHEN hashed
+- - THEN the canonical JSON MUST preserve the line break (normalized to `\n`)
+- - BUT MUST NOT collapse the entire description into a single line.
 
 ### Requirement: Tradition-Specific Integrity
 The backend MUST enforce strict logical dependencies between traditions and metadata fields.

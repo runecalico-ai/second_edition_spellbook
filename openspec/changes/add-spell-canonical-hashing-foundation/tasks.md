@@ -5,6 +5,7 @@
 - [x] Define Serialization Contract (`canonical-serialization.md`).
 - [x] Integrate `AreaSpec` into schema (`spell.schema.json`).
 - [x] Integrate `RangeSpec` into schema (`spell.schema.json`).
+- [x] Integrate `DurationSpec` into schema (`spell.schema.json`).
 
 ## Backend Implementation
 ### Schema Validation
@@ -35,6 +36,13 @@
     - [x] Extract scalar values with unit normalization.
     - [x] Support structured scaling (fixed, per_level).
 - [x] Implement RangeSpec validation tests.
+
+### Duration Parsing & Validation (Spec V2)
+- [x] Implement strict `DurationSpec` parsing:
+    - [x] Map natural language durations to discriminators (time, instant, permanent, etc.).
+    - [x] Extract scalar values with unit normalization.
+    - [x] Support structure scaling (fixed, per_level).
+- [x] Implement DurationSpec validation tests.
 
 ### Hash Computation
 - [x] Implement SHA-256 hashing:

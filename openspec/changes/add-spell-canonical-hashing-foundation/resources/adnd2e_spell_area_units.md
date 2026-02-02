@@ -23,6 +23,7 @@ This list captures **measurement units**, not spell shapes alone.
 - Foot / Feet (ft.)
 - Yard / Yards (yd.)
 - Mile / Miles
+- Inch / Inches (in.)
 
 ### Level-Scaled Linear Units
 - Feet per level

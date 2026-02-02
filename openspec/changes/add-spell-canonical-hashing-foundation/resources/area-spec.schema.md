@@ -36,7 +36,7 @@ validators, and resolved spell snapshots. It mirrors `RangeSpec` and `DurationSp
 ### 1.2 DistanceUnit
 
 ```json
-["ft", "yd", "mi"]
+["ft", "yd", "mi", "inches"]
 ```
 
 ### 1.3 SurfaceUnit
@@ -121,7 +121,8 @@ Same scalar model used by RangeSpec and DurationSpec:
             "enum": [
                 "ft",
                 "yd",
-                "mi"
+                "mi",
+                "inches"
             ],
             "description": "Unit for geometric dimensions (radii/length/height/width/etc.)."
         },
@@ -286,7 +287,6 @@ Same scalar model used by RangeSpec and DurationSpec:
             "then": {
                 "required": [
                     "length",
-                    "width",
                     "shape_unit"
                 ]
             }
@@ -324,8 +324,6 @@ Same scalar model used by RangeSpec and DurationSpec:
             "then": {
                 "required": [
                     "length",
-                    "width",
-                    "height",
                     "shape_unit"
                 ]
             }
@@ -344,7 +342,6 @@ Same scalar model used by RangeSpec and DurationSpec:
             "then": {
                 "required": [
                     "radius",
-                    "height",
                     "shape_unit"
                 ]
             }
@@ -363,8 +360,6 @@ Same scalar model used by RangeSpec and DurationSpec:
             "then": {
                 "required": [
                     "length",
-                    "height",
-                    "thickness",
                     "shape_unit"
                 ]
             }

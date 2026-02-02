@@ -154,6 +154,45 @@
   - WHEN parsed
   - THEN it MUST be `kind="special"`.
 
+### Duration Parsing
+- [x] **Test: Parse Time Duration**
+  - GIVEN a duration string "1 round / level"
+  - WHEN parsed
+  - THEN it MUST be `kind="time"`
+  - AND `unit` MUST be `DurationUnit::Round`
+  - AND `duration` scalar MUST be `per_level=1`.
+
+- [x] **Test: Parse Instantaneous Duration**
+  - GIVEN a duration string "Instantaneous"
+  - WHEN parsed
+  - THEN it MUST be `kind="instant"`.
+
+- [x] **Test: Parse Permanent Duration**
+  - GIVEN a duration string "Permanent"
+  - WHEN parsed
+  - THEN it MUST be `kind="permanent"`.
+
+- [x] **Test: Parse Special Duration**
+  - GIVEN a complex duration string "Special"
+  - WHEN parsed
+  - THEN it MUST be `kind="special"`.
+
+### Regression Tests
+- [x] **Test: Duration Whitespace Normalization**
+  - GIVEN " 1  round / level "
+  - WHEN parsed
+  - THEN it MUST parse identical to "1 round/level".
+
+- [x] **Test: Duration Case Insensitivity**
+  - GIVEN "INSTANTANEOUS"
+  - WHEN parsed
+  - THEN it MUST be `kind="instant"`.
+
+- [x] **Test: Duration Null/Empty Handling**
+  - GIVEN an empty duration string
+  - WHEN parsed
+  - THEN it MUST return `None` or a safe default `Special`.
+
 ## Integration Tests
 
 ### Database Schema

@@ -16,6 +16,7 @@ These are the most common spell range units.
 - **Foot / Feet (ft.)**
 - **Yard / Yards (yd.)**
 - **Mile / Miles (mi.)**
+- **Inch / Inches (in.)**
 
 Used alone or with scaling modifiers.
 

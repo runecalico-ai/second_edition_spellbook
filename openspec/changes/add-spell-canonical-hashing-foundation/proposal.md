@@ -24,6 +24,8 @@ Implement the foundational logic for Canonical Spell Hashing:
 -   Hash computation logic (SHA-256)
 -   Schema validation logic (using `jsonschema` crate)
 -   Schema versioning infrastructure (database column, metadata)
+-   Range & Area: Add "Inches" to supported units.
+-   Area: Relax required fields for `line`, `cylinder`, `wall`, and `rect_prism` to allow partial dimensions.
 -   Documentation for hashing and validation APIs
 
 ### Out of Scope

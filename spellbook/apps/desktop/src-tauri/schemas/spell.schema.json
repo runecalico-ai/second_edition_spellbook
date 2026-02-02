@@ -155,6 +155,18 @@
         "material": {
           "type": "boolean",
           "default": false
+        },
+        "focus": {
+          "type": "boolean",
+          "default": false
+        },
+        "divine_focus": {
+          "type": "boolean",
+          "default": false
+        },
+        "experience": {
+          "type": "boolean",
+          "default": false
         }
       },
       "description": "Components required to cast the spell.",
@@ -162,16 +174,19 @@
       "required": [
         "verbal",
         "somatic",
-        "material"
+        "material",
+        "focus",
+        "divine_focus",
+        "experience"
       ]
     },
     "material_components": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Description of material components.",
-      "default": null
+      "type": "array",
+      "description": "Structured material component requirements.",
+      "items": {
+        "$ref": "#/$defs/MaterialComponentSpec"
+      },
+      "default": []
     },
     "casting_time": {
       "type": "object",
@@ -225,47 +240,20 @@
       "description": "The area of effect."
     },
     "damage": {
-      "type": "object",
-      "properties": {
-        "text": {
-          "type": "string",
-          "description": "Display damage text (e.g. '1d6 / level')."
-        },
-        "base_dice": {
-          "type": "string",
-          "description": "Fixed base damage dice (e.g. '1d8').",
-          "default": "0"
-        },
-        "per_level_dice": {
-          "type": "string",
-          "description": "Damage dice added per increment (e.g. '1d6').",
-          "default": "0"
-        },
-        "level_divisor": {
-          "type": "number",
-          "description": "Level increment divisor.",
-          "default": 1
-        },
-        "cap_level": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "description": "Maximum caster level to count for scaling."
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "additionalProperties": false
+      "$ref": "#/$defs/SpellDamageSpec",
+      "description": "The damage characteristics of the spell."
+    },
+    "magic_resistance": {
+      "$ref": "#/$defs/MagicResistanceSpec",
+      "description": "How the spell interacts with Magic Resistance."
     },
     "saving_throw": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Saving throw allowance (e.g., 'None', '1/2').",
-      "default": null
+      "$ref": "#/$defs/SavingThrowSpec",
+      "description": "Saving throw requirements and outcomes."
+    },
+    "experience_cost": {
+      "$ref": "#/$defs/ExperienceComponentSpec",
+      "description": "Detailed experience cost mechanics."
     },
     "reversible": {
       "type": [
@@ -1224,6 +1212,949 @@
           }
         }
       ]
+    },
+    "ExperienceComponentSpec": {
+      "title": "ExperienceComponentSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "none",
+            "fixed",
+            "per_unit",
+            "formula",
+            "tiered",
+            "dm_adjudicated"
+          ]
+        },
+        "payer": {
+          "type": "string",
+          "enum": [
+            "caster",
+            "primary_caster",
+            "participant",
+            "recipient",
+            "item",
+            "other"
+          ],
+          "default": "caster",
+          "description": "Who pays the XP cost."
+        },
+        "payment_timing": {
+          "type": "string",
+          "enum": [
+            "on_start",
+            "on_completion",
+            "on_effect",
+            "on_success",
+            "on_failure",
+            "on_both",
+            "dm"
+          ],
+          "default": "on_completion"
+        },
+        "payment_semantics": {
+          "type": "string",
+          "enum": [
+            "spend",
+            "loss",
+            "drain",
+            "sacrifice"
+          ],
+          "default": "spend"
+        },
+        "can_reduce_level": {
+          "type": "boolean",
+          "default": true
+        },
+        "recoverability": {
+          "type": "string",
+          "enum": [
+            "normal_earning",
+            "not_recoverable",
+            "special_only",
+            "dm"
+          ],
+          "default": "normal_earning"
+        },
+        "amount_xp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "per_unit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "xp_per_unit",
+            "unit_kind"
+          ],
+          "properties": {
+            "xp_per_unit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unit_kind": {
+              "type": "string",
+              "enum": [
+                "gp_value_1000",
+                "spell_level",
+                "recipient_level",
+                "hit_die",
+                "creature",
+                "day",
+                "charge",
+                "other"
+              ]
+            },
+            "unit_label": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "rounding": {
+              "type": "string",
+              "enum": [
+                "none",
+                "floor",
+                "ceil",
+                "nearest"
+              ],
+              "default": "none"
+            },
+            "min_xp": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_xp": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "formula": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expr",
+            "vars"
+          ],
+          "properties": {
+            "expr": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "vars": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "var_kind"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                  },
+                  "var_kind": {
+                    "type": "string",
+                    "enum": [
+                      "gp_value",
+                      "spell_level",
+                      "caster_level",
+                      "recipient_level",
+                      "hit_dice",
+                      "count",
+                      "other"
+                    ]
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                }
+              }
+            },
+            "rounding": {
+              "type": "string",
+              "enum": [
+                "none",
+                "floor",
+                "ceil",
+                "nearest"
+              ],
+              "default": "none"
+            },
+            "min_xp": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_xp": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "tiered": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "when",
+              "amount_xp"
+            ],
+            "properties": {
+              "when": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "amount_xp": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "notes": {
+                "type": "string",
+                "maxLength": 1024
+              }
+            }
+          }
+        },
+        "dm_guidance": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "source_text": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2048
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "amount_xp"
+                  ]
+                },
+                {
+                  "required": [
+                    "per_unit"
+                  ]
+                },
+                {
+                  "required": [
+                    "formula"
+                  ]
+                },
+                {
+                  "required": [
+                    "tiered"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "fixed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "amount_xp"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "per_unit"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "per_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "formula"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "formula"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "tiered"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tiered"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "dm_adjudicated"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dm_guidance"
+            ]
+          }
+        }
+      ]
+    },
+    "SpellDamageSpec": {
+      "title": "SpellDamageSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "none",
+            "modeled",
+            "dm_adjudicated"
+          ]
+        },
+        "combine_mode": {
+          "type": "string",
+          "enum": [
+            "sum",
+            "max",
+            "choose_one",
+            "sequence"
+          ],
+          "default": "sum"
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/DamagePart"
+          }
+        },
+        "dm_guidance": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2048
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "parts"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "modeled"
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "parts"
+                ]
+              },
+              {
+                "required": [
+                  "notes"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "dm_adjudicated"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dm_guidance"
+            ]
+          }
+        }
+      ]
+    },
+    "DamagePart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "damage_type",
+        "base",
+        "application",
+        "save"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "damage_type": {
+          "type": "string",
+          "enum": [
+            "acid",
+            "cold",
+            "electricity",
+            "fire",
+            "sonic",
+            "force",
+            "magic",
+            "negative_energy",
+            "positive_energy",
+            "poison",
+            "psychic",
+            "physical_bludgeoning",
+            "physical_piercing",
+            "physical_slashing",
+            "untyped",
+            "special"
+          ]
+        },
+        "base": {
+          "$ref": "#/$defs/DicePool"
+        },
+        "scaling": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ScalingRule"
+          }
+        },
+        "clamp_total": {
+          "$ref": "#/$defs/ClampSpec"
+        },
+        "application": {
+          "$ref": "#/$defs/ApplicationSpec"
+        },
+        "save": {
+          "$ref": "#/$defs/SaveSpec"
+        },
+        "mr_interaction": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "ignores_mr",
+            "special",
+            "unknown"
+          ],
+          "default": "normal"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "DicePool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "terms"
+      ],
+      "properties": {
+        "terms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/DiceTerm"
+          }
+        },
+        "flat_modifier": {
+          "type": "integer",
+          "default": 0
+        }
+      }
+    },
+    "DiceTerm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "sides"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sides": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "per_die_modifier": {
+          "type": "integer",
+          "default": 0
+        }
+      }
+    },
+    "ScalingRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "driver"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "add_dice_per_step",
+            "add_flat_per_step",
+            "set_base_by_level_band"
+          ]
+        },
+        "driver": {
+          "type": "string",
+          "enum": [
+            "caster_level",
+            "spell_level",
+            "target_hd",
+            "target_level",
+            "choice",
+            "other"
+          ]
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "max_steps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dice_increment": {
+          "$ref": "#/$defs/DiceTerm"
+        },
+        "flat_increment": {
+          "type": "integer"
+        },
+        "level_bands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "min",
+              "max",
+              "base"
+            ],
+            "properties": {
+              "min": {
+                "type": "integer"
+              },
+              "max": {
+                "type": "integer"
+              },
+              "base": {
+                "$ref": "#/$defs/DicePool"
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 512
+        }
+      }
+    },
+    "ClampSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_total": {
+          "type": "integer"
+        },
+        "max_total": {
+          "type": "integer"
+        }
+      }
+    },
+    "ApplicationSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "per_target",
+            "per_area_target",
+            "per_missile",
+            "per_ray",
+            "per_round",
+            "per_turn",
+            "per_hit",
+            "special"
+          ]
+        },
+        "ticks": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "tick_driver": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "caster_level",
+            "spell_level",
+            "duration",
+            "choice",
+            "dm"
+          ],
+          "default": "fixed"
+        }
+      }
+    },
+    "SaveSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "none",
+            "half",
+            "negates",
+            "partial",
+            "special"
+          ]
+        },
+        "partial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "numerator",
+            "denominator"
+          ],
+          "properties": {
+            "numerator": {
+              "type": "integer"
+            },
+            "denominator": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    },
+    "MagicResistanceSpec": {
+      "title": "MagicResistanceSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "normal",
+            "ignores_mr",
+            "partial",
+            "special"
+          ]
+        },
+        "applies_to": {
+          "type": "string",
+          "enum": [
+            "whole_spell",
+            "harmful_effects_only",
+            "beneficial_effects_only",
+            "dm"
+          ],
+          "default": "whole_spell"
+        },
+        "partial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scope"
+          ],
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "damage_only",
+                "non_damage_only",
+                "primary_effect_only",
+                "secondary_effects_only",
+                "by_part_id"
+              ]
+            },
+            "part_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "special_rule": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "SavingThrowSpec": {
+      "title": "SavingThrowSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "none",
+            "single",
+            "multiple",
+            "dm_adjudicated"
+          ]
+        },
+        "single": {
+          "$ref": "#/$defs/SingleSave"
+        },
+        "multiple": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/SingleSave"
+          }
+        },
+        "dm_guidance": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2048
+        }
+      }
+    },
+    "SingleSave": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "save_type",
+        "applies_to",
+        "on_success",
+        "on_failure"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$"
+        },
+        "save_type": {
+          "type": "string",
+          "enum": [
+            "paralyzation_poison_death",
+            "rod_staff_wand",
+            "petrification_polymorph",
+            "breath_weapon",
+            "spell",
+            "special"
+          ]
+        },
+        "save_vs": {
+          "type": "string",
+          "enum": [
+            "spell",
+            "poison",
+            "death_magic",
+            "polymorph",
+            "petrification",
+            "breath",
+            "weapon",
+            "other"
+          ],
+          "default": "spell"
+        },
+        "modifier": {
+          "type": "integer",
+          "default": 0
+        },
+        "applies_to": {
+          "type": "string",
+          "enum": [
+            "each_target",
+            "each_round",
+            "each_application",
+            "once_per_cast",
+            "special"
+          ],
+          "default": "each_target"
+        },
+        "timing": {
+          "type": "string",
+          "enum": [
+            "on_hit",
+            "on_contact",
+            "on_entry",
+            "end_of_round",
+            "on_effect",
+            "special"
+          ],
+          "default": "on_effect"
+        },
+        "on_success": {
+          "$ref": "#/$defs/SaveOutcomeEffect"
+        },
+        "on_failure": {
+          "$ref": "#/$defs/SaveOutcomeEffect"
+        }
+      }
+    },
+    "SaveOutcomeEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "result"
+      ],
+      "properties": {
+        "result": {
+          "type": "string",
+          "enum": [
+            "no_effect",
+            "reduced_effect",
+            "full_effect",
+            "partial_damage_only",
+            "partial_non_damage_only",
+            "special"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "MaterialComponentSpec": {
+      "title": "MaterialComponentSpec",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the material (e.g., 'Diamond dust')."
+        },
+        "quantity": {
+          "type": "number",
+          "default": 1
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of quantity (e.g., 'grams', 'ounces')."
+        },
+        "gp_value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The total gold piece value required."
+        },
+        "is_consumed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the material is destroyed during casting."
+        },
+        "description": {
+          "type": "string",
+          "description": "Narrative details or special requirements."
+        }
+      }
     },
     "DurationSpec": {
       "type": "object",

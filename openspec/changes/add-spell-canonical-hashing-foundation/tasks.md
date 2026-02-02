@@ -6,6 +6,11 @@
 - [x] Integrate `AreaSpec` into schema (`spell.schema.json`).
 - [x] Integrate `RangeSpec` into schema (`spell.schema.json`).
 - [x] Integrate `DurationSpec` into schema (`spell.schema.json`).
+- [ ] Integrate `ExperienceComponentSpec` into schema.
+- [ ] Integrate `SpellDamageSpec` into schema.
+- [ ] Integrate `MagicResistanceSpec` into schema.
+- [ ] Integrate `SavingThrowSpec` into schema.
+- [ ] Integrate `MaterialComponentSpec` into schema.
 
 ## Backend Implementation
 ### Schema Validation
@@ -43,6 +48,13 @@
     - [x] Extract scalar values with unit normalization.
     - [x] Support structure scaling (fixed, per_level).
 - [x] Implement DurationSpec validation tests.
+- [ ] Implement Advanced Specs Parsing:
+    - [ ] `ExperienceComponentSpec`: Parse XP costs and mechanics.
+    - [ ] `SpellDamageSpec`: Parse multi-part damage with scaling/caps.
+    - [ ] `MagicResistanceSpec`: Parse SR/MR interaction details.
+    - [ ] `SavingThrowSpec`: Parse structured saving throw conditions.
+    - [ ] `MaterialComponentSpec`: Parse structured material costs.
+- [ ] Implement Advanced Spec validation tests.
 
 ### Hash Computation
 - [x] Implement SHA-256 hashing:

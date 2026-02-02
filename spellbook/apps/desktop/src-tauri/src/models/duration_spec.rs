@@ -17,7 +17,7 @@ pub enum DurationKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum DurationUnit {
     Segment,
     Round,

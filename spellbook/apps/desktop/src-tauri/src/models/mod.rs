@@ -24,3 +24,18 @@ pub use range_spec::*;
 
 pub mod area_spec;
 pub use area_spec::*;
+
+pub mod damage;
+pub use damage::*;
+
+pub mod experience;
+pub use experience::*;
+
+pub mod magic_resistance;
+pub use magic_resistance::*;
+
+pub mod saving_throw;
+pub use saving_throw::*;
+
+pub mod material;
+pub use material::*;

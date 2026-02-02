@@ -1,0 +1,9 @@
+{
+    "kind": "fixed",
+    "payer": "caster",
+    "payment_timing": "on_effect",
+    "payment_semantics": "spend",
+    "amount_xp": 300,
+    "recoverability": "normal_earning",
+    "source_text": "XP Cost: 300"
+}

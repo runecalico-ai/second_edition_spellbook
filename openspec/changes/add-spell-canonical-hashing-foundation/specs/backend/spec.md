@@ -30,6 +30,39 @@ All spells processed by the backend MUST support mapping to the Strict Spell Sch
 - AND `duration` scalar MUST be `{"mode": "per_level", "value": 0, "per_level": 1}`
 - AND `unit` MUST be `"round"` (normalized).
 
+### Requirement: Advanced Attribute Modeling
+The backend MUST support high-fidelity modeling of advanced spell attributes including experience costs, multi-part damage, magic resistance, and complex saving throws.
+
+#### Scenario: Multi-Part Damage Modeling
+- GIVEN a spell that deals both Fire and Cold damage
+- WHEN converted to `CanonicalSpell`
+- THEN the `damage` field MUST be an object of `kind="modeled"`
+- AND `parts` MUST contain separate entries for each damage type with their respective scaling and saves.
+
+#### Scenario: Experience Cost Modeling
+- GIVEN a spell with an experience cost (e.g., *Restoration*)
+- WHEN converted to `CanonicalSpell`
+- THEN the `components.experience` field MUST follow the `ExperienceComponentSpec`
+- AND correctly identify the `payer`, `amount_xp` (if fixed), or `formula`.
+
+#### Scenario: Magic Resistance Normalization
+- GIVEN a spell with Magic Resistance interaction
+- WHEN converted to `CanonicalSpell`
+- THEN the `magic_resistance` field MUST be structured according to `MagicResistanceSpec`
+- AND identify if the spell `ignores_mr`, is `partial`, or follows `normal` rules.
+
+#### Scenario: Complex Saving Throw Sequencing
+- GIVEN a spell requiring multiple saves (e.g. *Prismatic Spray* sub-effects)
+- WHEN converted to `CanonicalSpell`
+- THEN the `saving_throw` field MUST follow `SavingThrowSpec`
+- AND correctly sequence `multiple` saves if required.
+
+#### Scenario: Valued Material Component Modeling
+- GIVEN a spell with a valued material (e.g. "diamond dust worth 100 gp")
+- WHEN converted to `CanonicalSpell`
+- THEN the `material_components` MUST follow `MaterialComponentSpec`
+- AND correctly identify the `gp_value` and whether it `is_consumed`.
+
 ### Requirement: Deterministic Identity
 A spell's identity MUST be defined by the SHA-256 hash of its canonical JSON representation.
 

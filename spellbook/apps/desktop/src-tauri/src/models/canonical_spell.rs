@@ -4,8 +4,13 @@ use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::models::area_spec::*;
+use crate::models::damage::SpellDamageSpec;
 use crate::models::duration_spec::DurationSpec;
+use crate::models::experience::ExperienceComponentSpec;
+use crate::models::magic_resistance::MagicResistanceSpec;
+use crate::models::material::MaterialComponentSpec;
 use crate::models::range_spec::*;
+use crate::models::saving_throw::SavingThrowSpec;
 use crate::models::scalar::SpellScalar;
 use crate::utils::spell_parser::SpellParser;
 use std::fmt::Write as FmtWrite;
@@ -18,6 +23,9 @@ pub struct SpellComponents {
     pub verbal: bool,
     pub somatic: bool,
     pub material: bool,
+    pub focus: bool,
+    pub divine_focus: bool,
+    pub experience: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -105,7 +113,7 @@ pub struct CanonicalSpell {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub components: Option<SpellComponents>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub material_components: Option<String>,
+    pub material_components: Option<Vec<MaterialComponentSpec>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub casting_time: Option<SpellCastingTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,9 +121,13 @@ pub struct CanonicalSpell {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub area: Option<AreaSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub damage: Option<SpellDamage>,
+    pub damage: Option<SpellDamageSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub saving_throw: Option<String>,
+    pub magic_resistance: Option<MagicResistanceSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saving_throw: Option<SavingThrowSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experience_cost: Option<ExperienceComponentSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reversible: Option<i64>, // 0 or 1
     pub description: String,
@@ -179,7 +191,9 @@ impl CanonicalSpell {
             duration: None,
             area: None,
             damage: None,
+            magic_resistance: None,
             saving_throw: None,
+            experience_cost: None,
             reversible: Some(0),
             tags: vec![],
             source_refs: vec![],
@@ -283,14 +297,44 @@ impl CanonicalSpell {
             normalize_string(&self.tradition, NormalizationMode::Structured).to_uppercase();
         self.school = self.school.as_ref().map(|s| match_schema_case(s));
         self.description = normalize_string(&self.description, NormalizationMode::Textual);
-        self.material_components = self
-            .material_components
-            .as_ref()
-            .map(|s| normalize_string(s, NormalizationMode::Textual));
-        self.saving_throw = self
-            .saving_throw
-            .as_ref()
-            .map(|s| normalize_string(s, NormalizationMode::Structured));
+
+        if let Some(materials) = &mut self.material_components {
+            for m in materials {
+                m.normalize();
+            }
+        }
+
+        if let Some(range) = &mut self.range {
+            range.normalize();
+        }
+
+        if let Some(ct) = &mut self.casting_time {
+            ct.normalize();
+        }
+
+        if let Some(dur) = &mut self.duration {
+            dur.normalize();
+        }
+
+        if let Some(area) = &mut self.area {
+            area.normalize();
+        }
+
+        if let Some(damage) = &mut self.damage {
+            damage.normalize();
+        }
+
+        if let Some(mr) = &mut self.magic_resistance {
+            mr.normalize();
+        }
+
+        if let Some(st) = &mut self.saving_throw {
+            st.normalize();
+        }
+
+        if let Some(xp) = &mut self.experience_cost {
+            xp.normalize();
+        }
         self.sphere = self.sphere.as_ref().map(|s| match_schema_case(s));
 
         // Materialize Defaults according to Rule 48 of canonicalization contract
@@ -328,26 +372,6 @@ impl CanonicalSpell {
         self.subschools.dedup();
         self.descriptors.sort();
         self.descriptors.dedup();
-
-        if let Some(r) = &mut self.range {
-            r.normalize();
-        }
-
-        if let Some(ct) = &mut self.casting_time {
-            ct.normalize();
-        }
-
-        if let Some(d) = &mut self.duration {
-            d.normalize();
-        }
-
-        if let Some(a) = &mut self.area {
-            a.normalize();
-        }
-
-        if let Some(dmg) = &mut self.damage {
-            dmg.normalize();
-        }
     }
 }
 
@@ -355,6 +379,7 @@ impl CanonicalSpell {
 pub(crate) enum NormalizationMode {
     Structured, // Collapses all internal whitespace AND newlines
     Textual,    // Collapses horizontal whitespace, preserves newlines
+    Exact,      // NFC and trim, but NO internal whitespace collapsing
 }
 
 /// Normalizes a string: NFC, trim, and applies the specified normalization mode.
@@ -369,13 +394,16 @@ pub(crate) fn normalize_string(s: &str, mode: NormalizationMode) -> String {
             trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
         }
         NormalizationMode::Textual => {
-            // Collapse internal horizontal whitespace but preserve all distinct lines
+            // Collapse internal horizontal whitespace but preserve all distinct lines.
+            // Rule 48 requires multiple empty lines to be collapsed into a single \n separator.
             trimmed
                 .split('\n')
                 .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+                .filter(|line| !line.is_empty())
                 .collect::<Vec<_>>()
                 .join("\n")
         }
+        NormalizationMode::Exact => trimmed.to_string(),
     }
 }
 
@@ -501,8 +529,10 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
             spell.components = Some(parser.parse_components(comp_str));
         }
 
-        spell.material_components = detail.material_components;
-        spell.saving_throw = detail.saving_throw;
+        spell.material_components = detail
+            .material_components
+            .map(|s| parser.parse_material_components(&s));
+        spell.saving_throw = detail.saving_throw.map(|s| parser.parse_saving_throw(&s));
         spell.reversible = Some(detail.reversible.unwrap_or(0));
 
         // Metadata
@@ -1105,12 +1135,10 @@ mod tests {
         );
         spell.school = Some("Evocation".to_string());
         spell.class_list = vec!["Wizard".to_string()];
-        spell.damage = Some(SpellDamage {
-            text: "1d6".into(),
-            base_dice: "0".into(),
-            per_level_dice: "0".into(),
-            level_divisor: 1.0,
-            cap_level: None, // This will serialize to null
+        spell.damage = Some(SpellDamageSpec {
+            kind: crate::models::damage::DamageKind::Modeled,
+            notes: Some("1d6".into()),
+            ..Default::default()
         });
 
         let result = spell.validate();
@@ -1135,12 +1163,10 @@ mod tests {
         spell.material_components = None;
         spell.saving_throw = None;
         spell.reversible = None;
-        spell.damage = Some(SpellDamage {
-            text: "1d6".into(),
-            base_dice: "0".into(),
-            per_level_dice: "0".into(),
-            level_divisor: 1.0,
-            cap_level: None, // This specifically was the issue for nested structs
+        spell.damage = Some(SpellDamageSpec {
+            kind: crate::models::damage::DamageKind::Modeled,
+            notes: Some("1d6".into()),
+            ..Default::default()
         });
 
         let json = spell.to_canonical_json().unwrap();
@@ -1782,8 +1808,12 @@ mod tests {
 
         let input2 = "Line 1\r\nLine 2\n\nLine 3";
         let output2 = normalize_string(input2, NormalizationMode::Textual);
-        // \r\n -> \n, and paragraphs (\n\n) are PRESERVED
-        assert_eq!(output2, "Line 1\nLine 2\n\nLine 3");
+        // \r\n -> \n, and multiple empty lines are collapsed to a single \n separator (Rule 48)
+        assert_eq!(output2, "Line 1\nLine 2\nLine 3");
+
+        let input3 = "Line 1\n\n\nLine 2";
+        let output3 = normalize_string(input3, NormalizationMode::Textual);
+        assert_eq!(output3, "Line 1\nLine 2");
     }
 
     #[test]

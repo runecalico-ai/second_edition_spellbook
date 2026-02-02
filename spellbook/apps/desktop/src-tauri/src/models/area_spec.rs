@@ -20,6 +20,7 @@ pub enum AreaKind {
     Objects,
     Region,
     Scope,
+    Point,
     #[default]
     Special,
 }

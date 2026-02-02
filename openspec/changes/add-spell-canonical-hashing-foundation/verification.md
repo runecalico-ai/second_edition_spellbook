@@ -172,6 +172,32 @@
   - WHEN parsed
   - THEN it MUST be `kind="permanent"`.
 
+### Advanced Parsing
+- [ ] **Test: Parse Experience Cost (Fixed)**
+  - GIVEN "XP Cost: 300"
+  - WHEN parsed
+  - THEN it MUST be `kind="fixed"` and `amount_xp=300`.
+
+- [ ] **Test: Parse Multi-Part Damage**
+  - GIVEN "1d6 fire + 1d6 cold"
+  - WHEN parsed
+  - THEN it MUST have two `DamagePart` objects with correct `damage_type`.
+
+- [ ] **Test: Parse Magic Resistance**
+  - GIVEN "Magic Resistance: 50%"
+  - WHEN parsed
+  - THEN it MUST be `kind="normal"` (or as per spec interaction).
+
+- [ ] **Test: Parse Multiple Saving Throws**
+  - GIVEN "Save vs Spell, then Save vs Poison"
+  - WHEN parsed
+  - THEN it MUST be `kind="multiple"` with correct `save_type` sequence.
+
+- [ ] **Test: Parse Material Component (Valued)**
+  - GIVEN "100gp diamond dust"
+  - WHEN parsed
+  - THEN it MUST extract `gp_value=100` and `name="diamond dust"`.
+
 - [x] **Test: Parse Special Duration**
   - GIVEN a complex duration string "Special"
   - WHEN parsed

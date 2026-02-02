@@ -26,6 +26,12 @@ Implement the foundational logic for Canonical Spell Hashing:
 -   Schema versioning infrastructure (database column, metadata)
 -   Range & Area: Add "Inches" to supported units.
 -   Area: Relax required fields for `line`, `cylinder`, `wall`, and `rect_prism` to allow partial dimensions.
+-   **Advanced Spell Modeling**:
+    - `ExperienceComponentSpec`: Structured XP costs (fixed, per-unit, formula, tiered).
+    - `SpellDamageSpec`: Multi-part damage modeling with scaling and caps.
+    - `MagicResistanceSpec`: Granular MR interaction (ignores, partial, special).
+    - `SavingThrowSpec`: Structured save requirements (multiple saves, outcome effects).
+    - `MaterialComponentSpec`: Structured material requirements (gp value, consumed).
 -   Documentation for hashing and validation APIs
 
 ### Out of Scope

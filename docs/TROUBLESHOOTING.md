@@ -26,6 +26,28 @@ If spells look wrong in the new format (e.g. "Range: Special"):
     .\spellbook-desktop.exe --recompute-hashes
     ```
 
+## Build and Compilation Issues
+
+### 1. Linking Errors (LNK1318, etc.) on Windows
+If you encounter `fatal error LNK1318: Unexpected PDB error` or other linker failures while running tests or building the application:
+- **Cause**: This often happens on Windows when the compiler's debugging symbols (PDB files) become locked or corrupted during parallel compilation or after significant type renames.
+- **Fix**: Run `cargo clean` to wipe the build cache and force a fresh link.
+  ```powershell
+  # Targeted clean (recommended, faster)
+  cargo clean -p spellbook-desktop
+
+  # Full clean (if targeted fails)
+  cargo clean
+  ```
+
+### 2. PDB errors during `cargo test`
+If tests fail with a linker error but `cargo check` passes:
+- **Cause**: Linking multiple test binaries is resource-intensive and prone to PDB locks.
+- **Fix**: Ensure no other instances are running, or run tests with `--lib` to minimize the number of binaries being linked.
+  ```powershell
+  cargo test --lib -p spellbook-desktop [module_path]
+  ```
+
 ## CLI Recovery Tools
 
 The application includes built-in tools to help you recover.

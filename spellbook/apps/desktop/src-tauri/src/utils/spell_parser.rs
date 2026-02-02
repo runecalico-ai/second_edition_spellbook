@@ -1,6 +1,8 @@
-use crate::models::canonical_spell::{
-    AreaKind, AreaShapeUnit, AreaSpec, AreaUnit, RangeKind, RangeSpec, RangeUnit, Scalar,
-    ScalarMode, SpellCastingTime, SpellComponents, SpellDamage, SpellDuration,
+use crate::models::duration_spec::{DurationKind, DurationSpec, DurationUnit};
+use crate::models::scalar::{ScalarMode, SpellScalar};
+use crate::models::{
+    AreaKind, AreaShapeUnit, AreaSpec, AreaUnit, RangeContext, RangeKind, RangeSpec, RangeUnit,
+    SpellCastingTime, SpellComponents, SpellDamage,
 };
 use regex::Regex;
 
@@ -8,12 +10,14 @@ pub struct SpellParser {
     range_simple_regex: Regex,
 
     range_variable_regex: Regex,
+    range_per_level_regex: Regex,
     duration_simple_regex: Regex,
     damage_fixed_regex: Regex,
     damage_scaling_regex: Regex,
     damage_capped_regex: Regex,
     area_regex: Regex,
     duration_divisor_regex: Regex,
+    duration_usage_regex: Regex,
 }
 
 impl Default for SpellParser {
@@ -35,12 +39,21 @@ impl SpellParser {
                 r#"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.'"]+)?\s*\+\s*(\d+(?:\.\d+)?)(?:\s*([a-z\.'"]+))?/level(?:\s*([a-z\.'"]+))?$"#,
             )
             .unwrap(),
+            // Pattern 3: Per-level only
+            // Matches "5 ft/level", "5/level yards"
+            range_per_level_regex: Regex::new(
+                r#"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.'"]+)?\s*/\s*level(?:\s*([a-z\.'"]+))?$"#,
+            )
+            .unwrap(),
 
             // Pattern 3: Simple Duration/Casting Time
             duration_simple_regex: Regex::new(r"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.]+)$").unwrap(),
 
             // Pattern 4: Per N Levels (e.g., "1 round / 2 levels")
             duration_divisor_regex: Regex::new(r"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.]+)?\s*/\s*(\d+)\s*levels?$").unwrap(),
+
+            // Pattern 5: Usage Limited (e.g., "6 uses", "3 charges")
+            duration_usage_regex: Regex::new(r"(?i)^(\d+(?:\.\d+)?)\s*(uses?|charges?|activations?|strikes?|discharges?)$").unwrap(),
 
             // Damage Patterns
             // 1. Fixed: "1d6", "2d4+1"
@@ -61,9 +74,33 @@ impl SpellParser {
 
     pub fn parse_range(&self, input: &str) -> RangeSpec {
         let input_clean = input.trim();
-        let lower = input_clean.to_lowercase();
+        let mut lower = input_clean.to_lowercase();
 
-        if lower == "touch" {
+        // Detect LOS/LOE markers
+        let mut context = Vec::new();
+        let mut force_kind: Option<RangeKind> = None;
+
+        if lower.contains("(los)") || lower.contains("line of sight") {
+            context.push(RangeContext::Los);
+            force_kind = Some(RangeKind::DistanceLos);
+            lower = lower
+                .replace("(los)", "")
+                .replace("line of sight", "")
+                .trim()
+                .to_string();
+        } else if lower.contains("(loe)") || lower.contains("line of effect") {
+            context.push(RangeContext::Loe);
+            force_kind = Some(RangeKind::DistanceLoe);
+            lower = lower
+                .replace("(loe)", "")
+                .replace("line of effect", "")
+                .trim()
+                .to_string();
+        }
+
+        let input_stripped = lower;
+
+        if input_stripped == "touch" {
             return RangeSpec {
                 kind: RangeKind::Touch,
                 unit: None,
@@ -75,7 +112,7 @@ impl SpellParser {
             };
         }
 
-        if lower == "unlimited" {
+        if input_stripped == "unlimited" {
             return RangeSpec {
                 kind: RangeKind::Unlimited,
                 unit: None,
@@ -87,7 +124,7 @@ impl SpellParser {
             };
         }
 
-        if lower == "personal" || lower == "0" {
+        if input_stripped == "personal" || input_stripped == "0" {
             return RangeSpec {
                 kind: RangeKind::Personal,
                 unit: None,
@@ -110,8 +147,14 @@ impl SpellParser {
             }
         };
 
+        let requires = if context.is_empty() {
+            None
+        } else {
+            Some(context)
+        };
+
         // Pattern 2: Variable Scaling "10 + 5/level yards"
-        if let Some(caps) = self.range_variable_regex.captures(input_clean) {
+        if let Some(caps) = self.range_variable_regex.captures(&input_stripped) {
             let base = caps
                 .get(1)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
@@ -129,13 +172,13 @@ impl SpellParser {
 
             let unit = map_unit(unit_raw);
             let kind = if unit.is_some() {
-                RangeKind::Distance
+                force_kind.unwrap_or(RangeKind::Distance)
             } else {
                 RangeKind::Special
             };
 
             // Create scalar manually as make_scalar might be simple
-            let scalar = Scalar {
+            let scalar = SpellScalar {
                 mode: if per_level != 0.0 {
                     ScalarMode::PerLevel
                 } else {
@@ -160,7 +203,50 @@ impl SpellParser {
                 kind,
                 unit,
                 distance: Some(scalar),
-                requires: None,
+                requires,
+                anchor: None,
+                region_unit: None,
+                notes,
+            };
+        }
+
+        // Pattern 3: Per-level only "5 ft/level"
+        if let Some(caps) = self.range_per_level_regex.captures(&input_stripped) {
+            let per_level = caps
+                .get(1)
+                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+
+            let unit_raw = caps.get(3).or(caps.get(2)).map_or("", |m| m.as_str());
+
+            let unit = map_unit(unit_raw);
+            let kind = if unit.is_some() {
+                force_kind.unwrap_or(RangeKind::Distance)
+            } else {
+                RangeKind::Special
+            };
+
+            let scalar = SpellScalar {
+                mode: ScalarMode::PerLevel,
+                value: None,
+                per_level: Some(per_level),
+                min_level: None,
+                max_level: None,
+                cap_value: None,
+                cap_level: None,
+                rounding: None,
+            };
+
+            let notes = if unit.is_none() {
+                Some(input.to_string())
+            } else {
+                None
+            };
+
+            return RangeSpec {
+                kind,
+                unit,
+                distance: Some(scalar),
+                requires,
                 anchor: None,
                 region_unit: None,
                 notes,
@@ -168,7 +254,7 @@ impl SpellParser {
         }
 
         // Pattern 1: Simple "10 yards"
-        if let Some(caps) = self.range_simple_regex.captures(input_clean) {
+        if let Some(caps) = self.range_simple_regex.captures(&input_stripped) {
             let base = caps
                 .get(1)
                 .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
@@ -178,7 +264,7 @@ impl SpellParser {
 
             // If unit is recognized, it's Distance. Else Special.
             if let Some(u) = unit {
-                let scalar = Scalar {
+                let scalar = SpellScalar {
                     mode: ScalarMode::Fixed,
                     value: Some(base),
                     per_level: None,
@@ -189,10 +275,10 @@ impl SpellParser {
                     rounding: None,
                 };
                 return RangeSpec {
-                    kind: RangeKind::Distance,
+                    kind: force_kind.unwrap_or(RangeKind::Distance),
                     unit: Some(u),
                     distance: Some(scalar),
-                    requires: None,
+                    requires,
                     anchor: None,
                     region_unit: None,
                     notes: None,
@@ -205,31 +291,258 @@ impl SpellParser {
             kind: RangeKind::Special,
             unit: None,
             distance: None,
-            requires: None,
+            requires,
             anchor: None,
             region_unit: None,
             notes: Some(input.to_string()),
         }
     }
 
-    pub fn parse_duration(&self, input: &str) -> SpellDuration {
+    pub fn parse_duration(&self, input: &str) -> DurationSpec {
         let input_clean = input.trim();
-        let lower = input_clean.to_lowercase();
+        let mut lower = input_clean.to_lowercase();
 
         if lower == "instantaneous" {
-            return SpellDuration {
-                text: input.to_string(),
-                unit: "Instantaneous".to_string(),
-                base_value: 0.0,
-                per_level: 0.0,
-                level_divisor: 1.0,
+            return DurationSpec {
+                kind: DurationKind::Instant,
+                ..Default::default()
             };
         }
 
         if lower == "permanent" {
-            return SpellDuration {
+            return DurationSpec {
+                kind: DurationKind::Permanent,
+                ..Default::default()
+            };
+        }
+
+        if lower == "concentration" {
+            return DurationSpec {
+                kind: DurationKind::Concentration,
+                ..Default::default()
+            };
+        }
+
+        if lower == "until dispelled" {
+            return DurationSpec {
+                kind: DurationKind::UntilDispelled,
+                ..Default::default()
+            };
+        }
+
+        if lower == "until triggered" {
+            return DurationSpec {
+                kind: DurationKind::UntilTriggered,
+                condition: Some("triggered".to_string()),
+                ..Default::default()
+            };
+        }
+
+        if lower == "planar" {
+            return DurationSpec {
+                kind: DurationKind::Planar,
+                condition: Some("planar presence".to_string()),
+                ..Default::default()
+            };
+        }
+
+        if lower.starts_with("until ") {
+            let cond = &input_clean[6..];
+            return DurationSpec {
+                kind: DurationKind::Conditional,
+                condition: Some(cond.to_string()),
+                ..Default::default()
+            };
+        }
+
+        if lower == "special" {
+            return DurationSpec {
+                kind: DurationKind::Special,
+                notes: Some("Special".to_string()),
+                ..Default::default()
+            };
+        }
+
+        // Handle Usage Limited "6 uses"
+        if let Some(caps) = self.duration_usage_regex.captures(input_clean) {
+            let val = caps
+                .get(1)
+                .map_or(1.0, |m| m.as_str().parse().unwrap_or(1.0));
+            return DurationSpec {
+                kind: DurationKind::UsageLimited,
+                uses: Some(SpellScalar {
+                    mode: ScalarMode::Fixed,
+                    value: Some(val),
+                    per_level: None,
+                    min_level: None,
+                    max_level: None,
+                    cap_value: None,
+                    cap_level: None,
+                    rounding: None,
+                }),
+                ..Default::default()
+            };
+        }
+
+        // Dual-duration splitting (e.g. "1 round/level or until discharged")
+        let mut condition = None;
+        let mut target_str = input_clean;
+        if lower.contains(" or until ") {
+            let parts: Vec<&str> = input_clean.splitn(2, " or until ").collect();
+            if parts.len() == 2 {
+                lower = parts[0].to_lowercase();
+                target_str = parts[0];
+                condition = Some(parts[1].to_string());
+            }
+        } else if lower.contains(" until ") {
+            let parts: Vec<&str> = input_clean.splitn(2, " until ").collect();
+            if parts.len() == 2 {
+                lower = parts[0].to_lowercase();
+                target_str = parts[0];
+                condition = Some(parts[1].to_string());
+            }
+        }
+
+        // Helper to map units
+        let map_unit = |u: &str| -> Option<DurationUnit> {
+            match u.to_lowercase().as_str() {
+                "round" | "rounds" => Some(DurationUnit::Round),
+                "turn" | "turns" => Some(DurationUnit::Turn),
+                "minute" | "minutes" | "min" | "min." => Some(DurationUnit::Minute),
+                "hour" | "hours" | "hr" | "hr." => Some(DurationUnit::Hour),
+                "day" | "days" => Some(DurationUnit::Day),
+                "week" | "weeks" => Some(DurationUnit::Week),
+                "month" | "months" => Some(DurationUnit::Month),
+                "year" | "years" => Some(DurationUnit::Year),
+                "segment" | "segments" => Some(DurationUnit::Segment),
+                _ => None,
+            }
+        };
+
+        // Pattern 4: Per N Levels "1 round / 2 levels"
+        if let Some(caps) = self.duration_divisor_regex.captures(target_str.trim()) {
+            let per_level = caps
+                .get(1)
+                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+            let unit_raw = caps.get(2).map_or("", |m| m.as_str());
+            let divisor = caps
+                .get(3)
+                .map_or(1.0, |m| m.as_str().parse().unwrap_or(1.0));
+
+            let unit = map_unit(unit_raw);
+            if let Some(u) = unit {
+                let adjusted_per_level = if divisor > 0.0 {
+                    per_level / divisor
+                } else {
+                    per_level
+                };
+                let scalar = SpellScalar {
+                    mode: ScalarMode::PerLevel,
+                    value: None,
+                    per_level: Some(adjusted_per_level),
+                    min_level: None,
+                    max_level: None,
+                    cap_value: None,
+                    cap_level: None,
+                    rounding: None,
+                };
+
+                return DurationSpec {
+                    kind: DurationKind::Time,
+                    unit: Some(u),
+                    duration: Some(scalar),
+                    condition,
+                    ..Default::default()
+                };
+            }
+        }
+
+        // Helper for "1 round/level"
+        if lower.contains("/level") {
+            let parts: Vec<&str> = lower.split("/level").collect();
+            if let Some(first_part) = parts.first() {
+                if let Some(caps) = self.duration_simple_regex.captures(first_part.trim()) {
+                    let per_level = caps
+                        .get(1)
+                        .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                    let unit_raw = caps.get(2).map_or("", |m| m.as_str());
+                    let unit = map_unit(unit_raw);
+
+                    if let Some(u) = unit {
+                        let scalar = SpellScalar {
+                            mode: ScalarMode::PerLevel,
+                            value: None,
+                            per_level: Some(per_level),
+                            min_level: None,
+                            max_level: None,
+                            cap_value: None,
+                            cap_level: None,
+                            rounding: None,
+                        };
+                        return DurationSpec {
+                            kind: DurationKind::Time,
+                            unit: Some(u),
+                            duration: Some(scalar),
+                            condition,
+                            ..Default::default()
+                        };
+                    }
+                }
+            }
+        }
+
+        if let Some(caps) = self.duration_simple_regex.captures(target_str.trim()) {
+            let base = caps
+                .get(1)
+                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+            let unit_raw = caps.get(2).map_or("", |m| m.as_str());
+            let unit = map_unit(unit_raw);
+
+            if let Some(u) = unit {
+                let scalar = SpellScalar {
+                    mode: ScalarMode::Fixed,
+                    value: Some(base),
+                    per_level: None,
+                    min_level: None,
+                    max_level: None,
+                    cap_value: None,
+                    cap_level: None,
+                    rounding: None,
+                };
+                return DurationSpec {
+                    kind: DurationKind::Time,
+                    unit: Some(u),
+                    duration: Some(scalar),
+                    condition,
+                    ..Default::default()
+                };
+            }
+        }
+
+        DurationSpec {
+            kind: DurationKind::Special,
+            notes: Some(input.to_string()),
+            ..Default::default()
+        }
+    }
+
+    // Independent implementation of casting time parsing (LEGACY SCHEMA)
+    pub fn parse_casting_time(&self, input: &str) -> SpellCastingTime {
+        let input_clean = input.trim();
+        let lower = input_clean.to_lowercase();
+
+        let title_case = |s: &str| -> String {
+            let mut c = s.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        };
+
+        if lower == "instantaneous" {
+            return SpellCastingTime {
                 text: input.to_string(),
-                unit: "Permanent".to_string(),
+                unit: "Instantaneous".to_string(),
                 base_value: 0.0,
                 per_level: 0.0,
                 level_divisor: 1.0,
@@ -248,7 +561,7 @@ impl SpellParser {
                 .get(3)
                 .map_or(1.0, |m| m.as_str().parse().unwrap_or(1.0));
 
-            return SpellDuration {
+            return SpellCastingTime {
                 text: input.to_string(),
                 unit,
                 base_value: 0.0,
@@ -259,7 +572,6 @@ impl SpellParser {
 
         // Helper for "1 round/level"
         if lower.contains("/level") {
-            // simplified logic: extract value before /level
             let parts: Vec<&str> = lower.split("/level").collect();
             if let Some(first_part) = parts.first() {
                 if let Some(caps) = self.duration_simple_regex.captures(first_part.trim()) {
@@ -269,7 +581,7 @@ impl SpellParser {
                     let unit = caps
                         .get(2)
                         .map_or("Round".to_string(), |m| title_case(m.as_str()));
-                    return SpellDuration {
+                    return SpellCastingTime {
                         text: input.to_string(),
                         unit,
                         base_value: 0.0,
@@ -287,7 +599,7 @@ impl SpellParser {
             let unit = caps
                 .get(2)
                 .map_or("round".to_string(), |m| title_case(m.as_str()));
-            return SpellDuration {
+            return SpellCastingTime {
                 text: input.to_string(),
                 unit,
                 base_value: base,
@@ -296,24 +608,12 @@ impl SpellParser {
             };
         }
 
-        SpellDuration {
+        SpellCastingTime {
             text: input.to_string(),
             unit: "Special".to_string(),
             base_value: 0.0,
             per_level: 0.0,
             level_divisor: 1.0,
-        }
-    }
-
-    // Reuse duration logic for casting time as structure is identical
-    pub fn parse_casting_time(&self, input: &str) -> SpellCastingTime {
-        let dur = self.parse_duration(input);
-        SpellCastingTime {
-            text: dur.text,
-            unit: dur.unit, // e.g. "Round", "Question" -> "Action" logic if needed
-            base_value: dur.base_value,
-            per_level: dur.per_level,
-            level_divisor: dur.level_divisor,
         }
     }
 
@@ -342,67 +642,164 @@ impl SpellParser {
                 "foot" | "ft." | "ft" | "'" => Some((AreaUnit::Ft, AreaShapeUnit::Ft)),
                 "yard" | "yd." | "yd" => Some((AreaUnit::Yd, AreaShapeUnit::Yd)),
                 "mile" | "mi." | "mi" => Some((AreaUnit::Mi, AreaShapeUnit::Mi)),
+                "inch" | "in." | "in" | "inches" | "\"" => {
+                    Some((AreaUnit::Inches, AreaShapeUnit::Inches))
+                }
                 _ => None,
             };
 
-            let (kind, unit, shape_unit, radius, length, width, edge) =
-                match (parsed_unit, shape_raw.as_str()) {
-                    // Radius
-                    (Some((u, su)), "radius") => (
-                        AreaKind::RadiusCircle,
-                        Some(u),
-                        Some(su),
-                        Some(val),
-                        None,
-                        None,
-                        None,
-                    ),
-                    (None, "radius") => (
-                        AreaKind::RadiusCircle,
-                        Some(AreaUnit::Ft),
-                        Some(AreaShapeUnit::Ft),
-                        Some(val),
-                        None,
-                        None,
-                        None,
-                    ),
+            let (kind, unit, shape_unit, radius, length, width, height, thickness, edge): (
+                AreaKind,
+                Option<AreaUnit>,
+                Option<AreaShapeUnit>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+                Option<f64>,
+            ) = match (parsed_unit, shape_raw.as_str()) {
+                // Radius
+                (Some((u, su)), "radius") => (
+                    AreaKind::RadiusCircle,
+                    Some(u),
+                    Some(su),
+                    Some(val),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+                (None, "radius") => (
+                    AreaKind::RadiusCircle,
+                    Some(AreaUnit::Ft),
+                    Some(AreaShapeUnit::Ft),
+                    Some(val),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
 
-                    // Cube
-                    (Some((u, su)), "cube") => (
-                        AreaKind::Cube,
-                        Some(u),
-                        Some(su),
-                        None,
-                        None,
-                        None,
-                        Some(val),
-                    ),
+                // Sphere
+                (Some((u, su)), "sphere") => (
+                    AreaKind::RadiusSphere,
+                    Some(u),
+                    Some(su),
+                    Some(val),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
 
-                    // Cone
-                    (Some((u, su)), "cone") => (
-                        AreaKind::Cone,
-                        Some(u),
-                        Some(su),
-                        None,
-                        Some(val), // Length
-                        None,
-                        None,
-                    ),
-                    (None, "cone") => (
-                        AreaKind::Cone,
-                        Some(AreaUnit::Ft),
-                        Some(AreaShapeUnit::Ft),
-                        None,
-                        Some(val),
-                        None,
-                        None,
-                    ),
+                // Cube
+                (Some((u, su)), "cube") => (
+                    AreaKind::Cube,
+                    Some(u),
+                    Some(su),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(val),
+                ),
 
-                    _ => (AreaKind::Special, None, None, None, None, None, None),
-                };
+                // Cone
+                (Some((u, su)), "cone") => (
+                    AreaKind::Cone,
+                    Some(u),
+                    Some(su),
+                    None,
+                    Some(val), // Length
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+                (None, "cone") => (
+                    AreaKind::Cone,
+                    Some(AreaUnit::Ft),
+                    Some(AreaShapeUnit::Ft),
+                    None,
+                    Some(val),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
 
-            // Helper to create Scalar
-            let make_scalar = |v: f64| Scalar {
+                // Rect / Square (Basic)
+                (Some((u, su)), "square") | (Some((u, su)), "rect") => (
+                    AreaKind::Rect,
+                    Some(u),
+                    Some(su),
+                    None,
+                    Some(val),
+                    Some(val),
+                    None,
+                    None,
+                    None,
+                ),
+
+                // Line
+                (Some((u, su)), "line") => (
+                    AreaKind::Line,
+                    Some(u),
+                    Some(su),
+                    None,
+                    Some(val),
+                    None, // Removed default width
+                    None,
+                    None,
+                    None,
+                ),
+
+                // Wall
+                (Some((u, su)), "wall") => (
+                    AreaKind::Wall,
+                    Some(u),
+                    Some(su),
+                    None,
+                    Some(val),
+                    None,
+                    None, // Removed default height
+                    None, // Removed default thickness
+                    None,
+                ),
+
+                // Cylinder
+                (Some((u, su)), "cylinder") => (
+                    AreaKind::Cylinder,
+                    Some(u),
+                    Some(su),
+                    Some(val),
+                    None,
+                    None,
+                    None, // Removed default height
+                    None,
+                    None,
+                ),
+
+                _ => (
+                    AreaKind::Special,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            };
+
+            // Helper to create SpellScalar
+            let make_scalar = |v: f64| SpellScalar {
                 mode: ScalarMode::Fixed,
                 value: Some(v),
                 per_level: None,
@@ -413,6 +810,7 @@ impl SpellParser {
                 rounding: None,
             };
 
+            let is_special = kind == AreaKind::Special;
             return Some(AreaSpec {
                 kind,
                 unit,
@@ -421,8 +819,8 @@ impl SpellParser {
                 diameter: None,
                 length: length.map(make_scalar),
                 width: width.map(make_scalar),
-                height: None,
-                thickness: None,
+                height: height.map(make_scalar),
+                thickness: thickness.map(make_scalar),
                 edge: edge.map(make_scalar),
                 angle_deg: None,
                 surface_area: None,
@@ -434,7 +832,11 @@ impl SpellParser {
                 region_unit: None,
                 scope_unit: None,
                 moves_with: None,
-                notes: Some(input.to_string()), // Preserve original text in notes
+                notes: if is_special {
+                    Some(input.to_string())
+                } else {
+                    None
+                },
             });
         }
 
@@ -576,17 +978,12 @@ impl SpellParser {
     }
 }
 
-fn title_case(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-    }
-}
+// title_case was removed as unused
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::duration_spec::{DurationKind, DurationUnit};
 
     #[test]
     fn test_parse_simple_range() {
@@ -618,6 +1015,18 @@ mod tests {
         let dist2 = res2.distance.unwrap();
         assert_eq!(dist2.value.unwrap(), 10.0);
         assert_eq!(dist2.per_level.unwrap(), 5.5);
+    }
+
+    #[test]
+    fn test_parse_range_per_level_only() {
+        let parser = SpellParser::new();
+        let res = parser.parse_range("5 ft/level");
+        assert_eq!(res.kind, RangeKind::Distance);
+        assert_eq!(res.unit, Some(RangeUnit::Ft));
+        let dist = res.distance.unwrap();
+        assert_eq!(dist.mode, ScalarMode::PerLevel);
+        assert_eq!(dist.per_level.unwrap(), 5.0);
+        assert!(dist.value.is_none());
     }
 
     #[test]
@@ -705,26 +1114,28 @@ mod tests {
     fn test_parse_duration_simple() {
         let parser = SpellParser::new();
         let res = parser.parse_duration("10 rounds");
-        assert_eq!(res.base_value, 10.0);
-        assert_eq!(res.unit, "Rounds");
+        let dur = res.duration.unwrap();
+        assert_eq!(dur.value.unwrap(), 10.0);
+        assert_eq!(res.unit, Some(DurationUnit::Round));
     }
 
     #[test]
     fn test_parse_duration_per_level() {
         let parser = SpellParser::new();
         let res = parser.parse_duration("1 round/level");
-        assert_eq!(res.per_level, 1.0);
-        assert_eq!(res.unit, "Round");
+        let dur = res.duration.unwrap();
+        assert_eq!(dur.per_level.unwrap(), 1.0);
+        assert_eq!(res.unit, Some(DurationUnit::Round));
     }
 
     #[test]
     fn test_parse_duration_special_keywords() {
         let parser = SpellParser::new();
         let res = parser.parse_duration("Instantaneous");
-        assert_eq!(res.unit, "Instantaneous");
+        assert_eq!(res.kind, DurationKind::Instant);
 
         let res2 = parser.parse_duration("Permanent");
-        assert_eq!(res2.unit, "Permanent");
+        assert_eq!(res2.kind, DurationKind::Permanent);
     }
 
     #[test]
@@ -810,5 +1221,99 @@ mod tests {
         assert_eq!(area2.edge.unwrap().value.unwrap(), 10.0);
         assert_eq!(area2.kind, AreaKind::Cube);
         assert_eq!(area2.unit.unwrap(), AreaUnit::Ft);
+    }
+
+    #[test]
+    fn test_parse_range_los_loe_markers() {
+        let parser = SpellParser::new();
+
+        let res = parser.parse_range("120 yards (LOS)");
+        assert_eq!(res.kind, RangeKind::DistanceLos);
+        assert_eq!(res.unit, Some(RangeUnit::Yd));
+        assert_eq!(res.distance.unwrap().value.unwrap(), 120.0);
+        assert_eq!(res.requires.unwrap()[0], RangeContext::Los);
+
+        let res2 = parser.parse_range("60 ft. line of effect");
+        assert_eq!(res2.kind, RangeKind::DistanceLoe);
+        assert_eq!(res2.unit, Some(RangeUnit::Ft));
+        assert_eq!(res2.requires.unwrap()[0], RangeContext::Loe);
+    }
+
+    #[test]
+    fn test_parse_duration_extended_keywords() {
+        let parser = SpellParser::new();
+
+        let res = parser.parse_duration("Concentration");
+        assert_eq!(res.kind, DurationKind::Concentration);
+
+        let res2 = parser.parse_duration("Until Dispelled");
+        assert_eq!(res2.kind, DurationKind::UntilDispelled);
+
+        let res3 = parser.parse_duration("Until Triggered");
+        assert_eq!(res3.kind, DurationKind::UntilTriggered);
+    }
+
+    #[test]
+    fn test_parse_area_extended_shapes() {
+        let parser = SpellParser::new();
+
+        let res = parser.parse_area("10 ft. sphere").unwrap();
+        assert_eq!(res.kind, AreaKind::RadiusSphere);
+        assert_eq!(res.radius.unwrap().value.unwrap(), 10.0);
+
+        let res2 = parser.parse_area("15 ft. cylinder").unwrap();
+        assert_eq!(res2.kind, AreaKind::Cylinder);
+        assert_eq!(res2.radius.unwrap().value.unwrap(), 15.0);
+        // Height is no longer defaulted
+        assert!(res2.height.is_none());
+
+        let res3 = parser.parse_area("30 ft. wall").unwrap();
+        assert_eq!(res3.kind, AreaKind::Wall);
+        assert_eq!(res3.length.unwrap().value.unwrap(), 30.0);
+        // Height and thickness are no longer defaulted
+        assert!(res3.height.is_none());
+    }
+
+    #[test]
+    fn test_parse_duration_usage_limited() {
+        let parser = SpellParser::new();
+
+        let res = parser.parse_duration("6 uses");
+        assert_eq!(res.kind, DurationKind::UsageLimited);
+        assert_eq!(res.uses.unwrap().value.unwrap(), 6.0);
+
+        let res2 = parser.parse_duration("3 charges");
+        assert_eq!(res2.kind, DurationKind::UsageLimited);
+        assert_eq!(res2.uses.unwrap().value.unwrap(), 3.0);
+    }
+
+    #[test]
+    fn test_parse_duration_planar_conditional() {
+        let parser = SpellParser::new();
+
+        let res = parser.parse_duration("Planar");
+        assert_eq!(res.kind, DurationKind::Planar);
+        assert_eq!(res.condition.unwrap(), "planar presence");
+
+        let res2 = parser.parse_duration("Until the sun rises");
+        assert_eq!(res2.kind, DurationKind::Conditional);
+        assert_eq!(res2.condition.unwrap(), "the sun rises");
+    }
+
+    #[test]
+    fn test_parse_duration_dual_splitting() {
+        let parser = SpellParser::new();
+
+        let res = parser.parse_duration("1 round/level or until discharged");
+        assert_eq!(res.kind, DurationKind::Time);
+        assert_eq!(res.unit.unwrap(), DurationUnit::Round);
+        assert_eq!(res.duration.unwrap().per_level.unwrap(), 1.0);
+        assert_eq!(res.condition.unwrap(), "discharged");
+
+        let res2 = parser.parse_duration("10 minutes until used");
+        assert_eq!(res2.kind, DurationKind::Time);
+        assert_eq!(res2.unit.unwrap(), DurationUnit::Minute);
+        assert_eq!(res2.duration.unwrap().value.unwrap(), 10.0);
+        assert_eq!(res2.condition.unwrap(), "used");
     }
 }

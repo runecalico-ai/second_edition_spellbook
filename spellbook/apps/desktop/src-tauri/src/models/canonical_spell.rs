@@ -3,97 +3,14 @@ use serde_json_canonicalizer::to_string as to_jcs_string;
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
+use crate::models::area_spec::*;
+use crate::models::duration_spec::DurationSpec;
+use crate::models::range_spec::*;
+use crate::models::scalar::SpellScalar;
 use crate::utils::spell_parser::SpellParser;
 use std::fmt::Write as FmtWrite;
 
 pub const CURRENT_SCHEMA_VERSION: i64 = 1;
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum RangeKind {
-    Personal,
-    Touch,
-    Distance,
-    DistanceLos,
-    DistanceLoe,
-    Los,
-    Loe,
-    Sight,
-    Hearing,
-    Voice,
-    Senses,
-    SameRoom,
-    SameStructure,
-    SameDungeonLevel,
-    Wilderness,
-    SamePlane,
-    Interplanar,
-    AnywhereOnPlane,
-    Domain,
-    Unlimited,
-    Special,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum RangeUnit {
-    Ft,
-    Yd,
-    Mi,
-    Inches, // Added based on implementation plan "Add "Inches""? Wait, plan said add Inches to Schema Enums.
-            // RangeSpec schema provided in MD has ft, yd, mi. But plan said "Range Unit: Add "Inches"".
-            // Spell Schema original 'range' unit enum had Inches.
-            // The NEW RangeSpec schema in MD only lists ft, yd, mi.
-            // I should stick to the PROVIDED RangeSpec schema for now unless I want to deviate.
-            // But legacy data might have Inches?
-            // "Range Unit: Add "Inches"" in plan referred to legacy SpellRange enum expansion or RangeSpec?
-            // "Range Unit: Add "Inches"." was under "Enums" section for schema expansion.
-            // But RangeSpec structure overhaul is separate.
-            // If I replace SpellRange with RangeSpec, I must support what RangeSpec supports.
-            // RangeSpec MD only lists ft, yd, mi.
-            // I will stick to ft/yd/mi for now, or check if I should add Inches.
-            // The legacy parser supports Inches.
-            // I'll add Inches to be safe, but RangeSpec MD didn't have it.
-            // Check prompt: "Add a rangeSpec... details in ... range-spec.schema.md".
-            // MD says: ["ft", "yd", "mi"].
-            // I will stick to MD. If inches are encountered, parser might convert to ft?
-            // 1 inch = 0.0833 ft.
-            // Or I should add it. I'll stick to MD for strict compliance first. Enums are strict.
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum RangeContext {
-    Los,
-    Loe,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum RangeAnchor {
-    Caster,
-    Target,
-    Object,
-    Fixed,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct RangeSpec {
-    pub kind: RangeKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub unit: Option<RangeUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub distance: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub requires: Option<Vec<RangeContext>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anchor: Option<RangeAnchor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub region_unit: Option<RegionUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub notes: Option<String>,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -116,225 +33,38 @@ pub struct SpellCastingTime {
     pub level_divisor: f64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct SpellDuration {
-    pub text: String,
-    pub unit: String,
-    #[serde(default)]
-    pub base_value: f64,
-    #[serde(default)]
-    pub per_level: f64,
-    #[serde(default = "default_one")]
-    pub level_divisor: f64,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum ScalarMode {
-    Fixed,
-    PerLevel,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum ScalarRounding {
-    None,
-    Floor,
-    Ceil,
-    Nearest,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Scalar {
-    pub mode: ScalarMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub per_level: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min_level: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_level: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cap_value: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cap_level: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rounding: Option<ScalarRounding>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum AreaKind {
-    Point,
-    RadiusCircle,
-    RadiusSphere,
-    Cone,
-    Line,
-    Rect,
-    RectPrism,
-    Cylinder,
-    Wall,
-    Cube,
-    Volume,
-    Surface,
-    Tiles,
-    Creatures,
-    Objects,
-    Region,
-    Scope,
-    Special,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum AreaUnit {
-    Ft,
-    Yd,
-    Mi,
-    Ft2,
-    Yd2,
-    Square,
-    Ft3,
-    Yd3,
-    Hex,
-    Room,
-    Floor,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum AreaShapeUnit {
-    Ft,
-    Yd,
-    Mi,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum CountSubject {
-    Creature,
-    Undead,
-    Ally,
-    Enemy,
-    Object,
-    Structure,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum RegionUnit {
-    Object,
-    Structure,
-    Building,
-    Bridge,
-    Ship,
-    Fortress,
-    Clearing,
-    Grove,
-    Field,
-    Waterbody,
-    Cavesystem,
-    Valley,
-    Region,
-    Domain,
-    Demiplane,
-    Plane,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum ScopeUnit {
-    Los,
-    Loe,
-    WithinRange,
-    WithinSpellRange,
-    WithinSight,
-    WithinHearing,
-    Aura,
-    SanctifiedGround,
-    DesecratedGround,
-    PortfolioDefined,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum MovesWith {
-    Caster,
-    Target,
-    Object,
-    Fixed,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum TileUnit {
-    Hex,
-    Room,
-    Floor,
-    Square,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct AreaSpec {
-    pub kind: AreaKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub unit: Option<AreaUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shape_unit: Option<AreaShapeUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub radius: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub diameter: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub length: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub width: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub height: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub thickness: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub edge: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub angle_deg: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub surface_area: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub volume: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tile_unit: Option<TileUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tile_count: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub count: Option<Scalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub count_subject: Option<CountSubject>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub region_unit: Option<RegionUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scope_unit: Option<ScopeUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub moves_with: Option<MovesWith>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub notes: Option<String>,
+impl SpellCastingTime {
+    pub fn normalize(&mut self) {
+        self.text = normalize_string(&self.text, NormalizationMode::Structured);
+        self.unit = normalize_casting_unit(&self.unit);
+        self.base_value = clamp_precision(self.base_value);
+        self.per_level = clamp_precision(self.per_level);
+        self.level_divisor = clamp_precision(self.level_divisor);
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SpellDamage {
     pub text: String,
-    #[serde(default)]
+    #[serde(default = "default_zero_string")]
     pub base_dice: String,
-    #[serde(default)]
+    #[serde(default = "default_zero_string")]
     pub per_level_dice: String,
     #[serde(default = "default_one")]
     pub level_divisor: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cap_level: Option<f64>,
+}
+
+impl SpellDamage {
+    pub fn normalize(&mut self) {
+        self.text = normalize_string(&self.text, NormalizationMode::Structured);
+        self.base_dice = normalize_string(&self.base_dice, NormalizationMode::Structured);
+        self.per_level_dice = normalize_string(&self.per_level_dice, NormalizationMode::Structured);
+        self.level_divisor = clamp_precision(self.level_divisor);
+        self.cap_level = self.cap_level.map(clamp_precision);
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -379,7 +109,7 @@ pub struct CanonicalSpell {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub casting_time: Option<SpellCastingTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration: Option<SpellDuration>,
+    pub duration: Option<DurationSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub area: Option<AreaSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -421,6 +151,9 @@ pub struct CanonicalSpell {
 
 fn default_version() -> String {
     "1.0.0".into()
+}
+fn default_zero_string() -> String {
+    "0".into()
 }
 fn default_schema_version() -> i64 {
     1
@@ -545,18 +278,19 @@ impl CanonicalSpell {
     /// Recursively normalizes all string and number fields for deterministic hashing.
     /// Also sorts and deduplicates unordered arrays.
     pub fn normalize(&mut self) {
-        self.name = normalize_string(&self.name, true);
-        self.tradition = normalize_string(&self.tradition, true).to_uppercase();
+        self.name = normalize_string(&self.name, NormalizationMode::Structured);
+        self.tradition =
+            normalize_string(&self.tradition, NormalizationMode::Structured).to_uppercase();
         self.school = self.school.as_ref().map(|s| match_schema_case(s));
-        self.description = normalize_string(&self.description, false); // Preserve whitespace structure
+        self.description = normalize_string(&self.description, NormalizationMode::Textual);
         self.material_components = self
             .material_components
             .as_ref()
-            .map(|s| normalize_string(s, false));
+            .map(|s| normalize_string(s, NormalizationMode::Textual));
         self.saving_throw = self
             .saving_throw
             .as_ref()
-            .map(|s| normalize_string(s, true));
+            .map(|s| normalize_string(s, NormalizationMode::Structured));
         self.sphere = self.sphere.as_ref().map(|s| match_schema_case(s));
 
         // Materialize Defaults according to Rule 48 of canonicalization contract
@@ -567,22 +301,22 @@ impl CanonicalSpell {
         self.class_list = self
             .class_list
             .iter()
-            .map(|s| normalize_string(s, true))
+            .map(|s| normalize_string(s, NormalizationMode::Structured))
             .collect();
         self.tags = self
             .tags
             .iter()
-            .map(|s| normalize_string(s, true))
+            .map(|s| normalize_string(s, NormalizationMode::Structured))
             .collect();
         self.subschools = self
             .subschools
             .iter()
-            .map(|s| normalize_string(s, true))
+            .map(|s| normalize_string(s, NormalizationMode::Structured))
             .collect();
         self.descriptors = self
             .descriptors
             .iter()
-            .map(|s| normalize_string(s, true))
+            .map(|s| normalize_string(s, NormalizationMode::Structured))
             .collect();
 
         // Sort and deduplicate after normalization to catch duplicates created by normalization (e.g. whitespace collapse)
@@ -596,78 +330,73 @@ impl CanonicalSpell {
         self.descriptors.dedup();
 
         if let Some(r) = &mut self.range {
-            if let Some(n) = &mut r.notes {
-                *n = normalize_string(n, true);
-            }
-            normalize_scalar(&mut r.distance);
+            r.normalize();
         }
 
         if let Some(ct) = &mut self.casting_time {
-            ct.text = normalize_string(&ct.text, true);
-            ct.unit = match_schema_case(&ct.unit);
-            ct.base_value = clamp_precision(ct.base_value);
-            ct.per_level = clamp_precision(ct.per_level);
-            ct.level_divisor = clamp_precision(ct.level_divisor);
+            ct.normalize();
         }
 
         if let Some(d) = &mut self.duration {
-            d.text = normalize_string(&d.text, true);
-            d.unit = match_schema_case(&d.unit);
-            d.base_value = clamp_precision(d.base_value);
-            d.per_level = clamp_precision(d.per_level);
-            d.level_divisor = clamp_precision(d.level_divisor);
+            d.normalize();
         }
 
         if let Some(a) = &mut self.area {
-            // AreaSpec normalization
-            // Enums (kind, unit, etc.) are already typed, so no string normalization needed for them.
-            // Strings:
-            if let Some(n) = &mut a.notes {
-                *n = normalize_string(n, true);
-            }
-            // Scalars:
-            normalize_scalar(&mut a.radius);
-            normalize_scalar(&mut a.diameter);
-            normalize_scalar(&mut a.length);
-            normalize_scalar(&mut a.width);
-            normalize_scalar(&mut a.height);
-            normalize_scalar(&mut a.thickness);
-            normalize_scalar(&mut a.edge);
-            normalize_scalar(&mut a.surface_area);
-            normalize_scalar(&mut a.volume);
-            normalize_scalar(&mut a.tile_count);
-            normalize_scalar(&mut a.count);
-
-            if let Some(angle) = &mut a.angle_deg {
-                *angle = clamp_precision(*angle);
-            }
+            a.normalize();
         }
 
         if let Some(dmg) = &mut self.damage {
-            dmg.text = normalize_string(&dmg.text, true);
-            dmg.base_dice = normalize_string(&dmg.base_dice, true);
-            dmg.per_level_dice = normalize_string(&dmg.per_level_dice, true);
-            dmg.level_divisor = clamp_precision(dmg.level_divisor);
-            dmg.cap_level = dmg.cap_level.map(clamp_precision);
+            dmg.normalize();
         }
     }
 }
 
-/// Normalizes a string: NFC, trim, and optionally collapse internal whitespace.
-fn normalize_string(s: &str, collapse: bool) -> String {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum NormalizationMode {
+    Structured, // Collapses all internal whitespace AND newlines
+    Textual,    // Collapses horizontal whitespace, preserves newlines
+}
+
+/// Normalizes a string: NFC, trim, and applies the specified normalization mode.
+pub(crate) fn normalize_string(s: &str, mode: NormalizationMode) -> String {
     let nfc: String = s.nfc().collect();
-    let trimmed = nfc.trim();
-    if collapse {
-        // Replace multiple spaces with one
-        trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
-    } else {
-        trimmed.to_string()
+    let normalized = nfc.replace("\r\n", "\n").replace('\r', "\n");
+    let trimmed = normalized.trim();
+
+    match mode {
+        NormalizationMode::Structured => {
+            // Collapse ALL whitespace (including newlines) into single spaces
+            trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+        NormalizationMode::Textual => {
+            // Collapse internal horizontal whitespace but preserve all distinct lines
+            trimmed
+                .split('\n')
+                .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    }
+}
+
+fn normalize_casting_unit(s: &str) -> String {
+    let normalized = normalize_string(s, NormalizationMode::Structured).to_lowercase();
+    match normalized.as_str() {
+        "segment" | "segments" => "Segment".to_string(),
+        "round" | "rounds" => "Round".to_string(),
+        "turn" | "turns" => "Turn".to_string(),
+        "hour" | "hours" => "Hour".to_string(),
+        "minute" | "minutes" => "Minutes".to_string(),
+        "action" | "actions" => "Actions".to_string(),
+        "instant" | "instantaneous" => "Instantaneous".to_string(),
+        "special" => "Special".to_string(),
+        _ => match_schema_case(&normalized),
     }
 }
 
 /// Matches a string against schema-defined enums case-insensitively, or falls back to Title Case.
 fn match_schema_case(s: &str) -> String {
-    let normalized = normalize_string(s, true);
+    let normalized = normalize_string(s, NormalizationMode::Structured);
     let lower = normalized.to_lowercase();
 
     // Common complex enums from schema
@@ -704,7 +433,7 @@ fn match_schema_case(s: &str) -> String {
     }
 }
 
-fn normalize_scalar(s_opt: &mut Option<Scalar>) {
+pub(crate) fn normalize_scalar(s_opt: &mut Option<SpellScalar>) {
     if let Some(s) = s_opt {
         if let Some(v) = &mut s.value {
             *v = clamp_precision(*v);
@@ -719,7 +448,7 @@ fn normalize_scalar(s_opt: &mut Option<Scalar>) {
 }
 
 /// Clamps floating point precision to 6 decimal places.
-fn clamp_precision(val: f64) -> f64 {
+pub(crate) fn clamp_precision(val: f64) -> f64 {
     (val * 1_000_000.0).round() / 1_000_000.0
 }
 
@@ -799,6 +528,8 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::duration_spec::{DurationKind, DurationSpec, DurationUnit};
+    use crate::models::scalar::ScalarMode;
 
     #[test]
     fn test_identical_content_produces_identical_hash() {
@@ -1179,6 +910,74 @@ mod tests {
     }
 
     #[test]
+    fn test_normalization_line_endings() {
+        let mut spell1 = CanonicalSpell::new(
+            "Line Endings".into(),
+            1,
+            "ARCANE".into(),
+            "Line1\r\nLine2".into(),
+        );
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+
+        let mut spell2 = CanonicalSpell::new(
+            "Line Endings".into(),
+            1,
+            "ARCANE".into(),
+            "Line1\nLine2".into(),
+        );
+        spell2.school = Some("Abjuration".into());
+        spell2.class_list = vec!["Wizard".into()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "CRLF and LF line endings must hash identically"
+        );
+    }
+
+    #[test]
+    fn test_time_unit_normalization_to_schema_enums() {
+        let mut spell = CanonicalSpell::new("Units".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.casting_time = Some(SpellCastingTime {
+            text: "1".into(),
+            unit: "Rounds".into(),
+            base_value: 1.0,
+            per_level: 0.0,
+            level_divisor: 1.0,
+        });
+        spell.duration = Some(DurationSpec {
+            kind: DurationKind::Time,
+            unit: Some(DurationUnit::Hour),
+            duration: Some(SpellScalar {
+                mode: ScalarMode::Fixed,
+                value: Some(2.0),
+                per_level: None,
+                min_level: None,
+                max_level: None,
+                cap_value: None,
+                cap_level: None,
+                rounding: None,
+            }),
+            notes: Some("2".to_string()), // Preserving text as notes if needed, though not strictly required for this test
+            uses: None,
+            condition: None,
+        });
+
+        let canonical_json = spell.to_canonical_json().unwrap();
+        assert!(
+            canonical_json.contains("\"unit\":\"Round\""),
+            "Casting time unit should normalize to Round"
+        );
+        assert!(
+            canonical_json.contains("\"unit\":\"hour\""),
+            "Duration unit should normalize to hour (lowercase per new schema)"
+        );
+    }
+
+    #[test]
     fn test_normalization_float_precision() {
         let mut spell1 = CanonicalSpell::new("Spell".into(), 1, "ARCANE".into(), "Desc".into());
         spell1.school = Some("Abjuration".into());
@@ -1188,7 +987,7 @@ mod tests {
         let make_spec = |val: f64| RangeSpec {
             kind: RangeKind::Distance,
             unit: Some(RangeUnit::Yd),
-            distance: Some(Scalar {
+            distance: Some(SpellScalar {
                 mode: ScalarMode::Fixed,
                 value: Some(val),
                 per_level: None,
@@ -1854,9 +1653,9 @@ mod tests {
 
         // Duration
         let d = spell.duration.unwrap();
-        assert_eq!(d.per_level, 1.0);
-        assert_eq!(d.level_divisor, 2.0);
-        assert_eq!(d.unit, "Round");
+        // "1 round / 2 levels" -> 0.5 round per level
+        assert_eq!(d.duration.unwrap().per_level.unwrap(), 0.5);
+        assert_eq!(d.unit, Some(DurationUnit::Round));
 
         // Area
         let a = spell.area.unwrap();
@@ -1879,8 +1678,6 @@ mod tests {
     #[test]
     fn test_parser_schema_compliance_deep_dive() {
         use crate::models::spell::SpellDetail;
-        use crate::utils::spell_parser::SpellParser;
-
         // Setup: A spell with complex area that needs parsing -> AreaSpec -> Validation
         let detail = SpellDetail {
             id: Some(999),
@@ -1942,5 +1739,105 @@ mod tests {
         assert_eq!(spec.unit, Some(AreaUnit::Yd));
         assert_eq!(spec.shape_unit, Some(AreaShapeUnit::Yd));
         assert_eq!(spec.length.unwrap().value, Some(30.0));
+    }
+
+    #[test]
+    fn test_validation_explicit_duration_spec_success() {
+        use crate::models::duration_spec::{DurationKind, DurationSpec, DurationUnit};
+        use crate::models::scalar::{ScalarMode, SpellScalar};
+
+        let mut spell = CanonicalSpell::new(
+            "Valid Duration Spec".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        spell.duration = Some(DurationSpec {
+            kind: DurationKind::Time,
+            unit: Some(DurationUnit::Round),
+            duration: Some(SpellScalar {
+                value: Some(1.0),
+                mode: ScalarMode::Fixed,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        let result = spell.validate();
+        assert!(
+            result.is_ok(),
+            "Validation failed with explicit duration: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_normalization_preserves_newlines() {
+        let input = "Line 1\nLine 2 \n  Line 3";
+        let output = normalize_string(input, NormalizationMode::Textual);
+        assert_eq!(output, "Line 1\nLine 2\nLine 3");
+
+        let input2 = "Line 1\r\nLine 2\n\nLine 3";
+        let output2 = normalize_string(input2, NormalizationMode::Textual);
+        // \r\n -> \n, and paragraphs (\n\n) are PRESERVED
+        assert_eq!(output2, "Line 1\nLine 2\n\nLine 3");
+    }
+
+    #[test]
+    fn test_regression_inches_area_unit() {
+        use crate::utils::spell_parser::SpellParser;
+        let parser = SpellParser::new();
+        let spec = parser.parse_area("10 inch radius").unwrap();
+        assert_eq!(spec.kind, AreaKind::RadiusCircle);
+        assert_eq!(spec.unit, Some(AreaUnit::Inches));
+    }
+
+    #[test]
+    fn test_regression_line_width_optional() {
+        let mut spell = CanonicalSpell::new("Line Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        // Line without width (new schema relaxation)
+        spell.area = Some(AreaSpec {
+            kind: AreaKind::Line,
+            unit: Some(AreaUnit::Ft),
+            shape_unit: Some(AreaShapeUnit::Ft),
+            length: Some(SpellScalar::fixed(60.0)),
+            ..Default::default()
+        });
+
+        assert!(
+            spell.validate().is_ok(),
+            "Line should be valid without width"
+        );
+    }
+
+    #[test]
+    fn test_unit_based_identity_distinction() {
+        let mut spell_yd = CanonicalSpell::new("Dist".into(), 1, "ARCANE".into(), "D".into());
+        spell_yd.school = Some("Evocation".into());
+        spell_yd.class_list = vec!["Wizard".into()];
+        spell_yd.range = Some(RangeSpec {
+            kind: RangeKind::Distance,
+            unit: Some(RangeUnit::Yd),
+            distance: Some(SpellScalar::fixed(1.0)),
+            ..Default::default()
+        });
+
+        let mut spell_ft = spell_yd.clone();
+        spell_ft.range.as_mut().unwrap().unit = Some(RangeUnit::Ft);
+        spell_ft.range.as_mut().unwrap().distance = Some(SpellScalar::fixed(3.0));
+
+        let hash_yd = spell_yd.compute_hash().unwrap();
+        let hash_ft = spell_ft.compute_hash().unwrap();
+
+        assert_ne!(
+            hash_yd, hash_ft,
+            "1 yard and 3 feet must produce different hashes (unit preservation)"
+        );
     }
 }

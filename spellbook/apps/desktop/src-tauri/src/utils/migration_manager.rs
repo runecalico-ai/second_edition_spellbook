@@ -1,5 +1,5 @@
-use crate::models::canonical_spell::{AreaKind, CanonicalSpell};
 use crate::models::spell::SpellDetail;
+use crate::models::{AreaKind, CanonicalSpell, DurationKind, RangeKind};
 use crate::utils::spell_parser::SpellParser;
 use chrono::Utc;
 use rusqlite::{params, Connection};
@@ -113,7 +113,7 @@ pub fn run_hash_backfill(
         // Apply parsers to structure the data
         if let Some(range_str) = &detail.range {
             let res = parser.parse_range(range_str);
-            if res.kind == crate::models::canonical_spell::RangeKind::Special
+            if res.kind == RangeKind::Special
                 && range_str.to_lowercase() != "special"
                 && !range_str.trim().is_empty()
             {
@@ -131,7 +131,7 @@ pub fn run_hash_backfill(
         }
         if let Some(duration_str) = &detail.duration {
             let res = parser.parse_duration(duration_str);
-            if res.unit == "Special"
+            if res.kind == DurationKind::Special
                 && duration_str.to_lowercase() != "special"
                 && !duration_str.trim().is_empty()
             {

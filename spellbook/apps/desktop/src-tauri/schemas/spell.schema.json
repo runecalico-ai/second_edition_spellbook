@@ -1,1276 +1,1406 @@
 {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://runecalico.ai/schemas/spell.schema.json",
-    "title": "Spell",
-    "description": "Canonical definition of a spell in the Second Edition Spellbook.",
-    "type": "object",
-    "properties": {
-        "id": {
-            "type": "string",
-            "description": "The content-addressed hash identifier of the spell (SHA-256).",
-            "pattern": "^[a-f0-9]{64}$"
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runecalico.ai/schemas/spell.schema.json",
+  "title": "Spell",
+  "description": "Canonical definition of a spell in the Second Edition Spellbook.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "The content-addressed hash identifier of the spell (SHA-256).",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "name": {
+      "type": "string",
+      "description": "The name of the spell.",
+      "minLength": 1
+    },
+    "tradition": {
+      "type": "string",
+      "description": "The magical tradition of the spell.",
+      "enum": [
+        "ARCANE",
+        "DIVINE",
+        "BOTH"
+      ]
+    },
+    "school": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The primary mechanical school of magic (for specialist rules).",
+      "enum": [
+        "Abjuration",
+        "Alteration",
+        "Calling",
+        "Charm",
+        "Conjuration",
+        "Conjuration/Summoning",
+        "Creation",
+        "Dimension",
+        "Divination",
+        "Enchantment",
+        "Enchantment/Charm",
+        "Evocation",
+        "Illusion",
+        "Illusion/Phantasm",
+        "Invocation",
+        "Invocation/Evocation",
+        "Necromancy",
+        "Phantasm",
+        "Shadow",
+        "Summoning",
+        "Teleportation",
+        "Temporal",
+        null
+      ],
+      "default": null
+    },
+    "subschools": {
+      "type": "array",
+      "description": "Secondary schools or specific disciplines (e.g. 'Evocation', 'Charm', 'Phantasm').",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "descriptors": {
+      "type": "array",
+      "description": "Elemental, alignment, or planar descriptors (e.g. 'Fire', 'Mind-Affecting', 'Evil').",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "sphere": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The divine sphere of influence (access control).",
+      "enum": [
+        "All",
+        "Animal",
+        "Astral",
+        "Chaos",
+        "Charm",
+        "Combat",
+        "Creation",
+        "Desert",
+        "Destiny",
+        "Divination",
+        "Drow",
+        "Elemental Air",
+        "Elemental Earth",
+        "Elemental Fire",
+        "Elemental Water",
+        "Elemental Rain",
+        "Elemental Sun",
+        "Evil",
+        "Fate",
+        "Good",
+        "Guardian",
+        "Healing",
+        "Law",
+        "Magma",
+        "Necromantic",
+        "Numbers",
+        "Plant",
+        "Protection",
+        "Silt",
+        "Summoning",
+        "Sun",
+        "Thought",
+        "Time",
+        "Travelers",
+        "War",
+        "Weather",
+        null
+      ],
+      "default": null
+    },
+    "class_list": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of classes able to cast this spell (e.g., 'Wizard', 'Priest').",
+      "uniqueItems": true,
+      "default": []
+    },
+    "level": {
+      "type": "integer",
+      "description": "The spell level (0-12).",
+      "minimum": 0,
+      "maximum": 12
+    },
+    "range": {
+      "$ref": "#/$defs/RangeSpec",
+      "description": "The range of the spell."
+    },
+    "components": {
+      "type": "object",
+      "properties": {
+        "verbal": {
+          "type": "boolean",
+          "default": false
         },
-        "name": {
-            "type": "string",
-            "description": "The name of the spell.",
-            "minLength": 1
+        "somatic": {
+          "type": "boolean",
+          "default": false
         },
-        "tradition": {
-            "type": "string",
-            "description": "The magical tradition of the spell.",
-            "enum": [
-                "ARCANE",
-                "DIVINE",
-                "BOTH"
-            ]
+        "material": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "description": "Components required to cast the spell.",
+      "additionalProperties": false,
+      "required": [
+        "verbal",
+        "somatic",
+        "material"
+      ]
+    },
+    "material_components": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Description of material components.",
+      "default": null
+    },
+    "casting_time": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Display casting time text (e.g. '3', '1 round')."
         },
-        "school": {
+        "unit": {
+          "type": "string",
+          "enum": [
+            "Segment",
+            "Round",
+            "Turn",
+            "Hour",
+            "Minutes",
+            "Actions",
+            "Special",
+            "Instantaneous"
+          ],
+          "default": "Segment"
+        },
+        "base_value": {
+          "type": "number",
+          "description": "Fixed base casting time value.",
+          "default": 1
+        },
+        "per_level": {
+          "type": "number",
+          "description": "Variable casting time added per increment.",
+          "default": 0
+        },
+        "level_divisor": {
+          "type": "number",
+          "description": "Level increment divisor.",
+          "default": 1
+        }
+      },
+      "required": [
+        "text",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "duration": {
+      "$ref": "#/$defs/DurationSpec",
+      "description": "The duration of the spell."
+    },
+    "area": {
+      "$ref": "#/$defs/AreaSpec",
+      "description": "The area of effect."
+    },
+    "damage": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Display damage text (e.g. '1d6 / level')."
+        },
+        "base_dice": {
+          "type": "string",
+          "description": "Fixed base damage dice (e.g. '1d8').",
+          "default": "0"
+        },
+        "per_level_dice": {
+          "type": "string",
+          "description": "Damage dice added per increment (e.g. '1d6').",
+          "default": "0"
+        },
+        "level_divisor": {
+          "type": "number",
+          "description": "Level increment divisor.",
+          "default": 1
+        },
+        "cap_level": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Maximum caster level to count for scaling."
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "saving_throw": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Saving throw allowance (e.g., 'None', '1/2').",
+      "default": null
+    },
+    "reversible": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Whether the spell is reversible (0 = No, 1 = Yes).",
+      "enum": [
+        0,
+        1
+      ],
+      "default": 0
+    },
+    "description": {
+      "type": "string",
+      "description": "Full description of the spell.",
+      "minLength": 1
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Arbitrary tags for categorization.",
+      "uniqueItems": true,
+      "default": []
+    },
+    "source_refs": {
+      "type": "array",
+      "description": "List of source references for this spell.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "type": "string",
+            "description": "Game system (e.g. 'AD&D 2e')."
+          },
+          "book": {
+            "type": "string",
+            "description": "Book title or collection name (e.g. 'Player's Handbook', 'Homebrew')."
+          },
+          "page": {
             "type": [
-                "string",
-                "null"
+              "integer",
+              "string",
+              "null"
             ],
-            "description": "The primary mechanical school of magic (for specialist rules).",
-            "enum": [
-                "Abjuration",
-                "Alteration",
-                "Calling",
-                "Charm",
-                "Conjuration",
-                "Conjuration/Summoning",
-                "Creation",
-                "Dimension",
-                "Divination",
-                "Enchantment",
-                "Enchantment/Charm",
-                "Evocation",
-                "Illusion",
-                "Illusion/Phantasm",
-                "Invocation",
-                "Invocation/Evocation",
-                "Necromancy",
-                "Phantasm",
-                "Shadow",
-                "Summoning",
-                "Teleportation",
-                "Temporal",
-                null
-            ],
-            "default": null
-        },
-        "subschools": {
-            "type": "array",
-            "description": "Secondary schools or specific disciplines (e.g. 'Evocation', 'Charm', 'Phantasm').",
-            "items": {
-                "type": "string"
-            },
-            "uniqueItems": true,
-            "default": []
-        },
-        "descriptors": {
-            "type": "array",
-            "description": "Elemental, alignment, or planar descriptors (e.g. 'Fire', 'Mind-Affecting', 'Evil').",
-            "items": {
-                "type": "string"
-            },
-            "uniqueItems": true,
-            "default": []
-        },
-        "sphere": {
+            "description": "Page number."
+          },
+          "note": {
             "type": [
-                "string",
-                "null"
+              "string",
+              "null"
             ],
-            "description": "The divine sphere of influence (access control).",
-            "enum": [
-                "All",
-                "Animal",
-                "Astral",
-                "Chaos",
-                "Charm",
-                "Combat",
-                "Creation",
-                "Desert",
-                "Destiny",
-                "Divination",
-                "Drow",
-                "Elemental Air",
-                "Elemental Earth",
-                "Elemental Fire",
-                "Elemental Water",
-                "Elemental Rain",
-                "Elemental Sun",
-                "Evil",
-                "Fate",
-                "Good",
-                "Guardian",
-                "Healing",
-                "Law",
-                "Magma",
-                "Necromantic",
-                "Numbers",
-                "Plant",
-                "Protection",
-                "Silt",
-                "Summoning",
-                "Sun",
-                "Thought",
-                "Time",
-                "Travelers",
-                "War",
-                "Weather",
-                null
-            ],
-            "default": null
+            "description": "Additional notes (e.g. 'errata')."
+          }
         },
-        "class_list": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            },
-            "description": "List of classes able to cast this spell (e.g., 'Wizard', 'Priest').",
-            "uniqueItems": true,
-            "default": []
+        "required": [
+          "book"
+        ]
+      },
+      "default": []
+    },
+    "edition": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Game edition (e.g., '2e').",
+      "default": null
+    },
+    "author": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Author credit.",
+      "default": null
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version of the spell definition (e.g. '1.0.0').",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "default": "1.0.0"
+    },
+    "license": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "License information (e.g., 'OGL').",
+      "default": null
+    },
+    "is_quest_spell": {
+      "type": "integer",
+      "description": "Whether this is a Quest spell (0 = No, 1 = Yes).",
+      "enum": [
+        0,
+        1
+      ],
+      "default": 0
+    },
+    "is_cantrip": {
+      "type": "integer",
+      "description": "Whether this is a Cantrip (0 = No, 1 = Yes).",
+      "enum": [
+        0,
+        1
+      ],
+      "default": 0
+    },
+    "schema_version": {
+      "type": "integer",
+      "description": "The validation schema version used for this record.",
+      "default": 1
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ISO-8601 timestamp of record creation.",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ISO-8601 timestamp of last update.",
+      "format": "date-time"
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "List of associated artifacts (files, images).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "imported_at": {
+            "type": "string"
+          }
         },
-        "level": {
-            "type": "integer",
-            "description": "The spell level (0-12).",
-            "minimum": 0,
-            "maximum": 12
+        "required": [
+          "id",
+          "type",
+          "path",
+          "hash"
+        ]
+      }
+    }
+  },
+  "required": [
+    "name",
+    "level",
+    "description",
+    "tradition"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "tradition": {
+            "const": "ARCANE"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "school"
+        ],
+        "properties": {
+          "sphere": {
+            "const": null
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tradition": {
+            "const": "DIVINE"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "sphere"
+        ],
+        "properties": {
+          "school": {
+            "const": null
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tradition": {
+            "const": "BOTH"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "school",
+          "sphere"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "scalar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "per_level"
+          ]
         },
-        "range": {
-            "$ref": "#/$defs/RangeSpec",
-            "description": "The range of the spell."
+        "value": {
+          "type": "number",
+          "minimum": 0
         },
-        "components": {
-            "type": "object",
+        "per_level": {
+          "type": "number",
+          "minimum": 0
+        },
+        "min_level": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_level": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cap_value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cap_level": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rounding": {
+          "type": "string",
+          "enum": [
+            "none",
+            "floor",
+            "ceil",
+            "nearest"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
             "properties": {
-                "verbal": {
-                    "type": "boolean",
-                    "default": false
-                },
-                "somatic": {
-                    "type": "boolean",
-                    "default": false
-                },
-                "material": {
-                    "type": "boolean",
-                    "default": false
-                }
+              "mode": {
+                "const": "fixed"
+              }
             },
-            "description": "Components required to cast the spell.",
-            "additionalProperties": false,
             "required": [
-                "verbal",
-                "somatic",
-                "material"
+              "mode"
             ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
         },
-        "material_components": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "description": "Description of material components.",
-            "default": null
-        },
-        "casting_time": {
-            "type": "object",
+        {
+          "if": {
             "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "Display casting time text (e.g. '3', '1 round')."
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": [
-                        "Segment",
-                        "Round",
-                        "Turn",
-                        "Hour",
-                        "Minutes",
-                        "Actions",
-                        "Special",
-                        "Instantaneous"
-                    ],
-                    "default": "Segment"
-                },
-                "base_value": {
-                    "type": "number",
-                    "description": "Fixed base casting time value.",
-                    "default": 1
-                },
-                "per_level": {
-                    "type": "number",
-                    "description": "Variable casting time added per increment.",
-                    "default": 0
-                },
-                "level_divisor": {
-                    "type": "number",
-                    "description": "Level increment divisor.",
-                    "default": 1
-                }
+              "mode": {
+                "const": "per_level"
+              }
             },
             "required": [
-                "text",
-                "unit"
-            ],
-            "additionalProperties": false
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "per_level"
+            ]
+          }
+        }
+      ]
+    },
+    "AreaSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "point",
+            "radius_circle",
+            "radius_sphere",
+            "cone",
+            "line",
+            "rect",
+            "rect_prism",
+            "cylinder",
+            "wall",
+            "cube",
+            "volume",
+            "surface",
+            "tiles",
+            "creatures",
+            "objects",
+            "region",
+            "scope",
+            "special"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "ft",
+            "yd",
+            "mi",
+            "inches",
+            "ft2",
+            "yd2",
+            "square",
+            "ft3",
+            "yd3",
+            "hex",
+            "room",
+            "floor"
+          ]
+        },
+        "shape_unit": {
+          "type": "string",
+          "enum": [
+            "ft",
+            "yd",
+            "mi",
+            "inches"
+          ],
+          "description": "Unit for geometric dimensions (radii/length/height/width/etc.)."
+        },
+        "radius": {
+          "$ref": "#/$defs/scalar"
+        },
+        "diameter": {
+          "$ref": "#/$defs/scalar"
+        },
+        "length": {
+          "$ref": "#/$defs/scalar"
+        },
+        "width": {
+          "$ref": "#/$defs/scalar"
+        },
+        "height": {
+          "$ref": "#/$defs/scalar"
+        },
+        "thickness": {
+          "$ref": "#/$defs/scalar"
+        },
+        "edge": {
+          "$ref": "#/$defs/scalar"
+        },
+        "angle_deg": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360,
+          "description": "Cone/fan angle when explicitly given or normalized."
+        },
+        "surface_area": {
+          "$ref": "#/$defs/scalar"
+        },
+        "volume": {
+          "$ref": "#/$defs/scalar"
+        },
+        "tile_unit": {
+          "type": "string",
+          "enum": [
+            "hex",
+            "room",
+            "floor",
+            "square"
+          ]
+        },
+        "tile_count": {
+          "$ref": "#/$defs/scalar"
+        },
+        "count": {
+          "$ref": "#/$defs/scalar"
+        },
+        "count_subject": {
+          "type": "string",
+          "enum": [
+            "creature",
+            "undead",
+            "ally",
+            "enemy",
+            "object",
+            "structure"
+          ],
+          "description": "What is being counted when kind is creatures/objects."
+        },
+        "region_unit": {
+          "type": "string",
+          "enum": [
+            "object",
+            "structure",
+            "building",
+            "bridge",
+            "ship",
+            "fortress",
+            "clearing",
+            "grove",
+            "field",
+            "waterbody",
+            "cavesystem",
+            "valley",
+            "region",
+            "domain",
+            "demiplane",
+            "plane"
+          ]
+        },
+        "scope_unit": {
+          "type": "string",
+          "enum": [
+            "los",
+            "loe",
+            "within_range",
+            "within_spell_range",
+            "within_sight",
+            "within_hearing",
+            "aura",
+            "sanctified_ground",
+            "desecrated_ground",
+            "portfolio_defined"
+          ]
+        },
+        "moves_with": {
+          "type": "string",
+          "enum": [
+            "caster",
+            "target",
+            "object",
+            "fixed"
+          ],
+          "description": "Normalized motion behavior."
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "radius_circle"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "radius",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "radius_sphere"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "radius",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "line"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "length",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "rect"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "length",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "rect_prism"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "length",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "cylinder"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "radius",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "wall"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "length",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "cube"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "edge",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "surface"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "surface_area",
+              "unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "volume"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "volume",
+              "unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "tiles"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "tile_unit",
+              "tile_count"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "creatures"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "count",
+              "count_subject"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "objects"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "count",
+              "count_subject"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "region"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "region_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "scope"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "scope_unit"
+            ]
+          }
+        }
+      ]
+    },
+    "RangeSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "personal",
+            "touch",
+            "distance",
+            "distance_los",
+            "distance_loe",
+            "los",
+            "loe",
+            "sight",
+            "hearing",
+            "voice",
+            "senses",
+            "same_room",
+            "same_structure",
+            "same_dungeon_level",
+            "wilderness",
+            "same_plane",
+            "interplanar",
+            "anywhere_on_plane",
+            "domain",
+            "unlimited",
+            "special"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "ft",
+            "yd",
+            "mi",
+            "inches"
+          ],
+          "description": "Linear unit for numeric ranges."
+        },
+        "distance": {
+          "$ref": "#/$defs/scalar"
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "los",
+              "loe"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "Additional hard constraints."
+        },
+        "anchor": {
+          "type": "string",
+          "enum": [
+            "caster",
+            "target",
+            "object",
+            "fixed"
+          ],
+          "description": "If range is relative to something other than the caster."
+        },
+        "region_unit": {
+          "type": "string",
+          "enum": [
+            "structure",
+            "building",
+            "bridge",
+            "ship",
+            "fortress",
+            "region",
+            "domain",
+            "demiplane",
+            "plane"
+          ],
+          "description": "When kind=domain or similar, optional explicit qualifier."
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "distance",
+                  "distance_los",
+                  "distance_loe"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "distance",
+              "unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "personal"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "distance"
+                  ]
+                },
+                {
+                  "required": [
+                    "unit"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "touch"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "distance"
+                  ]
+                },
+                {
+                  "required": [
+                    "unit"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "distance_los"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "requires": {
+                "contains": {
+                  "const": "los"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "distance_loe"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "requires": {
+                "contains": {
+                  "const": "loe"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DurationSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "instant",
+            "time",
+            "concentration",
+            "conditional",
+            "permanent",
+            "until_dispelled",
+            "until_triggered",
+            "usage_limited",
+            "planar",
+            "special"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "segment",
+            "round",
+            "turn",
+            "minute",
+            "hour",
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Time unit used when kind = time."
         },
         "duration": {
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "Display duration text (e.g. '1 round / level')."
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": [
-                        "Instantaneous",
-                        "Round",
-                        "Turn",
-                        "Hour",
-                        "Day",
-                        "Week",
-                        "Month",
-                        "Year",
-                        "Permanent",
-                        "Special",
-                        "Minutes"
-                    ],
-                    "default": "Round"
-                },
-                "base_value": {
-                    "type": "number",
-                    "description": "Fixed base duration.",
-                    "default": 0
-                },
-                "per_level": {
-                    "type": "number",
-                    "description": "Variable duration added per increment.",
-                    "default": 0
-                },
-                "level_divisor": {
-                    "type": "number",
-                    "description": "Level increment divisor (e.g. 2 for 'per 2 levels').",
-                    "default": 1
-                }
-            },
-            "required": [
-                "text",
-                "unit"
-            ],
-            "additionalProperties": false
+          "$ref": "#/$defs/scalar",
+          "description": "Primary duration scalar (fixed or per-level)."
         },
-        "area": {
-            "$ref": "#/$defs/AreaSpec",
-            "description": "The area of effect."
+        "condition": {
+          "type": "string",
+          "description": "Narrative or rules-based condition that ends the duration."
         },
-        "damage": {
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "Display damage text (e.g. '1d6 / level')."
-                },
-                "base_dice": {
-                    "type": "string",
-                    "description": "Fixed base damage dice (e.g. '1d8').",
-                    "default": "0"
-                },
-                "per_level_dice": {
-                    "type": "string",
-                    "description": "Damage dice added per increment (e.g. '1d6').",
-                    "default": "0"
-                },
-                "level_divisor": {
-                    "type": "number",
-                    "description": "Level increment divisor.",
-                    "default": 1
-                },
-                "cap_level": {
-                    "type": [
-                        "number",
-                        "null"
-                    ],
-                    "description": "Maximum caster level to count for scaling."
-                }
-            },
-            "required": [
-                "text"
-            ],
-            "additionalProperties": false
+        "uses": {
+          "$ref": "#/$defs/scalar",
+          "description": "Number of uses, strikes, discharges, or activations before expiration."
         },
-        "saving_throw": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "description": "Saving throw allowance (e.g., 'None', '1/2').",
-            "default": null
-        },
-        "reversible": {
-            "type": [
-                "integer",
-                "null"
-            ],
-            "description": "Whether the spell is reversible (0 = No, 1 = Yes).",
-            "enum": [
-                0,
-                1
-            ],
-            "default": 0
-        },
-        "description": {
-            "type": "string",
-            "description": "Full description of the spell.",
-            "minLength": 1
-        },
-        "tags": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            },
-            "description": "Arbitrary tags for categorization.",
-            "uniqueItems": true,
-            "default": []
-        },
-        "source_refs": {
-            "type": "array",
-            "description": "List of source references for this spell.",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "system": {
-                        "type": "string",
-                        "description": "Game system (e.g. 'AD&D 2e')."
-                    },
-                    "book": {
-                        "type": "string",
-                        "description": "Book title or collection name (e.g. 'Player's Handbook', 'Homebrew')."
-                    },
-                    "page": {
-                        "type": [
-                            "integer",
-                            "string",
-                            "null"
-                        ],
-                        "description": "Page number."
-                    },
-                    "note": {
-                        "type": [
-                            "string",
-                            "null"
-                        ],
-                        "description": "Additional notes (e.g. 'errata')."
-                    }
-                },
-                "required": [
-                    "book"
-                ]
-            },
-            "default": []
-        },
-        "edition": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "description": "Game edition (e.g., '2e').",
-            "default": null
-        },
-        "author": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "description": "Author credit.",
-            "default": null
-        },
-        "version": {
-            "type": "string",
-            "description": "Semantic version of the spell definition (e.g. '1.0.0').",
-            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
-            "default": "1.0.0"
-        },
-        "license": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "description": "License information (e.g., 'OGL').",
-            "default": null
-        },
-        "is_quest_spell": {
-            "type": "integer",
-            "description": "Whether this is a Quest spell (0 = No, 1 = Yes).",
-            "enum": [
-                0,
-                1
-            ],
-            "default": 0
-        },
-        "is_cantrip": {
-            "type": "integer",
-            "description": "Whether this is a Cantrip (0 = No, 1 = Yes).",
-            "enum": [
-                0,
-                1
-            ],
-            "default": 0
-        },
-        "schema_version": {
-            "type": "integer",
-            "description": "The validation schema version used for this record.",
-            "default": 1
-        },
-        "created_at": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "description": "ISO-8601 timestamp of record creation.",
-            "format": "date-time"
-        },
-        "updated_at": {
-            "type": [
-                "string",
-                "null"
-            ],
-            "description": "ISO-8601 timestamp of last update.",
-            "format": "date-time"
-        },
-        "artifacts": {
-            "type": "array",
-            "description": "List of associated artifacts (files, images).",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {
-                        "type": "integer"
-                    },
-                    "type": {
-                        "type": "string"
-                    },
-                    "path": {
-                        "type": "string"
-                    },
-                    "hash": {
-                        "type": "string"
-                    },
-                    "imported_at": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "id",
-                    "type",
-                    "path",
-                    "hash"
-                ]
-            }
+        "notes": {
+          "type": "string",
+          "description": "Freeform clarification; must not contain mechanical formulas."
         }
-    },
-    "required": [
-        "name",
-        "level",
-        "description",
-        "tradition"
-    ],
-    "additionalProperties": false,
-    "allOf": [
+      },
+      "allOf": [
         {
-            "if": {
-                "properties": {
-                    "tradition": {
-                        "const": "ARCANE"
-                    }
-                }
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "time"
+              }
             },
-            "then": {
-                "required": [
-                    "school"
-                ],
-                "properties": {
-                    "sphere": {
-                        "const": null
-                    }
-                }
-            }
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "unit",
+              "duration"
+            ]
+          }
         },
         {
-            "if": {
-                "properties": {
-                    "tradition": {
-                        "const": "DIVINE"
-                    }
-                }
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "instant",
+                  "permanent"
+                ]
+              }
             },
-            "then": {
-                "required": [
-                    "sphere"
-                ],
-                "properties": {
-                    "school": {
-                        "const": null
-                    }
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "unit"
+                  ]
+                },
+                {
+                  "required": [
+                    "duration"
+                  ]
+                },
+                {
+                  "required": [
+                    "uses"
+                  ]
                 }
+              ]
             }
+          }
         },
         {
-            "if": {
-                "properties": {
-                    "tradition": {
-                        "const": "BOTH"
-                    }
-                }
-            },
-            "then": {
-                "required": [
-                    "school",
-                    "sphere"
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "conditional",
+                  "until_triggered",
+                  "planar"
                 ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "condition"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "usage_limited"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "uses"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "until_dispelled"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "unit"
+                  ]
+                },
+                {
+                  "required": [
+                    "duration"
+                  ]
+                }
+              ]
             }
+          }
         }
-    ],
-    "$defs": {
-        "scalar": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-                "mode"
-            ],
-            "properties": {
-                "mode": {
-                    "type": "string",
-                    "enum": [
-                        "fixed",
-                        "per_level"
-                    ]
-                },
-                "value": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "per_level": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "min_level": {
-                    "type": "integer",
-                    "minimum": 1
-                },
-                "max_level": {
-                    "type": "integer",
-                    "minimum": 1
-                },
-                "cap_value": {
-                    "type": "number",
-                    "minimum": 0
-                },
-                "cap_level": {
-                    "type": "integer",
-                    "minimum": 1
-                },
-                "rounding": {
-                    "type": "string",
-                    "enum": [
-                        "none",
-                        "floor",
-                        "ceil",
-                        "nearest"
-                    ]
-                }
-            },
-            "allOf": [
-                {
-                    "if": {
-                        "properties": {
-                            "mode": {
-                                "const": "fixed"
-                            }
-                        },
-                        "required": [
-                            "mode"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "value"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "mode": {
-                                "const": "per_level"
-                            }
-                        },
-                        "required": [
-                            "mode"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "per_level"
-                        ]
-                    }
-                }
-            ]
-        },
-        "AreaSpec": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-                "kind"
-            ],
-            "properties": {
-                "kind": {
-                    "type": "string",
-                    "enum": [
-                        "point",
-                        "radius_circle",
-                        "radius_sphere",
-                        "cone",
-                        "line",
-                        "rect",
-                        "rect_prism",
-                        "cylinder",
-                        "wall",
-                        "cube",
-                        "volume",
-                        "surface",
-                        "tiles",
-                        "creatures",
-                        "objects",
-                        "region",
-                        "scope",
-                        "special"
-                    ]
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": [
-                        "ft",
-                        "yd",
-                        "mi",
-                        "ft2",
-                        "yd2",
-                        "square",
-                        "ft3",
-                        "yd3",
-                        "hex",
-                        "room",
-                        "floor"
-                    ]
-                },
-                "shape_unit": {
-                    "type": "string",
-                    "enum": [
-                        "ft",
-                        "yd",
-                        "mi"
-                    ],
-                    "description": "Unit for geometric dimensions (radii/length/height/width/etc.)."
-                },
-                "radius": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "diameter": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "length": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "width": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "height": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "thickness": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "edge": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "angle_deg": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 360,
-                    "description": "Cone/fan angle when explicitly given or normalized."
-                },
-                "surface_area": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "volume": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "tile_unit": {
-                    "type": "string",
-                    "enum": [
-                        "hex",
-                        "room",
-                        "floor",
-                        "square"
-                    ]
-                },
-                "tile_count": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "count": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "count_subject": {
-                    "type": "string",
-                    "enum": [
-                        "creature",
-                        "undead",
-                        "ally",
-                        "enemy",
-                        "object",
-                        "structure"
-                    ],
-                    "description": "What is being counted when kind is creatures/objects."
-                },
-                "region_unit": {
-                    "type": "string",
-                    "enum": [
-                        "object",
-                        "structure",
-                        "building",
-                        "bridge",
-                        "ship",
-                        "fortress",
-                        "clearing",
-                        "grove",
-                        "field",
-                        "waterbody",
-                        "cavesystem",
-                        "valley",
-                        "region",
-                        "domain",
-                        "demiplane",
-                        "plane"
-                    ]
-                },
-                "scope_unit": {
-                    "type": "string",
-                    "enum": [
-                        "los",
-                        "loe",
-                        "within_range",
-                        "within_spell_range",
-                        "within_sight",
-                        "within_hearing",
-                        "aura",
-                        "sanctified_ground",
-                        "desecrated_ground",
-                        "portfolio_defined"
-                    ]
-                },
-                "moves_with": {
-                    "type": "string",
-                    "enum": [
-                        "caster",
-                        "target",
-                        "object",
-                        "fixed"
-                    ],
-                    "description": "Normalized motion behavior."
-                },
-                "notes": {
-                    "type": "string"
-                }
-            },
-            "allOf": [
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "radius_circle"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "radius",
-                            "shape_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "radius_sphere"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "radius",
-                            "shape_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "line"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "length",
-                            "width",
-                            "shape_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "rect"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "length",
-                            "width",
-                            "shape_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "rect_prism"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "length",
-                            "width",
-                            "height",
-                            "shape_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "cylinder"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "radius",
-                            "height",
-                            "shape_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "wall"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "length",
-                            "height",
-                            "thickness",
-                            "shape_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "cube"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "edge",
-                            "shape_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "surface"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "surface_area",
-                            "unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "volume"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "volume",
-                            "unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "tiles"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "tile_unit",
-                            "tile_count"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "creatures"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "count",
-                            "count_subject"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "objects"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "count",
-                            "count_subject"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "region"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "region_unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "scope"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "scope_unit"
-                        ]
-                    }
-                }
-            ]
-        },
-        "RangeSpec": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-                "kind"
-            ],
-            "properties": {
-                "kind": {
-                    "type": "string",
-                    "enum": [
-                        "personal",
-                        "touch",
-                        "distance",
-                        "distance_los",
-                        "distance_loe",
-                        "los",
-                        "loe",
-                        "sight",
-                        "hearing",
-                        "voice",
-                        "senses",
-                        "same_room",
-                        "same_structure",
-                        "same_dungeon_level",
-                        "wilderness",
-                        "same_plane",
-                        "interplanar",
-                        "anywhere_on_plane",
-                        "domain",
-                        "unlimited",
-                        "special"
-                    ]
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": [
-                        "ft",
-                        "yd",
-                        "mi",
-                        "inches"
-                    ],
-                    "description": "Linear unit for numeric ranges."
-                },
-                "distance": {
-                    "$ref": "#/$defs/scalar"
-                },
-                "requires": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                        "enum": [
-                            "los",
-                            "loe"
-                        ]
-                    },
-                    "uniqueItems": true,
-                    "description": "Additional hard constraints."
-                },
-                "anchor": {
-                    "type": "string",
-                    "enum": [
-                        "caster",
-                        "target",
-                        "object",
-                        "fixed"
-                    ],
-                    "description": "If range is relative to something other than the caster."
-                },
-                "region_unit": {
-                    "type": "string",
-                    "enum": [
-                        "structure",
-                        "building",
-                        "bridge",
-                        "ship",
-                        "fortress",
-                        "region",
-                        "domain",
-                        "demiplane",
-                        "plane"
-                    ],
-                    "description": "When kind=domain or similar, optional explicit qualifier."
-                },
-                "notes": {
-                    "type": "string"
-                }
-            },
-            "allOf": [
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "enum": [
-                                    "distance",
-                                    "distance_los",
-                                    "distance_loe"
-                                ]
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "required": [
-                            "distance",
-                            "unit"
-                        ]
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "personal"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "not": {
-                            "anyOf": [
-                                {
-                                    "required": [
-                                        "distance"
-                                    ]
-                                },
-                                {
-                                    "required": [
-                                        "unit"
-                                    ]
-                                }
-                            ]
-                        }
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "touch"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "not": {
-                            "anyOf": [
-                                {
-                                    "required": [
-                                        "distance"
-                                    ]
-                                },
-                                {
-                                    "required": [
-                                        "unit"
-                                    ]
-                                }
-                            ]
-                        }
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "distance_los"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "properties": {
-                            "requires": {
-                                "contains": {
-                                    "const": "los"
-                                }
-                            }
-                        }
-                    }
-                },
-                {
-                    "if": {
-                        "properties": {
-                            "kind": {
-                                "const": "distance_loe"
-                            }
-                        },
-                        "required": [
-                            "kind"
-                        ]
-                    },
-                    "then": {
-                        "properties": {
-                            "requires": {
-                                "contains": {
-                                    "const": "loe"
-                                }
-                            }
-                        }
-                    }
-                }
-            ]
-        }
+      ]
     }
+  }
 }

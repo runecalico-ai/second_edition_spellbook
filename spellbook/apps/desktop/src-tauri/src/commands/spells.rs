@@ -314,11 +314,15 @@ pub fn canonicalize_spell_detail(
         canonical.components = Some(parser.parse_components(s));
     }
 
+    // Normalize BEFORE hashing/serializing to ensure the stored data is clean
+    canonical.normalize();
+
     let hash = canonical
         .compute_hash()
         .map_err(|e| AppError::Validation(format!("Hash error: {}", e)))?;
-    let json = canonical
-        .to_canonical_json()
+
+    // Store FULL JSON (with metadata) but normalized
+    let json = serde_json::to_string(&canonical)
         .map_err(|e| AppError::Validation(format!("JSON error: {}", e)))?;
 
     Ok((canonical, hash, json))

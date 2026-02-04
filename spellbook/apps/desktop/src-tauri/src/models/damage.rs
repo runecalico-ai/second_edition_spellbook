@@ -303,8 +303,302 @@ impl SpellDamageSpec {
                     });
                 }
             }
-            // Sort parts by ID to ensure stable hash
-            parts.sort_by(|a, b| a.id.cmp(&b.id));
+            // Sort parts by ID to ensure stable hash, UNLESS combine_mode is sequence
+            // For sequence mode, order is semantically meaningful and must be preserved
+            if self.combine_mode != DamageCombineMode::Sequence {
+                parts.sort_by(|a, b| a.id.cmp(&b.id));
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sequence_mode_preserves_order() {
+        let mut spec = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sequence,
+            parts: Some(vec![
+                DamagePart {
+                    id: "z_initial".to_string(),
+                    damage_type: DamageType::Fire,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "a_followup".to_string(),
+                    damage_type: DamageType::Cold,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 4,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "m_final".to_string(),
+                    damage_type: DamageType::Acid,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 8,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+            ]),
+            dm_guidance: None,
+            notes: None,
+        };
+
+        spec.normalize();
+
+        let parts = spec.parts.as_ref().unwrap();
+        assert_eq!(parts.len(), 3);
+        // Order should be preserved (z, a, m) not sorted (a, m, z)
+        assert_eq!(parts[0].id, "z_initial");
+        assert_eq!(parts[1].id, "a_followup");
+        assert_eq!(parts[2].id, "m_final");
+    }
+
+    #[test]
+    fn test_non_sequence_modes_sort_by_id() {
+        let mut spec = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sum, // Non-sequence mode
+            parts: Some(vec![
+                DamagePart {
+                    id: "z_third".to_string(),
+                    damage_type: DamageType::Fire,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "a_first".to_string(),
+                    damage_type: DamageType::Cold,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 4,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "m_second".to_string(),
+                    damage_type: DamageType::Acid,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 8,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+            ]),
+            dm_guidance: None,
+            notes: None,
+        };
+
+        spec.normalize();
+
+        let parts = spec.parts.as_ref().unwrap();
+        assert_eq!(parts.len(), 3);
+        // Should be sorted alphabetically by ID
+        assert_eq!(parts[0].id, "a_first");
+        assert_eq!(parts[1].id, "m_second");
+        assert_eq!(parts[2].id, "z_third");
+    }
+
+    #[test]
+    fn test_all_combine_modes_sort_except_sequence() {
+        for (mode, should_sort) in [
+            (DamageCombineMode::Sum, true),
+            (DamageCombineMode::Max, true),
+            (DamageCombineMode::ChooseOne, true),
+            (DamageCombineMode::Sequence, false),
+        ] {
+            let mut spec = SpellDamageSpec {
+                kind: DamageKind::Modeled,
+                combine_mode: mode,
+                parts: Some(vec![
+                    DamagePart {
+                        id: "z".to_string(),
+                        damage_type: DamageType::Fire,
+                        base: DicePool {
+                            terms: vec![DiceTerm {
+                                count: 1,
+                                sides: 6,
+                                per_die_modifier: 0,
+                            }],
+                            flat_modifier: 0,
+                        },
+                        application: ApplicationSpec::default(),
+                        save: DamageSaveSpec::default(),
+                        ..Default::default()
+                    },
+                    DamagePart {
+                        id: "a".to_string(),
+                        damage_type: DamageType::Cold,
+                        base: DicePool {
+                            terms: vec![DiceTerm {
+                                count: 1,
+                                sides: 4,
+                                per_die_modifier: 0,
+                            }],
+                            flat_modifier: 0,
+                        },
+                        application: ApplicationSpec::default(),
+                        save: DamageSaveSpec::default(),
+                        ..Default::default()
+                    },
+                ]),
+                dm_guidance: None,
+                notes: None,
+            };
+
+            spec.normalize();
+
+            let parts = spec.parts.as_ref().unwrap();
+            if should_sort {
+                assert_eq!(parts[0].id, "a", "Mode {:?} should sort parts", mode);
+                assert_eq!(parts[1].id, "z", "Mode {:?} should sort parts", mode);
+            } else {
+                assert_eq!(parts[0].id, "z", "Mode {:?} should preserve order", mode);
+                assert_eq!(parts[1].id, "a", "Mode {:?} should preserve order", mode);
+            }
+        }
+    }
+
+    #[test]
+    fn test_sequence_different_order_different_serialization() {
+        // Two specs with same parts but different order should serialize differently
+        let mut spec1 = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sequence,
+            parts: Some(vec![
+                DamagePart {
+                    id: "first".to_string(),
+                    damage_type: DamageType::Fire,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "second".to_string(),
+                    damage_type: DamageType::Cold,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 4,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+            ]),
+            dm_guidance: None,
+            notes: None,
+        };
+
+        let mut spec2 = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sequence,
+            parts: Some(vec![
+                DamagePart {
+                    id: "second".to_string(), // Swapped order
+                    damage_type: DamageType::Cold,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 4,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "first".to_string(), // Swapped order
+                    damage_type: DamageType::Fire,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+            ]),
+            dm_guidance: None,
+            notes: None,
+        };
+
+        spec1.normalize();
+        spec2.normalize();
+
+        let json1 = serde_json::to_string(&spec1).unwrap();
+        let json2 = serde_json::to_string(&spec2).unwrap();
+
+        // Different order should result in different serialization
+        assert_ne!(
+            json1, json2,
+            "Sequence mode should preserve order differences"
+        );
     }
 }

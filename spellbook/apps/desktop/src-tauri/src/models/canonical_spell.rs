@@ -58,7 +58,7 @@ impl SpellCastingTime {
         if self.unit.is_empty() {
             self.unit = "Segment".to_string();
         }
-        self.text = normalize_string(&self.text, NormalizationMode::Textual);
+        self.text = normalize_string(&self.text, NormalizationMode::Structured);
         self.unit = match_schema_case(&self.unit);
         self.base_value = clamp_precision(self.base_value);
         self.per_level = clamp_precision(self.per_level);
@@ -121,6 +121,7 @@ pub struct CanonicalSpell {
     pub descriptors: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sphere: Option<String>,
+    #[serde(default)]
     pub class_list: Vec<String>,
     pub level: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -146,6 +147,7 @@ pub struct CanonicalSpell {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reversible: Option<i64>, // 0 or 1
     pub description: String,
+    #[serde(default)]
     pub tags: Vec<String>,
 
     // Metadata - Skipped when hashing to canonical JSON, but kept for database/export
@@ -351,8 +353,6 @@ impl CanonicalSpell {
             for m in materials.iter_mut() {
                 m.normalize();
             }
-            // Sort lexicographical by name to ensure stable hash
-            materials.sort_by(|a, b| a.name.cmp(&b.name));
         }
 
         if let Some(range) = &mut self.range {
@@ -474,6 +474,8 @@ fn match_schema_case(s: &str) -> String {
         "hour" | "hours" => "Hour".to_string(),
         "minute" | "minutes" => "Minutes".to_string(),
         "action" | "actions" => "Actions".to_string(),
+        "bonus action" | "bonus actions" => "Bonus Action".to_string(),
+        "reaction" | "reactions" => "Reaction".to_string(),
         "instant" | "instantaneous" => "Instantaneous".to_string(),
         "special" => "Special".to_string(),
         "foot radius" => "Foot Radius".to_string(),
@@ -660,6 +662,97 @@ mod tests {
     use super::*;
     use crate::models::duration_spec::{DurationKind, DurationSpec, DurationUnit};
     use crate::models::scalar::ScalarMode;
+
+    #[test]
+    fn test_regression_deserialization_defaults() {
+        // Fix: Missing tags/class_list should default to empty, not error
+        let json = r#"{
+            "name": "Test",
+            "level": 1,
+            "tradition": "ARCANE",
+            "description": "Desc",
+            "schema_version": 1,
+            "is_quest_spell": 0,
+            "is_cantrip": 0
+        }"#;
+
+        let spell: CanonicalSpell =
+            serde_json::from_str(json).expect("Should deserialize with defaults");
+        assert!(
+            spell.class_list.is_empty(),
+            "class_list should default to empty"
+        );
+        assert!(spell.tags.is_empty(), "tags should default to empty");
+    }
+
+    #[test]
+    fn test_regression_material_component_order() {
+        // Fix: Material components must NOT be sorted
+        let mut spell = CanonicalSpell::new("Order Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.material_components = Some(vec![
+            MaterialComponentSpec {
+                name: "Zebra".into(),
+                ..Default::default()
+            },
+            MaterialComponentSpec {
+                name: "Apple".into(),
+                ..Default::default()
+            },
+        ]);
+        spell.school = Some("Abjuration".into()); // Required for validation
+
+        // Normalize
+        spell.normalize();
+
+        // Assert order preserved
+        let mats = spell.material_components.as_ref().unwrap();
+        assert_eq!(mats[0].name, "Zebra");
+        assert_eq!(mats[1].name, "Apple");
+    }
+
+    #[test]
+    fn test_regression_casting_time_units() {
+        // Fix: Bonus Action and Reaction must be accepted andNormalized
+        let units = vec!["bonus action", "reaction", "Bonus Actions"];
+        let expected = vec!["Bonus Action", "Reaction", "Bonus Action"];
+
+        for (u, exp) in units.iter().zip(expected.iter()) {
+            let normalized = match_schema_case(u);
+            assert_eq!(&normalized, exp, "Failed to normalize {}", u);
+        }
+    }
+
+    #[test]
+    fn test_regression_mechanical_fields_in_hash() {
+        // Fix: magic_resistance and experience_cost must be included in hash
+        let mut s1 = CanonicalSpell::new("Mech Test".into(), 1, "ARCANE".into(), "Desc".into());
+        s1.school = Some("Abjuration".into());
+
+        let mut s2 = s1.clone();
+        s2.magic_resistance = Some(crate::models::MagicResistanceSpec {
+            kind: crate::models::magic_resistance::MagicResistanceKind::Normal,
+            ..Default::default()
+        });
+
+        assert_ne!(
+            s1.compute_hash().unwrap(),
+            s2.compute_hash().unwrap(),
+            "Magic Resistance should affect hash"
+        );
+
+        let mut s3 = s1.clone();
+        s3.experience_cost = Some(crate::models::ExperienceComponentSpec {
+            kind: crate::models::experience::ExperienceKind::Fixed,
+            amount_xp: Some(100),
+            ..Default::default()
+        });
+
+        assert_ne!(
+            s1.compute_hash().unwrap(),
+            s3.compute_hash().unwrap(),
+            "Experience Cost should affect hash"
+        );
+    }
 
     #[test]
     fn test_identical_content_produces_identical_hash() {

@@ -2,6 +2,17 @@
 
 Given inputs (at minimum: `caster_level`, `spell_level`, any choices, and tick counts if driven externally):
 
+### Combine Mode Semantics
+
+The `combine_mode` determines how multiple damage parts are combined:
+-   **`sum`**: All parts are summed (order-independent)
+-   **`max`**: The maximum damage from any part is used (order-independent)
+-   **`choose_one`**: Player/DM chooses one part (order-independent)
+-   **`sequence`**: Parts execute in array order (order-dependent)
+
+For `sequence` mode, the order of parts in the `parts` array is semantically meaningful and must be preserved during normalization.
+
+
 For each `DamagePart`:
 
 1.  Start with `DicePool base`.

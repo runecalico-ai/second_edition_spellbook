@@ -42,7 +42,8 @@ The backend MUST support high-fidelity modeling of advanced spell attributes inc
 #### Scenario: Experience Cost Modeling
 - GIVEN a spell with an experience cost (e.g., *Restoration*)
 - WHEN converted to `CanonicalSpell`
-- THEN the `components.experience` field MUST follow the `ExperienceComponentSpec`
+- THEN the `components` structure MUST contain the `experience` boolean flag set to true
+- AND the `experience_cost` field MUST follow the `ExperienceComponentSpec`
 - AND correctly identify the `payer`, `amount_xp` (if fixed), or `formula`.
 
 #### Scenario: Magic Resistance Normalization
@@ -55,7 +56,8 @@ The backend MUST support high-fidelity modeling of advanced spell attributes inc
 - GIVEN a spell requiring multiple saves (e.g. *Prismatic Spray* sub-effects)
 - WHEN converted to `CanonicalSpell`
 - THEN the `saving_throw` field MUST follow `SavingThrowSpec`
-- AND correctly sequence `multiple` saves if required.
+- AND correctly sequence `multiple` saves if required
+- AND the order of the `multiple` saves MUST be preserved (NOT sorted).
 
 #### Scenario: Valued Material Component Modeling
 - GIVEN a spell with a valued material (e.g. "diamond dust worth 100 gp")

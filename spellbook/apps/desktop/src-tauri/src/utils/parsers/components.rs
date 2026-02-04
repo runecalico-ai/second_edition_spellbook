@@ -97,7 +97,7 @@ impl ComponentsParser {
         let mut s = false;
         let mut m = false;
 
-        let lower = input.to_lowercase();
+        let lower = input.to_lowercase().replace("divine focus", "divine-focus");
         let parts: Vec<&str> = lower
             .split(|c: char| c == ',' || c == ';' || c == '+' || c.is_whitespace())
             .collect();
@@ -364,5 +364,29 @@ mod tests {
         assert_eq!(mats.len(), 1);
         assert_eq!(mats[0].gp_value, Some(500.0));
         assert!(mats[0].name.contains("powdered gemstone"));
+    }
+
+    #[test]
+    fn test_parse_divine_focus_with_space() {
+        let parser = ComponentsParser::new();
+        // This is expected to fail currently
+        let res = parser.parse_components("V, S, Divine Focus");
+        assert!(res.verbal);
+        assert!(res.somatic);
+        assert!(
+            res.divine_focus,
+            "Failed to parse 'Divine Focus' with space"
+        );
+    }
+
+    #[test]
+    fn test_parse_casting_time_bonus_reaction() {
+        let parser = ComponentsParser::new();
+
+        let res = parser.parse_casting_time("1 bonus action");
+        assert_eq!(res.unit, "Bonus Action");
+
+        let res2 = parser.parse_casting_time("1 reaction");
+        assert_eq!(res2.unit, "Reaction");
     }
 }

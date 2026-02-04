@@ -131,11 +131,8 @@ impl SavingThrowSpec {
             for s in m.iter_mut() {
                 normalize_single_save(s);
             }
-            // Sort by type, vs, and modifier to ensure stable hash
-            m.sort_by(|a, b| {
-                format!("{:?}{:?}{:?}", a.save_type, a.save_vs, a.modifier)
-                    .cmp(&format!("{:?}{:?}{:?}", b.save_type, b.save_vs, b.modifier))
-            });
+            // Do NOT sort 'multiple'. The order is semantically significant (sequencing).
+            // See Contract Rule 4 (it is not listed as an unordered set).
         }
     }
 }

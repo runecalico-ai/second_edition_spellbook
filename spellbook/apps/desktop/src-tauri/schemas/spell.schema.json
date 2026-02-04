@@ -187,6 +187,8 @@
             "Hour",
             "Minutes",
             "Actions",
+            "Bonus Action",
+            "Reaction",
             "Special",
             "Instantaneous"
           ],

@@ -28,25 +28,30 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
         -   `id` (the hash itself)
         -   `artifacts` (provenance metadata)
         -   `created_at`, `updated_at` (temporal metadata)
-        -   `source_refs` (bibliographic provenance - order may vary without affecting spell content)
+        -   `source_refs`, `source_text` (provenance/original text - order/formatting may vary)
         -   `edition`, `author`, `version`, `license` (publishing metadata)
         -   `schema_version` (internal validation metadata)
     *   **Included in Hash (Content)**:
-        -   All game-mechanical fields: `name`, `tradition`, `school`, `sphere`, `level`, `range`, `components`, `material_components`, `casting_time`, `duration`, `area`, `damage`, `saving_throw`, `reversible`, `description`
+        -   All game-mechanical fields: `name`, `tradition`, `school`, `sphere`, `level`, `range`, `components`, `material_components`, `casting_time`, `duration`, `area`, `damage`, `saving_throw`, `magic_resistance`, `experience_cost`, `reversible`, `description`
         -   Taxonomic fields: `class_list`, `tags`, `subschools`, `descriptors`
         -   Special flags: `is_quest_spell`, `is_cantrip`
 3.  **Physical Serialization (JCS)**: Follow **RFC 8785**. This handles key sorting, whitespace removal, escaping, and number formatting deterministically.
 4.  **Array Normalization & Deduplication**: Unordered sets MUST be deduplicated and then sorted lexicographically.
     *   **Applied Fields**: `class_list`, `tags`, `subschools`, `descriptors`.
-5.  **Empty Collections**: Collections that default to `[]` in the schema MUST be included as literal `[]`. They MUST NOT be omitted or set to `null`.
-6.  **Null Values**: Fields with `null` values MUST be OMITTED from the serialization **UNLESS they are required by the schema**. If a field is required but `null`, it must be present as `"key": null` (though schema typically prohibits this for mechanical content).
-7.  **Enum Normalization**: All enum values MUST match the exact casing and spelling defined in `spell.schema.json`.
+5.  **Sequenced Arrays**: Arrays representing ordered execution blocks MUST preserve their original order. They MUST NOT be sorted.
+    *   **Applied Fields**: `saving_throw.multiple`, `damage.parts` (when `combine_mode = "sequence"`).
+    *   **Conditional Sorting for Damage Parts**: The `damage.parts` array sorting behavior depends on `damage.combine_mode`:
+        -   **`sum`, `max`, `choose_one`**: Parts are sorted lexicographically by `id` to ensure order-independent hashing.
+        -   **`sequence`**: Parts preserve their original array order, as sequence implies ordered execution. This ensures spells with sequential damage produce different hashes when part order differs.
+6.  **Empty Collections**: Collections that default to `[]` in the schema MUST be included as literal `[]`. They MUST NOT be omitted or set to `null`.
+7.  **Null Values**: Fields with `null` values MUST be OMITTED from the serialization **UNLESS they are required by the schema**. If a field is required but `null`, it must be present as `"key": null` (though schema typically prohibits this for mechanical content).
+8.  **Enum Normalization**: All enum values MUST match the exact casing and spelling defined in `spell.schema.json`.
 8.  **String Normalization**:
     *   **Unicode**: MUST be normalized to **NFC (Normalization Form C)**.
     *   **Whitespace Trimming**: Leading and trailing whitespace MUST be trimmed.
     *   **Structured Normalization**: For game-mechanical strings (e.g., `name`, `tradition`, `school`, `sphere`, `saving_throw`, `casting_time.text`, and `damage.text`), all internal whitespace AND newlines MUST be collapsed into a single space.
     *   **Textual Normalization**: For narrative strings (e.g., `description`, `material_components`, and all `.notes` or `.condition` fields in `area`, `range`, `duration`), multiple internal spaces MUST be collapsed, but distinct paragraphs (split by one or more empty lines) MUST be preserved as a single `\n` separator. Line endings MUST be normalized to `\n` (LFs).
-11. **Unit Preservation**: All game-mechanical units (e.g., `ft`, `yd`, `mi`, `inches`, `round`, `turn`) MUST be preserved exactly as presented in the record. No automatic conversion or scaling between units (e.g., converting "10 yards" to "30 feet") SHALL be performed during canonicalization. This preserves the semantic intent and mechanical distinction defined by the game system.
+11. **Unit Preservation**: All game-mechanical units (e.g., `ft`, `yd`, `mi`, `inches`, `round`, `turn`, `Bonus Action`, `Reaction`) MUST be preserved exactly as presented in the record. No automatic conversion or scaling between units (e.g., converting "10 yards" to "30 feet") SHALL be performed during canonicalization. This preserves the semantic intent and mechanical distinction defined by the game system.
 9.  **Decimal Precision**: Limit all `number` fields to a maximum of 6 decimal places. NaN/Infinity are prohibited.
 10. **Materialize Defaults**: Any mechanical field missing in the source but having a `default` in the current schema MUST be included using that default value.
 

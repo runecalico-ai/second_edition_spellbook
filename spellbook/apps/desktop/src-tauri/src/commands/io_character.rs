@@ -78,6 +78,7 @@ fn fetch_character_bundle(
                     s.material_components, s.casting_time, s.duration, s.area, s.saving_throw,
                     s.reversible, s.description, s.tags, s.source, s.edition, s.author,
                     s.license, s.is_quest_spell, s.is_cantrip, s.class_list,
+                    s.damage, s.magic_resistance,
                     ccs.list_type, ccs.notes
              FROM character_class_spell ccs
              JOIN spell s ON s.id = ccs.spell_id
@@ -108,10 +109,12 @@ fn fetch_character_bundle(
                 is_quest_spell: row.get(19)?,
                 is_cantrip: row.get(20)?,
                 class_list: row.get(21)?,
+                damage: row.get(22)?,
+                magic_resistance: row.get(23)?,
                 artifacts: None,
             };
-            let list_type: String = row.get(22)?;
-            let notes: Option<String> = row.get(23)?;
+            let list_type: String = row.get(24)?;
+            let notes: Option<String> = row.get(25)?;
 
             Ok(BundleClassSpell {
                 spell,
@@ -339,13 +342,15 @@ fn import_character_bundle_logic(
                 let (canonical, hash, json) = canonicalize_spell_detail(s.clone())?;
                 tx.execute(
                     "INSERT INTO spell (name, level, school, sphere, range, components, material_components,
-                                        casting_time, duration, area, saving_throw, reversible, description,
-                                        tags, source, edition, author, license, is_quest_spell, is_cantrip, class_list,
-                                        canonical_data, content_hash, schema_version)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                        casting_time, duration, area, saving_throw, damage, magic_resistance,
+                                        reversible, description, tags, source, edition, author, license,
+                                        is_quest_spell, is_cantrip, class_list, canonical_data, content_hash,
+                                        schema_version)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     params![
                         s.name, s.level, s.school, s.sphere, s.range, s.components, s.material_components,
-                        s.casting_time, s.duration, s.area, s.saving_throw, s.reversible, s.description,
+                        s.casting_time, s.duration, s.area, s.saving_throw, s.damage, s.magic_resistance,
+                        s.reversible, s.description,
                         s.tags, s.source, s.edition, s.author, s.license, s.is_quest_spell, s.is_cantrip, s.class_list,
                         json, hash, canonical.schema_version
                     ],

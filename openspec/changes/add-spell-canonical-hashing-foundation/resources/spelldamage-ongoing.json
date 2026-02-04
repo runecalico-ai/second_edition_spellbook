@@ -1,0 +1,46 @@
+{
+    "kind": "modeled",
+    "parts": [
+        {
+            "id": "initial",
+            "label": "Initial hit",
+            "damage_type": "acid",
+            "roll": {
+                "kind": "dice",
+                "dice": {
+                    "count": 2,
+                    "sides": 6,
+                    "modifier": 0
+                }
+            },
+            "application": {
+                "scope": "per_target",
+                "ticks": 1
+            },
+            "save_interaction": {
+                "kind": "none"
+            }
+        },
+        {
+            "id": "ongoing",
+            "label": "Burning",
+            "damage_type": "acid",
+            "roll": {
+                "kind": "dice",
+                "dice": {
+                    "count": 1,
+                    "sides": 6,
+                    "modifier": 0
+                }
+            },
+            "application": {
+                "scope": "per_round",
+                "ticks": 3
+            },
+            "save_interaction": {
+                "kind": "negates",
+                "notes": "On a successful save, ongoing damage does not apply."
+            }
+        }
+    ]
+}

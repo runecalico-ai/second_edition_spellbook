@@ -82,6 +82,7 @@
 - [x] **Test: Empty array inclusion**
   - GIVEN a spell with `tags = []`
   - THEN the canonical JSON MUST include `"tags": []`
+  - **IMPLEMENTED**: `test_empty_array_inclusion` in canonical_spell.rs:853-887
 
 - [x] **Test: Whitespace collapse (Short text)**
   - GIVEN a spell with `range = { "text": "10  yards  +  10  yards/level", "unit": "Yards" }`
@@ -173,30 +174,59 @@
   - THEN it MUST be `kind="permanent"`.
 
 ### Advanced Parsing
-- [ ] **Test: Parse Experience Cost (Fixed)**
+- [x] **Test: Parse Experience Cost (Fixed)**
   - GIVEN "XP Cost: 300"
   - WHEN parsed
   - THEN it MUST be `kind="fixed"` and `amount_xp=300`.
+  - **IMPLEMENTED**: `test_parse_experience_cost` in mechanics.rs:487-512
 
-- [ ] **Test: Parse Multi-Part Damage**
+- [x] **Test: Parse Multi-Part Damage**
   - GIVEN "1d6 fire + 1d6 cold"
   - WHEN parsed
   - THEN it MUST have two `DamagePart` objects with correct `damage_type`.
+  - **IMPLEMENTED**: `test_parse_multi_part_damage` in mechanics.rs:445-470
 
-- [ ] **Test: Parse Magic Resistance**
+- [x] **Test: Parse Magic Resistance**
   - GIVEN "Magic Resistance: 50%"
   - WHEN parsed
   - THEN it MUST be `kind="normal"` (or as per spec interaction).
+  - **IMPLEMENTED**: `test_parse_magic_resistance` in mechanics.rs:562-576
 
-- [ ] **Test: Parse Multiple Saving Throws**
+- [x] **Test: Parse Multiple Saving Throws**
   - GIVEN "Save vs Spell, then Save vs Poison"
   - WHEN parsed
   - THEN it MUST be `kind="multiple"` with correct `save_type` sequence.
+  - **IMPLEMENTED**: `test_parse_saving_throws` (multiple saves) in mechanics.rs:531-545
 
-- [ ] **Test: Parse Material Component (Valued)**
+- [x] **Test: Parse Material Component (Valued)**
   - GIVEN "100gp diamond dust"
   - WHEN parsed
   - THEN it MUST extract `gp_value=100` and `name="diamond dust"`.
+  - **IMPLEMENTED**: `test_parse_material_component_valued` in components.rs:269-284
+
+- [x] **Test: Parse Material Component (Consumed)**
+  - GIVEN "ruby (worth 1000 gp, consumed)"
+  - WHEN parsed
+  - THEN it MUST extract `gp_value=1000`, `is_consumed=true`.
+  - **IMPLEMENTED**: `test_parse_material_component_consumed` in components.rs:286-305
+
+- [x] **Test: Parse Material Component (Multiple)**
+  - GIVEN "bat guano, sulfur"
+  - WHEN parsed
+  - THEN it MUST return 2 `MaterialComponentSpec` objects.
+  - **IMPLEMENTED**: `test_parse_material_component_multiple` in components.rs:307-326
+
+- [x] **Test: Parse Material Component (Edge Cases)**
+  - GIVEN empty string or "None"
+  - WHEN parsed
+  - THEN it MUST return empty vector.
+  - **IMPLEMENTED**: `test_parse_material_component_edge_cases_empty` in components.rs:328-343
+
+- [x] **Test: Parse Material Component (Parentheses Handling)**
+  - GIVEN "powdered gemstone (ruby, sapphire, or emerald worth 500 gp)"
+  - WHEN parsed
+  - THEN it MUST correctly handle commas inside parentheses.
+  - **IMPLEMENTED**: `test_parse_material_component_parentheses_handling` in components.rs:345-356
 
 - [x] **Test: Parse Special Duration**
   - GIVEN a complex duration string "Special"

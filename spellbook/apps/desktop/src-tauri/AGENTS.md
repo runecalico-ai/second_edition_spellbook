@@ -120,6 +120,13 @@ impl TryFrom<SpellDetail> for CanonicalSpell {
 
 **CRITICAL**: Always use `CanonicalSpell::try_from` when ingesting data from the database or external sources to ensure it meets the latest schema requirements.
 
+### Spell Parsing Logic
+The application includes a robust parsing engine for converting legacy AD&D 2e string formats (e.g., "10 yards + 1 ft/level") into structured data models.
+
+- **Location**: `src/utils/parsers/`
+- **Architecture**: Domain-specific parsers (Range, Area, Duration, etc.) orchestrated by a `SpellParser` facade.
+- **Usage**: Use `SpellParser::new()` to access parsing methods. Avoid writing ad-hoc regexes in commands; use the centralized parsers.
+
 ## Database
 
 - **Engine**: SQLite with `rusqlite` and `r2d2_sqlite` pooling

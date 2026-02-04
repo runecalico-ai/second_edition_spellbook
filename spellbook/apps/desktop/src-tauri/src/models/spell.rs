@@ -21,7 +21,7 @@ pub struct SpellSummary {
     pub tags: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 #[serde(crate = "serde")]
 #[serde(rename_all = "camelCase")]
 pub struct SpellCreate {
@@ -41,6 +41,9 @@ pub struct SpellCreate {
     pub area: Option<String>,
     #[serde(alias = "saving_throw")]
     pub saving_throw: Option<String>,
+    pub damage: Option<String>,
+    #[serde(alias = "magic_resistance")]
+    pub magic_resistance: Option<String>,
     pub reversible: Option<i64>,
     pub description: String,
     pub tags: Option<String>,
@@ -54,7 +57,7 @@ pub struct SpellCreate {
     pub is_cantrip: i64,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 #[serde(crate = "serde")]
 #[serde(rename_all = "camelCase")]
 pub struct SpellUpdate {
@@ -75,6 +78,9 @@ pub struct SpellUpdate {
     pub area: Option<String>,
     #[serde(alias = "saving_throw")]
     pub saving_throw: Option<String>,
+    pub damage: Option<String>,
+    #[serde(alias = "magic_resistance")]
+    pub magic_resistance: Option<String>,
     pub reversible: Option<i64>,
     pub description: String,
     pub tags: Option<String>,
@@ -100,7 +106,7 @@ pub struct SpellArtifact {
     pub imported_at: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 #[serde(crate = "serde")]
 #[serde(rename_all = "camelCase")]
 pub struct SpellDetail {
@@ -121,6 +127,9 @@ pub struct SpellDetail {
     pub area: Option<String>,
     #[serde(alias = "saving_throw")]
     pub saving_throw: Option<String>,
+    pub damage: Option<String>,
+    #[serde(alias = "magic_resistance")]
+    pub magic_resistance: Option<String>,
     pub reversible: Option<i64>,
     pub description: String,
     pub tags: Option<String>,

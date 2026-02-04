@@ -74,7 +74,8 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
         .query_row(
             "SELECT id, name, school, sphere, class_list, level, range, components,
                 material_components, casting_time, duration, area, saving_throw, reversible,
-                description, tags, source, edition, author, license, is_quest_spell, is_cantrip
+                description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
+                damage, magic_resistance
          FROM spell WHERE id = ?",
             [id],
             |row| {
@@ -101,6 +102,8 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
                     license: row.get(19)?,
                     is_quest_spell: row.get(20)?,
                     is_cantrip: row.get(21)?,
+                    damage: row.get(22)?,
+                    magic_resistance: row.get(23)?,
                     artifacts: None,
                 })
             },
@@ -208,6 +211,20 @@ fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, Str
             "saving_throw".into(),
             old.saving_throw.clone().unwrap_or_default(),
             new.saving_throw.clone().unwrap_or_default(),
+        ));
+    }
+    if old.damage != new.damage {
+        changes.push((
+            "damage".into(),
+            old.damage.clone().unwrap_or_default(),
+            new.damage.clone().unwrap_or_default(),
+        ));
+    }
+    if old.magic_resistance != new.magic_resistance {
+        changes.push((
+            "magic_resistance".into(),
+            old.magic_resistance.clone().unwrap_or_default(),
+            new.magic_resistance.clone().unwrap_or_default(),
         ));
     }
     match (old.reversible, new.reversible) {
@@ -352,6 +369,8 @@ pub fn apply_spell_update_with_conn(
         duration: spell.duration.clone(),
         area: spell.area.clone(),
         saving_throw: spell.saving_throw.clone(),
+        damage: spell.damage.clone(),
+        magic_resistance: spell.magic_resistance.clone(),
         reversible: spell.reversible,
         description: spell.description.clone(),
         tags: spell.tags.clone(),
@@ -368,9 +387,10 @@ pub fn apply_spell_update_with_conn(
     conn.execute(
         "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
          components=?, material_components=?, casting_time=?, duration=?, area=?,
-         saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?,
-         author=?, license=?, is_quest_spell=?, is_cantrip=?, updated_at=?,
-         canonical_data=?, content_hash=?, schema_version=? WHERE id=?",
+         saving_throw=?, damage=?, magic_resistance=?, reversible=?, description=?,
+         tags=?, source=?, edition=?, author=?, license=?, is_quest_spell=?,
+         is_cantrip=?, updated_at=?, canonical_data=?, content_hash=?,
+         schema_version=? WHERE id=?",
         params![
             spell.name,
             spell.school,
@@ -384,6 +404,8 @@ pub fn apply_spell_update_with_conn(
             spell.duration,
             spell.area,
             spell.saving_throw,
+            spell.damage,
+            spell.magic_resistance,
             spell.reversible.unwrap_or(0),
             spell.description,
             spell.tags,
@@ -487,6 +509,8 @@ pub async fn create_spell(
             duration: spell.duration.clone(),
             area: spell.area.clone(),
             saving_throw: spell.saving_throw.clone(),
+            damage: spell.damage.clone(),
+            magic_resistance: spell.magic_resistance.clone(),
             reversible: spell.reversible,
             description: spell.description.clone(),
             tags: spell.tags.clone(),
@@ -503,10 +527,11 @@ pub async fn create_spell(
         let conn = pool.get()?;
         conn.execute(
             "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
-             material_components, casting_time, duration, area, saving_throw, reversible,
-             description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
-             canonical_data, content_hash, schema_version)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             material_components, casting_time, duration, area, saving_throw, damage,
+             magic_resistance, reversible, description, tags, source, edition, author,
+             license, is_quest_spell, is_cantrip, canonical_data, content_hash,
+             schema_version)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 spell.name,
                 spell.school,
@@ -520,6 +545,8 @@ pub async fn create_spell(
                 spell.duration,
                 spell.area,
                 spell.saving_throw,
+                spell.damage,
+                spell.magic_resistance,
                 spell.reversible.unwrap_or(0),
                 spell.description,
                 spell.tags,
@@ -595,9 +622,10 @@ pub async fn upsert_spell(
             conn.execute(
                 "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
                  components=?, material_components=?, casting_time=?, duration=?, area=?,
-                 saving_throw=?, reversible=?, description=?, tags=?, source=?, edition=?,
-                  author=?, license=?, is_quest_spell=?, is_cantrip=?, updated_at=?,
-                 canonical_data=?, content_hash=?, schema_version=? WHERE id=?",
+                 saving_throw=?, damage=?, magic_resistance=?, reversible=?, description=?,
+                 tags=?, source=?, edition=?, author=?, license=?, is_quest_spell=?,
+                 is_cantrip=?, updated_at=?, canonical_data=?, content_hash=?,
+                 schema_version=? WHERE id=?",
                 params![
                     spell.name,
                     spell.school,
@@ -611,6 +639,8 @@ pub async fn upsert_spell(
                     spell.duration,
                     spell.area,
                     spell.saving_throw,
+                    spell.damage,
+                    spell.magic_resistance,
                     spell.reversible.unwrap_or(0),
                     spell.description,
                     spell.tags,
@@ -631,10 +661,11 @@ pub async fn upsert_spell(
         } else {
             conn.execute(
                 "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
-                 material_components, casting_time, duration, area, saving_throw, reversible,
-                  description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
-                 canonical_data, content_hash, schema_version)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 material_components, casting_time, duration, area, saving_throw, damage,
+                 magic_resistance, reversible, description, tags, source, edition, author,
+                 license, is_quest_spell, is_cantrip, canonical_data, content_hash,
+                 schema_version)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 params![
                     spell.name,
                     spell.school,
@@ -648,6 +679,8 @@ pub async fn upsert_spell(
                     spell.duration,
                     spell.area,
                     spell.saving_throw,
+                    spell.damage,
+                    spell.magic_resistance,
                     spell.reversible.unwrap_or(0),
                     spell.description,
                     spell.tags,

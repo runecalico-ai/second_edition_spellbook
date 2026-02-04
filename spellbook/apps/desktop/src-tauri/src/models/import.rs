@@ -25,6 +25,8 @@ pub struct ImportSpell {
     pub area: Option<String>,
     #[serde(alias = "saving_throw")]
     pub saving_throw: Option<String>,
+    pub damage: Option<String>,
+    pub magic_resistance: Option<String>,
     pub reversible: Option<i64>,
     pub description: String,
     pub tags: Option<String>,
@@ -143,6 +145,8 @@ pub struct PreviewSpell {
     pub area: Option<String>,
     #[serde(alias = "saving_throw")]
     pub saving_throw: Option<String>,
+    pub damage: Option<String>,
+    pub magic_resistance: Option<String>,
     pub reversible: Option<i64>,
     pub description: String,
     pub tags: Option<String>,

@@ -100,7 +100,14 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 12", [])?;
     }
 
-    eprintln!("DB VERSION END: 12");
+    if version < 13 {
+        eprintln!("Applying migration 0013...");
+        let sql = include_str!("../../../../../db/migrations/0013_add_mechanics_columns.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 13", [])?;
+    }
+
+    eprintln!("DB VERSION END: 13");
 
     Ok(())
 }

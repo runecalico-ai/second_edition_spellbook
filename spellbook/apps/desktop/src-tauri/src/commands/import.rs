@@ -365,6 +365,8 @@ pub async fn import_files(
                         duration: spell.duration.clone(),
                         area: spell.area.clone(),
                         saving_throw: spell.saving_throw.clone(),
+                        damage: spell.damage.clone(),
+                        magic_resistance: spell.magic_resistance.clone(),
                         reversible: spell.reversible,
                         description: spell.description.clone(),
                         tags: spell.tags.clone(),
@@ -415,13 +417,14 @@ pub async fn import_files(
                         conn.execute(
                             "UPDATE spell SET name=?, level=?, source=?, school=?, sphere=?, class_list=?, range=?, components=?,
                             material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
-                            reversible=?, description=?, tags=?, edition=?, author=?, license=?,
+                            damage=?, magic_resistance=?, reversible=?, description=?, tags=?, edition=?, author=?, license=?,
                             is_quest_spell=?, is_cantrip=?, updated_at=?,
                             canonical_data=?, content_hash=?, schema_version=? WHERE id=?",
                             params![
                                 spell.name, spell.level, spell.source,
                                 spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
                                 spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                spell.damage, spell.magic_resistance,
                                 spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
                                 spell.is_quest_spell, spell.is_cantrip, Utc::now().to_rfc3339(),
                                 json, hash, canonical.schema_version, id
@@ -431,13 +434,16 @@ pub async fn import_files(
                     } else {
                         conn.execute(
                             "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
-                            material_components, casting_time, duration, area, saving_throw, reversible,
-                            description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
-                            canonical_data, content_hash, schema_version)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            material_components, casting_time, duration, area, saving_throw, damage,
+                            magic_resistance, reversible, description, tags, source, edition, author,
+                            license, is_quest_spell, is_cantrip, canonical_data, content_hash,
+                            schema_version)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             params![
                                 spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0),
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                spell.damage, spell.magic_resistance,
+                                spell.reversible.unwrap_or(0),
                                 spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell, spell.is_cantrip,
                                 json, hash, canonical.schema_version
                             ],
@@ -457,7 +463,8 @@ pub async fn import_files(
                         area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, tags: spell.tags.clone(),
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
                         is_cantrip: spell.is_cantrip,
-                        artifacts: None
+                        artifacts: None,
+                        ..Default::default()
                     });
 
                      let source_path = spell.source_file.clone();
@@ -533,6 +540,8 @@ pub async fn import_files(
                         duration: spell.duration.clone(),
                         area: spell.area.clone(),
                         saving_throw: spell.saving_throw.clone(),
+                        damage: spell.damage.clone(),
+                        magic_resistance: spell.magic_resistance.clone(),
                         reversible: spell.reversible,
                         description: spell.description.clone(),
                         tags: spell.tags.clone(),
@@ -577,13 +586,14 @@ pub async fn import_files(
                          conn.execute(
                              "UPDATE spell SET name=?, level=?, source=?, school=?, sphere=?, class_list=?, range=?, components=?,
                              material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
-                             reversible=?, description=?, tags=?, edition=?, author=?, license=?,
+                             damage=?, magic_resistance=?, reversible=?, description=?, tags=?, edition=?, author=?, license=?,
                              is_quest_spell=?, is_cantrip=?, updated_at=?,
                              canonical_data=?, content_hash=?, schema_version=? WHERE id=?",
                              params![
                                  spell.name, spell.level, spell.source,
                                  spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
                                  spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                 spell.damage, spell.magic_resistance,
                                  spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
                                  spell.is_quest_spell, spell.is_cantrip, Utc::now().to_rfc3339(),
                                  json, hash, canonical.schema_version, id
@@ -593,13 +603,16 @@ pub async fn import_files(
                     } else {
                         conn.execute(
                             "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
-                            material_components, casting_time, duration, area, saving_throw, reversible,
-                            description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
-                            canonical_data, content_hash, schema_version)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            material_components, casting_time, duration, area, saving_throw, damage,
+                            magic_resistance, reversible, description, tags, source, edition, author,
+                            license, is_quest_spell, is_cantrip, canonical_data, content_hash,
+                            schema_version)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             params![
                                 spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw, spell.reversible.unwrap_or(0),
+                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                spell.damage, spell.magic_resistance,
+                                spell.reversible.unwrap_or(0),
                                 spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell, spell.is_cantrip,
                                 json, hash, canonical.schema_version
                             ],
@@ -619,7 +632,8 @@ pub async fn import_files(
                         area: spell.area.clone(), saving_throw: spell.saving_throw.clone(), reversible: spell.reversible, tags: spell.tags.clone(),
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
                         is_cantrip: spell.is_cantrip,
-                        artifacts: None
+                        artifacts: None,
+                        ..Default::default()
                     });
 
                      let source_path = spell.source_file.clone();
@@ -803,6 +817,8 @@ pub async fn reparse_artifact(
             duration: parsed_spell.duration.clone(),
             area: parsed_spell.area.clone(),
             saving_throw: parsed_spell.saving_throw.clone(),
+            damage: parsed_spell.damage.clone(),
+            magic_resistance: parsed_spell.magic_resistance.clone(),
             reversible: parsed_spell.reversible,
             description: parsed_spell.description.clone(),
             tags: parsed_spell.tags.clone(),

@@ -41,6 +41,18 @@ pub struct SpellCastingTime {
     pub level_divisor: f64,
 }
 
+impl Default for SpellCastingTime {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            unit: String::new(),
+            base_value: 1.0,
+            per_level: 0.0,
+            level_divisor: 1.0,
+        }
+    }
+}
+
 impl SpellCastingTime {
     pub fn normalize(&mut self) {
         self.text = normalize_string(&self.text, NormalizationMode::Structured);
@@ -522,17 +534,44 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
         spell.casting_time = detail.casting_time.map(|s| parser.parse_casting_time(&s));
         spell.duration = detail.duration.map(|s| parser.parse_duration(&s));
         spell.area = detail.area.and_then(|s| parser.parse_area(&s));
-        spell.damage = None; // Legacy schema does not have a dedicated damage field
+
+        // Damage parsing
+        if let Some(dmg_str) = &detail.damage {
+            spell.damage = Some(parser.parse_damage(dmg_str));
+        } else {
+            // Fallback: heuristic? (None for now unless we search description)
+            spell.damage = None;
+        }
 
         // Components parsing
         if let Some(comp_str) = &detail.components {
             spell.components = Some(parser.parse_components(comp_str));
+            // Also parse experience cost from components string
+            let xp_spec = parser.parse_experience_cost(comp_str);
+            if xp_spec.kind != crate::models::experience::ExperienceKind::None {
+                spell.experience_cost = Some(xp_spec);
+            }
         }
 
         spell.material_components = detail
             .material_components
             .map(|s| parser.parse_material_components(&s));
-        spell.saving_throw = detail.saving_throw.map(|s| parser.parse_saving_throw(&s));
+
+        // Saving Throw and Magic Resistance
+        if let Some(st_str) = &detail.saving_throw {
+            spell.saving_throw = Some(parser.parse_saving_throw(st_str));
+        }
+
+        if let Some(mr_str) = &detail.magic_resistance {
+            spell.magic_resistance = Some(parser.parse_magic_resistance(mr_str));
+        } else if let Some(st_str) = &detail.saving_throw {
+            // Heuristic fallback for MR
+            let mr_spec = parser.parse_magic_resistance(st_str);
+            if mr_spec.kind != crate::models::MagicResistanceKind::Unknown {
+                spell.magic_resistance = Some(mr_spec);
+            }
+        }
+
         spell.reversible = Some(detail.reversible.unwrap_or(0));
 
         // Metadata
@@ -811,6 +850,43 @@ mod tests {
     }
 
     #[test]
+    fn test_empty_array_inclusion() {
+        let mut spell = CanonicalSpell::new(
+            "Empty Array Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Test empty arrays in canonical JSON".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        // Explicitly set tags to empty array
+        spell.tags = vec![];
+        spell.class_list = vec![]; // Also test empty class_list
+        spell.subschools = vec![];
+        spell.descriptors = vec![];
+
+        let json = spell.to_canonical_json().unwrap();
+
+        // GIVEN a spell with tags = []
+        // THEN the canonical JSON MUST include "tags": []
+        assert!(
+            json.contains("\"tags\":[]"),
+            "Empty tags array should be included in canonical JSON"
+        );
+        assert!(
+            json.contains("\"class_list\":[]"),
+            "Empty class_list array should be included"
+        );
+        assert!(
+            json.contains("\"subschools\":[]"),
+            "Empty subschools array should be included"
+        );
+        assert!(
+            json.contains("\"descriptors\":[]"),
+            "Empty descriptors array should be included"
+        );
+    }
+
+    #[test]
     fn test_from_spell_detail_inference() {
         use crate::models::spell::SpellDetail;
 
@@ -839,6 +915,7 @@ mod tests {
             is_quest_spell: 0,
             is_cantrip: 0,
             artifacts: None,
+            ..Default::default()
         };
 
         let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
@@ -1250,6 +1327,7 @@ mod tests {
             is_quest_spell: 0,
             is_cantrip: 0,
             artifacts: None,
+            ..Default::default()
         };
 
         let canon = CanonicalSpell::try_from(detail).expect("Should convert successfully");
@@ -1303,6 +1381,7 @@ mod tests {
             is_quest_spell: 0,
             is_cantrip: 0,
             artifacts: None,
+            ..Default::default()
         };
 
         let result = CanonicalSpell::try_from(detail);
@@ -1535,6 +1614,7 @@ mod tests {
             is_quest_spell: 0,
             is_cantrip: 0,
             artifacts: None,
+            ..Default::default()
         };
 
         let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
@@ -1665,6 +1745,7 @@ mod tests {
             is_cantrip: 0,
             license: None,
             artifacts: None,
+            ..Default::default()
         };
 
         let spell = CanonicalSpell::try_from(detail).unwrap();
@@ -1729,6 +1810,7 @@ mod tests {
             is_cantrip: 0,
             license: None,
             artifacts: None,
+            ..Default::default()
         };
 
         // 1. Conversion (Parser Logic)

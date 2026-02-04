@@ -6,11 +6,11 @@
 - [x] Integrate `AreaSpec` into schema (`spell.schema.json`).
 - [x] Integrate `RangeSpec` into schema (`spell.schema.json`).
 - [x] Integrate `DurationSpec` into schema (`spell.schema.json`).
-- [ ] Integrate `ExperienceComponentSpec` into schema.
-- [ ] Integrate `SpellDamageSpec` into schema.
-- [ ] Integrate `MagicResistanceSpec` into schema.
-- [ ] Integrate `SavingThrowSpec` into schema.
-- [ ] Integrate `MaterialComponentSpec` into schema.
+- [x] Integrate `ExperienceComponentSpec` into schema.
+- [x] Integrate `SpellDamageSpec` into schema.
+- [x] Integrate `MagicResistanceSpec` into schema.
+- [x] Integrate `SavingThrowSpec` into schema.
+- [x] Integrate `MaterialComponentSpec` into schema.
 
 ## Backend Implementation
 ### Schema Validation
@@ -48,13 +48,17 @@
     - [x] Extract scalar values with unit normalization.
     - [x] Support structure scaling (fixed, per_level).
 - [x] Implement DurationSpec validation tests.
-- [ ] Implement Advanced Specs Parsing:
-    - [ ] `ExperienceComponentSpec`: Parse XP costs and mechanics.
-    - [ ] `SpellDamageSpec`: Parse multi-part damage with scaling/caps.
-    - [ ] `MagicResistanceSpec`: Parse SR/MR interaction details.
-    - [ ] `SavingThrowSpec`: Parse structured saving throw conditions.
-    - [ ] `MaterialComponentSpec`: Parse structured material costs.
-- [ ] Implement Advanced Spec validation tests.
+- [x] Implement Advanced Specs Parsing:
+    - [x] `ExperienceComponentSpec`: Parse XP costs and mechanics.
+    - [x] `SpellDamageSpec`: Parse multi-part damage with scaling/caps.
+    - [x] `MagicResistanceSpec`: Parse SR/MR interaction details.
+    - [x] `SavingThrowSpec`: Parse structured saving throw conditions.
+    - [x] `MaterialComponentSpec`: Parse structured material costs.
+- [x] Implement Advanced Spec validation tests.
+    - [x] Basic tests exist in mechanics.rs and components.rs
+    - [x] Comprehensive material component tests added
+    - [x] Multi-part damage parsing test added
+    - [x] Saving throw and magic resistance tests exist
 
 ### Hash Computation
 - [x] Implement SHA-256 hashing:

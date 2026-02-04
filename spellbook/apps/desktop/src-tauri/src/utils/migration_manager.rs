@@ -49,7 +49,7 @@ pub fn run_hash_backfill(
             id, name, level, school, sphere, class_list, range, components,
             material_components, casting_time, duration, area, saving_throw,
             reversible, description, tags, source, edition, author, license,
-            is_quest_spell, is_cantrip
+            is_quest_spell, is_cantrip, damage, magic_resistance
         FROM spell WHERE content_hash IS NULL
     "#,
     )?;
@@ -79,6 +79,8 @@ pub fn run_hash_backfill(
                 license: row.get(19)?,
                 is_quest_spell: row.get(20)?,
                 is_cantrip: row.get(21)?,
+                damage: row.get(22)?,
+                magic_resistance: row.get(23)?,
                 artifacts: None,
             })
         })?
@@ -247,7 +249,7 @@ pub fn recompute_all_hashes(
             id, name, level, school, sphere, class_list, range, components,
             material_components, casting_time, duration, area, saving_throw,
             reversible, description, tags, source, edition, author, license,
-            is_quest_spell, is_cantrip, content_hash
+            is_quest_spell, is_cantrip, content_hash, damage, magic_resistance
         FROM spell
     "#,
     )?;
@@ -277,6 +279,8 @@ pub fn recompute_all_hashes(
                 license: row.get(19)?,
                 is_quest_spell: row.get(20)?,
                 is_cantrip: row.get(21)?,
+                damage: row.get(23)?,
+                magic_resistance: row.get(24)?,
                 artifacts: None,
             };
             let hash: Option<String> = row.get(22)?;
@@ -537,7 +541,9 @@ mod tests {
                 is_cantrip INTEGER DEFAULT 0,
                 content_hash TEXT,
                 canonical_data TEXT,
-                schema_version INTEGER
+                schema_version INTEGER,
+                damage TEXT,
+                magic_resistance TEXT
             );
             "#,
         )?;
@@ -659,7 +665,9 @@ mod tests {
                 is_cantrip INTEGER DEFAULT 0,
                 content_hash TEXT,
                 canonical_data TEXT,
-                schema_version INTEGER
+                schema_version INTEGER,
+                damage TEXT,
+                magic_resistance TEXT
             );
             "#,
         )?;

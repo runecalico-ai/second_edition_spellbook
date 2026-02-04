@@ -55,8 +55,11 @@ impl Default for SpellCastingTime {
 
 impl SpellCastingTime {
     pub fn normalize(&mut self) {
-        self.text = normalize_string(&self.text, NormalizationMode::Structured);
-        self.unit = normalize_casting_unit(&self.unit);
+        if self.unit.is_empty() {
+            self.unit = "Segment".to_string();
+        }
+        self.text = normalize_string(&self.text, NormalizationMode::Textual);
+        self.unit = match_schema_case(&self.unit);
         self.base_value = clamp_precision(self.base_value);
         self.per_level = clamp_precision(self.per_level);
         self.level_divisor = clamp_precision(self.level_divisor);
@@ -229,24 +232,58 @@ impl CanonicalSpell {
 
         let mut value = serde_json::to_value(&clone).map_err(|err| err.to_string())?;
 
-        // Metadata Exclusion: id, source_refs, edition, author, version, license, and schema_version
-        // are strictly excluded from the canonical JSON used for hashing to ensure hash stability.
-        if let Some(obj) = value.as_object_mut() {
-            obj.remove("id");
-            obj.remove("source_refs");
-            obj.remove("edition");
-            obj.remove("author");
-            obj.remove("version");
-            obj.remove("license");
-            obj.remove("schema_version");
-            obj.remove("created_at");
-            obj.remove("updated_at");
-            obj.remove("artifacts");
-        }
+        // Recursive Metadata Exclusion: Excludes strictly non-content fields like source_refs,
+        // artifacts, edition, etc., while preserving nested mechanical IDs like those in
+        // DamagePart or SingleSave.
+        prune_metadata_recursive(&mut value, true);
 
         to_jcs_string(&value).map_err(|err| err.to_string())
     }
+}
 
+/// Recursively removes metadata fields from a JSON value.
+/// `is_root` specifies if we are at the top-level of the spell object.
+fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
+    match value {
+        serde_json::Value::Object(obj) => {
+            // Fields to prune ONLY at root
+            if is_root {
+                obj.remove("id");
+                obj.remove("source_refs");
+                obj.remove("version");
+                obj.remove("edition");
+                obj.remove("author");
+                obj.remove("license");
+                obj.remove("schema_version");
+                obj.remove("created_at");
+                obj.remove("updated_at");
+                obj.remove("artifacts");
+            }
+
+            // Fields that should never be in the hash regardless of depth (if they are pure metadata)
+            // Note: We preserve "id" in nested objects because they are used for mechanics (e.g. DamagePart).
+            // but "artifacts", "source_refs", or "source_text" should probably always be removed if they ever appear nested.
+            obj.remove("artifacts");
+            obj.remove("source_refs");
+            obj.remove("source_text");
+
+            // Recurse into remaining fields
+            for (_key, val) in obj.iter_mut() {
+                // If we encounter a nested object that is NOT a mechanical spec known to have mechanical IDs,
+                // we might want to be careful. But for now, we only prune the root ID.
+                prune_metadata_recursive(val, false);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for val in arr.iter_mut() {
+                prune_metadata_recursive(val, false);
+            }
+        }
+        _ => {}
+    }
+}
+
+impl CanonicalSpell {
     pub fn compute_hash(&self) -> Result<String, String> {
         let mut normalized_clone = self.clone();
         normalized_clone.normalize();
@@ -311,9 +348,11 @@ impl CanonicalSpell {
         self.description = normalize_string(&self.description, NormalizationMode::Textual);
 
         if let Some(materials) = &mut self.material_components {
-            for m in materials {
+            for m in materials.iter_mut() {
                 m.normalize();
             }
+            // Sort lexicographical by name to ensure stable hash
+            materials.sort_by(|a, b| a.name.cmp(&b.name));
         }
 
         if let Some(range) = &mut self.range {
@@ -352,6 +391,9 @@ impl CanonicalSpell {
         // Materialize Defaults according to Rule 48 of canonicalization contract
         if self.reversible.is_none() {
             self.reversible = Some(0);
+        }
+        if self.material_components.is_none() {
+            self.material_components = Some(vec![]);
         }
 
         self.class_list = self
@@ -419,9 +461,13 @@ pub(crate) fn normalize_string(s: &str, mode: NormalizationMode) -> String {
     }
 }
 
-fn normalize_casting_unit(s: &str) -> String {
-    let normalized = normalize_string(s, NormalizationMode::Structured).to_lowercase();
-    match normalized.as_str() {
+/// Matches a string against schema-defined enums case-insensitively, or falls back to Title Case.
+fn match_schema_case(s: &str) -> String {
+    let normalized = normalize_string(s, NormalizationMode::Structured);
+    let lower = normalized.to_lowercase();
+
+    // Common complex enums from schema
+    match lower.as_str() {
         "segment" | "segments" => "Segment".to_string(),
         "round" | "rounds" => "Round".to_string(),
         "turn" | "turns" => "Turn".to_string(),
@@ -430,17 +476,6 @@ fn normalize_casting_unit(s: &str) -> String {
         "action" | "actions" => "Actions".to_string(),
         "instant" | "instantaneous" => "Instantaneous".to_string(),
         "special" => "Special".to_string(),
-        _ => match_schema_case(&normalized),
-    }
-}
-
-/// Matches a string against schema-defined enums case-insensitively, or falls back to Title Case.
-fn match_schema_case(s: &str) -> String {
-    let normalized = normalize_string(s, NormalizationMode::Structured);
-    let lower = normalized.to_lowercase();
-
-    // Common complex enums from schema
-    match lower.as_str() {
         "foot radius" => "Foot Radius".to_string(),
         "yard radius" => "Yard Radius".to_string(),
         "mile radius" => "Mile Radius".to_string(),
@@ -450,7 +485,6 @@ fn match_schema_case(s: &str) -> String {
         "cubic feet" => "Cubic Feet".to_string(),
         "square yards" => "Square Yards".to_string(),
         "cubic yards" => "Cubic Yards".to_string(),
-        "instantaneous" => "Instantaneous".to_string(),
         "conjuration/summoning" => "Conjuration/Summoning".to_string(),
         "enchantment/charm" => "Enchantment/Charm".to_string(),
         "illusion/phantasm" => "Illusion/Phantasm".to_string(),
@@ -840,8 +874,9 @@ mod tests {
             "Skipped field should not be in JSON"
         );
 
-        // Non-skipped Option::None fields appear as `null` if not skipped
-        assert!(!json.contains("\"material_components\""));
+        // Non-skipped Option::None fields appear as `null` if not skipped.
+        // HOWEVER, material_components is now materialized to [] by normalize() for stability.
+        assert!(json.contains("\"material_components\":[]"));
         assert!(json.contains("\"is_cantrip\":0")); // is_cantrip is i64, 0 for level 1
         assert!(
             !json.contains("\"schema_version\""),
@@ -1248,10 +1283,10 @@ mod tests {
 
         let json = spell.to_canonical_json().unwrap();
 
-        // Verify total absence of keys for fields with null defaults
+        // Verify presence of materialized defaults
         assert!(
-            !json.contains("\"material_components\""),
-            "material_components should be omitted"
+            json.contains("\"material_components\":[]"),
+            "material_components should be materialized"
         );
         assert!(
             !json.contains("\"saving_throw\""),
@@ -1950,6 +1985,150 @@ mod tests {
         assert_ne!(
             hash_yd, hash_ft,
             "1 yard and 3 feet must produce different hashes (unit preservation)"
+        );
+    }
+
+    #[test]
+    fn test_hash_stability_reordered_lists() {
+        let mut spell1 = CanonicalSpell::new(
+            "Test Spell".to_string(),
+            3,
+            "Arcane".to_string(),
+            "A test spell.".to_string(),
+        );
+        spell1.school = Some("Abjuration".to_string());
+        spell1.class_list = vec!["Wizard".to_string(), "Cleric".to_string()];
+        spell1.tags = vec!["combat".to_string(), "utility".to_string()];
+
+        let mut spell2 = spell1.clone();
+        spell2.class_list = vec!["Cleric".to_string(), "Wizard".to_string()];
+        spell2.tags = vec!["utility".to_string(), "combat".to_string()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Reordered string lists should result in same hash"
+        );
+    }
+
+    #[test]
+    fn test_hash_stability_reordered_mechanics() {
+        let mut spell1 = CanonicalSpell::new(
+            "Nuke".to_string(),
+            5,
+            "Arcane".to_string(),
+            "Big boom.".to_string(),
+        );
+        spell1.school = Some("Evocation".to_string());
+        spell1.class_list = vec!["Wizard".to_string()];
+
+        // Damage parts reordered
+        use crate::models::damage::{DamagePart, DamageType, DicePool, DiceTerm, SpellDamageSpec};
+
+        let part_a = DamagePart {
+            id: "a".to_string(),
+            damage_type: DamageType::Fire,
+            base: DicePool {
+                terms: vec![DiceTerm {
+                    count: 10,
+                    sides: 6,
+                    per_die_modifier: 0,
+                }],
+                flat_modifier: 0,
+            },
+            ..Default::default()
+        };
+        let part_b = DamagePart {
+            id: "b".to_string(),
+            damage_type: DamageType::Cold,
+            base: DicePool {
+                terms: vec![DiceTerm {
+                    count: 5,
+                    sides: 4,
+                    per_die_modifier: 0,
+                }],
+                flat_modifier: 0,
+            },
+            ..Default::default()
+        };
+
+        spell1.damage = Some(SpellDamageSpec {
+            kind: crate::models::damage::DamageKind::Modeled,
+            parts: Some(vec![part_a.clone(), part_b.clone()]),
+            ..Default::default()
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.damage.as_mut().unwrap().kind = crate::models::damage::DamageKind::Modeled;
+        spell2.damage.as_mut().unwrap().parts = Some(vec![part_b, part_a]);
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Reordered damage parts should result in same hash"
+        );
+    }
+
+    #[test]
+    fn test_default_value_materialization() {
+        let mut spell = CanonicalSpell::new(
+            "Default Test".to_string(),
+            1,
+            "Arcane".to_string(),
+            "Test.".to_string(),
+        );
+
+        // Initially None
+        spell.reversible = None;
+        spell.material_components = None;
+
+        let json = spell.to_canonical_json().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Should be materialized in JSON
+        assert_eq!(value["reversible"], 0);
+        assert_eq!(value["material_components"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn test_metadata_pruning_preserves_mechanical_ids() {
+        let mut spell = CanonicalSpell::new(
+            "ID Test".to_string(),
+            1,
+            "Arcane".to_string(),
+            "Test.".to_string(),
+        );
+        spell.id = Some("root_id".to_string());
+
+        use crate::models::damage::{DamagePart, DamageType, DicePool, DiceTerm, SpellDamageSpec};
+        spell.damage = Some(SpellDamageSpec {
+            parts: Some(vec![DamagePart {
+                id: "nested_id".to_string(),
+                damage_type: DamageType::Acid,
+                base: DicePool {
+                    terms: vec![DiceTerm {
+                        count: 1,
+                        sides: 4,
+                        per_die_modifier: 0,
+                    }],
+                    flat_modifier: 0,
+                },
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        let json = spell.to_canonical_json().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Root ID should be gone
+        assert!(value.get("id").is_none(), "Root ID should be pruned");
+
+        // Nested mechanical ID should be preserved
+        let nested_id = value["damage"]["parts"][0]["id"].as_str().unwrap();
+        assert_eq!(
+            nested_id, "nested_id",
+            "Nested mechanical ID should be preserved"
         );
     }
 }

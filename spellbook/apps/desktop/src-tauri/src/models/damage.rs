@@ -19,7 +19,7 @@ pub enum DamageCombineMode {
     Sequence,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DamageType {
     Acid,
@@ -36,11 +36,12 @@ pub enum DamageType {
     PhysicalBludgeoning,
     PhysicalPiercing,
     PhysicalSlashing,
+    #[default]
     Untyped,
     Special,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct DiceTerm {
     pub count: i32,
@@ -49,7 +50,7 @@ pub struct DiceTerm {
     pub per_die_modifier: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct DicePool {
     pub terms: Vec<DiceTerm>,
@@ -57,17 +58,19 @@ pub struct DicePool {
     pub flat_modifier: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ScalingKind {
+    #[default]
     AddDicePerStep,
     AddFlatPerStep,
     SetBaseByLevelBand,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ScalingDriver {
+    #[default]
     CasterLevel,
     SpellLevel,
     TargetHd,
@@ -76,7 +79,7 @@ pub enum ScalingDriver {
     Other,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct LevelBand {
     pub min: i32,
@@ -84,7 +87,7 @@ pub struct LevelBand {
     pub base: DicePool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ScalingRule {
     pub kind: ScalingKind,
@@ -116,9 +119,10 @@ pub struct ClampSpec {
     pub max_total: Option<i32>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ApplicationScope {
+    #[default]
     PerTarget,
     PerAreaTarget,
     PerMissile,
@@ -129,9 +133,10 @@ pub enum ApplicationScope {
     Special,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TickDriver {
+    #[default]
     Fixed,
     CasterLevel,
     SpellLevel,
@@ -150,13 +155,24 @@ pub struct ApplicationSpec {
     pub tick_driver: TickDriver,
 }
 
+impl Default for ApplicationSpec {
+    fn default() -> Self {
+        Self {
+            scope: ApplicationScope::default(),
+            ticks: 1,
+            tick_driver: TickDriver::default(),
+        }
+    }
+}
+
 fn default_tick_driver() -> TickDriver {
     TickDriver::Fixed
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DamageSaveKind {
+    #[default]
     None,
     Half,
     Negates,
@@ -171,7 +187,16 @@ pub struct DamageSavePartial {
     pub denominator: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+impl Default for DamageSavePartial {
+    fn default() -> Self {
+        Self {
+            numerator: 1,
+            denominator: 2,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct DamageSaveSpec {
     pub kind: DamageSaveKind,
@@ -179,16 +204,17 @@ pub struct DamageSaveSpec {
     pub partial: Option<DamageSavePartial>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MrInteraction {
+    #[default]
     Normal,
     IgnoresMr,
     Special,
     Unknown,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct DamagePart {
     pub id: String,
@@ -242,7 +268,7 @@ impl SpellDamageSpec {
         }
 
         if let Some(parts) = &mut self.parts {
-            for part in parts {
+            for part in parts.iter_mut() {
                 if let Some(l) = &mut part.label {
                     *l = crate::models::canonical_spell::normalize_string(
                         l,
@@ -256,16 +282,29 @@ impl SpellDamageSpec {
                     );
                 }
                 if let Some(scaling_rules) = &mut part.scaling {
-                    for rule in scaling_rules {
+                    for rule in scaling_rules.iter_mut() {
                         if let Some(rn) = &mut rule.notes {
                             *rn = crate::models::canonical_spell::normalize_string(
                                 rn,
                                 crate::models::canonical_spell::NormalizationMode::Textual,
                             );
                         }
+                        if let Some(bands) = &mut rule.level_bands {
+                            bands.sort_by_key(|b| (b.min, b.max));
+                        }
                     }
+                    // Sort scaling rules by kind, driver, and step
+                    scaling_rules.sort_by(|a, b| {
+                        (a.kind as i32, a.driver as i32, a.step).cmp(&(
+                            b.kind as i32,
+                            b.driver as i32,
+                            b.step,
+                        ))
+                    });
                 }
             }
+            // Sort parts by ID to ensure stable hash
+            parts.sort_by(|a, b| a.id.cmp(&b.id));
         }
     }
 }

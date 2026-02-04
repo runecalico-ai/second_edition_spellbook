@@ -221,21 +221,25 @@ impl ExperienceComponentSpec {
                     );
                 }
             }
+            // Sort variables by name for stable hash
+            formula.vars.sort_by(|a, b| a.name.cmp(&b.name));
         }
 
-        if let Some(tiered_vals) = &mut self.tiered {
-            for t in tiered_vals {
-                t.when = crate::models::canonical_spell::normalize_string(
-                    &t.when,
-                    crate::models::canonical_spell::NormalizationMode::Textual,
+        if let Some(tiers) = &mut self.tiered {
+            for tier in tiers.iter_mut() {
+                tier.when = crate::models::canonical_spell::normalize_string(
+                    &tier.when,
+                    crate::models::canonical_spell::NormalizationMode::Structured,
                 );
-                if let Some(tn) = &mut t.notes {
+                if let Some(tn) = &mut tier.notes {
                     *tn = crate::models::canonical_spell::normalize_string(
                         tn,
                         crate::models::canonical_spell::NormalizationMode::Textual,
                     );
                 }
             }
+            // Sort tiers by condition to ensure stable hash
+            tiers.sort_by(|a, b| a.when.cmp(&b.when).then(a.amount_xp.cmp(&b.amount_xp)));
         }
     }
 }

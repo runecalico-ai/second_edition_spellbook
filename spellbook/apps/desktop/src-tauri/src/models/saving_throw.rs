@@ -128,9 +128,14 @@ impl SavingThrowSpec {
             normalize_single_save(s);
         }
         if let Some(m) = &mut self.multiple {
-            for s in m {
+            for s in m.iter_mut() {
                 normalize_single_save(s);
             }
+            // Sort by type, vs, and modifier to ensure stable hash
+            m.sort_by(|a, b| {
+                format!("{:?}{:?}{:?}", a.save_type, a.save_vs, a.modifier)
+                    .cmp(&format!("{:?}{:?}{:?}", b.save_type, b.save_vs, b.modifier))
+            });
         }
     }
 }

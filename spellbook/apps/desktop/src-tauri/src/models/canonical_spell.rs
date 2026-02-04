@@ -509,14 +509,41 @@ fn match_schema_case(s: &str) -> String {
 
 pub(crate) fn normalize_scalar(s_opt: &mut Option<SpellScalar>) {
     if let Some(s) = s_opt {
-        if let Some(v) = &mut s.value {
-            *v = clamp_precision(*v);
+        // Value Handling: Dependent on Mode
+        if let Some(v) = s.value {
+            let clamped = clamp_precision(v);
+            // If Fixed, value is required, so valid 0.0 must be preserved.
+            // If PerLevel, value is optional (base), so 0.0 can be omitted (None).
+            if s.mode != crate::models::scalar::ScalarMode::Fixed && clamped == 0.0 {
+                s.value = None;
+            } else {
+                s.value = Some(clamped);
+            }
         }
-        if let Some(v) = &mut s.per_level {
-            *v = clamp_precision(*v);
+
+        // PerLevel Handling
+        if let Some(v) = s.per_level {
+            let clamped = clamp_precision(v);
+            // If PerLevel, per_level is required.
+            if s.mode == crate::models::scalar::ScalarMode::PerLevel {
+                s.per_level = Some(clamped);
+            } else {
+                // In Fixed mode, per_level should be 0 or None. If 0.0, strip it.
+                if clamped == 0.0 {
+                    s.per_level = None;
+                } else {
+                    s.per_level = Some(clamped);
+                }
+            }
         }
-        if let Some(v) = &mut s.cap_value {
-            *v = clamp_precision(*v);
+
+        if let Some(v) = s.cap_value {
+            let clamped = clamp_precision(v);
+            if clamped == 0.0 {
+                s.cap_value = None;
+            } else {
+                s.cap_value = Some(clamped);
+            }
         }
     }
 }

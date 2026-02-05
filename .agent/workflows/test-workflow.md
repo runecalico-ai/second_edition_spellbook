@@ -32,7 +32,7 @@ Tests for the Python sidecar ML services.
 ```powershell
 cd services/ml
 # Ensure virtual environment is activated
-# .\.venv\Scripts\Activate.ps1
+. .\.venv\Scripts\Activate.ps1
 python -m pytest
 ```
 

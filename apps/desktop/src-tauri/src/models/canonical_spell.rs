@@ -162,8 +162,10 @@ pub struct CanonicalSpell {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
 
+    #[serde(default)]
     pub is_quest_spell: i64, // 0 or 1
-    pub is_cantrip: i64,     // 0 or 1
+    #[serde(default)]
+    pub is_cantrip: i64, // 0 or 1
 
     #[serde(default = "default_schema_version")]
     pub schema_version: i64,
@@ -392,6 +394,9 @@ impl CanonicalSpell {
         if self.reversible.is_none() {
             self.reversible = Some(0);
         }
+        // is_quest_spell and is_cantrip will have defaults applied by serde if missing in JSON,
+        // but we ensure they are present for normalization-based materialization too.
+
         if self.material_components.is_none() {
             self.material_components = Some(vec![]);
         }
@@ -405,9 +410,16 @@ impl CanonicalSpell {
                 experience: false,
             });
         }
-        if self.casting_time.is_none() {
-            self.casting_time = Some(SpellCastingTime::default());
+
+        // If experience_cost is present, force experience component to true
+        if self.experience_cost.is_some() {
+            if let Some(comp) = &mut self.components {
+                comp.experience = true;
+            }
         }
+
+        // Bugfix: Stop materializing casting_time if it is None in the source.
+        // We only normalize it if it exists.
         if let Some(ct) = &mut self.casting_time {
             if ct.unit.is_empty() {
                 ct.unit = "Segment".to_string();

@@ -326,7 +326,10 @@ impl RangeParser {
                     if u1.is_some() && u2.is_some() && u1 != u2 {
                         matched_spec = Some(RangeSpec {
                             kind: RangeKind::Special,
-                            text: Some(input_stripped.to_string()),
+                            text: Some(input_clean.to_string()),
+                            requires: requires.clone(),
+                            anchor,
+                            region_unit,
                             ..Default::default()
                         });
                     } else {
@@ -433,10 +436,11 @@ impl RangeParser {
 
             matched_spec.unwrap_or_else(|| RangeSpec {
                 kind: RangeKind::Special,
+                text: Some(input_clean.to_string()),
                 requires: requires.clone(),
                 anchor,
                 region_unit,
-                notes: Some(input_clean.to_string()),
+                notes: None, // input_clean is already in .text
                 ..Default::default()
             })
         };

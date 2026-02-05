@@ -28,7 +28,7 @@ This workflow formats the code for all parts of the application to ensure consis
    - Uses Ruff to format Python code.
    ```bash
    # Active Virtual Environment (Windows) if not auto-detected
-   # .\.venv\Scripts\Activate.ps1
+   . .\.venv\Scripts\Activate.ps1
    cd services/ml
    ruff format .
    ```

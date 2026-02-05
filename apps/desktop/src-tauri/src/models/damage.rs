@@ -308,9 +308,21 @@ impl SpellDamageSpec {
                 }
             }
             // Sort parts by ID to ensure stable hash, UNLESS combine_mode is sequence
-            // For sequence mode, order is semantically meaningful and must be preserved
+            // For sequence mode, order is semantically meaningful and must be preserved.
+            // If IDs are identical, use serialized content as a tie-breaker to ensure
+            // order-independent hashing remains fully deterministic.
             if self.combine_mode != DamageCombineMode::Sequence {
-                parts.sort_by(|a, b| a.id.cmp(&b.id));
+                parts.sort_by(|a, b| {
+                    let id_cmp = a.id.cmp(&b.id);
+                    if id_cmp == std::cmp::Ordering::Equal {
+                        // Tie-breaker: serialized content
+                        let a_json = serde_json::to_string(a).unwrap_or_default();
+                        let b_json = serde_json::to_string(b).unwrap_or_default();
+                        a_json.cmp(&b_json)
+                    } else {
+                        id_cmp
+                    }
+                });
             }
         }
     }

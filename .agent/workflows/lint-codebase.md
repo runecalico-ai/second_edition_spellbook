@@ -28,7 +28,7 @@ This workflow runs linting checks on all parts of the application.
    - Ruff is an extremely fast Python linter.
    ```bash
    # Active Virtual Environment (Windows)
-   .\.venv\Scripts\Activate.ps1
+   . .\.venv\Scripts\Activate.ps1
    cd services/ml
    # Ensure virtual environment is activated if
    ruff check .

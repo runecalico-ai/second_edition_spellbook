@@ -18,7 +18,7 @@ All Python code must pass Ruff linting checks. Run linting from the repository r
 
 ```bash
 # Activate virtual environment (Windows)
-.\.venv\Scripts\Activate.ps1
+. .\.venv\Scripts\Activate.ps1
 
 # Run Ruff
 cd services/ml

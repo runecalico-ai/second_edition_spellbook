@@ -1,9 +1,0 @@
-src/ui/CharacterEditor.tsx(721,19): error TS2304: Cannot find name 'setPrintDialogMode'.
-src/ui/CharacterEditor.tsx(722,19): error TS2304: Cannot find name 'setPrintDialogTitle'.
-src/ui/CharacterEditor.tsx(723,19): error TS2304: Cannot find name 'setPrintTargetClass'.
-src/ui/CharacterEditor.tsx(724,19): error TS2304: Cannot find name 'setPrintDialogOpen'.
-src/ui/CharacterEditor.tsx(1318,17): error TS2304: Cannot find name 'printDialogOpen'.
-src/ui/CharacterEditor.tsx(1319,24): error TS2304: Cannot find name 'setPrintDialogOpen'.
-src/ui/CharacterEditor.tsx(1320,20): error TS2304: Cannot find name 'handlePrintConfirm'.
-src/ui/CharacterEditor.tsx(1321,15): error TS2304: Cannot find name 'printDialogMode'.
-src/ui/CharacterEditor.tsx(1322,16): error TS2304: Cannot find name 'printDialogTitle'.

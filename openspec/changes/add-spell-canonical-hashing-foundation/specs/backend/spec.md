@@ -23,6 +23,9 @@ All spells processed by the backend MUST support mapping to the Strict Spell Sch
 - AND `distance` scalar MUST be `{"mode": "per_level", "value": 100, "per_level": 10}`
 - AND `unit` MUST be `"ft"` (normalized).
 
+> [!NOTE]
+> **Mixed-Unit Fallback**: To preserve "Unit-Based Identity" without lossy or "absurd" numerical conversions (e.g., "1 yd + 1 ft/level"), variable ranges with distinct units MUST NOT be modeled as `kind="distance"`. Instead, they MUST fallback to `kind="special"` with normalized `text` preservation.
+
 #### Scenario: Complex Duration Parsing
 - GIVEN a spell with duration text "1 round / level"
 - WHEN converted to `CanonicalSpell`

@@ -319,39 +319,47 @@ impl RangeParser {
                         unit_raw = unit1_raw;
                     }
 
-                    let unit = map_unit(unit_raw).or_else(|| map_unit(unit1_raw));
+                    let u1 = map_unit(unit1_raw);
+                    let u2 = map_unit(unit_raw);
 
-                    if let Some(u) = unit {
-                        let kind = match u {
-                            RangeUnit::Ft | RangeUnit::Yd | RangeUnit::Mi | RangeUnit::Inches => {
-                                force_kind.unwrap_or(RangeKind::Distance)
-                            }
-                        };
-
-                        let scalar = SpellScalar {
-                            mode: if per_level != 0.0 {
-                                ScalarMode::PerLevel
-                            } else {
-                                ScalarMode::Fixed
-                            },
-                            value: Some(base),
-                            per_level: Some(per_level),
-                            min_level: None,
-                            max_level: None,
-                            cap_value: None,
-                            cap_level: None,
-                            rounding: None,
-                        };
-
+                    // Mixed Unit detection per spec: If both units are present and different, fallback to Special.
+                    if u1.is_some() && u2.is_some() && u1 != u2 {
                         matched_spec = Some(RangeSpec {
-                            kind,
-                            unit: Some(u),
-                            distance: Some(scalar),
-                            requires: requires.clone(),
-                            anchor,
-                            region_unit,
+                            kind: RangeKind::Special,
+                            text: Some(input_stripped.to_string()),
                             ..Default::default()
                         });
+                    } else {
+                        let unit = u2.or(u1);
+                        if let Some(u) = unit {
+                            let kind = match u {
+                                RangeUnit::Ft
+                                | RangeUnit::Yd
+                                | RangeUnit::Mi
+                                | RangeUnit::Inches => force_kind.unwrap_or(RangeKind::Distance),
+                            };
+
+                            let scalar = SpellScalar {
+                                mode: if per_level != 0.0 {
+                                    ScalarMode::PerLevel
+                                } else {
+                                    ScalarMode::Fixed
+                                },
+                                value: Some(base),
+                                per_level: Some(per_level),
+                                ..Default::default()
+                            };
+
+                            matched_spec = Some(RangeSpec {
+                                kind,
+                                unit: Some(u),
+                                distance: Some(scalar),
+                                requires: requires.clone(),
+                                anchor,
+                                region_unit,
+                                ..Default::default()
+                            });
+                        }
                     }
                 }
                 // Pattern 3: Per-level only "5 ft/level"

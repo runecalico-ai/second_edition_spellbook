@@ -199,7 +199,7 @@ impl DurationParser {
                 };
                 let scalar = SpellScalar {
                     mode: ScalarMode::PerLevel,
-                    value: None,
+                    value: Some(0.0), // Explicit 0 base value for spec compliance
                     per_level: Some(adjusted_per_level),
                     min_level: None,
                     max_level: None,

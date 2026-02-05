@@ -106,7 +106,7 @@ fn default_one() -> f64 {
     1.0
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct CanonicalSpell {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -405,6 +405,18 @@ impl CanonicalSpell {
                 experience: false,
             });
         }
+        if self.casting_time.is_none() {
+            self.casting_time = Some(SpellCastingTime::default());
+        }
+        if let Some(ct) = &mut self.casting_time {
+            if ct.unit.is_empty() {
+                ct.unit = "Segment".to_string();
+            }
+        }
+
+        if self.schema_version == 0 {
+            self.schema_version = CURRENT_SCHEMA_VERSION;
+        }
 
         self.class_list = self
             .class_list
@@ -535,6 +547,7 @@ pub(crate) fn normalize_scalar(s_opt: &mut Option<SpellScalar>) {
             let clamped = clamp_precision(v);
             // If Fixed, value is required, so valid 0.0 must be preserved.
             // If PerLevel, value is optional (base), so 0.0 implies explicit base 0.
+            // We clamp it, and then explicitly preserve it.
             s.value = Some(clamped);
         }
 

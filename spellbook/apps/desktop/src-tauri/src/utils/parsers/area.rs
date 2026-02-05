@@ -260,15 +260,28 @@ impl AreaParser {
             let unit2 = caps.get(4).map_or("", |m| m.as_str());
             let shape_raw = caps.get(5).map_or("", |m| m.as_str());
 
-            let final_unit = if !unit2.is_empty() { unit2 } else { unit1 };
-            let (u, su) = map_units(final_unit);
+            let (u1, su1) = map_units(unit1);
+            let (u2, su2) = map_units(unit2);
+
+            // Mixed Unit detection per spec: If both units are present and different, fallback to Special.
+            if u1.is_some() && u2.is_some() && u1 != u2 {
+                return Some(AreaSpec {
+                    kind: AreaKind::Special,
+                    notes: Some(input.to_string()),
+                    ..Default::default()
+                });
+            }
+
+            let final_u = u2.or(u1);
+            let final_su = su2.or(su1);
+
             let scalar = SpellScalar {
                 mode: ScalarMode::PerLevel,
                 value: Some(val1),
                 per_level: Some(val2),
                 ..Default::default()
             };
-            return self.build_spec(shape_raw, Some(scalar), u, su, input);
+            return self.build_spec(shape_raw, Some(scalar), final_u, final_su, input);
         }
 
         // 6. Per-level only shapes: "5 ft./level radius"

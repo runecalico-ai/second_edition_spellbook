@@ -13,6 +13,9 @@ pub use bundle::*;
 pub mod canonical_spell;
 pub use canonical_spell::*;
 
+#[cfg(test)]
+pub mod canonical_spell_regression_tests;
+
 pub mod scalar;
 pub use scalar::*;
 

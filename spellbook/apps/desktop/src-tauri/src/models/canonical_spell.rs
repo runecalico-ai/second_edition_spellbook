@@ -395,6 +395,16 @@ impl CanonicalSpell {
         if self.material_components.is_none() {
             self.material_components = Some(vec![]);
         }
+        if self.components.is_none() {
+            self.components = Some(SpellComponents {
+                verbal: false,
+                somatic: false,
+                material: false,
+                focus: false,
+                divine_focus: false,
+                experience: false,
+            });
+        }
 
         self.class_list = self
             .class_list
@@ -509,7 +519,7 @@ fn match_schema_case(s: &str) -> String {
         "elemental sun" => "Elemental Sun".to_string(),
         _ => {
             // Fallback to simple title case for standard one-word enums
-            let mut c = normalized.chars();
+            let mut c = lower.chars();
             match c.next() {
                 None => String::new(),
                 Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
@@ -524,12 +534,8 @@ pub(crate) fn normalize_scalar(s_opt: &mut Option<SpellScalar>) {
         if let Some(v) = s.value {
             let clamped = clamp_precision(v);
             // If Fixed, value is required, so valid 0.0 must be preserved.
-            // If PerLevel, value is optional (base), so 0.0 can be omitted (None).
-            if s.mode != crate::models::scalar::ScalarMode::Fixed && clamped == 0.0 {
-                s.value = None;
-            } else {
-                s.value = Some(clamped);
-            }
+            // If PerLevel, value is optional (base), so 0.0 implies explicit base 0.
+            s.value = Some(clamped);
         }
 
         // PerLevel Handling
@@ -1461,6 +1467,132 @@ mod tests {
             "schema_version must be PRESENT in standard JSON for export"
         );
     }
+
+    #[test]
+    fn test_issue_1_enum_normalization_casing() {
+        let mut spell = CanonicalSpell::new("Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("EVOCATION".into());
+        spell.normalize();
+        assert_eq!(
+            spell.school.as_deref(),
+            Some("Evocation"),
+            "Should normalize EVOCATION to Evocation"
+        );
+
+        spell.school = Some("aBjUrAtIoN".into());
+        spell.normalize();
+        assert_eq!(
+            spell.school.as_deref(),
+            Some("Abjuration"),
+            "Should normalize aBjUrAtIoN to Abjuration"
+        );
+    }
+
+    #[test]
+    fn test_issue_2_normalization_preserves_zero_value() {
+        use crate::models::scalar::*;
+        // Verify canonicalization doesn't strip value: 0.0 for PerLevel scalars
+        let mut spell = CanonicalSpell::new("Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+
+        // Manually construct scalar as if parsed
+        let scalar = SpellScalar {
+            mode: ScalarMode::PerLevel,
+            value: Some(0.0),
+            per_level: Some(1.0),
+            ..Default::default()
+        };
+
+        spell.duration = Some(crate::models::duration_spec::DurationSpec {
+            kind: crate::models::duration_spec::DurationKind::Time,
+            duration: Some(scalar),
+            ..Default::default()
+        });
+
+        spell.normalize();
+
+        let json = serde_json::to_value(&spell).unwrap();
+        let dur_json = json.get("duration").unwrap().get("duration").unwrap();
+        assert_eq!(
+            dur_json.get("value").unwrap().as_f64(),
+            Some(0.0),
+            "value: 0.0 should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_issue_3_area_spec_schema_requirements() {
+        let mut spell = CanonicalSpell::new("Area Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into()); // REQUIRED for validation to even get to Area check
+        spell.area = Some(AreaSpec {
+            kind: AreaKind::Cylinder,
+            // Missing radius and shape_unit
+            ..Default::default()
+        });
+
+        let result = spell.validate();
+        assert!(
+            result.is_ok(),
+            "Validation should succeed for partial Cylinder (missing radius/unit): {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_issue_4_components_hashing() {
+        let mut s1 = CanonicalSpell::new("Comp Test".into(), 1, "ARCANE".into(), "Desc".into());
+        s1.school = Some("Divination".into());
+        s1.components = None;
+
+        let mut s2 = CanonicalSpell::new("Comp Test".into(), 1, "ARCANE".into(), "Desc".into());
+        s2.school = Some("Divination".into());
+        s2.components = Some(SpellComponents {
+            verbal: false,
+            somatic: false,
+            material: false,
+            focus: false,
+            divine_focus: false,
+            experience: false,
+        });
+
+        let h1 = s1.compute_hash().expect("Hash 1");
+        let h2 = s2.compute_hash().expect("Hash 2");
+
+        assert_eq!(
+            h1, h2,
+            "Spells with None components and Default components should have identical hash"
+        );
+    }
+
+    #[test]
+    fn test_regression_varied_area_shapes() {
+        // Validation should succeed for various shapes with minimal fields (relaxed schema)
+        let shapes = vec![
+            AreaKind::Cone,
+            AreaKind::Line,
+            AreaKind::Rect,
+            AreaKind::Cube,
+            AreaKind::Wall,
+        ];
+
+        for kind in shapes {
+            let mut spell =
+                CanonicalSpell::new(format!("{:?}", kind), 1, "ARCANE".into(), "Desc".into());
+            spell.school = Some("Abjuration".into());
+            spell.area = Some(AreaSpec {
+                kind,
+                // No dimensions provided
+                ..Default::default()
+            });
+
+            assert!(
+                spell.validate().is_ok(),
+                "Validation failed for minimal area shape: {:?}",
+                kind
+            );
+        }
+    }
+
     #[test]
     fn test_regression_duplicate_array_items_fail_validation() {
         // Bug: parse_comma_list didn't deduplicate, schema has uniqueItems: true.

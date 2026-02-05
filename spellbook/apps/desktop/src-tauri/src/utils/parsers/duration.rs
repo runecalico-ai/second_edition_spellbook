@@ -219,8 +219,9 @@ impl DurationParser {
         }
 
         // Helper for "1 round/level"
-        if lower.contains("/level") {
-            let parts: Vec<&str> = lower.split("/level").collect();
+        let simplified = lower.replace(" /", "/").replace("/ ", "/");
+        if simplified.contains("/level") {
+            let parts: Vec<&str> = simplified.split("/level").collect();
             if let Some(first_part) = parts.first() {
                 if let Some(caps) = self.duration_simple_regex.captures(first_part.trim()) {
                     let per_level = caps
@@ -232,7 +233,7 @@ impl DurationParser {
                     if let Some(u) = unit {
                         let scalar = SpellScalar {
                             mode: ScalarMode::PerLevel,
-                            value: None,
+                            value: Some(0.0), // Explicit 0 base value for spec compliance
                             per_level: Some(per_level),
                             min_level: None,
                             max_level: None,
@@ -408,5 +409,45 @@ mod tests {
 
         let res6 = parser.parse("Instant");
         assert_eq!(res6.kind, DurationKind::Instant);
+    }
+    #[test]
+    fn test_issue_2_duration_parsing_value_zero() {
+        let parser = DurationParser::new();
+        let spec = parser.parse("1 round / level");
+
+        let scalar = spec.duration.expect("Should have duration scalar");
+        assert_eq!(scalar.mode, ScalarMode::PerLevel);
+        assert_eq!(scalar.per_level, Some(1.0));
+        assert_eq!(
+            scalar.value,
+            Some(0.0),
+            "Per-level duration should have explicit value: 0.0"
+        );
+    }
+
+    #[test]
+    fn test_regression_spacing_and_divisors() {
+        let parser = DurationParser::new();
+
+        // Case 1: "1 round / level" with spaces (Fixed by simplified replace)
+        let res = parser.parse("1 round / level");
+        let dur = res.duration.unwrap();
+        assert_eq!(dur.per_level.unwrap(), 1.0);
+        assert_eq!(dur.value, Some(0.0), "Should resolve to value: 0 per spec");
+
+        // Case 2: "1 round/ 2 levels" (Handled by regex \s*)
+        let res2 = parser.parse("1 round/ 2 levels");
+        let dur2 = res2.duration.unwrap();
+        assert_eq!(dur2.per_level.unwrap(), 0.5); // 1 / 2
+
+        // Case 3: "1 round / 2 levels" (Handled by regex \s*)
+        let res3 = parser.parse("1 round / 2 levels");
+        let dur3 = res3.duration.unwrap();
+        assert_eq!(dur3.per_level.unwrap(), 0.5);
+
+        // Case 4: "10 minutes / level"
+        let res4 = parser.parse("10 minutes / level");
+        let dur4 = res4.duration.unwrap();
+        assert_eq!(dur4.per_level.unwrap(), 10.0);
     }
 }

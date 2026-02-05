@@ -6,11 +6,11 @@ This document provides a centralized overview of the repository layout, developm
 
 ## Repository Layout
 
-*   `spellbook/apps/desktop`: Tauri + React desktop application (Frontend & Backend).
-*   `spellbook/services/ml`: Python sidecar services for embeddings and LLM inference.
-*   `spellbook/db/migrations`: SQLite schema migration files.
-*   `spellbook/scripts`: Helper scripts and build utilities.
-*   `spellbook/spells_md`: Markdown spell content used for seeding.
+*   `apps/desktop`: Tauri + React desktop application (Frontend & Backend).
+*   `services/ml`: Python sidecar services for embeddings and LLM inference.
+*   `db/migrations`: SQLite schema migration files.
+*   `scripts/`: Helper scripts and build utilities.
+*   `spells_md/`: Markdown spell content used for seeding.
 *   `openspec/`: Detailed project specifications and change proposals.
 *   `docs/`: High-level architectural and migration documentation.
 
@@ -19,18 +19,18 @@ This document provides a centralized overview of the repository layout, developm
 ## Development Workflows
 
 ### Desktop Application (React + Rust)
-**Location**: `spellbook/apps/desktop`
+**Location**: `apps/desktop`
 
 Requires Node 24+, `pnpm`, and a Rust toolchain.
 
 ```bash
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm install
 pnpm tauri:dev
 ```
 
 ### Python Sidecar (ML Services)
-**Location**: `spellbook/services/ml`
+**Location**: `services/ml`
 
 Always use the virtual environment located in the **repository root**.
 
@@ -39,10 +39,10 @@ Always use the virtual environment located in the **repository root**.
 python -m venv .venv
 
 # Install dependencies (Windows)
-.\.venv\Scripts\pip install -r spellbook/services/ml/requirements.txt -r spellbook/services/ml/requirements-dev.txt
+.\.venv\Scripts\pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
 
 # Run lint/tests
-.\.venv\Scripts\python -m pytest spellbook/services/ml
+.\.venv\Scripts\python -m pytest services/ml
 ```
 
 ---
@@ -63,8 +63,48 @@ To maintain consistency across the stack, we use distinct casing standards for d
 
 ### 3. Canonical Hashing & Schema
 **All data intended for Canonical Hashing (stored in `canonical_data`) MUST use `snake_case`.**
-*   This ensures alignment with `spell.schema.json` and external resource standards.
+*   This ensures alignment with the canonical schema (`src-tauri/schemas/spell.schema.json`) and external resource standards.
 *   Do not use `camelCase` for fields that contribute to the `content_hash`.
+
+---
+
+## Testing
+
+### Running Tests
+
+**Backend (Rust)**:
+```bash
+cd apps/desktop/src-tauri
+cargo test                           # Run all tests
+cargo test --lib                     # Run library tests only
+cargo test canonical_spell           # Run specific module tests
+cargo test -- --nocapture            # Show println! output
+```
+
+**Parser Tests**:
+```bash
+# Test individual parsers
+cargo test --lib parsers::range
+cargo test --lib parsers::area
+cargo test --lib parsers::duration
+cargo test --lib parsers::mechanics
+cargo test --lib parsers::components
+```
+
+**Frontend (React/TypeScript)**:
+```bash
+cd apps/desktop
+pnpm test                            # Run frontend tests
+```
+
+**Python (ML Services)**:
+```bash
+# From repository root
+.\.venv\Scripts\python -m pytest services/ml
+```
+
+> [!TIP]
+> If you encounter PDB linker errors during testing on Windows, run `cargo clean -p spellbook-desktop` and try again. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for details.
 
 ---
 

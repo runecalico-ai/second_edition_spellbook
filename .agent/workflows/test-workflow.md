@@ -9,9 +9,9 @@ Use this workflow to run tests for any part of the Spellbook application.
 ## 1. Determine What Changed
 
 Identify what parts of the application were modified:
-- **Backend (Rust)**: Changes to `spellbook/apps/desktop/src-tauri/src/` or `Cargo.toml`
-- **Frontend (TypeScript/React)**: Changes to `spellbook/apps/desktop/src/`
-- **Services (Python)**: Changes to `spellbook/services/ml/`
+- **Backend (Rust)**: Changes to `apps/desktop/src-tauri/src/` or `Cargo.toml`
+- **Frontend (TypeScript/React)**: Changes to `apps/desktop/src/`
+- **Services (Python)**: Changes to `services/ml/`
 - **Full Stack**: Changes affecting multiple layers
 
 ## 2. Run Backend Tests (Rust)
@@ -20,7 +20,7 @@ Unit and integration tests for the Tauri backend.
 
 // turbo
 ```powershell
-cd spellbook/apps/desktop/src-tauri
+cd apps/desktop/src-tauri
 cargo test
 ```
 
@@ -30,7 +30,7 @@ Tests for the Python sidecar ML services.
 
 // turbo
 ```powershell
-cd spellbook/services/ml
+cd services/ml
 # Ensure virtual environment is activated
 # .\.venv\Scripts\Activate.ps1
 python -m pytest
@@ -48,14 +48,14 @@ End-to-end tests for the entire desktop application.
 **If Backend Changed**:
 // turbo
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm tauri:build --debug
 ```
 
 **If Only Frontend Changed**:
 // turbo
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm build
 ```
 
@@ -64,20 +64,20 @@ pnpm build
 **Run All E2E Tests**:
 // turbo
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 npx playwright test
 ```
 
 **Run Specific Test File**:
 // turbo
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 npx playwright test vault.spec.ts
 ```
 
 **Run in UI Mode (Interactive)**:
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 npx playwright test --ui
 ```
 
@@ -88,7 +88,7 @@ If E2E tests fail:
 ### Step 1: View the HTML Report
 // turbo
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 npx playwright show-report
 ```
 
@@ -110,11 +110,11 @@ Get-Process | Where-Object {$_.ProcessName -match "spellbook"} | Stop-Process
 ```
 
 ### Database Locked
-Check `spellbook/apps/desktop/tests/tmp/` for stale data directories and clean them up.
+Check `apps/desktop/tests/tmp/` for stale data directories and clean them up.
 
 ### Build Errors
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 cargo clean
 pnpm clean
 pnpm install

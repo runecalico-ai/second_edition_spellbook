@@ -135,7 +135,7 @@ Unified dialog for print customization:
 ### Python Sidecar (`spellbook_sidecar.py`)
 - **HTML Generation**: Generates print-optimized HTML using Jinja2 templates.
 - **Markdown Generation**: Uses standard templates for clean text output.
-- **Templates**: Located in `spellbook/services/ml/templates/`.
+- **Templates**: Located in `services/ml/templates/`.
 
 ## Search Query Optimization
 

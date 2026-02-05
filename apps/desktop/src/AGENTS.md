@@ -267,7 +267,7 @@ console.log('Available testids:', testIds);
 ```
 
 ## Resources
-- See `spellbook/apps/desktop/tests/AGENTS.md` for E2E testing guidelines and patterns.
+- See `apps/desktop/tests/AGENTS.md` for E2E testing guidelines and patterns.
 
 - [Playwright Best Practices](https://playwright.dev/docs/best-practices)
 - [ARIA Labels Guide](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Attributes/aria-label)

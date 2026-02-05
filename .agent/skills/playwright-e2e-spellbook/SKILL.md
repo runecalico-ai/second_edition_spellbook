@@ -26,7 +26,7 @@ Specialized guidance for writing E2E tests for the Spellbook Tauri desktop appli
 If you modified files in `src-tauri/src/` or `Cargo.toml`:
 
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm tauri:build --debug
 ```
 
@@ -37,7 +37,7 @@ This rebuilds the Rust backend and bundles the frontend (30-90 seconds full, 5-1
 If you only modified files in `src/`:
 
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm build
 ```
 
@@ -48,7 +48,7 @@ This creates the production bundle in `dist/` (5-20 seconds).
 When in doubt, perform a full rebuild:
 
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm tauri:build --debug
 ```
 
@@ -392,7 +392,7 @@ await page.screenshot({ path: 'tests/screenshots/debug.png', fullPage: true });
 await expect(element).toBeVisible();
 ```
 
-The screenshot will be saved to `spellbook/apps/desktop/tests/screenshots/debug.png`.
+The screenshot will be saved to `apps/desktop/tests/screenshots/debug.png`.
 
 ### 4. Extract Error Context
 

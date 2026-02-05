@@ -9,7 +9,7 @@ This workflow formats the code for all parts of the application to ensure consis
 1. Format the frontend code
    - Uses Biome to format TypeScript, JSX, and JSON files.
    ```bash
-   cd spellbook/apps/desktop
+   cd apps/desktop
    pnpm format
    ```
 
@@ -18,7 +18,7 @@ This workflow formats the code for all parts of the application to ensure consis
 2. Format the backend code
    - Uses rustfmt (standard Rust formatter).
    ```bash
-   cd spellbook/apps/desktop/src-tauri
+   cd apps/desktop/src-tauri
    cargo fmt
    ```
 
@@ -29,6 +29,6 @@ This workflow formats the code for all parts of the application to ensure consis
    ```bash
    # Active Virtual Environment (Windows) if not auto-detected
    # .\.venv\Scripts\Activate.ps1
-   cd spellbook/services/ml
+   cd services/ml
    ruff format .
    ```

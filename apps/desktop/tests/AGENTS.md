@@ -32,7 +32,7 @@ tests/
 If you modified any files in `src-tauri/src/` or `Cargo.toml`:
 
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm tauri:build --debug
 ```
 
@@ -45,7 +45,7 @@ This compiles the Rust backend and bundles the frontend assets into `src-tauri/t
 If you ONLY modified files in `src/`:
 
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm build
 ```
 
@@ -58,7 +58,7 @@ This creates the production bundle in `dist/` that the debug binary loads.
 When in doubt, perform a full rebuild:
 
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 pnpm tauri:build --debug
 ```
 
@@ -69,7 +69,7 @@ pnpm tauri:build --debug
 ### Windows (requires WebView2)
 
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 npx playwright test
 ```
 
@@ -79,7 +79,7 @@ npx playwright test
 > Tauri CDP tests require WebView2, which is Windows-only. Tests will skip on Linux.
 
 ```bash
-cd spellbook/apps/desktop
+cd apps/desktop
 npx playwright test
 # Tests will skip with: "Tauri CDP tests require WebView2 on Windows."
 ```
@@ -89,7 +89,7 @@ npx playwright test
 ### Windows
 
 ```powershell
-cd spellbook/apps/desktop
+cd apps/desktop
 npx biome lint tests/fixtures tests/page-objects tests/utils
 npx biome lint tests/e2e.spec.ts tests/batch_import.spec.ts tests/epic_and_quest_spells.spec.ts tests/epic_and_quest_spells_connected.spec.ts tests/milestone_2_5.spec.ts tests/milestone_3.spec.ts
 ```
@@ -97,7 +97,7 @@ npx biome lint tests/e2e.spec.ts tests/batch_import.spec.ts tests/epic_and_quest
 ### Linux/macOS
 
 ```bash
-cd spellbook/apps/desktop
+cd apps/desktop
 npx biome lint tests/fixtures tests/page-objects tests/utils tests/*.spec.ts
 ```
 

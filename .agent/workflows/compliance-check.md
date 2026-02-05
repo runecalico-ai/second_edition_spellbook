@@ -6,7 +6,7 @@ Follow these steps to ensure a UI component or page complies with the project's 
 
 ### 1. Preparatory Review
 1. Open the component file (e.g., `src/ui/MyComponent.tsx`).
-2. Read the standard guidelines in [AGENTS.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src/AGENTS.md).
+2. Read the standard guidelines in [AGENTS.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src/AGENTS.md).
 3. Identify all interactive elements: buttons, inputs, links, and selectable list items.
 
 ### 2. Audit: Element Discoverability

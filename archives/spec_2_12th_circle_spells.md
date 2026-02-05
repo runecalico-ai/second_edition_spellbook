@@ -217,7 +217,7 @@ In the spell list table, display badges:
 
 #### Frontend
 
-##### [MODIFY] [Library.tsx](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src/ui/Library.tsx)
+##### [MODIFY] [Library.tsx](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src/ui/Library.tsx)
 
 1. **Line 270**: Update default display from 9 to 12
    ```tsx
@@ -239,7 +239,7 @@ In the spell list table, display badges:
 
 ---
 
-##### [MODIFY] [SpellEditor.tsx](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src/ui/SpellEditor.tsx)
+##### [MODIFY] [SpellEditor.tsx](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src/ui/SpellEditor.tsx)
 
 1. Add `is_quest_spell` field to the form state and SpellDetail type
 2. Add Quest spell toggle in the form:
@@ -263,7 +263,7 @@ In the spell list table, display badges:
 
 ---
 
-##### [MODIFY] [SpellbookBuilder.tsx](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src/ui/SpellbookBuilder.tsx)
+##### [MODIFY] [SpellbookBuilder.tsx](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src/ui/SpellbookBuilder.tsx)
 
 The level filter dropdowns in the spell picker modal dynamically populate from `facets.levels`, which comes from the database. No changes needed if levels 10-12 exist in the database.
 
@@ -275,7 +275,7 @@ However, to ensure levels 10-12 are always available as filter options even when
 
 #### Backend
 
-##### [MODIFY] [src-tauri/src/models/spell.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/models/spell.rs)
+##### [MODIFY] [src-tauri/src/models/spell.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src-tauri/src/models/spell.rs)
 
 1. Update `SpellSummary`, `SpellCreate`, `SpellUpdate`, and `SpellDetail` structs to include:
    ```rust
@@ -283,7 +283,7 @@ However, to ensure levels 10-12 are always available as filter options even when
    ```
    (Note: Use `i64` for SQLite convenience, mapping 0/1 to boolean logic in frontend/validation).
 
-##### [MODIFY] [src-tauri/src/commands/spells.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/commands/spells.rs)
+##### [MODIFY] [src-tauri/src/commands/spells.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src-tauri/src/commands/spells.rs)
 
 1. **Update `validate_spell_fields`**:
    ```rust
@@ -312,13 +312,13 @@ However, to ensure levels 10-12 are always available as filter options even when
    - `list_spells`: Include `is_quest_spell` in SELECT.
    - `get_spell`: Include `is_quest_spell` in SELECT.
 
-##### [NEW] [db/migrations/0004_add_quest_spells.sql](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/db/migrations/0004_add_quest_spells.sql)
+##### [NEW] [db/migrations/0004_add_quest_spells.sql](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/db/migrations/0004_add_quest_spells.sql)
 
 ```sql
 ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER DEFAULT 0;
 ```
 
-##### [MODIFY] [src-tauri/src/db/migrations.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src-tauri/src/db/migrations.rs)
+##### [MODIFY] [src-tauri/src/db/migrations.rs](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src-tauri/src/db/migrations.rs)
 
 1. Update `load_migrations` to handle version 4:
    ```rust
@@ -344,7 +344,7 @@ ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER DEFAULT 0;
 
 Add new test cases to existing Playwright test files:
 
-##### [MODIFY] [milestone_3.spec.ts](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/tests/milestone_3.spec.ts)
+##### [MODIFY] [milestone_3.spec.ts](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/tests/milestone_3.spec.ts)
 
 Add tests for:
 1. Creating a level 10 spell with Wizard class (should succeed)
@@ -355,7 +355,7 @@ Add tests for:
 6. Filtering by Quest spells
 7. Verifying the slider range extends to 12
 
-##### [MODIFY] [e2e.spec.ts](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/tests/e2e.spec.ts)
+##### [MODIFY] [e2e.spec.ts](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/tests/e2e.spec.ts)
 
 Add tests for:
 1. Importing an Arcane spell with level 10+ (should succeed)

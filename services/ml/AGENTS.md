@@ -5,7 +5,7 @@ This document provides guidelines for AI agents working on Python services (ML/s
 ## Project Structure
 
 ```
-spellbook/services/ml/
+services/ml/
 ├── spellbook_sidecar.py   # Main sidecar script
 ├── requirements.txt        # Runtime dependencies
 ├── requirements-dev.txt    # Development dependencies
@@ -21,7 +21,7 @@ All Python code must pass Ruff linting checks. Run linting from the repository r
 .\.venv\Scripts\Activate.ps1
 
 # Run Ruff
-cd spellbook/services/ml
+cd services/ml
 ruff check .
 
 # Auto-fix where possible

@@ -9,7 +9,7 @@ This workflow runs linting checks on all parts of the application.
 1. Lint the frontend code
    - Linting ensures code quality and consistency in the React application.
    ```bash
-   cd spellbook/apps/desktop
+   cd apps/desktop
    pnpm lint
    ```
 
@@ -18,7 +18,7 @@ This workflow runs linting checks on all parts of the application.
 2. Lint the backend code
    - Clippy is the standard linter for Rust.
    ```bash
-   cd spellbook/apps/desktop/src-tauri
+   cd apps/desktop/src-tauri
    cargo clippy -- -D warnings
    ```
 
@@ -29,7 +29,7 @@ This workflow runs linting checks on all parts of the application.
    ```bash
    # Active Virtual Environment (Windows)
    .\.venv\Scripts\Activate.ps1
-   cd spellbook/services/ml
+   cd services/ml
    # Ensure virtual environment is activated if
    ruff check .
    ```

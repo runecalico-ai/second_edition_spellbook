@@ -39,26 +39,106 @@ If data is corrupted, you can restore from the backup created automatically.
 
 ## For Developers
 
-### Parser Definitions
-The file `src/utils/spell_parser.rs` contains the logic for converting legacy strings to structured data.
+### Parser Architecture
 
-#### Supported Patterns
+The spell parser has been refactored into a modular architecture for maintainability and testability.
 
-**Range (`parse_range`)**
-- "10 yards" -> `{base: 10, unit: "Yards"}`
-- "10 + 5/level yards" -> `{base: 10, per_level: 5, unit: "Yards"}`
-- "Touch", "Unlimited"
+**Location**: `src/utils/` directory structure:
+```
+src/utils/
+├── spell_parser.rs          # Facade pattern entry point
+└── parsers/
+    ├── range.rs              # RangeParser
+    ├── area.rs               # AreaParser
+    ├── duration.rs           # DurationParser
+    ├── mechanics.rs          # MechanicsParser (damage, saves, MR, XP)
+    └── components.rs         # ComponentsParser (components, casting time)
+```
 
-**Duration (`parse_duration`)**
-- "1 round", "10 minutes"
-- "1 round/level" -> `{per_level: 1, unit: "Round"}`
-- "Instantaneous", "Permanent"
+**Usage**: The `SpellParser` struct acts as a facade, delegating to domain-specific parsers:
+```rust
+let parser = SpellParser::new();
+let range = parser.parse_range("10 yards");
+let duration = parser.parse_duration("1 round/level");
+let area = parser.parse_area("20-foot radius");
+```
 
-**Components (`parse_components`)**
-- "V, S, M" -> `{verbal: true, somatic: true, material: true}`
+### Supported Parsing Patterns
 
-**Damage (`parse_damage`)**
-- "1d6/level (max 10d6)" -> `{per_level_dice: "1d6", cap_level: 10}`
+Parsers convert legacy text strings into structured specification objects. Below are examples of supported patterns for each major spec type.
+
+#### Range Patterns (`RangeParser`)
+
+| Legacy Text | Parsed Result |
+|-------------|---------------|
+| "10 yards" | `RangeSpec { kind: Distance, distance: {value: 10}, unit: "yd" }` |
+| "10 + 5/level yards" | `RangeSpec { kind: Distance, distance: {per_level: 5, value: 10}, unit: "yd" }` |
+| "Touch" | `RangeSpec { kind: Touch }` |
+| "Personal" | `RangeSpec { kind: Personal }` |
+| "Unlimited" | `RangeSpec { kind: Unlimited }` |
+| "30 feet (line of sight)" | `RangeSpec { kind: DistanceLos, distance: {value: 30}, unit: "ft", requires: ["los"] }` |
+
+#### Area Patterns (`AreaParser`)
+
+| Legacy Text | Parsed Result |
+|-------------|---------------|
+| "20-foot radius" | `AreaSpec { kind: RadiusCircle, radius: {value: 20}, shape_unit: "ft" }` |
+| "30-foot cone" | `AreaSpec { kind: Cone, length: {value: 30}, shape_unit: "ft" }` |
+| "10 x 20 foot wall" | `AreaSpec { kind: Wall, length: {value: 10}, height: {value: 20}, shape_unit: "ft" }` |
+| "5-foot cube" | `AreaSpec { kind: Cube, edge: {value: 5}, shape_unit: "ft" }` |
+| "One creature" | `AreaSpec { kind: Creatures, count: {value: 1}, count_subject: "creature" }` |
+| "Special" | `AreaSpec { kind: Special }` |
+
+#### Duration Patterns (`DurationParser`)
+
+| Legacy Text | Parsed Result |
+|-------------|---------------|
+| "1 round" | `DurationSpec { unit: Round, base_value: {value: 1} }` |
+| "10 minutes" | `DurationSpec { unit: Minute, base_value: {value: 10} }` |
+| "1 round/level" | `DurationSpec { unit: Round, base_value: {per_level: 1} }` |
+| "Instantaneous" | `DurationSpec { unit: Instantaneous }` |
+| "Permanent" | `DurationSpec { unit: Permanent }` |
+| "Concentration" | `DurationSpec { unit: Concentration }` |
+| "Special" | `DurationSpec { unit: Special }` |
+
+> [!NOTE]
+> **Complex Duration Handling**: Parsers support most common patterns but may fall back to "Special" for highly conditional durations (e.g., "until dispelled or 1 day per level"). See [PARSER_COVERAGE.md](./PARSER_COVERAGE.md) for a complete coverage matrix and known limitations.
+
+#### Component Patterns (`ComponentsParser`)
+
+| Legacy Text | Parsed Result |
+|-------------|---------------|
+| "V, S" | `SpellComponents { verbal: true, somatic: true, material: false, ... }` |
+| "V, S, M" | `SpellComponents { verbal: true, somatic: true, material: true, ... }` |
+| "V, S, M (bat guano)" | Components + MaterialComponentSpec entry |
+| "V, S, DF" | `SpellComponents { verbal: true, somatic: true, divine_focus: true, ... }` |
+
+#### Damage Patterns (`MechanicsParser`)
+
+| Legacy Text | Parsed Result |
+|-------------|---------------|
+| "1d6" | `SpellDamageSpec { parts: [{ dice: "1d6" }] }` |
+| "1d6/level (max 10d6)" | `SpellDamageSpec { parts: [{ per_level_dice: "1d6", cap_level: 10 }] }` |
+| "1d6 fire" | `SpellDamageSpec { parts: [{ dice: "1d6", damage_type: "fire" }] }` |
+| "2d4+2" | `SpellDamageSpec { parts: [{ dice: "2d4", bonus: 2 }] }` |
+
+#### Saving Throw Patterns (`MechanicsParser`)
+
+| Legacy Text | Parsed Result |
+|-------------|---------------|
+| "None" | `SavingThrowSpec { kind: None }` |
+| "Negates" | `SavingThrowSpec { kind: Negates }` |
+| "Half" | `SavingThrowSpec { kind: Half }` |
+| "Spell negates" | `SavingThrowSpec { kind: Negates, allowed: ["Spell"] }` |
+
+#### Magic Resistance Patterns (`MechanicsParser`)
+
+| Legacy Text | Parsed Result |
+|-------------|---------------|
+| "Yes" | `MagicResistanceSpec { applies: Yes }` |
+| "No" | `MagicResistanceSpec { applies: No }` |
+| "Special" | `MagicResistanceSpec { applies: Special }` |
+
 
 ### Database Strategy
 We use an "Expand and Contract" pattern:

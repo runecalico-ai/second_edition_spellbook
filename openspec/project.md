@@ -22,7 +22,7 @@ A local-only, privacy-first desktop application for managing AD&D 2nd Edition sp
 - **Naming**: Use `snake_case` for Rust backend commands and internal logic, and `camelCase` for React frontend code. **All IPC serialized data (Tauri commands/events) MUST use `camelCase`.**
 
 ### Architecture Patterns
-- **Monorepo**: Application lives in `spellbook/apps/desktop`.
+- **Monorepo**: Application lives in `apps/desktop`.
 - **Sidecar Logic**: Heavy processing (ML, complex imports/exports) is delegated to a Python sidecar.
 - **Backend**: Modular Rust commands communicating with the frontend via Tauri IPC.
 
@@ -61,7 +61,7 @@ A local-only, privacy-first desktop application for managing AD&D 2nd Edition sp
 │
 ├── docs/                        # Project documentation
 │
-├── spellbook/                   # Main application monorepo
+├── /                   # Main application monorepo
 │   ├── AGENTS.md                # Spellbook-specific agent context
 │   ├── README.md                # Spellbook overview
 │   │

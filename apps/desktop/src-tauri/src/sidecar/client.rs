@@ -14,7 +14,7 @@ fn sidecar_path() -> Result<PathBuf, AppError> {
     }
     let fallback = std::env::current_dir()
         .map_err(AppError::Io)?
-        .join("spellbook/services/ml/spellbook_sidecar.py");
+        .join("services/ml/spellbook_sidecar.py");
     if fallback.exists() {
         return Ok(fallback);
     }

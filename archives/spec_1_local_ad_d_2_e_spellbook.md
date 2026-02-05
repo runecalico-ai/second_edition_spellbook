@@ -200,7 +200,7 @@ CREATE TABLE spellbook (
   PRIMARY KEY(character_id, spell_id)
 );
 
--- Note: SPEC-3 and SPEC-4 expand character and class tables significantly. 
+-- Note: SPEC-3 and SPEC-4 expand character and class tables significantly.
 -- See those specs for the extended schema (character_ability, character_class, class_definition, spheres, etc).
 
 
@@ -269,7 +269,7 @@ FE <- RC: import report + conflicts
 
 ### Project Layout
 ```
-spellbook/
+/
   apps/desktop/                 # Tauri app root
     src/                        # React UI
     src-tauri/                  # Rust core (commands, DB, file I/O)
@@ -347,7 +347,7 @@ The Tauri backend exposes the following `snake_case` commands, using `AppError` 
 - **Dedup**: canonical key `(name_normalized, class, level, source)`; show diff UI when collision.
 - **Provenance**: store artifact path+hash; keep original text for reparse.
 - **Spellbook Import/Export Format**: JSON manifest with spell IDs or canonical keys + optional inline spell data; Markdown bundle as folder with `spellbook.yml` + MD files.
-  
+
 ### Export Details
 - **Markdown**: deterministic template that mirrors DB fields, including YAML front-matter for metadata; spellbooks export to a folder bundle.
 - **PDF**: default Pandoc (LaTeX) route for high quality; HTML-print fallback; presets for **Compact**, **Stat‑Block**, and **List** layouts; includes per‑spell notes and prepared/known markers.

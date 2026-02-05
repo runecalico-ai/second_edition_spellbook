@@ -11,8 +11,8 @@ This change fixes 4 critical bugs discovered during code review. The fixes are i
 ### Fix 1: Modal Backdrop Dismissal
 
 **Files**:
-- `spellbook/apps/desktop/src/store/useModal.ts`
-- `spellbook/apps/desktop/src/ui/components/Modal.tsx`
+- `apps/desktop/src/store/useModal.ts`
+- `apps/desktop/src/ui/components/Modal.tsx`
 
 **Current Logic**:
 - `Modal.tsx` line 29: Backdrop always calls `hideModal()`
@@ -93,7 +93,7 @@ export default function Modal() {
 
 ### Fix 2: Import Conflict Key Collision
 
-**File**: `spellbook/apps/desktop/src/ui/ImportWizard.tsx`
+**File**: `apps/desktop/src/ui/ImportWizard.tsx`
 
 **Current Logic** (lines 158-159):
 ```typescript
@@ -114,10 +114,10 @@ const getConflictKey = (conflict: SpellConflict, index: number) =>
 ### Fix 3: Character Model Modernization (camelCase standardization)
 
 **Files**:
-- `spellbook/apps/desktop/src-tauri/src/models/character.rs`
-- `spellbook/apps/desktop/src/types/character.ts`
-- `spellbook/apps/desktop/src/ui/CharacterManager.tsx`
-- `spellbook/apps/desktop/src/ui/CharacterEditor.tsx`
+- `apps/desktop/src-tauri/src/models/character.rs`
+- `apps/desktop/src/types/character.ts`
+- `apps/desktop/src/ui/CharacterManager.tsx`
+- `apps/desktop/src/ui/CharacterEditor.tsx`
 
 **Current Problem**: The project mixes `camelCase` (JS standard) and `snake_case` (Rust target). Functions like `create_character` and `update_character_details` fail or use inconsistent property names because backend structs aren't configured for `camelCase` renaming.
 
@@ -152,7 +152,7 @@ const getConflictKey = (conflict: SpellConflict, index: number) =>
 
 ### Fix 4: Filename Sanitization Collision Detection
 
-**File**: `spellbook/apps/desktop/src-tauri/src/commands/import.rs`
+**File**: `apps/desktop/src-tauri/src/commands/import.rs`
 
 **Current Logic** (lines 193-198 in preview, 252-263 in import):
 ```rust
@@ -198,7 +198,7 @@ for file in &files {
 
 ### Fix 5: Include Identity Fields in Overwrite UPDATE
 
-**File**: `spellbook/apps/desktop/src-tauri/src/commands/import.rs`
+**File**: `apps/desktop/src-tauri/src/commands/import.rs`
 
 **Current Logic** (lines 384-395 and 508-519):
 ```rust
@@ -235,7 +235,7 @@ conn.execute(
 
 ### Fix 6: Fetch Actual Character ID from Database
 
-**File**: `spellbook/apps/desktop/src-tauri/src/commands/characters.rs`
+**File**: `apps/desktop/src-tauri/src/commands/characters.rs`
 
 **Current Logic** (lines 333-400):
 ```rust
@@ -313,7 +313,7 @@ Ok(CharacterSpellbookEntry {
 
 ### Unit Tests (Rust)
 
-**File**: `spellbook/apps/desktop/src-tauri/src/commands/spells.rs` (add tests)
+**File**: `apps/desktop/src-tauri/src/commands/spells.rs` (add tests)
 
 ```rust
 #[cfg(test)]
@@ -362,7 +362,7 @@ mod tests {
 
 ### Unit Tests (Python)
 
-**File**: `spellbook/services/ml/tests/test_batch_import.py` (add tests)
+**File**: `services/ml/tests/test_batch_import.py` (add tests)
 
 ```python
 def test_cantrip_auto_detection_from_numeric_level(tmp_path: Path):
@@ -401,7 +401,7 @@ A level 0 spell that is not a cantrip.""", encoding="utf-8")
 
 ### E2E Tests (Playwright)
 
-**File**: `spellbook/apps/desktop/tests/modal_backdrop.spec.ts` (new file)
+**File**: `apps/desktop/tests/modal_backdrop.spec.ts` (new file)
 
 ```typescript
 import { test, expect } from './fixtures/test-fixtures';
@@ -419,7 +419,7 @@ test('confirm modal cannot be dismissed via backdrop', async ({ app }) => {
 });
 ```
 
-**File**: `spellbook/apps/desktop/tests/import_conflicts.spec.ts` (add test)
+**File**: `apps/desktop/tests/import_conflicts.spec.ts` (add test)
 
 ```typescript
 test('multiple files matching same spell have independent conflict resolutions', async ({ app, fileTracker }) => {
@@ -431,7 +431,7 @@ test('multiple files matching same spell have independent conflict resolutions',
 });
 ```
 
-**File**: `spellbook/apps/desktop/tests/character_creation.spec.ts` (new file or add to existing)
+**File**: `apps/desktop/tests/character_creation.spec.ts` (new file or add to existing)
 
 ```typescript
 test('character creation works with correct parameter names', async ({ app }) => {

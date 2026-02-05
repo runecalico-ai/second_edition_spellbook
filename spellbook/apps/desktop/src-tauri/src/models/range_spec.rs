@@ -1,7 +1,7 @@
 use crate::models::scalar::SpellScalar;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RangeKind {
     Personal,
@@ -28,7 +28,7 @@ pub enum RangeKind {
     Special,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RangeUnit {
     Ft,
@@ -37,14 +37,14 @@ pub enum RangeUnit {
     Inches,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RangeContext {
     Los,
     Loe,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RangeAnchor {
     Caster,
@@ -57,6 +57,8 @@ pub enum RangeAnchor {
 #[serde(deny_unknown_fields)]
 pub struct RangeSpec {
     pub kind: RangeKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit: Option<RangeUnit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -79,6 +81,12 @@ impl RangeSpec {
                 RangeContext::Loe => 1,
             });
             reqs.dedup();
+        }
+        if let Some(t) = &mut self.text {
+            *t = crate::models::canonical_spell::normalize_string(
+                t,
+                crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
+            );
         }
         if let Some(n) = &mut self.notes {
             *n = crate::models::canonical_spell::normalize_string(

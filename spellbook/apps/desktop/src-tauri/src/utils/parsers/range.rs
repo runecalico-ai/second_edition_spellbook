@@ -118,312 +118,323 @@ impl RangeParser {
         };
         let input_stripped = lower;
 
-        if input_stripped.is_empty() {
+        let mut res = if input_stripped.is_empty() {
             if let Some(fk) = force_kind {
                 let kind = match fk {
                     RangeKind::DistanceLos => RangeKind::Los,
                     RangeKind::DistanceLoe => RangeKind::Loe,
                     _ => fk,
                 };
-                return RangeSpec {
+                RangeSpec {
                     kind,
-                    requires,
+                    requires: requires.clone(),
                     anchor,
                     region_unit,
                     ..Default::default()
+                }
+            } else {
+                RangeSpec {
+                    kind: RangeKind::Special,
+                    requires: requires.clone(),
+                    anchor,
+                    region_unit,
+                    ..Default::default()
+                }
+            }
+        } else {
+            let mut matched_spec = None;
+
+            // 4. Keyword Mapping
+            match input_stripped.as_str() {
+                "personal" | "0" | "self" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Personal,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "touch" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Touch,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "unlimited" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Unlimited,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "sight" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Sight,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "hearing" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Hearing,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "voice" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Voice,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "senses" | "sensory" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Senses,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "room" | "same room" | "same_room" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::SameRoom,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "structure" | "same structure" | "same_structure" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::SameStructure,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "dungeon level" | "same dungeon level" | "same_dungeon_level" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::SameDungeonLevel,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "wilderness" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Wilderness,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "plane" | "same plane" | "same_plane" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::SamePlane,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "interplanar" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Interplanar,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "anywhere on plane" | "anywhere_on_plane" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::AnywhereOnPlane,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "domain" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Domain,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                "los" => {
+                    matched_spec = Some(RangeSpec {
+                        kind: RangeKind::Los,
+                        anchor,
+                        region_unit,
+                        requires: requires.clone(),
+                        ..Default::default()
+                    });
+                }
+                _ => {}
+            }
+
+            if matched_spec.is_none() {
+                // Helper to map units
+                let map_unit = |u: &str| -> Option<RangeUnit> {
+                    match u {
+                        "foot" | "feet" | "ft." | "ft" | "'" => Some(RangeUnit::Ft),
+                        "yard" | "yd." | "yd" | "yards" => Some(RangeUnit::Yd),
+                        "mile" | "mi." | "mi" | "miles" => Some(RangeUnit::Mi),
+                        "inch" | "in." | "in" | "inches" | "\"" => Some(RangeUnit::Inches),
+                        _ => None,
+                    }
                 };
-            }
-        }
 
-        // 4. Keyword Mapping
-        match input_stripped.as_str() {
-            "personal" | "0" | "self" => {
-                return RangeSpec {
-                    kind: RangeKind::Personal,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "touch" => {
-                return RangeSpec {
-                    kind: RangeKind::Touch,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "unlimited" => {
-                return RangeSpec {
-                    kind: RangeKind::Unlimited,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "sight" => {
-                return RangeSpec {
-                    kind: RangeKind::Sight,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "hearing" => {
-                return RangeSpec {
-                    kind: RangeKind::Hearing,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "voice" => {
-                return RangeSpec {
-                    kind: RangeKind::Voice,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "senses" | "sensory" => {
-                return RangeSpec {
-                    kind: RangeKind::Senses,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "room" | "same room" | "same_room" => {
-                return RangeSpec {
-                    kind: RangeKind::SameRoom,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "structure" | "same structure" | "same_structure" => {
-                return RangeSpec {
-                    kind: RangeKind::SameStructure,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "dungeon level" | "same dungeon level" | "same_dungeon_level" => {
-                return RangeSpec {
-                    kind: RangeKind::SameDungeonLevel,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "wilderness" => {
-                return RangeSpec {
-                    kind: RangeKind::Wilderness,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "plane" | "same plane" | "same_plane" => {
-                return RangeSpec {
-                    kind: RangeKind::SamePlane,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "interplanar" => {
-                return RangeSpec {
-                    kind: RangeKind::Interplanar,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "anywhere on plane" | "anywhere_on_plane" => {
-                return RangeSpec {
-                    kind: RangeKind::AnywhereOnPlane,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "domain" => {
-                return RangeSpec {
-                    kind: RangeKind::Domain,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            "los" => {
-                return RangeSpec {
-                    kind: RangeKind::Los,
-                    anchor,
-                    region_unit,
-                    requires: requires.clone(),
-                    ..Default::default()
-                }
-            }
-            _ => {}
-        }
+                // Pattern 2: Variable Scaling "10 + 5/level yards"
+                if let Some(caps) = self.range_variable_regex.captures(&input_stripped) {
+                    let base = caps
+                        .get(1)
+                        .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                    let unit1_raw = caps.get(2).map_or("", |m| m.as_str());
+                    let per_level = caps
+                        .get(3)
+                        .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                    let mut unit_raw = caps.get(4).map(|m| m.as_str()).unwrap_or("");
+                    if unit_raw.is_empty() {
+                        unit_raw = unit1_raw;
+                    }
 
-        // Helper to map units
-        let map_unit = |u: &str| -> Option<RangeUnit> {
-            match u {
-                "foot" | "feet" | "ft." | "ft" | "'" => Some(RangeUnit::Ft),
-                "yard" | "yd." | "yd" | "yards" => Some(RangeUnit::Yd),
-                "mile" | "mi." | "mi" | "miles" => Some(RangeUnit::Mi),
-                "inch" | "in." | "in" | "inches" | "\"" => Some(RangeUnit::Inches),
-                _ => None,
+                    let unit = map_unit(unit_raw).or_else(|| map_unit(unit1_raw));
+
+                    if let Some(u) = unit {
+                        let kind = match u {
+                            RangeUnit::Ft | RangeUnit::Yd | RangeUnit::Mi | RangeUnit::Inches => {
+                                force_kind.unwrap_or(RangeKind::Distance)
+                            }
+                        };
+
+                        let scalar = SpellScalar {
+                            mode: if per_level != 0.0 {
+                                ScalarMode::PerLevel
+                            } else {
+                                ScalarMode::Fixed
+                            },
+                            value: Some(base),
+                            per_level: Some(per_level),
+                            min_level: None,
+                            max_level: None,
+                            cap_value: None,
+                            cap_level: None,
+                            rounding: None,
+                        };
+
+                        matched_spec = Some(RangeSpec {
+                            kind,
+                            unit: Some(u),
+                            distance: Some(scalar),
+                            requires: requires.clone(),
+                            anchor,
+                            region_unit,
+                            ..Default::default()
+                        });
+                    }
+                }
+                // Pattern 3: Per-level only "5 ft/level"
+                else if let Some(caps) = self.range_per_level_regex.captures(&input_stripped) {
+                    let per_level = caps
+                        .get(1)
+                        .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                    let mut unit_raw = caps.get(2).map_or("", |m| m.as_str());
+                    let unit2 = caps.get(3).map_or("", |m| m.as_str());
+                    if unit_raw.is_empty() {
+                        unit_raw = unit2;
+                    }
+
+                    let unit = map_unit(unit_raw);
+                    if let Some(u) = unit {
+                        let kind = match u {
+                            RangeUnit::Ft | RangeUnit::Yd | RangeUnit::Mi | RangeUnit::Inches => {
+                                force_kind.unwrap_or(RangeKind::Distance)
+                            }
+                        };
+                        let scalar = SpellScalar {
+                            mode: ScalarMode::PerLevel,
+                            value: None,
+                            per_level: Some(per_level),
+                            min_level: None,
+                            max_level: None,
+                            cap_value: None,
+                            cap_level: None,
+                            rounding: None,
+                        };
+                        matched_spec = Some(RangeSpec {
+                            kind,
+                            unit: Some(u),
+                            distance: Some(scalar),
+                            requires: requires.clone(),
+                            anchor,
+                            region_unit,
+                            ..Default::default()
+                        });
+                    }
+                }
+                // Pattern 1: Simple "10 yards"
+                else if let Some(caps) = self.range_simple_regex.captures(&input_stripped) {
+                    let base = caps
+                        .get(1)
+                        .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                    let unit_raw = caps.get(2).map_or("", |m| m.as_str());
+
+                    if let Some(u) = map_unit(unit_raw) {
+                        matched_spec = Some(RangeSpec {
+                            kind: force_kind.unwrap_or(RangeKind::Distance),
+                            unit: Some(u),
+                            distance: Some(SpellScalar {
+                                mode: ScalarMode::Fixed,
+                                value: Some(base),
+                                per_level: None,
+                                min_level: None,
+                                max_level: None,
+                                cap_value: None,
+                                cap_level: None,
+                                rounding: None,
+                            }),
+                            requires: requires.clone(),
+                            anchor,
+                            region_unit,
+                            ..Default::default()
+                        });
+                    }
+                }
             }
+
+            matched_spec.unwrap_or_else(|| RangeSpec {
+                kind: RangeKind::Special,
+                requires: requires.clone(),
+                anchor,
+                region_unit,
+                notes: Some(input_clean.to_string()),
+                ..Default::default()
+            })
         };
 
-        // Pattern 2: Variable Scaling "10 + 5/level yards"
-        if let Some(caps) = self.range_variable_regex.captures(&input_stripped) {
-            let base = caps
-                .get(1)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit1_raw = caps.get(2).map_or("", |m| m.as_str());
-            let per_level = caps
-                .get(3)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            // Only capture unit2 if it exists, otherwise fallback to unit1
-            let mut unit_raw = caps.get(4).map(|m| m.as_str()).unwrap_or("");
-            if unit_raw.is_empty() {
-                unit_raw = unit1_raw;
-            }
-
-            let unit = map_unit(unit_raw).or_else(|| map_unit(unit1_raw));
-
-            if let Some(u) = unit {
-                let kind = match u {
-                    RangeUnit::Ft | RangeUnit::Yd | RangeUnit::Mi | RangeUnit::Inches => {
-                        force_kind.unwrap_or(RangeKind::Distance)
-                    }
-                };
-
-                let scalar = SpellScalar {
-                    mode: if per_level != 0.0 {
-                        ScalarMode::PerLevel
-                    } else {
-                        ScalarMode::Fixed
-                    },
-                    value: Some(base),
-                    per_level: Some(per_level),
-                    min_level: None,
-                    max_level: None,
-                    cap_value: None,
-                    cap_level: None,
-                    rounding: None,
-                };
-
-                return RangeSpec {
-                    kind,
-                    unit: Some(u),
-                    distance: Some(scalar),
-                    requires,
-                    anchor,
-                    region_unit,
-                    ..Default::default()
-                };
-            }
-        }
-
-        // Pattern 3: Per-level only "5 ft/level"
-        if let Some(caps) = self.range_per_level_regex.captures(&input_stripped) {
-            let per_level = caps
-                .get(1)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let mut unit_raw = caps.get(2).map_or("", |m| m.as_str());
-            let unit2 = caps.get(3).map_or("", |m| m.as_str());
-            if unit_raw.is_empty() {
-                unit_raw = unit2;
-            }
-
-            let unit = map_unit(unit_raw);
-            if let Some(u) = unit {
-                let kind = match u {
-                    RangeUnit::Ft | RangeUnit::Yd | RangeUnit::Mi | RangeUnit::Inches => {
-                        force_kind.unwrap_or(RangeKind::Distance)
-                    }
-                };
-                let scalar = SpellScalar {
-                    mode: ScalarMode::PerLevel,
-                    value: None,
-                    per_level: Some(per_level),
-                    min_level: None,
-                    max_level: None,
-                    cap_value: None,
-                    cap_level: None,
-                    rounding: None,
-                };
-                return RangeSpec {
-                    kind,
-                    unit: Some(u),
-                    distance: Some(scalar),
-                    requires,
-                    anchor,
-                    region_unit,
-                    ..Default::default()
-                };
-            }
-        }
-
-        // Pattern 1: Simple "10 yards"
-        if let Some(caps) = self.range_simple_regex.captures(&input_stripped) {
-            let base = caps
-                .get(1)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit_raw = caps.get(2).map_or("", |m| m.as_str());
-
-            if let Some(u) = map_unit(unit_raw) {
-                return RangeSpec {
-                    kind: force_kind.unwrap_or(RangeKind::Distance),
-                    unit: Some(u),
-                    distance: Some(SpellScalar {
-                        mode: ScalarMode::Fixed,
-                        value: Some(base),
-                        per_level: None,
-                        min_level: None,
-                        max_level: None,
-                        cap_value: None,
-                        cap_level: None,
-                        rounding: None,
-                    }),
-                    requires,
-                    anchor,
-                    region_unit,
-                    ..Default::default()
-                };
-            }
-        }
-
-        // Fallback
-        RangeSpec {
-            kind: RangeKind::Special,
-            requires,
-            anchor,
-            region_unit,
-            notes: Some(input_clean.to_string()),
-            ..Default::default()
-        }
+        res.text = Some(input_clean.to_string());
+        res
     }
 }
 

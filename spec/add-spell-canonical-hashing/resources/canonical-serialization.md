@@ -48,18 +48,10 @@ SpellDetail {
 ```
 *Note: `reversible` defaulted to 0 in schema but if it's Option and None, we skip it? stricter is better. Let's say we use `serde` defaults: `Option` fields are omitted if None.*
 
-## Implementation Guidelines
+## Implementation Guidelines (Rust)
 
-### Rust
-Use `serde_json` with specific settings for canonicalization.
-Since `serde_json` does not guarantee key order by default (it depends on map implementation, but struct fields are ordered? No, `serde_json::to_string` does not sort keys for structs unless `preserve_order` feature is NOT used and it relies on struct definition order, but maps are arbitrary. `serde_json` with `sort_keys` feature or using a BTreeMap is safer).
-
-Recommended crate or approach:
-1.  Convert struct to `serde_json::Value`.
-2.  Deseralize into a `BTreeMap<String, Value>` (which sorts keys).
-3.  Serialize the map to string.
-
-Or use `serde_jcs` if available, or simply ensure the struct is serialized into a sorted map intermediate.
+1.  **JCS**: Use the `serde_json_canonicalizer` crate.
+2.  **Steps**: Convert `SpellDetail` to `serde_json::Value`, apply transformation pipeline (round numbers, NFC normalize strings, collapse spaces, sort/dedup arrays, materialize defaults), then use `serde_json_canonicalizer::to_string`.
 
 ### Verification
 When importing a spell:

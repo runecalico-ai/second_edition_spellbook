@@ -1,7 +1,7 @@
 use crate::models::scalar::SpellScalar;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AreaKind {
     RadiusCircle,
@@ -25,7 +25,7 @@ pub enum AreaKind {
     Special,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum AreaUnit {
     Ft,
@@ -42,7 +42,7 @@ pub enum AreaUnit {
     Inches,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum AreaShapeUnit {
     Ft,
@@ -51,7 +51,7 @@ pub enum AreaShapeUnit {
     Inches,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum CountSubject {
     Creature,
@@ -62,7 +62,7 @@ pub enum CountSubject {
     Structure,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RegionUnit {
     Object,
@@ -83,7 +83,7 @@ pub enum RegionUnit {
     Plane,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScopeUnit {
     Los,
@@ -98,7 +98,7 @@ pub enum ScopeUnit {
     PortfolioDefined,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MovesWith {
     Caster,
@@ -107,7 +107,7 @@ pub enum MovesWith {
     Fixed,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum TileUnit {
     Hex,

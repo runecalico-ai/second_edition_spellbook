@@ -160,5 +160,5 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
 
 ## Implementation Guidelines (Rust)
 
-1.  **JCS**: Use the `serde_jcs` crate.
-2.  **Steps**: Convert `SpellDetail` to `serde_json::Value`, apply transformation pipeline (round numbers, NFC normalize strings, collapse spaces, sort/dedup arrays, materialize defaults), then use `serde_jcs::to_string`.
+1.  **JCS**: Use the `serde_json_canonicalizer` crate.
+2.  **Steps**: Convert `SpellDetail` to `serde_json::Value`, apply transformation pipeline (round numbers, NFC normalize strings, collapse spaces, sort/dedup arrays, materialize defaults), then use `serde_json_canonicalizer::to_string`.

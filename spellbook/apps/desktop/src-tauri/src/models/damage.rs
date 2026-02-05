@@ -269,6 +269,10 @@ impl SpellDamageSpec {
 
         if let Some(parts) = &mut self.parts {
             for part in parts.iter_mut() {
+                part.id = crate::models::canonical_spell::normalize_string(
+                    &part.id,
+                    crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
+                );
                 if let Some(l) = &mut part.label {
                     *l = crate::models::canonical_spell::normalize_string(
                         l,

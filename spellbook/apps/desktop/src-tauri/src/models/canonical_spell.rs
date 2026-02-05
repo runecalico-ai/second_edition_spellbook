@@ -312,12 +312,12 @@ impl CanonicalSpell {
         let instance =
             serde_json::to_value(self).map_err(|e| format!("Serialization error: {}", e))?;
 
-        // Version Validation
+        // Version Validation: Versions < 1 are migrated during normalization.
+        // We log a warning for older versions instead of hard-rejecting,
+        // as the canonicalization contract requires materializing them.
         if self.schema_version < 1 {
-            return Err(format!(
-                "Incompatible schema version: {}. Minimum supported version is 1.",
-                self.schema_version
-            ));
+            eprintln!("WARNING: Spell '{}' uses an older schema version ({}). Migrating to version {} for hashing.",
+                 self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
         }
         if self.schema_version > CURRENT_SCHEMA_VERSION {
             eprintln!("WARNING: Spell '{}' uses a newer schema version ({}). This application supports up to version {}. Forward compatibility is not guaranteed.",
@@ -431,9 +431,10 @@ impl CanonicalSpell {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum NormalizationMode {
-    Structured, // Collapses all internal whitespace AND newlines
-    Textual,    // Collapses horizontal whitespace, preserves newlines
-    Exact,      // NFC and trim, but NO internal whitespace collapsing
+    Structured,          // Collapses all internal whitespace AND newlines
+    LowercaseStructured, // Structured + lowercase
+    Textual,             // Collapses horizontal whitespace, preserves newlines
+    Exact,               // NFC and trim, but NO internal whitespace collapsing
 }
 
 /// Normalizes a string: NFC, trim, and applies the specified normalization mode.
@@ -446,6 +447,14 @@ pub(crate) fn normalize_string(s: &str, mode: NormalizationMode) -> String {
         NormalizationMode::Structured => {
             // Collapse ALL whitespace (including newlines) into single spaces
             trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+        NormalizationMode::LowercaseStructured => {
+            // Collapse ALL whitespace (including newlines) into single spaces AND lowercase
+            trimmed
+                .to_lowercase()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
         }
         NormalizationMode::Textual => {
             // Collapse internal horizontal whitespace but preserve all distinct lines.
@@ -1153,6 +1162,7 @@ mod tests {
         spell1.class_list = vec!["Wizard".into()];
         spell1.range = Some(RangeSpec {
             kind: RangeKind::Special,
+            text: None,
             unit: None,
             distance: None,
             requires: None,
@@ -1248,6 +1258,7 @@ mod tests {
         // Helper to make scalar
         let make_spec = |val: f64| RangeSpec {
             kind: RangeKind::Distance,
+            text: None,
             unit: Some(RangeUnit::Yd),
             distance: Some(SpellScalar {
                 mode: ScalarMode::Fixed,
@@ -1573,14 +1584,16 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_schema_version_incompatible() {
+    fn test_validate_schema_version_migration_allowed() {
         let mut spell = CanonicalSpell::new("V0".into(), 1, "ARCANE".into(), "Desc".into());
         spell.school = Some("Abjuration".into());
         spell.class_list = vec!["Wizard".into()];
-        spell.schema_version = 0; // Incompatible
+        spell.schema_version = 0; // Historically incompatible, now allowed
         let result = spell.validate();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Incompatible schema version"));
+        assert!(
+            result.is_ok(),
+            "Schema version 0 should now be allowed for migration"
+        );
     }
 
     #[test]
@@ -1674,6 +1687,7 @@ mod tests {
         spell.class_list = vec!["Wizard".into()];
         spell.range = Some(RangeSpec {
             kind: RangeKind::Touch,
+            text: None,
             unit: None,
             distance: None,
             requires: None,
@@ -2250,5 +2264,99 @@ mod tests {
             nested_id, "nested_id",
             "Nested mechanical ID should be preserved"
         );
+    }
+
+    #[test]
+    fn test_id_normalization_regression() {
+        use crate::models::damage::{DamagePart, DamageType, DicePool, DiceTerm, SpellDamageSpec};
+        use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec, SingleSave};
+
+        let mut spell =
+            CanonicalSpell::new("ID Normalization".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        // 1. DamagePart.id
+        spell.damage = Some(SpellDamageSpec {
+            parts: Some(vec![DamagePart {
+                id: "  Part ID  ".to_string(),
+                damage_type: DamageType::Fire,
+                base: DicePool {
+                    terms: vec![DiceTerm {
+                        count: 1,
+                        sides: 6,
+                        per_die_modifier: 0,
+                    }],
+                    flat_modifier: 0,
+                },
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        // 2. SingleSave.id
+        spell.saving_throw = Some(SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            single: Some(SingleSave {
+                id: Some("  Save ID  ".to_string()),
+                save_type: crate::models::saving_throw::SaveType::Spell,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        spell.normalize();
+
+        assert_eq!(
+            spell.damage.as_ref().unwrap().parts.as_ref().unwrap()[0].id,
+            "part id"
+        );
+        assert_eq!(
+            spell
+                .saving_throw
+                .as_ref()
+                .unwrap()
+                .single
+                .as_ref()
+                .unwrap()
+                .id
+                .as_ref()
+                .unwrap(),
+            "save id"
+        );
+    }
+
+    #[test]
+    fn test_range_text_normalization_regression() {
+        let mut spell = CanonicalSpell::new("Range Text".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.range = Some(RangeSpec {
+            kind: RangeKind::Distance,
+            text: Some("  60   FT.  ".to_string()),
+            unit: Some(RangeUnit::Ft),
+            distance: Some(crate::models::scalar::SpellScalar::fixed(60.0)),
+            ..Default::default()
+        });
+
+        spell.normalize();
+
+        // Structured normalization: lowercase, collapse whitespace
+        assert_eq!(
+            spell.range.as_ref().unwrap().text.as_ref().unwrap(),
+            "60 ft."
+        );
+    }
+
+    #[test]
+    fn test_range_parser_populates_text_regression() {
+        use crate::utils::parsers::range::RangeParser;
+        let parser = RangeParser::new();
+
+        let inputs = vec!["60 ft.", "Touch", "Sight (LOS)", "Special Notes"];
+        for input in inputs {
+            let res = parser.parse(input);
+            assert_eq!(res.text.unwrap(), input);
+        }
     }
 }

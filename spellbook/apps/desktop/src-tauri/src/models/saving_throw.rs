@@ -10,13 +10,14 @@ pub enum SavingThrowKind {
     DmAdjudicated,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveType {
     ParalyzationPoisonDeath,
     RodStaffWand,
     PetrificationPolymorph,
     BreathWeapon,
+    #[default]
     Spell,
     Special,
 }
@@ -58,9 +59,10 @@ pub enum SaveTiming {
     Special,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveResult {
+    #[default]
     NoEffect,
     ReducedEffect,
     FullEffect,
@@ -69,7 +71,7 @@ pub enum SaveResult {
     Special,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct SaveOutcomeEffect {
     pub result: SaveResult,
@@ -77,7 +79,7 @@ pub struct SaveOutcomeEffect {
     pub notes: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct SingleSave {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -138,6 +140,12 @@ impl SavingThrowSpec {
 }
 
 fn normalize_single_save(save: &mut SingleSave) {
+    if let Some(id) = &mut save.id {
+        *id = crate::models::canonical_spell::normalize_string(
+            id,
+            crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
+        );
+    }
     if let Some(n) = &mut save.on_success.notes {
         *n = crate::models::canonical_spell::normalize_string(
             n,

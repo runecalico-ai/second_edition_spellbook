@@ -278,8 +278,8 @@ fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
             // This ensures hash stability as the schema adds new optional properties.
             obj.retain(|_, v| {
                 !v.is_null()
-                    && !(v.is_array() && v.as_array().unwrap().is_empty())
-                    && !(v.is_string() && v.as_str().unwrap().is_empty())
+                    && (!v.is_array() || !v.as_array().unwrap().is_empty())
+                    && (!v.is_string() || !v.as_str().unwrap().is_empty())
             });
 
             // 4. Recurse into remaining fields
@@ -797,6 +797,26 @@ mod tests {
             s3.compute_hash().unwrap(),
             "Experience Cost should affect hash"
         );
+    }
+
+    #[test]
+    fn test_regression_optional_field_omission() {
+        // Fix: Optional fields set to None must be OMITTED from JSON, not null
+        let spell = CanonicalSpell::new("Omit Test".into(), 1, "ARCANE".into(), "Desc".into());
+        let json = spell.to_canonical_json().unwrap();
+
+        // Check for absence of keys
+        assert!(!json.contains("\"school\":"), "school should be omitted");
+        assert!(!json.contains("\"sphere\":"), "sphere should be omitted");
+        assert!(!json.contains("\"range\":"), "range should be omitted");
+        assert!(
+            !json.contains("\"material_components\":"),
+            "material_components should be omitted"
+        );
+
+        // Check presence of required keys
+        assert!(json.contains("\"name\":\"Omit Test\""));
+        assert!(json.contains("\"level\":1"));
     }
 
     #[test]

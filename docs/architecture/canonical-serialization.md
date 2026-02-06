@@ -121,10 +121,10 @@ Enum values are normalized to their canonical schema-defined form. The system ma
 
 | Input Examples | Canonical Output |
 |----------------|------------------|
-| `"segment"`, `"segments"` | `"Segment"` |
-| `"round"`, `"rounds"` | `"Round"` |
-| `"bonus action"`, `"bonus actions"` | `"Bonus Action"` |
-| `"instant"`, `"instantaneous"` | `"Instantaneous"` |
+| `"segment"`, `"segments"` | `"segment"` |
+| `"round"`, `"rounds"` | `"round"` |
+| `"bonus action"`, `"bonus actions"` | `"bonus_action"` |
+| `"instant"`, `"instantaneous"` | `"instantaneous"` |
 | `"conjuration/summoning"` | `"Conjuration/Summoning"` |
 | `"mind-affecting"` | `"Mind-Affecting"` |
 

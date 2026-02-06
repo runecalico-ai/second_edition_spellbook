@@ -82,7 +82,7 @@
 - [x] **Test: Empty array omission (Lean Hashing)**
   - GIVEN a spell with `tags = []`
   - THEN the canonical JSON MUST OMIT the `tags` field entirely
-  - **IMPLEMENTED**: `test_empty_array_inclusion` in canonical_spell.rs:853-887
+  - **IMPLEMENTED**: `test_empty_array_omission` in canonical_spell.rs
 
 - [x] **Test: Whitespace collapse (Short text)**
   - GIVEN a spell with `range = { "text": "10  yards  +  10  yards/level", "unit": "Yards" }`

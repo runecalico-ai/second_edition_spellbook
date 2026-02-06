@@ -81,7 +81,7 @@
 - [x] Enforce **6-decimal precision** for floating point numbers.
 - [x] Implement **RFC 8785 (JCS)** physical serialization logic.
 - [x] Implement **Enum normalization** (exact casing from schema).
-- [x] Implement **Empty array `[]` inclusion** in canonical JSON.
+- [x] Implement **Empty array `[]` omission** (Lean Hashing) in canonical JSON.
 - [x] Implement **Whitespace collapsing** for short text fields.
 - [x] Implement schema version compatibility check (Accept/Warn/Reject logic).
 

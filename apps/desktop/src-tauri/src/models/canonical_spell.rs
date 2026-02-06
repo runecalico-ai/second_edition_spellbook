@@ -32,15 +32,25 @@ pub struct SpellComponents {
 #[serde(rename_all = "snake_case")]
 pub enum CastingTimeUnit {
     #[default]
+    #[serde(alias = "SEGMENT", alias = "Segment")]
     Segment,
+    #[serde(alias = "ROUND", alias = "Round")]
     Round,
+    #[serde(alias = "TURN", alias = "Turn")]
     Turn,
+    #[serde(alias = "HOUR", alias = "Hour")]
     Hour,
+    #[serde(alias = "MINUTE", alias = "Minute")]
     Minute,
+    #[serde(alias = "ACTION", alias = "Action")]
     Action,
+    #[serde(alias = "BONUS_ACTION", alias = "BonusAction")]
     BonusAction,
+    #[serde(alias = "REACTION", alias = "Reaction")]
     Reaction,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
+    #[serde(alias = "INSTANTANEOUS", alias = "Instantaneous")]
     Instantaneous,
 }
 
@@ -49,20 +59,43 @@ pub enum CastingTimeUnit {
 pub struct SpellCastingTime {
     pub text: String,
     pub unit: CastingTimeUnit,
-    #[serde(default = "default_one")]
-    pub base_value: f64,
-    #[serde(default)]
-    pub per_level: f64,
-    #[serde(default = "default_one")]
-    pub level_divisor: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_value: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub per_level: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level_divisor: Option<f64>,
 }
 
 impl SpellCastingTime {
     pub fn normalize(&mut self) {
         self.text = normalize_string(&self.text, NormalizationMode::Structured);
-        self.base_value = clamp_precision(self.base_value);
-        self.per_level = clamp_precision(self.per_level);
-        self.level_divisor = clamp_precision(self.level_divisor);
+
+        // Rule 48/88: Materialize defaults then prune if equal to default
+        if let Some(v) = self.base_value {
+            let clamped = clamp_precision(v);
+            if clamped == 1.0 {
+                self.base_value = None;
+            } else {
+                self.base_value = Some(clamped);
+            }
+        }
+        if let Some(v) = self.per_level {
+            let clamped = clamp_precision(v);
+            if clamped == 0.0 {
+                self.per_level = None;
+            } else {
+                self.per_level = Some(clamped);
+            }
+        }
+        if let Some(v) = self.level_divisor {
+            let clamped = clamp_precision(v);
+            if clamped == 1.0 {
+                self.level_divisor = None;
+            } else {
+                self.level_divisor = Some(clamped);
+            }
+        }
     }
 }
 
@@ -162,10 +195,10 @@ pub struct CanonicalSpell {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
 
-    #[serde(default)]
-    pub is_quest_spell: i64, // 0 or 1
-    #[serde(default)]
-    pub is_cantrip: i64, // 0 or 1
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_quest_spell: Option<i64>, // 0 or 1
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_cantrip: Option<i64>, // 0 or 1
 
     #[serde(default = "default_schema_version")]
     pub schema_version: i64,
@@ -220,8 +253,8 @@ impl CanonicalSpell {
             author: None,
             version: default_version(),
             license: None,
-            is_quest_spell: 0,
-            is_cantrip: (level == 0) as i64,
+            is_quest_spell: Some(0),
+            is_cantrip: Some((level == 0) as i64),
             schema_version: CURRENT_SCHEMA_VERSION,
             created_at: None,
             updated_at: None,
@@ -399,16 +432,44 @@ impl CanonicalSpell {
         }
         self.sphere = self.sphere.as_ref().map(|s| match_schema_case(s));
 
-        // Materialize Defaults according to Rule 48 of canonicalization contract
-        if self.reversible.is_none() {
-            self.reversible = Some(0);
+        // Rule 88: Prune optional fields if they equal their materialized defaults (Lean Hashing)
+        // This ensures hash stability as the schema adds new optional properties.
+        if self.reversible == Some(0) {
+            self.reversible = None;
         }
-        // is_quest_spell and is_cantrip will have defaults applied by serde if missing in JSON,
-        // but we ensure they are present for normalization-based materialization too.
 
-        if self.material_components.is_none() {
-            self.material_components = Some(vec![]);
+        if self.is_quest_spell == Some(0) {
+            self.is_quest_spell = None;
         }
+
+        if self.is_cantrip == Some(0) {
+            self.is_cantrip = None;
+        }
+
+        if let Some(materials) = &self.material_components {
+            if materials.is_empty() {
+                self.material_components = None;
+            }
+        }
+
+        if let Some(st) = &self.saving_throw {
+            if st.is_default() {
+                self.saving_throw = None;
+            }
+        }
+
+        if let Some(mr) = &self.magic_resistance {
+            if mr.is_default() {
+                self.magic_resistance = None;
+            }
+        }
+
+        if let Some(xp) = &self.experience_cost {
+            if xp.is_default() {
+                self.experience_cost = None;
+            }
+        }
+
         if self.components.is_none() {
             self.components = Some(SpellComponents {
                 verbal: false,
@@ -424,6 +485,19 @@ impl CanonicalSpell {
         if self.experience_cost.is_some() {
             if let Some(comp) = &mut self.components {
                 comp.experience = true;
+            }
+        }
+
+        // Rule 88: Prune components if all are false (default state)
+        if let Some(comp) = &self.components {
+            if !comp.verbal
+                && !comp.somatic
+                && !comp.material
+                && !comp.focus
+                && !comp.divine_focus
+                && !comp.experience
+            {
+                self.components = None;
             }
         }
 
@@ -569,6 +643,11 @@ pub(crate) fn normalize_scalar(s_opt: &mut Option<SpellScalar>) {
         }
 
         // PerLevel Handling
+        // Rule 66: Materialize value = 0 when mode="per_level" and omitted
+        if s.mode == crate::models::scalar::ScalarMode::PerLevel && s.value.is_none() {
+            s.value = Some(0.0);
+        }
+
         if let Some(v) = s.per_level {
             let clamped = clamp_precision(v);
             // If PerLevel, per_level is required.
@@ -695,8 +774,8 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
         spell.edition = detail.edition;
         spell.author = detail.author;
         spell.license = detail.license;
-        spell.is_quest_spell = detail.is_quest_spell;
-        spell.is_cantrip = detail.is_cantrip;
+        spell.is_quest_spell = Some(detail.is_quest_spell);
+        spell.is_cantrip = Some(detail.is_cantrip);
 
         Ok(spell)
     }
@@ -1062,7 +1141,9 @@ mod tests {
         // Non-skipped Option::None fields appear as `null` if not skipped.
         // HOWEVER, material_components is now PRUNED by Lean Hashing if empty.
         assert!(!json.contains("\"material_components\":[]"));
-        assert!(json.contains("\"is_cantrip\":0")); // is_cantrip is i64, 0 for level 1
+        // is_cantrip/is_quest_spell are NOW pruned if 0 (Lean Hashing)
+        assert!(!json.contains("\"is_cantrip\""));
+        assert!(!json.contains("\"is_quest_spell\""));
         assert!(
             !json.contains("\"schema_version\""),
             "schema_version should be excluded from canonical JSON"
@@ -1272,9 +1353,9 @@ mod tests {
         spell.casting_time = Some(SpellCastingTime {
             text: "1".into(),
             unit: CastingTimeUnit::Round,
-            base_value: 1.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
+            base_value: Some(1.0),
+            per_level: Some(0.0),
+            level_divisor: Some(1.0),
         });
         spell.duration = Some(DurationSpec {
             kind: DurationKind::Time,
@@ -1484,10 +1565,10 @@ mod tests {
             "cap_level inside damage should be omitted"
         );
 
-        // Verify PRESENCE of fields with non-null defaults (Materialization Rule)
+        // Lean Hashing: reversible: 0 should be PRUNED
         assert!(
-            json.contains("\"reversible\":0"),
-            "reversible should be materialized to 0"
+            !json.contains("\"reversible\""),
+            "reversible should be pruned if 0"
         );
     }
 
@@ -1958,12 +2039,12 @@ mod tests {
         spell.class_list = vec!["Wizard".into()];
 
         // 0 and 1 are valid
-        spell.is_quest_spell = 0;
-        spell.is_cantrip = 1;
+        spell.is_quest_spell = Some(0);
+        spell.is_cantrip = Some(1);
         assert!(spell.validate().is_ok());
 
-        spell.is_quest_spell = 1;
-        spell.is_cantrip = 0;
+        spell.is_quest_spell = Some(1);
+        spell.is_cantrip = Some(0);
         assert!(spell.validate().is_ok());
 
         // Anything other than 0 or 1 should fail
@@ -2179,7 +2260,7 @@ mod tests {
 
         // Casting Time
         let ct = spell.casting_time.unwrap();
-        assert_eq!(ct.base_value, 1.0);
+        assert_eq!(ct.base_value.unwrap_or(1.0), 1.0);
         assert_eq!(ct.unit, CastingTimeUnit::Action);
 
         // Components
@@ -2457,9 +2538,8 @@ mod tests {
         let json = spell.to_canonical_json().unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        // Should be materialized in JSON if non-empty (reversible is 0)
-        // But material_components is PRUNED if empty (Lean Hashing)
-        assert_eq!(value["reversible"], 0);
+        // Should be PRUNED in JSON if it equals default (Lean Hashing)
+        assert!(value.get("reversible").is_none());
         assert!(value.get("material_components").is_none());
     }
 

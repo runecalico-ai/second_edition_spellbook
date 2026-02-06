@@ -3,16 +3,22 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScalarMode {
+    #[serde(alias = "FIXED", alias = "Fixed")]
     Fixed,
+    #[serde(alias = "PER_LEVEL", alias = "PerLevel")]
     PerLevel,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScalarRounding {
+    #[serde(alias = "NONE", alias = "None")]
     None,
+    #[serde(alias = "FLOOR", alias = "Floor")]
     Floor,
+    #[serde(alias = "CEIL", alias = "Ceil")]
     Ceil,
+    #[serde(alias = "NEAREST", alias = "Nearest")]
     Nearest,
 }
 

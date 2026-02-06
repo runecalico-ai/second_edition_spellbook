@@ -4,29 +4,65 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DurationKind {
+    #[serde(alias = "INSTANT", alias = "Instant")]
     Instant,
+    #[serde(alias = "TIME", alias = "Time")]
     Time,
+    #[serde(alias = "CONCENTRATION", alias = "Concentration")]
     Concentration,
+    #[serde(alias = "CONDITIONAL", alias = "Conditional")]
     Conditional,
+    #[serde(alias = "PERMANENT", alias = "Permanent")]
     Permanent,
+    #[serde(alias = "UNTIL_DISPELLED", alias = "UntilDispelled")]
     UntilDispelled,
+    #[serde(alias = "UNTIL_TRIGGERED", alias = "UntilTriggered")]
     UntilTriggered,
+    #[serde(alias = "USAGE_LIMITED", alias = "UsageLimited")]
     UsageLimited,
+    #[serde(alias = "PLANAR", alias = "Planar")]
     Planar,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DurationUnit {
+    #[serde(
+        alias = "SEGMENT",
+        alias = "segments",
+        alias = "Segment",
+        alias = "Segments"
+    )]
     Segment,
+    #[serde(alias = "ROUND", alias = "rounds", alias = "Round", alias = "Rounds")]
     Round,
+    #[serde(alias = "TURN", alias = "turns", alias = "Turn", alias = "Turns")]
     Turn,
+    #[serde(
+        alias = "MINUTE",
+        alias = "minutes",
+        alias = "min",
+        alias = "Minute",
+        alias = "Minutes"
+    )]
     Minute,
+    #[serde(
+        alias = "HOUR",
+        alias = "hours",
+        alias = "hr",
+        alias = "Hour",
+        alias = "Hours"
+    )]
     Hour,
+    #[serde(alias = "DAY", alias = "days", alias = "Day", alias = "Days")]
     Day,
+    #[serde(alias = "WEEK", alias = "weeks", alias = "Week", alias = "Weeks")]
     Week,
+    #[serde(alias = "MONTH", alias = "months", alias = "Month", alias = "Months")]
     Month,
+    #[serde(alias = "YEAR", alias = "years", alias = "Year", alias = "Years")]
     Year,
 }
 

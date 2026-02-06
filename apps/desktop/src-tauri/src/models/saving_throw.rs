@@ -4,21 +4,31 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum SavingThrowKind {
     #[default]
+    #[serde(alias = "NONE", alias = "None")]
     None,
+    #[serde(alias = "SINGLE", alias = "Single")]
     Single,
+    #[serde(alias = "MULTIPLE", alias = "Multiple")]
     Multiple,
+    #[serde(alias = "DM_ADJUDICATED", alias = "DmAdjudicated")]
     DmAdjudicated,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveType {
+    #[serde(alias = "PARALYZATION_POISON_DEATH", alias = "ParalyzationPoisonDeath")]
     ParalyzationPoisonDeath,
+    #[serde(alias = "ROD_STAFF_WAND", alias = "RodStaffWand")]
     RodStaffWand,
+    #[serde(alias = "PETRIFICATION_POLYMORPH", alias = "PetrificationPolymorph")]
     PetrificationPolymorph,
+    #[serde(alias = "BREATH_WEAPON", alias = "BreathWeapon")]
     BreathWeapon,
     #[default]
+    #[serde(alias = "SPELL", alias = "Spell")]
     Spell,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
@@ -26,13 +36,21 @@ pub enum SaveType {
 #[serde(rename_all = "snake_case")]
 pub enum SaveVs {
     #[default]
+    #[serde(alias = "SPELL", alias = "Spell")]
     Spell,
+    #[serde(alias = "POISON", alias = "Poison")]
     Poison,
+    #[serde(alias = "DEATH_MAGIC", alias = "DeathMagic")]
     DeathMagic,
+    #[serde(alias = "POLYMORPH", alias = "Polymorph")]
     Polymorph,
+    #[serde(alias = "PETRIFICATION", alias = "Petrification")]
     Petrification,
+    #[serde(alias = "BREATH", alias = "Breath")]
     Breath,
+    #[serde(alias = "WEAPON", alias = "Weapon")]
     Weapon,
+    #[serde(alias = "OTHER", alias = "Other")]
     Other,
 }
 
@@ -40,22 +58,33 @@ pub enum SaveVs {
 #[serde(rename_all = "snake_case")]
 pub enum SaveAppliesTo {
     #[default]
+    #[serde(alias = "EACH_TARGET", alias = "EachTarget")]
     EachTarget,
+    #[serde(alias = "EACH_ROUND", alias = "EachRound")]
     EachRound,
+    #[serde(alias = "EACH_APPLICATION", alias = "EachApplication")]
     EachApplication,
+    #[serde(alias = "ONCE_PER_CAST", alias = "OncePerCast")]
     OncePerCast,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveTiming {
+    #[serde(alias = "ON_HIT", alias = "OnHit")]
     OnHit,
+    #[serde(alias = "ON_CONTACT", alias = "OnContact")]
     OnContact,
+    #[serde(alias = "ON_ENTRY", alias = "OnEntry")]
     OnEntry,
+    #[serde(alias = "END_OF_ROUND", alias = "EndOfRound")]
     EndOfRound,
     #[default]
+    #[serde(alias = "ON_EFFECT", alias = "OnEffect")]
     OnEffect,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
@@ -63,11 +92,17 @@ pub enum SaveTiming {
 #[serde(rename_all = "snake_case")]
 pub enum SaveResult {
     #[default]
+    #[serde(alias = "NO_EFFECT", alias = "NoEffect")]
     NoEffect,
+    #[serde(alias = "REDUCED_EFFECT", alias = "ReducedEffect")]
     ReducedEffect,
+    #[serde(alias = "FULL_EFFECT", alias = "FullEffect")]
     FullEffect,
+    #[serde(alias = "PARTIAL_DAMAGE_ONLY", alias = "PartialDamageOnly")]
     PartialDamageOnly,
+    #[serde(alias = "PARTIAL_NON_DAMAGE_ONLY", alias = "PartialNonDamageOnly")]
     PartialNonDamageOnly,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
@@ -112,6 +147,14 @@ pub struct SavingThrowSpec {
 }
 
 impl SavingThrowSpec {
+    pub fn is_default(&self) -> bool {
+        self.kind == SavingThrowKind::None
+            && self.single.is_none()
+            && self.multiple.is_none()
+            && self.dm_guidance.is_none()
+            && self.notes.is_none()
+    }
+
     pub fn normalize(&mut self) {
         if let Some(n) = &mut self.notes {
             *n = crate::models::canonical_spell::normalize_string(

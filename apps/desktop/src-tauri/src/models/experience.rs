@@ -4,11 +4,17 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum ExperienceKind {
     #[default]
+    #[serde(alias = "NONE", alias = "None")]
     None,
+    #[serde(alias = "FIXED", alias = "Fixed")]
     Fixed,
+    #[serde(alias = "PER_UNIT", alias = "PerUnit")]
     PerUnit,
+    #[serde(alias = "FORMULA", alias = "Formula")]
     Formula,
+    #[serde(alias = "TIERED", alias = "Tiered")]
     Tiered,
+    #[serde(alias = "DM_ADJUDICATED", alias = "DmAdjudicated")]
     DmAdjudicated,
 }
 
@@ -16,24 +22,37 @@ pub enum ExperienceKind {
 #[serde(rename_all = "snake_case")]
 pub enum ExperiencePayer {
     #[default]
+    #[serde(alias = "CASTER", alias = "Caster")]
     Caster,
+    #[serde(alias = "PRIMARY_CASTER", alias = "PrimaryCaster")]
     PrimaryCaster,
+    #[serde(alias = "PARTICIPANT", alias = "Participant")]
     Participant,
+    #[serde(alias = "RECIPIENT", alias = "Recipient")]
     Recipient,
+    #[serde(alias = "ITEM", alias = "Item")]
     Item,
+    #[serde(alias = "OTHER", alias = "Other")]
     Other,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PaymentTiming {
+    #[serde(alias = "ON_START", alias = "OnStart")]
     OnStart,
     #[default]
+    #[serde(alias = "ON_COMPLETION", alias = "OnCompletion")]
     OnCompletion,
+    #[serde(alias = "ON_EFFECT", alias = "OnEffect")]
     OnEffect,
+    #[serde(alias = "ON_SUCCESS", alias = "OnSuccess")]
     OnSuccess,
+    #[serde(alias = "ON_FAILURE", alias = "OnFailure")]
     OnFailure,
+    #[serde(alias = "ON_BOTH", alias = "OnBoth")]
     OnBoth,
+    #[serde(alias = "DM", alias = "Dm")]
     Dm,
 }
 
@@ -41,9 +60,13 @@ pub enum PaymentTiming {
 #[serde(rename_all = "snake_case")]
 pub enum PaymentSemantics {
     #[default]
+    #[serde(alias = "SPEND", alias = "Spend")]
     Spend,
+    #[serde(alias = "LOSS", alias = "Loss")]
     Loss,
+    #[serde(alias = "DRAIN", alias = "Drain")]
     Drain,
+    #[serde(alias = "SACRIFICE", alias = "Sacrifice")]
     Sacrifice,
 }
 
@@ -51,31 +74,47 @@ pub enum PaymentSemantics {
 #[serde(rename_all = "snake_case")]
 pub enum Recoverability {
     #[default]
+    #[serde(alias = "NORMAL_EARNING", alias = "NormalEarning")]
     NormalEarning,
+    #[serde(alias = "NOT_RECOVERABLE", alias = "NotRecoverable")]
     NotRecoverable,
+    #[serde(alias = "SPECIAL_ONLY", alias = "SpecialOnly")]
     SpecialOnly,
+    #[serde(alias = "DM", alias = "Dm")]
     Dm,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum UnitKind {
+    #[serde(alias = "GP_VALUE_1000", alias = "GpValue1000")]
     GpValue1000,
+    #[serde(alias = "SPELL_LEVEL", alias = "SpellLevel")]
     SpellLevel,
+    #[serde(alias = "RECIPIENT_LEVEL", alias = "RecipientLevel")]
     RecipientLevel,
+    #[serde(alias = "HIT_DIE", alias = "HitDie")]
     HitDie,
+    #[serde(alias = "CREATURE", alias = "Creature")]
     Creature,
+    #[serde(alias = "DAY", alias = "Day")]
     Day,
+    #[serde(alias = "CHARGE", alias = "Charge")]
     Charge,
+    #[serde(alias = "OTHER", alias = "Other")]
     Other,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RoundingMode {
+    #[serde(alias = "NONE", alias = "None")]
     None,
+    #[serde(alias = "FLOOR", alias = "Floor")]
     Floor,
+    #[serde(alias = "CEIL", alias = "Ceil")]
     Ceil,
+    #[serde(alias = "NEAREST", alias = "Nearest")]
     Nearest,
 }
 
@@ -101,12 +140,19 @@ fn default_rounding() -> RoundingMode {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum VarKind {
+    #[serde(alias = "GP_VALUE", alias = "GpValue")]
     GpValue,
+    #[serde(alias = "SPELL_LEVEL", alias = "SpellLevel")]
     SpellLevel,
+    #[serde(alias = "CASTER_LEVEL", alias = "CasterLevel")]
     CasterLevel,
+    #[serde(alias = "RECIPIENT_LEVEL", alias = "RecipientLevel")]
     RecipientLevel,
+    #[serde(alias = "HIT_DICE", alias = "HitDice")]
     HitDice,
+    #[serde(alias = "COUNT", alias = "Count")]
     Count,
+    #[serde(alias = "OTHER", alias = "Other")]
     Other,
 }
 
@@ -188,6 +234,22 @@ fn default_recoverability() -> Recoverability {
 }
 
 impl ExperienceComponentSpec {
+    pub fn is_default(&self) -> bool {
+        self.kind == ExperienceKind::None
+            && self.payer == ExperiencePayer::Caster
+            && self.payment_timing == PaymentTiming::OnCompletion
+            && self.payment_semantics == PaymentSemantics::Spend
+            && self.formula.is_none()
+            && self.per_unit.is_none()
+            && self.tiered.is_none()
+            && self.can_reduce_level
+            && self.recoverability == Recoverability::NormalEarning
+            && self.source_text.is_none()
+            && self.notes.is_none()
+            && self.amount_xp.is_none()
+            && self.dm_guidance.is_none()
+    }
+
     pub fn normalize(&mut self) {
         if let Some(n) = &mut self.notes {
             *n = crate::models::canonical_spell::normalize_string(

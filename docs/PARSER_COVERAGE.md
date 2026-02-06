@@ -186,6 +186,25 @@ When a parser cannot recognize a pattern, it employs **graceful degradation**:
 3. **Preserves original text**: In `notes`, `text`, or equivalent field
 4. **Logs the fallback**: To `migration.log` for later analysis
 
+---
+
+## Unified Enum Normalization
+
+To handle the high variability of legacy source data, the system uses a **Unified Enum Normalization** strategy driven by `#[serde(alias)]` and custom matching.
+
+### Robust Matching
+Enums (units, kinds, schools, etc.) match any of the following formats case-insensitively:
+- **Canonical**: `round`
+- **Plural**: `rounds`
+- **Title Case**: `Round`
+- **Legacy/SQL**: `ROUND`, `ROUNDS` (Screaming Snake Case)
+- **Abbreviations**: `rd.`, `rds.` (mapped to `round`)
+
+### Deterministic Output
+Regardless of the input format found in the source text, the canonical output (used for hashing and SQLite storage) is always transformed to the exact **lowercase singular snake_case** defined in `spell.schema.json`.
+
+---
+
 ### Example Fallback Output
 
 ```rust

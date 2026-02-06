@@ -4,8 +4,11 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum DamageKind {
     #[default]
+    #[serde(alias = "NONE", alias = "None")]
     None,
+    #[serde(alias = "MODELED", alias = "Modeled")]
     Modeled,
+    #[serde(alias = "DM_ADJUDICATED", alias = "DmAdjudicated")]
     DmAdjudicated,
 }
 
@@ -13,31 +16,51 @@ pub enum DamageKind {
 #[serde(rename_all = "snake_case")]
 pub enum DamageCombineMode {
     #[default]
+    #[serde(alias = "SUM", alias = "Sum")]
     Sum,
+    #[serde(alias = "MAX", alias = "Max")]
     Max,
+    #[serde(alias = "CHOOSE_ONE", alias = "ChooseOne")]
     ChooseOne,
+    #[serde(alias = "SEQUENCE", alias = "Sequence")]
     Sequence,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DamageType {
+    #[serde(alias = "ACID", alias = "Acid")]
     Acid,
+    #[serde(alias = "COLD", alias = "Cold")]
     Cold,
+    #[serde(alias = "ELECTRICITY", alias = "Electricity")]
     Electricity,
+    #[serde(alias = "FIRE", alias = "Fire")]
     Fire,
+    #[serde(alias = "SONIC", alias = "Sonic")]
     Sonic,
+    #[serde(alias = "FORCE", alias = "Force")]
     Force,
+    #[serde(alias = "MAGIC", alias = "Magic")]
     Magic,
+    #[serde(alias = "NEGATIVE_ENERGY", alias = "NegativeEnergy")]
     NegativeEnergy,
+    #[serde(alias = "POSITIVE_ENERGY", alias = "PositiveEnergy")]
     PositiveEnergy,
+    #[serde(alias = "POISON", alias = "Poison")]
     Poison,
+    #[serde(alias = "PSYCHIC", alias = "Psychic")]
     Psychic,
+    #[serde(alias = "PHYSICAL_BLUDGEONING", alias = "PhysicalBludgeoning")]
     PhysicalBludgeoning,
+    #[serde(alias = "PHYSICAL_PIERCING", alias = "PhysicalPiercing")]
     PhysicalPiercing,
+    #[serde(alias = "PHYSICAL_SLASHING", alias = "PhysicalSlashing")]
     PhysicalSlashing,
     #[default]
+    #[serde(alias = "UNTYPED", alias = "Untyped")]
     Untyped,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
@@ -62,8 +85,11 @@ pub struct DicePool {
 #[serde(rename_all = "snake_case")]
 pub enum ScalingKind {
     #[default]
+    #[serde(alias = "ADD_DICE_PER_STEP", alias = "AddDicePerStep")]
     AddDicePerStep,
+    #[serde(alias = "ADD_FLAT_PER_STEP", alias = "AddFlatPerStep")]
     AddFlatPerStep,
+    #[serde(alias = "SET_BASE_BY_LEVEL_BAND", alias = "SetBaseByLevelBand")]
     SetBaseByLevelBand,
 }
 
@@ -71,11 +97,17 @@ pub enum ScalingKind {
 #[serde(rename_all = "snake_case")]
 pub enum ScalingDriver {
     #[default]
+    #[serde(alias = "CASTER_LEVEL", alias = "CasterLevel")]
     CasterLevel,
+    #[serde(alias = "SPELL_LEVEL", alias = "SpellLevel")]
     SpellLevel,
+    #[serde(alias = "TARGET_HD", alias = "TargetHd")]
     TargetHd,
+    #[serde(alias = "TARGET_LEVEL", alias = "TargetLevel")]
     TargetLevel,
+    #[serde(alias = "CHOICE", alias = "Choice")]
     Choice,
+    #[serde(alias = "OTHER", alias = "Other")]
     Other,
 }
 
@@ -123,13 +155,21 @@ pub struct ClampSpec {
 #[serde(rename_all = "snake_case")]
 pub enum ApplicationScope {
     #[default]
+    #[serde(alias = "PER_TARGET", alias = "PerTarget")]
     PerTarget,
+    #[serde(alias = "PER_AREA_TARGET", alias = "PerAreaTarget")]
     PerAreaTarget,
+    #[serde(alias = "PER_MISSILE", alias = "PerMissile")]
     PerMissile,
+    #[serde(alias = "PER_RAY", alias = "PerRay")]
     PerRay,
+    #[serde(alias = "PER_ROUND", alias = "PerRound")]
     PerRound,
+    #[serde(alias = "PER_TURN", alias = "PerTurn")]
     PerTurn,
+    #[serde(alias = "PER_HIT", alias = "PerHit")]
     PerHit,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
@@ -137,11 +177,17 @@ pub enum ApplicationScope {
 #[serde(rename_all = "snake_case")]
 pub enum TickDriver {
     #[default]
+    #[serde(alias = "FIXED", alias = "Fixed")]
     Fixed,
+    #[serde(alias = "CASTER_LEVEL", alias = "CasterLevel")]
     CasterLevel,
+    #[serde(alias = "SPELL_LEVEL", alias = "SpellLevel")]
     SpellLevel,
+    #[serde(alias = "DURATION", alias = "Duration")]
     Duration,
+    #[serde(alias = "CHOICE", alias = "Choice")]
     Choice,
+    #[serde(alias = "DM", alias = "Dm")]
     Dm,
 }
 
@@ -173,10 +219,15 @@ fn default_tick_driver() -> TickDriver {
 #[serde(rename_all = "snake_case")]
 pub enum DamageSaveKind {
     #[default]
+    #[serde(alias = "NONE", alias = "None")]
     None,
+    #[serde(alias = "HALF", alias = "Half")]
     Half,
+    #[serde(alias = "NEGATES", alias = "Negates")]
     Negates,
+    #[serde(alias = "PARTIAL", alias = "Partial")]
     Partial,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
@@ -208,9 +259,13 @@ pub struct DamageSaveSpec {
 #[serde(rename_all = "snake_case")]
 pub enum MrInteraction {
     #[default]
+    #[serde(alias = "NORMAL", alias = "Normal")]
     Normal,
+    #[serde(alias = "IGNORES_MR", alias = "IgnoresMr")]
     IgnoresMr,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
+    #[serde(alias = "UNKNOWN", alias = "Unknown")]
     Unknown,
 }
 
@@ -315,9 +370,9 @@ impl SpellDamageSpec {
                 parts.sort_by(|a, b| {
                     let id_cmp = a.id.cmp(&b.id);
                     if id_cmp == std::cmp::Ordering::Equal {
-                        // Tie-breaker: serialized content
-                        let a_json = serde_json::to_string(a).unwrap_or_default();
-                        let b_json = serde_json::to_string(b).unwrap_or_default();
+                        // Tie-breaker: deterministic JCS-serialized content
+                        let a_json = serde_json_canonicalizer::to_string(a).unwrap_or_default();
+                        let b_json = serde_json_canonicalizer::to_string(b).unwrap_or_default();
                         a_json.cmp(&b_json)
                     } else {
                         id_cmp

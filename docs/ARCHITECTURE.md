@@ -15,6 +15,7 @@ To ensure spell uniqueness and version tracking, we use a Canonical Spell Hashin
 - **Serialization**: RFC 8785 (JCS) with sorted keys and array normalization.
 - **Hashing**: SHA-256 of the canonical JSON string.
 - **Casing Standard**: **All canonical data MUST use `snake_case`.** This distinguishes it from IPC data, which uses `camelCase`.
+- **Robust Normalization**: The system uses a unified enum normalization strategy. Mechanical fields (units, kinds, modes) use `#[serde(alias)]` to natively match various input formats (Title Case, SCREAMING_SNAKE_CASE) and convert them to canonical snake_case during deserialization.
 
 > 📄 **See [Canonical Serialization Contract](./architecture/canonical-serialization.md)** for the complete specification including normalization rules, string handling modes, default materialization, and detailed examples.
 

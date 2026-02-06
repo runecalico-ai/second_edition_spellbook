@@ -32,9 +32,10 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
         -   `edition`, `author`, `version`, `license` (publishing metadata)
         -   `schema_version` (internal validation metadata)
     *   **Included in Hash (Content)**:
-        -   All game-mechanical fields: `name`, `tradition`, `school`, `sphere`, `level`, `range`, `components`, `material_components`, `casting_time`, `duration`, `area`, `damage`, `saving_throw`, `magic_resistance`, `experience_cost`, `reversible`, `description`
-        -   Taxonomic fields: `class_list`, `tags`, `subschools`, `descriptors`
-        -   Special flags: `is_quest_spell`, `is_cantrip`
+        -   **Required Fields**: `name`, `tradition`, `level`, `description`
+        -   **Conditional Required**: `school` (Arcane/Both), `sphere` (Divine/Both)
+        -   **Optional Mechanical Specs**: `range`, `components`, `material_components`, `casting_time`, `duration`, `area`, `damage`, `saving_throw`, `magic_resistance`, `experience_cost`, `reversible`, `is_quest_spell`, `is_cantrip`
+        -   **Taxonomic fields**: `class_list`, `tags`, `subschools`, `descriptors`
 3.  **Physical Serialization (JCS)**: Follow **RFC 8785**. This handles key sorting, whitespace removal, escaping, and number formatting deterministically.
 4.  **Array Normalization & Deduplication**: Unordered sets MUST be deduplicated and then sorted lexicographically.
     *   **Applied Fields**: `class_list`, `tags`, `subschools`, `descriptors`.
@@ -44,7 +45,22 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
         -   **`sum`, `max`, `choose_one`**: Parts are sorted lexicographically by `id` to ensure order-independent hashing.
         -   **`sequence`**: Parts preserve their original array order, as sequence implies ordered execution.
 6.  **Lean Hashing (Omission)**: To ensure future-proof stability, all `null` values, empty strings, and empty collections (`[]`) MUST be OMITTED from the canonical representation if they match the schema's default/optional behavior.
-7.  **Enum & Unit Normalization**: All enum values (including units like `round`, `hour`, `minute`) MUST match the exact casing and spelling defined in `spell.schema.json`. Default casing is **lowercase singular snake_case**.
+    *   **Exclusion of Required Fields**: Fields marked as `required` in `spell.schema.json` MUST ALWAYS be included in the hash, even if they equal a default value (e.g., `components.verbal: false`). Pruning ONLY applies to optional fields or fields where the schema provides a default but doesn't require presence.
+
+7.  **Enum & Unit Normalization (Unified Strategy)**: All enum values MUST match the exact casing and spelling defined in `spell.schema.json`.
+    *   **Robust Matching**: To accommodate varied source data, the system uses a case-insensitive matching strategy with support for legacy variants (e.g., `Title Case`, `SCREAMING_SNAKE_CASE`).
+    *   **Canonical Remapping**: Regardless of the input format, matched values are replaced with the EXACT string defined in the schema (standardized to `lowercase_singular_snake_case`).
+    *   **Applied Fields & Categories**:
+        | Category | Key Fields |
+        |----------|------------|
+        | **Foundational** | `tradition`, `school`, `sphere` |
+        | **Specification Types** | `RangeSpec.kind`, `DurationSpec.kind`, `AreaSpec.kind`, `SavingThrowSpec.kind`, `MagicResistanceKind`, `ExperienceKind` |
+        | **Units** | `*.unit`, `*.shape_unit`, `*.tile_unit`, `*.unit_kind` |
+        | **Mechanic Modes** | `ScalarMode`, `RoundingMode`, `DamageCombineMode`, `DamageKind`, `MrInteraction` |
+        | **Behaviors** | `PaymentTiming`, `PaymentSemantics`, `Recoverability`, `MrAppliesTo`, `MrPartialScope`, `AreaSpec.moves_with` |
+        | **Subjects** | `AreaSpec.count_subject`, `AreaSpec.region_unit`, `AreaSpec.scope_unit` |
+    *   **Fallback**: Unrecognized values are preserved but undergo `snake_case` transformation for technical keys or `Title Case` for taxonomic fields (like `school`).
+
 8.  **String Normalization**:
     *   **Unicode**: MUST be normalized to **NFC (Normalization Form C)**.
     *   **Whitespace Trimming**: Leading and trailing whitespace MUST be trimmed.
@@ -83,9 +99,6 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     "unit": "ft"
   },
   "casting_time": {
-    "base_value": 1,
-    "level_divisor": 1,
-    "per_level": 0,
     "text": "1",
     "unit": "segment"
   },
@@ -128,18 +141,9 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
   },
   "description": "Explosion.\nLine two.",
   "duration": {
-    "duration": {
-      "mode": "per_level",
-      "per_level": 1,
-      "value": 0
-    },
-    "kind": "time",
     "unit": "round"
   },
-  "is_cantrip": 0,
-  "is_quest_spell": 0,
   "level": 3,
-  "level_divisor": 1,
   "name": "Fireball",
   "range": {
     "distance": {

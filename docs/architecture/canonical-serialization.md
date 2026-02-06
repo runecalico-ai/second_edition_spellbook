@@ -80,16 +80,18 @@ fn clamp_precision(val: f64) -> f64 {
 }
 ```
 
-### 2.8 Lean Hashing (Empty Collections)
-To ensure hash stability as the schema evolves, empty collections and default-valued fields are **omitted** from the canonical JSON:
+### 2.8 Lean Hashing (Optional Fields & Empty Collections)
+To ensure hash stability as the schema evolves, optional fields that are empty or equal to their default values are **omitted** from the canonical JSON:
 - Empty arrays (`[]`) are removed
 - Empty strings (`""`) are removed
 - Null values are removed
-- Fields equal to their materialized defaults (from §2.5) are removed
+- **Optional fields** equal to their materialized defaults (from §2.5) are removed (e.g., `reversible: 0` is omitted).
 
-This prevents hash changes when new optional array fields are added to the schema.
+> [!IMPORTANT]
+> **Required Fields are NEVER pruned.** Fields marked as `required` in `spell.schema.json` must always be present in the hash, even if they equal a default value (e.g., `components.verbal: false`). This ensures that the resulting JSON always remains valid against the schema.
+> **Key Root Required Fields:** `name`, `tradition`, `level`, `description`, `is_cantrip`, `is_quest_spell`.
 
-**Execution Order**: Default materialization (§2.5) runs **before** Lean Hashing, so a field explicitly set to its default value will be omitted.
+**Execution Order**: Default materialization (§2.5) runs **before** Lean Hashing, so an optional field explicitly set to its default value will be omitted.
 
 ### 2.9 Tradition Validation
 The `tradition` field enforces strict logical dependencies:
@@ -204,8 +206,13 @@ pub fn compute_hash(&self) -> Result<String, String> {
 ```
 
 ## 5. Enum Case Normalization
+Enum values are normalized to their canonical schema-defined form. The system uses a **unified case-insensitive matching strategy** to ensure that variations in input casing (e.g., `"BONUS ACTION"`) are mapped to the canonical `snake_case` or `Title Case` required by the schema.
 
-Enum values are normalized to their canonical schema-defined form. The system matches case-insensitively and outputs the canonical form.
+### 5.0 Unified Normalization Strategy
+All enums at all depths of the `CanonicalSpell` object undergo normalization in the `normalize()` phase:
+1. **Case-Insensitive Match**: The input string is compared against the valid enum variants defined in `spell.schema.json`.
+2. **Canonical Remapping**: If a match is found, the value is replaced with the exact string required by the schema.
+3. **Fallback**: If no match is found, the value is preserved but undergoes `Title Case` transformation (for schools/subschools) or `snake_case` transformation (for technical keys).
 
 ### 5.1 Duration Units
 | Input Examples | Canonical Output |

@@ -32,25 +32,25 @@ fn test_issue_2_materialize_defaults() {
         material_components: None, // Implicitly []
         components: None,          // Implicitly all false
         casting_time: None,        // Should stay None now
-        is_quest_spell: 0,
-        is_cantrip: 0,
+        is_quest_spell: Some(0),
+        is_cantrip: Some(0),
         schema_version: 0, // Implicitly 1
         ..Default::default()
     };
 
     spell.normalize();
 
-    assert_eq!(spell.reversible, Some(0));
-    assert_eq!(spell.material_components, Some(vec![]));
-    let components = spell.components.unwrap();
-    assert!(!components.verbal);
-    assert!(!components.somatic);
+    assert_eq!(spell.reversible, None);
+    assert_eq!(spell.material_components, None);
+    assert!(spell.components.is_none());
 
     // Bugfix: casting_time should stay None if it was missing
     assert!(spell.casting_time.is_none());
 
     // is_quest_spell/is_cantrip materialization (Rule 48)
-    assert_eq!(spell.is_quest_spell, 0);
+    // Lean Hashing: both are pruned because they match default 0
+    assert_eq!(spell.is_quest_spell, None);
+    assert_eq!(spell.is_cantrip, None);
 }
 
 #[test]
@@ -325,4 +325,103 @@ fn test_regression_material_strict_unknown_fields() {
     let result: Result<crate::models::material::MaterialComponentSpec, _> =
         serde_json::from_str(json);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_regression_lean_hashing_complex_pruning() {
+    use crate::models::experience::ExperienceComponentSpec;
+    use crate::models::magic_resistance::{MagicResistanceKind, MagicResistanceSpec};
+    use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
+
+    let mut spell = CanonicalSpell::new("Pruning Test".into(), 1, "ARCANE".into(), "Desc".into());
+    spell.school = Some("Abjuration".into());
+    spell.class_list = vec!["Wizard".into()];
+
+    // Set complex specs to their default/empty state
+    spell.saving_throw = Some(SavingThrowSpec {
+        kind: SavingThrowKind::None,
+        ..Default::default()
+    });
+    spell.magic_resistance = Some(MagicResistanceSpec {
+        kind: MagicResistanceKind::Unknown,
+        ..Default::default()
+    });
+    spell.experience_cost = Some(ExperienceComponentSpec {
+        can_reduce_level: true,
+        ..Default::default()
+    });
+    spell.components = Some(crate::models::canonical_spell::SpellComponents {
+        verbal: false,
+        somatic: false,
+        material: false,
+        focus: false,
+        divine_focus: false,
+        experience: false,
+    });
+
+    spell.normalize();
+
+    // Rule 88: All these should be pruned because they match their default state
+    assert!(spell.saving_throw.is_none(), "Default ST should be pruned");
+    assert!(
+        spell.magic_resistance.is_none(),
+        "Default MR should be pruned"
+    );
+    assert!(
+        spell.experience_cost.is_none(),
+        "Default XP should be pruned"
+    );
+    assert!(
+        spell.components.is_none(),
+        "All-false components should be pruned"
+    );
+}
+
+#[test]
+fn test_regression_normalization_mode_distinction() {
+    use crate::models::damage::DamagePart;
+    use crate::models::experience::FormulaVar;
+    use crate::models::experience::VarKind;
+
+    // 1. FormulaVar.name: Structured (Collapses whitespace, PRESERVES case)
+    let mut var = FormulaVar {
+        name: "  Caster  Level  ".into(),
+        var_kind: VarKind::CasterLevel,
+        label: None,
+    };
+    // We need to normalize it within a spec context or call normalize_string directly
+    var.name = crate::models::canonical_spell::normalize_string(
+        &var.name,
+        crate::models::canonical_spell::NormalizationMode::Structured,
+    );
+    assert_eq!(var.name, "Caster Level");
+
+    // 2. DamagePart.id: LowercaseStructured (Collapses whitespace, LOWERCASE)
+    let mut part = DamagePart {
+        id: "  Main  Damage  ".into(),
+        ..Default::default()
+    };
+    part.id = crate::models::canonical_spell::normalize_string(
+        &part.id,
+        crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
+    );
+    assert_eq!(part.id, "main damage");
+}
+
+#[test]
+fn test_regression_enum_alias_deserialization() {
+    use crate::models::damage::DamageType;
+
+    // Test varying cases and plurals for DamageType
+    let json1 = "\"FIRE\"";
+    let json2 = "\"Fire\"";
+    let json3 = "\"fire\"";
+
+    let dt1: DamageType = serde_json::from_str(json1).unwrap();
+    let dt2: DamageType = serde_json::from_str(json2).unwrap();
+    let dt3: DamageType = serde_json::from_str(json3).unwrap();
+
+    assert_eq!(dt1, DamageType::Fire);
+    assert_eq!(dt2, DamageType::Fire);
+    assert_eq!(dt3, DamageType::Fire);
 }

@@ -37,7 +37,7 @@ impl ComponentsParser {
             return SpellCastingTime {
                 text: input.to_string(),
                 unit: CastingTimeUnit::BonusAction,
-                base_value: base_val,
+                base_value: Some(base_val),
                 ..Default::default()
             };
         }
@@ -45,7 +45,7 @@ impl ComponentsParser {
             return SpellCastingTime {
                 text: input.to_string(),
                 unit: CastingTimeUnit::Reaction,
-                base_value: base_val,
+                base_value: Some(base_val),
                 ..Default::default()
             };
         }
@@ -53,7 +53,7 @@ impl ComponentsParser {
             return SpellCastingTime {
                 text: input.to_string(),
                 unit: CastingTimeUnit::Action,
-                base_value: base_val,
+                base_value: Some(base_val),
                 ..Default::default()
             };
         }
@@ -61,7 +61,7 @@ impl ComponentsParser {
             return SpellCastingTime {
                 text: input.to_string(),
                 unit: CastingTimeUnit::Round,
-                base_value: base_val,
+                base_value: Some(base_val),
                 ..Default::default()
             };
         }
@@ -69,7 +69,7 @@ impl ComponentsParser {
             return SpellCastingTime {
                 text: input.to_string(),
                 unit: CastingTimeUnit::Minute,
-                base_value: base_val,
+                base_value: Some(base_val),
                 ..Default::default()
             };
         }
@@ -77,7 +77,7 @@ impl ComponentsParser {
             return SpellCastingTime {
                 text: input.to_string(),
                 unit: CastingTimeUnit::Hour,
-                base_value: base_val,
+                base_value: Some(base_val),
                 ..Default::default()
             };
         }
@@ -85,9 +85,9 @@ impl ComponentsParser {
         SpellCastingTime {
             text: input.to_string(),
             unit: CastingTimeUnit::Special,
-            base_value: 0.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
+            base_value: Some(0.0),
+            per_level: Some(0.0),
+            level_divisor: Some(1.0),
         }
     }
 
@@ -196,10 +196,10 @@ impl ComponentsParser {
 
             results.push(MaterialComponentSpec {
                 name: name.trim().to_string(),
-                quantity: 1.0,
+                quantity: Some(1.0),
                 unit: None,
                 gp_value,
-                is_consumed,
+                is_consumed: Some(is_consumed),
                 description: Some(p.clone()),
             });
         }
@@ -285,7 +285,7 @@ mod tests {
         assert_eq!(mats.len(), 1);
         assert_eq!(mats[0].gp_value, Some(100.0));
         assert_eq!(mats[0].name, "diamond dust");
-        assert!(!mats[0].is_consumed);
+        assert!(!mats[0].is_consumed.unwrap_or(false));
 
         // Test "worth" variant
         let mats2 = parser.parse_material_components("diamond dust (worth 100 gp)");
@@ -302,17 +302,17 @@ mod tests {
         let mats = parser.parse_material_components("ruby (worth 1000 gp, consumed)");
         assert_eq!(mats.len(), 1);
         assert_eq!(mats[0].gp_value, Some(1000.0));
-        assert!(mats[0].is_consumed);
+        assert!(mats[0].is_consumed.unwrap_or(false));
 
         // Test "expended" variant
         let mats2 = parser.parse_material_components("gem (100 gp, expended)");
         assert_eq!(mats2.len(), 1);
-        assert!(mats2[0].is_consumed);
+        assert!(mats2[0].is_consumed.unwrap_or(false));
 
         // Test "destroyed" variant
         let mats3 = parser.parse_material_components("crystal (50 gp, destroyed)");
         assert_eq!(mats3.len(), 1);
-        assert!(mats3[0].is_consumed);
+        assert!(mats3[0].is_consumed.unwrap_or(false));
     }
 
     #[test]
@@ -331,9 +331,9 @@ mod tests {
         let mats2 = parser.parse_material_components("ruby (500 gp), diamond (1000 gp, consumed)");
         assert_eq!(mats2.len(), 2);
         assert_eq!(mats2[0].gp_value, Some(500.0));
-        assert!(!mats2[0].is_consumed);
+        assert!(!mats2[0].is_consumed.unwrap_or(false));
         assert_eq!(mats2[1].gp_value, Some(1000.0));
-        assert!(mats2[1].is_consumed);
+        assert!(mats2[1].is_consumed.unwrap_or(false));
     }
 
     #[test]

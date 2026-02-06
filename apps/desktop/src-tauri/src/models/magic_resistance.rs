@@ -4,10 +4,15 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum MagicResistanceKind {
     #[default]
+    #[serde(alias = "UNKNOWN", alias = "Unknown")]
     Unknown,
+    #[serde(alias = "NORMAL", alias = "Normal")]
     Normal,
+    #[serde(alias = "IGNORES_MR", alias = "IgnoresMr")]
     IgnoresMr,
+    #[serde(alias = "PARTIAL", alias = "Partial")]
     Partial,
+    #[serde(alias = "SPECIAL", alias = "Special")]
     Special,
 }
 
@@ -15,19 +20,28 @@ pub enum MagicResistanceKind {
 #[serde(rename_all = "snake_case")]
 pub enum MrAppliesTo {
     #[default]
+    #[serde(alias = "WHOLE_SPELL", alias = "WholeSpell")]
     WholeSpell,
+    #[serde(alias = "HARMFUL_EFFECTS_ONLY", alias = "HarmfulEffectsOnly")]
     HarmfulEffectsOnly,
+    #[serde(alias = "BENEFICIAL_EFFECTS_ONLY", alias = "BeneficialEffectsOnly")]
     BeneficialEffectsOnly,
+    #[serde(alias = "DM", alias = "Dm")]
     Dm,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum MrPartialScope {
+    #[serde(alias = "DAMAGE_ONLY", alias = "DamageOnly")]
     DamageOnly,
+    #[serde(alias = "NON_DAMAGE_ONLY", alias = "NonDamageOnly")]
     NonDamageOnly,
+    #[serde(alias = "PRIMARY_EFFECT_ONLY", alias = "PrimaryEffectOnly")]
     PrimaryEffectOnly,
+    #[serde(alias = "SECONDARY_EFFECTS_ONLY", alias = "SecondaryEffectsOnly")]
     SecondaryEffectsOnly,
+    #[serde(alias = "BY_PART_ID", alias = "ByPartId")]
     ByPartId,
 }
 
@@ -69,6 +83,14 @@ pub struct MagicResistanceSpec {
 }
 
 impl MagicResistanceSpec {
+    pub fn is_default(&self) -> bool {
+        self.kind == MagicResistanceKind::Unknown
+            && self.applies_to == MrAppliesTo::WholeSpell
+            && self.partial.is_none()
+            && self.special_rule.is_none()
+            && self.notes.is_none()
+    }
+
     pub fn normalize(&mut self) {
         if let Some(n) = &mut self.notes {
             *n = crate::models::canonical_spell::normalize_string(

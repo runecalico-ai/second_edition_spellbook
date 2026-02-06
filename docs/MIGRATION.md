@@ -93,9 +93,9 @@ Parsers convert legacy text strings into structured specification objects. Below
 
 | Legacy Text | Parsed Result |
 |-------------|---------------|
-| "1 round" | `DurationSpec { unit: Round, base_value: {value: 1} }` |
-| "10 minutes" | `DurationSpec { unit: Minute, base_value: {value: 10} }` |
-| "1 round/level" | `DurationSpec { unit: Round, base_value: {per_level: 1} }` |
+| "1 round" | `DurationSpec { kind: Time, unit: Round, duration: {value: 1} }` |
+| "10 minutes" | `DurationSpec { kind: Time, unit: Minute, duration: {value: 10} }` |
+| "1 round/level" | `DurationSpec { kind: Time, unit: Round, duration: {per_level: 1} }` |
 | "Instantaneous" | `DurationSpec { unit: Instantaneous }` |
 | "Permanent" | `DurationSpec { unit: Permanent }` |
 | "Concentration" | `DurationSpec { unit: Concentration }` |
@@ -135,9 +135,9 @@ Parsers convert legacy text strings into structured specification objects. Below
 
 | Legacy Text | Parsed Result |
 |-------------|---------------|
-| "Yes" | `MagicResistanceSpec { applies: Yes }` |
-| "No" | `MagicResistanceSpec { applies: No }` |
-| "Special" | `MagicResistanceSpec { applies: Special }` |
+| "Yes" | `MagicResistanceSpec { kind: Yes }` |
+| "No" | `MagicResistanceSpec { kind: No }` |
+| "Special" | `MagicResistanceSpec { kind: Special }` |
 
 
 ### Database Strategy

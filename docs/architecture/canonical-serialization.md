@@ -20,7 +20,7 @@ Fields representing unordered sets have their elements sorted lexicographically 
 - `descriptors`: Sorted (A-Z), deduplicated.
 
 **Important Exceptions (Order Preserved):**
-- `material_components`: Order is preserved (listed order is semantically significant).
+- `material_components`: Order is preserved **as listed in the source text**. Two spells with components in different orders produce different hashes. This is intentional for simplicity. Duplicate components are kept as separate entries.
 - `damage.parts` with `combine_mode: "sequence"`: Order is preserved (sequential application order).
 - `saving_throw.multiple`: Order is preserved (sequential saves).
 
@@ -56,13 +56,18 @@ To maintain compatibility with the canonical resource specification, boolean fla
 ### 2.5 Default Materialization
 To ensure spells hash consistently regardless of whether defaults were explicitly set, the following defaults are **materialized** during normalization:
 
-| Field | Default Value |
-|-------|---------------|
-| `reversible` | `0` |
-| `material_components` | `[]` (empty array) |
-| `components` | All flags `false` |
-| `casting_time.unit` | `"Segment"` (if empty) |
-| `schema_version` | `1` (if `0`) |
+| Field | Default Value | Notes |
+|-------|---------------|-------|
+| `reversible` | `0` | Boolean as integer |
+| `material_components` | *(see Lean Hashing)* | Empty arrays omitted |
+| `components.*` | `false` | All component flags |
+| `casting_time.unit` | `"segment"` | If unit unspecified |
+| `schema_version` | `1` | If `0` |
+| `scalar.value` | `0` | When `mode="per_level"` and omitted |
+| `MaterialComponentSpec.quantity` | `1.0` | If omitted |
+| `MaterialComponentSpec.is_consumed` | `false` | If omitted |
+
+> **Precedence**: Defaults are materialized **first**, then Lean Hashing (§2.8) removes fields that equal their default values or are empty collections.
 
 ### 2.6 Hashing Casing Standard
 **All fields in the `CanonicalSpell` object MUST use `snake_case`.** This is a deliberate choice to ensure interoperability with the official JSON Schema and to distinguish between high-integrity content (snake_case) and transient IPC data (camelCase).
@@ -76,12 +81,15 @@ fn clamp_precision(val: f64) -> f64 {
 ```
 
 ### 2.8 Lean Hashing (Empty Collections)
-To ensure hash stability as the schema evolves, empty collections are **omitted** from the canonical JSON:
+To ensure hash stability as the schema evolves, empty collections and default-valued fields are **omitted** from the canonical JSON:
 - Empty arrays (`[]`) are removed
 - Empty strings (`""`) are removed
 - Null values are removed
+- Fields equal to their materialized defaults (from §2.5) are removed
 
 This prevents hash changes when new optional array fields are added to the schema.
+
+**Execution Order**: Default materialization (§2.5) runs **before** Lean Hashing, so a field explicitly set to its default value will be omitted.
 
 ### 2.9 Tradition Validation
 The `tradition` field enforces strict logical dependencies:
@@ -117,6 +125,21 @@ Different fields use different normalization modes based on their semantic purpo
 | `Textual` | NFC, trim horizontal whitespace, preserve distinct lines | `description`, `notes`, free text |
 | `Exact` | NFC and trim only, no whitespace collapsing | Mathematical formulas |
 
+### Text Field Normalization Mode Mapping
+
+The following table shows which normalization mode applies to specific text fields:
+
+| Field | Normalization Mode | Rationale |
+|-------|-------------------|----------|
+| `name` | `Structured` | Spell name should collapse whitespace |
+| `description` | `Textual` | Preserve paragraph breaks |
+| `RangeSpec.text` | `Structured` | Collapse whitespace in range text |
+| `AreaSpec.notes` | `Textual` | Allow multi-line clarifications |
+| `DurationSpec.notes` | `Textual` | Allow multi-line clarifications |
+| `DurationSpec.condition` | `Structured` | Condition text should collapse whitespace |
+| `MaterialComponentSpec.name` | `Structured` | Component name should collapse whitespace |
+| `MaterialComponentSpec.description` | `Textual` | Allow multi-line component details |
+
 ### Unicode Normalization (NFC)
 All strings undergo Unicode NFC normalization to ensure canonical representation of combining characters.
 
@@ -148,12 +171,32 @@ pub fn compute_hash(&self) -> Result<String, String> {
 
 ## 5. Enum Case Normalization
 
-Enum values are normalized to their canonical schema-defined form. The system matches case-insensitively and outputs the canonical form:
+Enum values are normalized to their canonical schema-defined form. The system matches case-insensitively and outputs the canonical form.
 
+### 5.1 Duration Units
 | Input Examples | Canonical Output |
 |----------------|------------------|
 | `"segment"`, `"segments"` | `"segment"` |
 | `"round"`, `"rounds"` | `"round"` |
+| `"turn"`, `"turns"` | `"turn"` |
+| `"minute"`, `"minutes"`, `"min"` | `"minute"` |
+| `"hour"`, `"hours"`, `"hr"` | `"hour"` |
+| `"day"`, `"days"` | `"day"` |
+| `"week"`, `"weeks"` | `"week"` |
+| `"month"`, `"months"` | `"month"` |
+| `"year"`, `"years"` | `"year"` |
+
+### 5.2 Range and Area Units
+| Input Examples | Canonical Output |
+|----------------|------------------|
+| `"in"`, `"inch"`, `"inches"`, `"\""` | `"inch"` |
+| `"ft"`, `"foot"`, `"feet"`, `"'"` | `"ft"` |
+| `"yd"`, `"yard"`, `"yards"` | `"yd"` |
+| `"mi"`, `"mile"`, `"miles"` | `"mi"` |
+
+### 5.3 Other Enums
+| Input Examples | Canonical Output |
+|----------------|------------------|
 | `"bonus action"`, `"bonus actions"` | `"bonus_action"` |
 | `"instant"`, `"instantaneous"` | `"instantaneous"` |
 | `"conjuration/summoning"` | `"Conjuration/Summoning"` |

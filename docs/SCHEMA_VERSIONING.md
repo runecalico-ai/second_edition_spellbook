@@ -193,8 +193,8 @@ This allows the application to:
 
 - [MIGRATION.md](./MIGRATION.md) - Data migration guide for users
 - [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - Troubleshooting migration issues
-- [canonical-serialization.md](./canonical-serialization.md) - Normalization and hashing rules
+- [canonical-serialization.md](./architecture/canonical-serialization.md) - Normalization and hashing rules
 
 ---
 
-**Last Updated**: 2026-02-05
+**Last Updated**: 2026-02-06

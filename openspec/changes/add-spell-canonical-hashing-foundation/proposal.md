@@ -24,8 +24,8 @@ Implement the foundational logic for Canonical Spell Hashing:
 -   Hash computation logic (SHA-256)
 -   Schema validation logic (using `jsonschema` crate)
 -   Schema versioning infrastructure (database column, metadata)
--   Range & Area: Add "Inches" to supported units.
--   Area: Relax required fields for `line`, `cylinder`, `wall`, and `rect_prism` to allow partial dimensions.
+-   Range & Area: Add "Inches" to supported units (normalized to canonical `"inch"` form).
+-   Area: Allow optional dimensions for certain shapes (e.g., wall thickness, cylinder height) to accommodate common spell descriptions. Missing optional dimensions are omitted from canonical hash (Lean Hashing). See schema for explicit required/optional fields per shape.
 -   **Advanced Spell Modeling**:
     - `ExperienceComponentSpec`: Structured XP costs (fixed, per-unit, formula, tiered).
     - `SpellDamageSpec`: Multi-part damage modeling with scaling and caps.

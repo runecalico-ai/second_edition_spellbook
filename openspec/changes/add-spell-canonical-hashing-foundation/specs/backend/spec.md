@@ -16,6 +16,14 @@ All spells processed by the backend MUST support mapping to the Strict Spell Sch
 - THEN it MUST be structured as an `AreaSpec` object with `kind="radius_circle"`
 - AND `radius` MUST be `{"mode": "fixed", "value": 20}`.
 
+#### Scenario: Unparseable Area Fallback
+- GIVEN a spell with area text "special (see description)" or other unparseable area
+- WHEN the parser cannot extract structured dimensions
+- THEN it MUST fallback to `kind="special"`
+- AND preserve the normalized text in `AreaSpec.notes`
+- AND apply `Textual` normalization mode to the notes.
+
+
 #### Scenario: Complex Range Parsing
 - GIVEN a spell with range text "100 ft + 10 ft/level"
 - WHEN converted to `CanonicalSpell`

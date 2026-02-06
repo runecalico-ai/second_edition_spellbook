@@ -92,14 +92,21 @@
 - [x] **Test: Materialize defaults**
   - GIVEN a spell missing an optional field that has a default (e.g., `reversible` is missing)
   - WHEN canonicalized
-  - THEN the output MUST include the schema default (`"reversible": 0`)
-  - AND hashes for records with explicit vs implicit defaults MUST be identical
+  - THEN default values MUST be materialized before hashing, then optional default-valued fields MUST be omitted from the canonical output (Lean Hashing)
+  - AND the canonical output MUST omit `reversible` when it is 0, so that records with explicit vs implicit defaults produce identical hashes
 
 - [x] **Test: Prohibited field omission**
   - GIVEN an Arcane spell with `"school": "Evocation"` and `"sphere": null`
   - WHEN canonicalized
   - THEN the output MUST OMIT the `"sphere"` key
   - AND the hash MUST be identical to the same spell where `"sphere"` was never present
+
+- [x] **Test: Narrative paragraph preservation**
+  - GIVEN a spell with description containing a blank line between paragraphs (e.g. "Para one.\n\nPara two.")
+  - WHEN hashed via `compute_hash()`
+  - THEN the canonical JSON MUST contain `\n` between paragraphs (normalized)
+  - AND the description MUST NOT be collapsed into a single line
+  - **IMPLEMENTED**: `test_normalization_preserves_newlines` in canonical_spell.rs (Textual mode for description)
 
 ### Schema Validation
 - [x] **Test: Valid spell passes validation**
@@ -261,3 +268,32 @@
   - GIVEN `SpellDetail` model
   - WHEN converted to `CanonicalSpell` and hashed
   - THEN hash MUST be a valid SHA-256 string (64 hex chars)
+
+### SpellDetail → CanonicalSpell → Hash (structure)
+
+- [x] **Test: Area structure (SpellDetail → CanonicalSpell → hash)**
+  - GIVEN a `SpellDetail` with `area = "20 ft. radius"`
+  - WHEN converted via `CanonicalSpell::try_from(detail)` and `compute_hash()` is called
+  - THEN conversion MUST succeed
+  - AND the resulting `CanonicalSpell.area` MUST be `kind="radius_circle"`
+  - AND `area.radius` MUST be `{"mode": "fixed", "value": 20}` (or equivalent)
+  - AND `area.shape_unit` / unit MUST be `"ft"` (normalized)
+  - AND hash MUST be a valid 64-char hex string
+
+- [x] **Test: Range structure (SpellDetail → CanonicalSpell → hash)**
+  - GIVEN a `SpellDetail` with `range = "100 ft + 10 ft/level"`
+  - WHEN converted via `CanonicalSpell::try_from(detail)` and `compute_hash()` is called
+  - THEN conversion MUST succeed
+  - AND the resulting `CanonicalSpell.range` MUST be `kind="distance"`
+  - AND `range.distance` MUST have `value = 100`, `per_level = 10`, `mode = "per_level"`
+  - AND `range.unit` MUST be `"ft"` (normalized)
+  - AND hash MUST be a valid 64-char hex string
+
+- [x] **Test: Duration structure (SpellDetail → CanonicalSpell → hash)**
+  - GIVEN a `SpellDetail` with `duration = "1 round / level"`
+  - WHEN converted via `CanonicalSpell::try_from(detail)` and `compute_hash()` is called
+  - THEN conversion MUST succeed
+  - AND the resulting `CanonicalSpell.duration` MUST be `kind="time"`
+  - AND `duration.unit` MUST be `"round"` (normalized)
+  - AND `duration.duration` scalar MUST have `per_level = 1` (and `value = 0` when applicable)
+  - AND hash MUST be a valid 64-char hex string

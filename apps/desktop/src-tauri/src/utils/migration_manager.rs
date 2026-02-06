@@ -194,7 +194,6 @@ pub fn run_hash_backfill(
         let hash_result = canonical.compute_hash();
         if let Ok(hash) = hash_result {
             canonical.id = Some(hash.clone()); // Store hash in the record
-            canonical.normalize(); // Ensure stored data is normalized
             let json_result = serde_json::to_string(&canonical); // Full serialization (with metadata)
             if let Ok(json) = json_result {
                 let rows = tx.execute(

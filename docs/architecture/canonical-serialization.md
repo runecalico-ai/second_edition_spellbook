@@ -514,9 +514,11 @@ The canonical serialization is implemented in (paths from repository root):
 
 Key functions:
 - `CanonicalSpell::normalize()` - Applies all normalization rules
-- `CanonicalSpell::to_canonical_json()` - Produces canonical JSON string
-- `CanonicalSpell::compute_hash()` - Returns SHA-256 hex string
+- `CanonicalSpell::to_canonical_json()` - Produces canonical JSON string (does **not** run schema validation)
+- `CanonicalSpell::compute_hash()` - Validates against schema, then produces canonical JSON and returns SHA-256 hex string
 - `prune_metadata_recursive()` - Removes metadata fields from JSON value
+
+> **Validation and canonical output:** `to_canonical_json()` does **not** run schema validation. For schema-compliant canonical output, callers must either call `validate()` before `to_canonical_json()`, or use `compute_hash()`, which validates first and then produces the canonical JSON internally. Using `to_canonical_json()` alone can yield JSON that does not conform to `spell.schema.json`.
 
 ---
 

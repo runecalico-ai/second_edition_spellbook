@@ -331,8 +331,8 @@ impl CanonicalSpell {
                  self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
         }
         if self.schema_version > CURRENT_SCHEMA_VERSION {
-            eprintln!("WARNING: Spell '{}' uses a newer schema version ({}). This application supports up to version {}. Forward compatibility is not guaranteed.",
-                 self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
+            return Err(format!("Validation error: Spell '{}' uses a newer schema version ({}). This application supports up to version {}. Forward compatibility is not guaranteed.",
+                 self.name, self.schema_version, CURRENT_SCHEMA_VERSION));
         }
 
         let result = compiled.validate(&instance);
@@ -1812,13 +1812,13 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_schema_version_future_warning() {
+    fn test_validate_schema_version_future_rejection() {
         let mut spell = CanonicalSpell::new("V100".into(), 1, "ARCANE".into(), "Desc".into());
         spell.school = Some("Abjuration".into());
         spell.class_list = vec!["Wizard".into()];
         spell.schema_version = CURRENT_SCHEMA_VERSION + 1;
-        // Should still be OK but will print a warning to stderr
-        assert!(spell.validate().is_ok());
+        // Should FAIL validation
+        assert!(spell.validate().is_err());
     }
 
     #[test]
@@ -1842,12 +1842,12 @@ mod tests {
         spell1.schema_version = 1;
 
         let mut spell2 = spell1.clone();
-        spell2.schema_version = 2; // Hypothetical future version
+        spell2.schema_version = 0; // Historical/migration version
 
         assert_eq!(
             spell1.compute_hash().unwrap(),
             spell2.compute_hash().unwrap(),
-            "Hash must be identical across schema versions"
+            "Hash must be identical across supported schema versions (0 and 1)"
         );
     }
 

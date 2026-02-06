@@ -208,12 +208,25 @@ impl ExperienceComponentSpec {
             );
         }
 
+        if let Some(per_unit) = &mut self.per_unit {
+            if let Some(ul) = &mut per_unit.unit_label {
+                *ul = crate::models::canonical_spell::normalize_string(
+                    ul,
+                    crate::models::canonical_spell::NormalizationMode::Textual,
+                );
+            }
+        }
+
         if let Some(formula) = &mut self.formula {
             formula.expr = crate::models::canonical_spell::normalize_string(
                 &formula.expr,
                 crate::models::canonical_spell::NormalizationMode::Exact,
             );
             for var in &mut formula.vars {
+                var.name = crate::models::canonical_spell::normalize_string(
+                    &var.name,
+                    crate::models::canonical_spell::NormalizationMode::Structured,
+                );
                 if let Some(l) = &mut var.label {
                     *l = crate::models::canonical_spell::normalize_string(
                         l,

@@ -251,3 +251,78 @@ fn test_range_text_preserves_case() {
     // Structured mode preserves case
     assert_eq!(spec.text, Some("Line of Sight".to_string()));
 }
+
+#[test]
+fn test_regression_magic_resistance_partial_normalization() {
+    use crate::models::magic_resistance::*;
+    let mut spec = MagicResistanceSpec {
+        kind: MagicResistanceKind::Partial,
+        partial: Some(MrPartialSpec {
+            scope: MrPartialScope::ByPartId,
+            part_ids: Some(vec!["  Part B  ".into(), "part a".into(), "part a".into()]),
+        }),
+        ..Default::default()
+    };
+    spec.normalize();
+    let partial = spec.partial.unwrap();
+    let ids = partial.part_ids.unwrap();
+    assert_eq!(ids.len(), 2);
+    assert_eq!(ids[0], "part a");
+    assert_eq!(ids[1], "part b");
+}
+
+#[test]
+fn test_regression_experience_normalization() {
+    use crate::models::experience::*;
+    let mut spec = ExperienceComponentSpec {
+        kind: ExperienceKind::Formula,
+        formula: Some(ExperienceFormula {
+            expr: "2 * X".into(),
+            vars: vec![FormulaVar {
+                name: "  X  ".into(),
+                var_kind: VarKind::Count,
+                label: None,
+            }],
+            rounding: RoundingMode::None,
+            min_xp: None,
+            max_xp: None,
+        }),
+        per_unit: Some(PerUnitXp {
+            xp_per_unit: 10,
+            unit_kind: UnitKind::Creature,
+            unit_label: Some("  Creatures  ".into()),
+            rounding: RoundingMode::None,
+            min_xp: None,
+            max_xp: None,
+        }),
+        ..Default::default()
+    };
+    spec.normalize();
+    let formula = spec.formula.unwrap();
+    assert_eq!(formula.vars[0].name, "X");
+    let per_unit = spec.per_unit.unwrap();
+    assert_eq!(per_unit.unit_label, Some("Creatures".into()));
+}
+
+#[test]
+fn test_regression_schema_version_rejection() {
+    let mut spell = CanonicalSpell::new("Future Spell".into(), 1, "ARCANE".into(), "Desc".into());
+    spell.school = Some("Abjuration".into());
+    spell.schema_version = crate::models::canonical_spell::CURRENT_SCHEMA_VERSION + 1;
+
+    let result = spell.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("newer schema version"));
+}
+
+#[test]
+fn test_regression_material_strict_unknown_fields() {
+    let json = r#"{
+        "name": "Diamond",
+        "quantity": 1.0,
+        "unknown_field": "error"
+    }"#;
+    let result: Result<crate::models::material::MaterialComponentSpec, _> =
+        serde_json::from_str(json);
+    assert!(result.is_err());
+}

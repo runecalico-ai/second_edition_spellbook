@@ -53,9 +53,9 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
         |-------|------|-------------|
         | `name`, `tradition`, `school`, `sphere` | `Structured` | Collapse all whitespace |
         | `description` | `Textual` | Preserve paragraph breaks |
-        | `RangeSpec.text`, `DurationSpec.condition`, `TieredXp.when` | `Structured` | Collapse all whitespace |
-        | `*.notes`, `*.dm_guidance`, `*.description`, `*.special_rule` | `Textual` | Preserve paragraph breaks |
-        | `SingleSave.id`, `DamagePart.id` | `LowercaseStructured` | Lowercase + collapse |
+        | `RangeSpec.text`, `DurationSpec.condition`, `TieredXp.when`, `SpellCastingTime.text`, `FormulaVar.name` | `Structured` | Collapse all whitespace |
+        | `*.notes`, `*.dm_guidance`, `*.description`, `*.special_rule`, `*.label`, `*.unit_label`, `*.source_text` | `Textual` | Preserve paragraph breaks |
+        | `SingleSave.id`, `DamagePart.id`, `MrPartialSpec.part_ids` | `LowercaseStructured` | Lowercase + collapse |
         | `ExperienceFormula.expr` | `Exact` | Trim only, preserve formulas |
         | `MaterialComponentSpec.name`, `MaterialComponentSpec.unit` | `Structured` | Collapse all whitespace |
 9.  **Unit Preservation**: While automatic scaling between units (e.g., "10 yards" to "30 feet") is prohibited to preserve semantic intent, the **formatting** (casing/pluralization) of the unit label MUST be standardized to match the schema.

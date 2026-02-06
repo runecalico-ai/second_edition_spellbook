@@ -39,6 +39,21 @@ pub struct MrPartialSpec {
     pub part_ids: Option<Vec<String>>,
 }
 
+impl MrPartialSpec {
+    pub fn normalize(&mut self) {
+        if let Some(ids) = &mut self.part_ids {
+            for id in ids.iter_mut() {
+                *id = crate::models::canonical_spell::normalize_string(
+                    id,
+                    crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
+                );
+            }
+            ids.sort();
+            ids.dedup();
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct MagicResistanceSpec {
@@ -66,6 +81,9 @@ impl MagicResistanceSpec {
                 s,
                 crate::models::canonical_spell::NormalizationMode::Textual,
             );
+        }
+        if let Some(p) = &mut self.partial {
+            p.normalize();
         }
     }
 }

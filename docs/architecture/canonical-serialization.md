@@ -150,15 +150,20 @@ The following table shows which normalization mode applies to specific text fiel
 | `SavingThrowSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
 | `SingleSave.id` | `LowercaseStructured` | IDs for lookup/comparison |
 | `SaveOutcomeEffect.notes` | `Textual` | Allow multi-line clarifications |
+| **SpellCastingTime** |  |  |
+| `SpellCastingTime.text` | `Structured` | Collapse whitespace in time text |
 | **MagicResistanceSpec** |  |  |
 | `MagicResistanceSpec.notes` | `Textual` | Allow multi-line clarifications |
 | `MagicResistanceSpec.special_rule` | `Textual` | Allow multi-line special rules |
+| `MrPartialSpec.part_ids` | `LowercaseStructured` | IDs for comparison |
 | **ExperienceComponentSpec** |  |  |
 | `ExperienceComponentSpec.notes` | `Textual` | Allow multi-line clarifications |
 | `ExperienceComponentSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
 | `ExperienceComponentSpec.source_text` | `Textual` | Preserve source formatting |
 | `ExperienceFormula.expr` | `Exact` | Preserve mathematical formulas exactly |
+| `FormulaVar.name` | `Structured` | Variable names should collapse whitespace |
 | `FormulaVar.label` | `Textual` | Allow multi-line variable labels |
+| `PerUnitXp.unit_label` | `Textual` | Allow multi-line unit labels |
 | `TieredXp.when` | `Structured` | Condition text should collapse whitespace |
 | `TieredXp.notes` | `Textual` | Allow multi-line clarifications |
 | **SpellDamageSpec** |  |  |
@@ -219,7 +224,7 @@ Enum values are normalized to their canonical schema-defined form. The system ma
 | Input Examples | Canonical Output |
 |----------------|------------------|
 | `"in"`, `"inch"`, `"inches"`, `"\""` | `"inch"` |
-| `"ft"`, `"foot"`, `"feet"`, `"'"` | `"ft"` |
+| `" ft"`, `"foot"`, `"feet"`, `"'"` | `"ft"` |
 | `"yd"`, `"yard"`, `"yards"` | `"yd"` |
 | `"mi"`, `"mile"`, `"miles"` | `"mi"` |
 
@@ -497,4 +502,4 @@ Key functions:
 
 ---
 
-*Last Updated: 2026-02-05*
+*Last Updated: 2026-02-06*

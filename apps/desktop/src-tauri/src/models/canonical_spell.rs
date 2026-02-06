@@ -2580,10 +2580,10 @@ mod tests {
 
         spell.normalize();
 
-        // Structured normalization: lowercase, collapse whitespace
+        // Structured normalization: collapse whitespace, PRESERVE case (per docs line 136)
         assert_eq!(
             spell.range.as_ref().unwrap().text.as_ref().unwrap(),
-            "60 ft."
+            "60 FT."
         );
     }
 

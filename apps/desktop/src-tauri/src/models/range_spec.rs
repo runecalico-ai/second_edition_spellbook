@@ -34,7 +34,6 @@ pub enum RangeUnit {
     Ft,
     Yd,
     Mi,
-    #[serde(rename = "inches")]
     Inch,
 }
 
@@ -86,7 +85,7 @@ impl RangeSpec {
         if let Some(t) = &mut self.text {
             *t = crate::models::canonical_spell::normalize_string(
                 t,
-                crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
+                crate::models::canonical_spell::NormalizationMode::Structured,
             );
         }
         if let Some(n) = &mut self.notes {

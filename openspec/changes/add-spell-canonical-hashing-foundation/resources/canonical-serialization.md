@@ -48,8 +48,16 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
 8.  **String Normalization**:
     *   **Unicode**: MUST be normalized to **NFC (Normalization Form C)**.
     *   **Whitespace Trimming**: Leading and trailing whitespace MUST be trimmed.
-    *   **Structured Normalization**: For game-mechanical strings (e.g., `name`, `tradition`, `school`, `sphere`, `saving_throw`, `casting_time.text`, `damage.text`, and **material component names**), all internal whitespace AND newlines MUST be collapsed into a single space.
-    *   **Textual Normalization**: For narrative strings (e.g., `description`, `material_components.description`, and all `.notes` or `.condition` fields in `area`, `range`, `duration`), multiple internal spaces MUST be collapsed, but distinct paragraphs (split by one or more empty lines) MUST be preserved as a single `\n` separator. Line endings MUST be normalized to `\n` (LFs).
+    *   **Normalization Modes** (per-field mapping):
+        | Field | Mode | Description |
+        |-------|------|-------------|
+        | `name`, `tradition`, `school`, `sphere` | `Structured` | Collapse all whitespace |
+        | `description` | `Textual` | Preserve paragraph breaks |
+        | `RangeSpec.text`, `DurationSpec.condition`, `TieredXp.when` | `Structured` | Collapse all whitespace |
+        | `*.notes`, `*.dm_guidance`, `*.description`, `*.special_rule` | `Textual` | Preserve paragraph breaks |
+        | `SingleSave.id`, `DamagePart.id` | `LowercaseStructured` | Lowercase + collapse |
+        | `ExperienceFormula.expr` | `Exact` | Trim only, preserve formulas |
+        | `MaterialComponentSpec.name`, `MaterialComponentSpec.unit` | `Structured` | Collapse all whitespace |
 9.  **Unit Preservation**: While automatic scaling between units (e.g., "10 yards" to "30 feet") is prohibited to preserve semantic intent, the **formatting** (casing/pluralization) of the unit label MUST be standardized to match the schema.
 10. **Decimal Precision**: Limit all `number` fields to a maximum of 6 decimal places. NaN/Infinity are prohibited.
 11. **Materialize Defaults**: Any mechanical field missing in the source but having a mandatory default in the current schema MUST be populated before pruning.

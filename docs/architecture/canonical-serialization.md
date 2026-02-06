@@ -133,12 +133,41 @@ The following table shows which normalization mode applies to specific text fiel
 |-------|-------------------|----------|
 | `name` | `Structured` | Spell name should collapse whitespace |
 | `description` | `Textual` | Preserve paragraph breaks |
+| **RangeSpec** |  |  |
 | `RangeSpec.text` | `Structured` | Collapse whitespace in range text |
+| `RangeSpec.notes` | `Textual` | Allow multi-line clarifications |
+| **AreaSpec** |  |  |
 | `AreaSpec.notes` | `Textual` | Allow multi-line clarifications |
-| `DurationSpec.notes` | `Textual` | Allow multi-line clarifications |
+| **DurationSpec** |  |  |
 | `DurationSpec.condition` | `Structured` | Condition text should collapse whitespace |
+| `DurationSpec.notes` | `Textual` | Allow multi-line clarifications |
+| **MaterialComponentSpec** |  |  |
 | `MaterialComponentSpec.name` | `Structured` | Component name should collapse whitespace |
+| `MaterialComponentSpec.unit` | `Structured` | Unit names should collapse whitespace |
 | `MaterialComponentSpec.description` | `Textual` | Allow multi-line component details |
+| **SavingThrowSpec** |  |  |
+| `SavingThrowSpec.notes` | `Textual` | Allow multi-line clarifications |
+| `SavingThrowSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
+| `SingleSave.id` | `LowercaseStructured` | IDs for lookup/comparison |
+| `SaveOutcomeEffect.notes` | `Textual` | Allow multi-line clarifications |
+| **MagicResistanceSpec** |  |  |
+| `MagicResistanceSpec.notes` | `Textual` | Allow multi-line clarifications |
+| `MagicResistanceSpec.special_rule` | `Textual` | Allow multi-line special rules |
+| **ExperienceComponentSpec** |  |  |
+| `ExperienceComponentSpec.notes` | `Textual` | Allow multi-line clarifications |
+| `ExperienceComponentSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
+| `ExperienceComponentSpec.source_text` | `Textual` | Preserve source formatting |
+| `ExperienceFormula.expr` | `Exact` | Preserve mathematical formulas exactly |
+| `FormulaVar.label` | `Textual` | Allow multi-line variable labels |
+| `TieredXp.when` | `Structured` | Condition text should collapse whitespace |
+| `TieredXp.notes` | `Textual` | Allow multi-line clarifications |
+| **SpellDamageSpec** |  |  |
+| `SpellDamageSpec.notes` | `Textual` | Allow multi-line clarifications |
+| `SpellDamageSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
+| `DamagePart.id` | `LowercaseStructured` | IDs for lookup/comparison |
+| `DamagePart.label` | `Textual` | Allow multi-line labels |
+| `DamagePart.notes` | `Textual` | Allow multi-line clarifications |
+| `ScalingRule.notes` | `Textual` | Allow multi-line clarifications |
 
 ### Unicode Normalization (NFC)
 All strings undergo Unicode NFC normalization to ensure canonical representation of combining characters.

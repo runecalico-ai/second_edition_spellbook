@@ -148,7 +148,7 @@ fn test_damage_sorting_determinism_on_collision() {
 }
 
 #[test]
-fn test_range_text_lowercasing_for_hash_stability() {
+fn test_range_text_structured_mode_preserves_case() {
     use crate::models::range_spec::RangeSpec;
     let mut r1 = RangeSpec {
         kind: RangeKind::Special,
@@ -164,6 +164,90 @@ fn test_range_text_lowercasing_for_hash_stability() {
     r1.normalize();
     r2.normalize();
 
-    assert_eq!(r1.text, r2.text);
-    assert_eq!(r1.text.unwrap(), "line of sight");
+    // Structured mode preserves case (per docs line 136), so these are NOT equal
+    assert_eq!(r1.text, Some("Line of Sight".to_string()));
+    assert_eq!(r2.text, Some("line of sight".to_string()));
+}
+
+// ============================================================================
+// Regression tests for canonical hashing fixes (2026-02-06)
+// ============================================================================
+
+/// Regression test: RangeSpec.unit should serialize as "inch" not "inches"
+/// per proposal.md line 27: normalized to canonical "inch" form
+#[test]
+fn test_range_unit_inch_serialization() {
+    use crate::models::range_spec::{RangeKind, RangeSpec, RangeUnit};
+
+    let spec = RangeSpec {
+        kind: RangeKind::Distance,
+        unit: Some(RangeUnit::Inch),
+        ..Default::default()
+    };
+
+    let json = serde_json::to_string(&spec).unwrap();
+    assert!(
+        json.contains("\"unit\":\"inch\""),
+        "RangeUnit::Inch should serialize as 'inch', got: {}",
+        json
+    );
+    assert!(
+        !json.contains("\"inches\""),
+        "Should NOT contain 'inches', got: {}",
+        json
+    );
+}
+
+/// Regression test: DurationSpec.condition uses Structured mode
+/// per docs: DurationSpec.condition should collapse whitespace
+#[test]
+fn test_duration_condition_structured_normalization() {
+    use crate::models::duration_spec::{DurationKind, DurationSpec};
+
+    let mut spec = DurationSpec {
+        kind: DurationKind::Conditional,
+        condition: Some("  until  the  target \n leaves  ".to_string()),
+        ..Default::default()
+    };
+
+    spec.normalize();
+
+    // Structured mode collapses all whitespace including newlines
+    assert_eq!(spec.condition, Some("until the target leaves".to_string()));
+}
+
+/// Regression test: MaterialComponentSpec.unit uses Structured mode
+/// per docs: unit names should collapse whitespace
+#[test]
+fn test_material_component_unit_structured_normalization() {
+    use crate::models::material::MaterialComponentSpec;
+
+    let mut spec = MaterialComponentSpec {
+        name: "Diamond".to_string(),
+        unit: Some("  fluid  ounces  ".to_string()),
+        ..Default::default()
+    };
+
+    spec.normalize();
+
+    // Structured mode collapses whitespace
+    assert_eq!(spec.unit, Some("fluid ounces".to_string()));
+}
+
+/// Regression test: RangeSpec.text uses Structured mode (not LowercaseStructured)
+/// per docs line 136: preserves case, only collapses whitespace
+#[test]
+fn test_range_text_preserves_case() {
+    use crate::models::range_spec::{RangeKind, RangeSpec};
+
+    let mut spec = RangeSpec {
+        kind: RangeKind::Special,
+        text: Some("  Line  of  Sight  ".to_string()),
+        ..Default::default()
+    };
+
+    spec.normalize();
+
+    // Structured mode preserves case
+    assert_eq!(spec.text, Some("Line of Sight".to_string()));
 }

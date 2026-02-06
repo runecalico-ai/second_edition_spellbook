@@ -29,7 +29,7 @@ impl MaterialComponentSpec {
         if let Some(u) = &mut self.unit {
             *u = crate::models::canonical_spell::normalize_string(
                 u,
-                crate::models::canonical_spell::NormalizationMode::Textual,
+                crate::models::canonical_spell::NormalizationMode::Structured,
             );
         }
         if let Some(d) = &mut self.description {

@@ -1041,7 +1041,7 @@
             "ft",
             "yd",
             "mi",
-            "inches"
+            "inch"
           ],
           "description": "Linear unit for numeric ranges."
         },

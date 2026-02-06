@@ -68,7 +68,7 @@ impl DurationSpec {
         if let Some(c) = &mut self.condition {
             *c = crate::models::canonical_spell::normalize_string(
                 c,
-                crate::models::canonical_spell::NormalizationMode::Textual,
+                crate::models::canonical_spell::NormalizationMode::Structured,
             );
         }
         if let Some(n) = &mut self.notes {

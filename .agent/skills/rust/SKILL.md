@@ -1,6 +1,6 @@
 ---
 name: rust
-description: Systems programming expertise for Tauri desktop application backend development with memory safety and performance optimization
+description: Rust systems programming expertise for Tauri desktop application backend development with memory safety and performance optimization
 risk_level: MEDIUM
 ---
 

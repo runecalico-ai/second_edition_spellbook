@@ -467,7 +467,6 @@ pub async fn import_files(
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
                         is_cantrip: spell.is_cantrip,
                         artifacts: None,
-                        ..Default::default()
                     });
 
                      let source_path = spell.source_file.clone();
@@ -639,7 +638,6 @@ pub async fn import_files(
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
                         is_cantrip: spell.is_cantrip,
                         artifacts: None,
-                        ..Default::default()
                     });
 
                      let source_path = spell.source_file.clone();

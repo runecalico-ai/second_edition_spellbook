@@ -140,6 +140,16 @@ The backend MUST enforce strict logical dependencies between traditions and meta
 - WHEN validated
 - THEN both `school` AND `sphere` MUST be non-null and valid.
 
+#### Scenario: Prohibited Field Omission for Canonical Output
+- GIVEN an Arcane spell (with or without `sphere` set in source data)
+- WHEN canonicalized for hashing
+- THEN the canonical output MUST omit the `sphere` key
+- AND the hash MUST be identical to the same spell where `sphere` was never present.
+- GIVEN a Divine spell (with or without `school` set in source data)
+- WHEN canonicalized for hashing
+- THEN the canonical output MUST omit the `school` key
+- AND the hash MUST be stable regardless of source data for the other tradition's field.
+
 ### Requirement: Metadata Isolation
 Internal record metadata MUST NOT influence the content-addressed identity.
 

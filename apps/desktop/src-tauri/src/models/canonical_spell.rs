@@ -432,6 +432,16 @@ impl CanonicalSpell {
         }
         self.sphere = self.sphere.as_ref().map(|s| match_schema_case(s));
 
+        // Prohibited fields for hashing: tradition-inconsistent fields are cleared so they never
+        // appear in canonical JSON. Ensures hash is identical whether or not source had the other
+        // tradition's field set (verification: prohibited field omission).
+        if self.tradition == "ARCANE" {
+            self.sphere = None;
+        }
+        if self.tradition == "DIVINE" {
+            self.school = None;
+        }
+
         // Rule 88: Prune optional fields if they equal their materialized defaults (Lean Hashing)
         // This ensures hash stability as the schema adds new optional properties.
         if self.reversible == Some(0) {
@@ -499,11 +509,6 @@ impl CanonicalSpell {
             {
                 self.components = None;
             }
-        }
-
-        // Bugfix: Stop materializing casting_time if it is None in the source.
-        if let Some(ct) = &mut self.casting_time {
-            ct.normalize();
         }
 
         if self.schema_version == 0 {
@@ -899,6 +904,46 @@ mod tests {
     }
 
     #[test]
+    fn test_prohibited_field_omission_arcane_sphere() {
+        // Verification: Arcane spell with sphere set must omit sphere from canonical output
+        // and produce the same hash as the same spell with sphere never present.
+        let mut with_sphere = CanonicalSpell::new(
+            "Prohibited Test".into(),
+            1,
+            "ARCANE".into(),
+            "Description".into(),
+        );
+        with_sphere.school = Some("Evocation".into());
+        with_sphere.sphere = Some("All".into()); // Tradition-inconsistent; must be cleared
+
+        let mut without_sphere = CanonicalSpell::new(
+            "Prohibited Test".into(),
+            1,
+            "ARCANE".into(),
+            "Description".into(),
+        );
+        without_sphere.school = Some("Evocation".into());
+        // sphere left None
+
+        let json_with = with_sphere.to_canonical_json().unwrap();
+        let json_without = without_sphere.to_canonical_json().unwrap();
+
+        assert!(
+            !json_with.contains("\"sphere\":"),
+            "canonical JSON for Arcane spell must OMIT sphere key even when source had sphere set"
+        );
+        assert_eq!(
+            json_with, json_without,
+            "canonical JSON must be identical for Arcane spell with or without sphere in source"
+        );
+        assert_eq!(
+            with_sphere.compute_hash().unwrap(),
+            without_sphere.compute_hash().unwrap(),
+            "hash must be identical for Arcane spell with or without sphere in source"
+        );
+    }
+
+    #[test]
     fn test_identical_content_produces_identical_hash() {
         let mut s1 = CanonicalSpell::new("Test Spell".into(), 1, "ARCANE".into(), "Desc".into());
         s1.class_list = vec!["A".into(), "B".into()];
@@ -1151,7 +1196,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_array_inclusion() {
+    fn test_empty_array_omission() {
         let mut spell = CanonicalSpell::new(
             "Empty Array Test".to_string(),
             1,

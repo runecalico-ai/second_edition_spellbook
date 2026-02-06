@@ -17,8 +17,9 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     -   **Normalize Enums**: Convert all enum values (units, schools, etc.) to match the EXACT casing and spelling defined in the schema.
     -   **Limit Precision** for all `number` fields to 6 decimal places.
 4.  **Collection Logic**: Deduplicate and sort all unordered arrays (`tags`, etc.).
-5.  **Prune (Lean Hashing)**: Omit all fields with `null` values OR empty collections (`[]`) that are optional in the schema. This ensures hash stability as the schema adds new optional properties over time.
-6.  **Serialize**: Generate the byte stream following **RFC 8785 (JCS)**.
+5.  **Tradition-Consistent Fields**: Clear tradition-inconsistent fields so they are never included in the hash: for `tradition = "ARCANE"`, clear `sphere`; for `tradition = "DIVINE"`, clear `school`; for `tradition = "BOTH"`, keep both. This ensures the content hash is stable regardless of whether the source had the other tradition's field set.
+6.  **Prune (Lean Hashing)**: Omit all fields with `null` values OR empty collections (`[]`) that are optional in the schema. This ensures hash stability as the schema adds new optional properties over time.
+7.  **Serialize**: Generate the byte stream following **RFC 8785 (JCS)**.
 
 ## Canonicalization Rules
 

@@ -89,7 +89,7 @@ To ensure hash stability as the schema evolves, optional fields that are empty o
 
 > [!IMPORTANT]
 > **Required Fields are NEVER pruned.** Fields marked as `required` in `spell.schema.json` must always be present in the hash, even if they equal a default value (e.g., `components.verbal: false`). This ensures that the resulting JSON always remains valid against the schema.
-> **Key Root Required Fields:** `name`, `tradition`, `level`, `description`, `is_cantrip`, `is_quest_spell`.
+> **Key Root Required Fields:** `name`, `tradition`, `level`, `description`. Optional but often present: `is_cantrip`, `is_quest_spell` (omitted when 0 per Lean Hashing).
 
 **Execution Order**: Default materialization (§2.5) runs **before** Lean Hashing, so an optional field explicitly set to its default value will be omitted.
 
@@ -103,6 +103,16 @@ The `tradition` field enforces strict logical dependencies:
 | `BOTH` | Both `school` AND `sphere` must be non-null |
 
 Validation fails if these requirements are not met.
+
+### 2.9.1 Prohibited Fields for Hashing
+
+During normalization, tradition-inconsistent fields are **cleared** before serialization so they never appear in the canonical JSON used for the hash:
+
+- For `tradition = "ARCANE"`: `sphere` must be omitted (cleared if present).
+- For `tradition = "DIVINE"`: `school` must be omitted (cleared if present).
+- For `tradition = "BOTH"`: both `school` and `sphere` are included.
+
+This ensures the content hash is identical whether or not the source had the other tradition's field set.
 
 ### 2.10 Unit-Based Identity
 Units are **never converted** during canonicalization. Two spells with equivalent physical distances but different units (e.g., "10 yd" vs "30 ft") produce **different** hashes. This preserves the original specification's intent.
@@ -236,14 +246,15 @@ All enums at all depths of the `CanonicalSpell` object undergo normalization in 
 | `"mi"`, `"mile"`, `"miles"` | `"mi"` |
 
 ### 5.3 Other Enums
-| Input Examples | Canonical Output |
-|----------------|------------------|
-| `"bonus action"`, `"bonus actions"` | `"bonus_action"` |
-| `"instant"`, `"instantaneous"` | `"instantaneous"` |
-| `"conjuration/summoning"` | `"Conjuration/Summoning"` |
-| `"mind-affecting"` | `"Mind-Affecting"` |
+| Input Examples | Canonical Output | Applies To |
+|----------------|------------------|------------|
+| `"bonus action"`, `"bonus actions"` | `"bonus_action"` | Casting time unit, etc. |
+| `"instant"`, `"instantaneous"` | `"instantaneous"` | Casting time **unit** (`SpellCastingTime.unit`) |
+| `"instant"`, `"instantaneous"` | `"instant"` | Duration **kind** (`DurationSpec.kind`); schema uses `"instant"` |
+| `"conjuration/summoning"` | `"Conjuration/Summoning"` | School/subschool |
+| `"mind-affecting"` | `"Mind-Affecting"` | Descriptors |
 
-For unrecognized values, simple title case is applied.
+For unrecognized values, simple title case is applied. Note: duration kind and casting time unit use different canonical forms—`DurationSpec.kind` is `"instant"`; casting time unit is `"instantaneous"`.
 
 ## 6. Canonical Serialization Examples
 
@@ -496,10 +507,10 @@ a1b2c3d4e5f6...
 
 ## 8. Implementation Reference
 
-The canonical serialization is implemented in:
-- `src-tauri/src/models/canonical_spell.rs` - Core CanonicalSpell type and hashing
-- `src-tauri/src/models/*.rs` - Spec types (range, area, duration, damage, etc.)
-- `src-tauri/schemas/spell.schema.json` - JSON Schema for validation
+The canonical serialization is implemented in (paths from repository root):
+- `apps/desktop/src-tauri/src/models/canonical_spell.rs` - Core CanonicalSpell type and hashing
+- `apps/desktop/src-tauri/src/models/*.rs` - Spec types (range, area, duration, damage, etc.)
+- `apps/desktop/src-tauri/schemas/spell.schema.json` - JSON Schema for validation
 
 Key functions:
 - `CanonicalSpell::normalize()` - Applies all normalization rules

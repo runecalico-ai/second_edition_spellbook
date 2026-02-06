@@ -75,6 +75,37 @@ fn clamp_precision(val: f64) -> f64 {
 }
 ```
 
+### 2.8 Lean Hashing (Empty Collections)
+To ensure hash stability as the schema evolves, empty collections are **omitted** from the canonical JSON:
+- Empty arrays (`[]`) are removed
+- Empty strings (`""`) are removed
+- Null values are removed
+
+This prevents hash changes when new optional array fields are added to the schema.
+
+### 2.9 Tradition Validation
+The `tradition` field enforces strict logical dependencies:
+
+| Tradition | Required Fields |
+|-----------|----------------|
+| `ARCANE` | `school` must be non-null |
+| `DIVINE` | `sphere` must be non-null |
+| `BOTH` | Both `school` AND `sphere` must be non-null |
+
+Validation fails if these requirements are not met.
+
+### 2.10 Unit-Based Identity
+Units are **never converted** during canonicalization. Two spells with equivalent physical distances but different units (e.g., "10 yd" vs "30 ft") produce **different** hashes. This preserves the original specification's intent.
+
+### 2.11 Mixed-Unit Range Fallback
+Variable ranges with distinct units (e.g., "1 yd + 1 ft/level") cannot be modeled as `kind="distance"` without lossy conversion. Instead, they fallback to:
+```json
+{
+  "kind": "special",
+  "text": "1 yd + 1 ft/level"
+}
+```
+
 ## 3. String Normalization Modes
 
 Different fields use different normalization modes based on their semantic purpose:

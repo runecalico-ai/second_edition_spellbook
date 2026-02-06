@@ -106,11 +106,11 @@ A spell's identity MUST be defined by the SHA-256 hash of its canonical JSON rep
 - THEN they MUST be normalized to the exact schema casing (Result: `"ARCANE"`)
 - AND produce a predictable hash.
 
-#### Scenario: Empty Collection Stability
+#### Scenario: Empty Collection Stability (Lean Hashing)
 - GIVEN a spell with an empty array (e.g. `tags = []`)
 - WHEN hashed
-- THEN the canonical JSON MUST include the literal `[]`
-- AND produce a predictable hash.
+- THEN the canonical JSON MUST OMIT the empty array field entirely
+- AND produce a predictable hash that is stable as the schema evolves.
 
 #### Scenario: Semantic Whitespace Collapse
 - GIVEN short text fields with redundant internal whitespace (e.g. `range.text = "10  yards"`)

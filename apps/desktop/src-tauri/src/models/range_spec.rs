@@ -34,6 +34,7 @@ pub enum RangeUnit {
     Ft,
     Yd,
     Mi,
+    #[serde(rename = "inches")]
     Inch,
 }
 

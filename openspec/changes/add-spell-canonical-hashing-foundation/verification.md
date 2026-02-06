@@ -79,9 +79,9 @@
   - AND another with `tradition = "ARCANE"`
   - THEN both hashes MUST be identical (normalized to schema case)
 
-- [x] **Test: Empty array inclusion**
+- [x] **Test: Empty array omission (Lean Hashing)**
   - GIVEN a spell with `tags = []`
-  - THEN the canonical JSON MUST include `"tags": []`
+  - THEN the canonical JSON MUST OMIT the `tags` field entirely
   - **IMPLEMENTED**: `test_empty_array_inclusion` in canonical_spell.rs:853-887
 
 - [x] **Test: Whitespace collapse (Short text)**

@@ -1,4 +1,4 @@
-use crate::models::{MaterialComponentSpec, SpellCastingTime, SpellComponents};
+use crate::models::{CastingTimeUnit, MaterialComponentSpec, SpellCastingTime, SpellComponents};
 use regex::Regex;
 
 pub struct ComponentsParser;
@@ -36,7 +36,7 @@ impl ComponentsParser {
         if lower.contains("bonus action") {
             return SpellCastingTime {
                 text: input.to_string(),
-                unit: "Bonus Action".to_string(),
+                unit: CastingTimeUnit::BonusAction,
                 base_value: base_val,
                 ..Default::default()
             };
@@ -44,7 +44,7 @@ impl ComponentsParser {
         if lower.contains("reaction") {
             return SpellCastingTime {
                 text: input.to_string(),
-                unit: "Reaction".to_string(),
+                unit: CastingTimeUnit::Reaction,
                 base_value: base_val,
                 ..Default::default()
             };
@@ -52,7 +52,7 @@ impl ComponentsParser {
         if lower.contains("action") {
             return SpellCastingTime {
                 text: input.to_string(),
-                unit: "Action".to_string(),
+                unit: CastingTimeUnit::Action,
                 base_value: base_val,
                 ..Default::default()
             };
@@ -60,7 +60,7 @@ impl ComponentsParser {
         if lower.contains("round") {
             return SpellCastingTime {
                 text: input.to_string(),
-                unit: "Round".to_string(),
+                unit: CastingTimeUnit::Round,
                 base_value: base_val,
                 ..Default::default()
             };
@@ -68,7 +68,7 @@ impl ComponentsParser {
         if lower.contains("minute") {
             return SpellCastingTime {
                 text: input.to_string(),
-                unit: "Minute".to_string(),
+                unit: CastingTimeUnit::Minute,
                 base_value: base_val,
                 ..Default::default()
             };
@@ -76,7 +76,7 @@ impl ComponentsParser {
         if lower.contains("hour") {
             return SpellCastingTime {
                 text: input.to_string(),
-                unit: "Hour".to_string(),
+                unit: CastingTimeUnit::Hour,
                 base_value: base_val,
                 ..Default::default()
             };
@@ -84,7 +84,7 @@ impl ComponentsParser {
 
         SpellCastingTime {
             text: input.to_string(),
-            unit: "Special".to_string(),
+            unit: CastingTimeUnit::Special,
             base_value: 0.0,
             per_level: 0.0,
             level_divisor: 1.0,
@@ -245,10 +245,10 @@ mod tests {
     fn test_parse_casting_time() {
         let parser = ComponentsParser::new();
         let res = parser.parse_casting_time("1 round");
-        assert_eq!(res.unit, "Round");
+        assert_eq!(res.unit, CastingTimeUnit::Round);
 
         let res2 = parser.parse_casting_time("1 action");
-        assert_eq!(res2.unit, "Action");
+        assert_eq!(res2.unit, CastingTimeUnit::Action);
     }
 
     #[test]
@@ -384,9 +384,9 @@ mod tests {
         let parser = ComponentsParser::new();
 
         let res = parser.parse_casting_time("1 bonus action");
-        assert_eq!(res.unit, "Bonus Action");
+        assert_eq!(res.unit, CastingTimeUnit::BonusAction);
 
         let res2 = parser.parse_casting_time("1 reaction");
-        assert_eq!(res2.unit, "Reaction");
+        assert_eq!(res2.unit, CastingTimeUnit::Reaction);
     }
 }

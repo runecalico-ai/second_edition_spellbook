@@ -39,7 +39,7 @@ pub enum AreaUnit {
     Hex,
     Room,
     Floor,
-    Inches,
+    Inch,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -48,7 +48,7 @@ pub enum AreaShapeUnit {
     Ft,
     Yd,
     Mi,
-    Inches,
+    Inch,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]

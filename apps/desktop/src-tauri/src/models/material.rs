@@ -24,7 +24,7 @@ impl MaterialComponentSpec {
     pub fn normalize(&mut self) {
         self.name = crate::models::canonical_spell::normalize_string(
             &self.name,
-            crate::models::canonical_spell::NormalizationMode::Textual,
+            crate::models::canonical_spell::NormalizationMode::Structured,
         );
         if let Some(u) = &mut self.unit {
             *u = crate::models::canonical_spell::normalize_string(

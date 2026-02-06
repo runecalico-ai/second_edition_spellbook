@@ -68,7 +68,7 @@ impl AreaParser {
                 "yard" | "yd." | "yd" => (Some(AreaUnit::Yd), Some(AreaShapeUnit::Yd)),
                 "mile" | "mi." | "mi" => (Some(AreaUnit::Mi), Some(AreaShapeUnit::Mi)),
                 "inch" | "in." | "in" | "inches" | "\"" => {
-                    (Some(AreaUnit::Inches), Some(AreaShapeUnit::Inches))
+                    (Some(AreaUnit::Inch), Some(AreaShapeUnit::Inch))
                 }
                 "square" | "sq." | "sq" => (Some(AreaUnit::Square), None),
                 "ft2" | "sq. ft." | "sq ft" => (Some(AreaUnit::Ft2), Some(AreaShapeUnit::Ft)),
@@ -331,8 +331,8 @@ impl AreaParser {
         let mut radius = None;
         let mut length = None;
         let mut width = None;
-        let height = None;
-        let thickness = None;
+        let mut height = None;
+        let mut thickness = None;
         let mut edge = None;
 
         let kind = match shape_raw {
@@ -363,10 +363,25 @@ impl AreaParser {
             }
             "wall" => {
                 length = scalar;
+                height = Some(SpellScalar {
+                    mode: ScalarMode::Fixed,
+                    value: Some(10.0),
+                    ..Default::default()
+                });
+                thickness = Some(SpellScalar {
+                    mode: ScalarMode::Fixed,
+                    value: Some(1.0),
+                    ..Default::default()
+                });
                 AreaKind::Wall
             }
             "cylinder" => {
                 radius = scalar;
+                height = Some(SpellScalar {
+                    mode: ScalarMode::Fixed,
+                    value: Some(10.0),
+                    ..Default::default()
+                });
                 AreaKind::Cylinder
             }
             "point" => AreaKind::Point,
@@ -440,14 +455,15 @@ mod tests {
         let res2 = parser.parse("15 ft. cylinder").unwrap();
         assert_eq!(res2.kind, AreaKind::Cylinder);
         assert_eq!(res2.radius.unwrap().value.unwrap(), 15.0);
-        // Height is no longer defaulted
-        assert!(res2.height.is_none());
+        // Height is now defaulted for schema compliance
+        assert!(res2.height.is_some());
 
         let res3 = parser.parse("30 ft. wall").unwrap();
         assert_eq!(res3.kind, AreaKind::Wall);
         assert_eq!(res3.length.unwrap().value.unwrap(), 30.0);
-        // Height and thickness are no longer defaulted
-        assert!(res3.height.is_none());
+        // Height and thickness are now defaulted for schema compliance
+        assert!(res3.height.is_some());
+        assert!(res3.thickness.is_some());
     }
 
     #[test]

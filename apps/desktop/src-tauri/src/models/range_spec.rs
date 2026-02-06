@@ -34,7 +34,7 @@ pub enum RangeUnit {
     Ft,
     Yd,
     Mi,
-    Inches,
+    Inch,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]

@@ -151,7 +151,7 @@ pub fn run_hash_backfill(
         }
         if let Some(cast_str) = &detail.casting_time {
             let res = parser.parse_casting_time(cast_str);
-            if res.unit == "Special"
+            if res.unit == crate::models::CastingTimeUnit::Special
                 && cast_str.to_lowercase() != "special"
                 && !cast_str.trim().is_empty()
             {

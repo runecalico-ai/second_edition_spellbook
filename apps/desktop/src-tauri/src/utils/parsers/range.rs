@@ -300,7 +300,7 @@ impl RangeParser {
                         "foot" | "feet" | "ft." | "ft" | "'" => Some(RangeUnit::Ft),
                         "yard" | "yd." | "yd" | "yards" => Some(RangeUnit::Yd),
                         "mile" | "mi." | "mi" | "miles" => Some(RangeUnit::Mi),
-                        "inch" | "in." | "in" | "inches" | "\"" => Some(RangeUnit::Inches),
+                        "inch" | "in." | "in" | "inches" | "\"" => Some(RangeUnit::Inch),
                         _ => None,
                     }
                 };
@@ -336,10 +336,9 @@ impl RangeParser {
                         let unit = u2.or(u1);
                         if let Some(u) = unit {
                             let kind = match u {
-                                RangeUnit::Ft
-                                | RangeUnit::Yd
-                                | RangeUnit::Mi
-                                | RangeUnit::Inches => force_kind.unwrap_or(RangeKind::Distance),
+                                RangeUnit::Ft | RangeUnit::Yd | RangeUnit::Mi | RangeUnit::Inch => {
+                                    force_kind.unwrap_or(RangeKind::Distance)
+                                }
                             };
 
                             let scalar = SpellScalar {
@@ -379,7 +378,7 @@ impl RangeParser {
                     let unit = map_unit(unit_raw);
                     if let Some(u) = unit {
                         let kind = match u {
-                            RangeUnit::Ft | RangeUnit::Yd | RangeUnit::Mi | RangeUnit::Inches => {
+                            RangeUnit::Ft | RangeUnit::Yd | RangeUnit::Mi | RangeUnit::Inch => {
                                 force_kind.unwrap_or(RangeKind::Distance)
                             }
                         };

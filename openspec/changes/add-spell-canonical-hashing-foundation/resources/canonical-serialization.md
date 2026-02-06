@@ -14,10 +14,10 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     -   **Collapse Spaces**:
         -   **Structured Mode**: Collapses all internal whitespace AND newlines into single spaces (Game-mechanical fields).
         -   **Textual Mode**: Collapses internal horizontal whitespace but preserves newlines (Narrative fields).
-    -   **Normalize Enums** to match schema casing.
+    -   **Normalize Enums**: Convert all enum values (units, schools, etc.) to match the EXACT casing and spelling defined in the schema.
     -   **Limit Precision** for all `number` fields to 6 decimal places.
 4.  **Collection Logic**: Deduplicate and sort all unordered arrays (`tags`, etc.).
-5.  **Prune**: Remove all fields with `null` values (unless they are required by the schema).
+5.  **Prune (Lean Hashing)**: Omit all fields with `null` values OR empty collections (`[]`) that are optional in the schema. This ensures hash stability as the schema adds new optional properties over time.
 6.  **Serialize**: Generate the byte stream following **RFC 8785 (JCS)**.
 
 ## Canonicalization Rules
@@ -42,18 +42,17 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     *   **Applied Fields**: `saving_throw.multiple`, `damage.parts` (when `combine_mode = "sequence"`).
     *   **Conditional Sorting for Damage Parts**: The `damage.parts` array sorting behavior depends on `damage.combine_mode`:
         -   **`sum`, `max`, `choose_one`**: Parts are sorted lexicographically by `id` to ensure order-independent hashing.
-        -   **`sequence`**: Parts preserve their original array order, as sequence implies ordered execution. This ensures spells with sequential damage produce different hashes when part order differs.
-6.  **Empty Collections**: Collections that default to `[]` in the schema MUST be included as literal `[]`. They MUST NOT be omitted or set to `null`.
-7.  **Null Values**: Fields with `null` values MUST be OMITTED from the serialization **UNLESS they are required by the schema**. If a field is required but `null`, it must be present as `"key": null` (though schema typically prohibits this for mechanical content).
-8.  **Enum Normalization**: All enum values MUST match the exact casing and spelling defined in `spell.schema.json`.
+        -   **`sequence`**: Parts preserve their original array order, as sequence implies ordered execution.
+6.  **Lean Hashing (Omission)**: To ensure future-proof stability, all `null` values, empty strings, and empty collections (`[]`) MUST be OMITTED from the canonical representation if they match the schema's default/optional behavior.
+7.  **Enum & Unit Normalization**: All enum values (including units like `round`, `hour`, `minute`) MUST match the exact casing and spelling defined in `spell.schema.json`. Default casing is **lowercase singular snake_case**.
 8.  **String Normalization**:
     *   **Unicode**: MUST be normalized to **NFC (Normalization Form C)**.
     *   **Whitespace Trimming**: Leading and trailing whitespace MUST be trimmed.
-    *   **Structured Normalization**: For game-mechanical strings (e.g., `name`, `tradition`, `school`, `sphere`, `saving_throw`, `casting_time.text`, and `damage.text`), all internal whitespace AND newlines MUST be collapsed into a single space.
-    *   **Textual Normalization**: For narrative strings (e.g., `description`, `material_components`, and all `.notes` or `.condition` fields in `area`, `range`, `duration`), multiple internal spaces MUST be collapsed, but distinct paragraphs (split by one or more empty lines) MUST be preserved as a single `\n` separator. Line endings MUST be normalized to `\n` (LFs).
-11. **Unit Preservation**: All game-mechanical units (e.g., `ft`, `yd`, `mi`, `inches`, `round`, `turn`, `Bonus Action`, `Reaction`) MUST be preserved exactly as presented in the record. No automatic conversion or scaling between units (e.g., converting "10 yards" to "30 feet") SHALL be performed during canonicalization. This preserves the semantic intent and mechanical distinction defined by the game system.
-9.  **Decimal Precision**: Limit all `number` fields to a maximum of 6 decimal places. NaN/Infinity are prohibited.
-10. **Materialize Defaults**: Any mechanical field missing in the source but having a `default` in the current schema MUST be included using that default value.
+    *   **Structured Normalization**: For game-mechanical strings (e.g., `name`, `tradition`, `school`, `sphere`, `saving_throw`, `casting_time.text`, `damage.text`, and **material component names**), all internal whitespace AND newlines MUST be collapsed into a single space.
+    *   **Textual Normalization**: For narrative strings (e.g., `description`, `material_components.description`, and all `.notes` or `.condition` fields in `area`, `range`, `duration`), multiple internal spaces MUST be collapsed, but distinct paragraphs (split by one or more empty lines) MUST be preserved as a single `\n` separator. Line endings MUST be normalized to `\n` (LFs).
+9.  **Unit Preservation**: While automatic scaling between units (e.g., "10 yards" to "30 feet") is prohibited to preserve semantic intent, the **formatting** (casing/pluralization) of the unit label MUST be standardized to match the schema.
+10. **Decimal Precision**: Limit all `number` fields to a maximum of 6 decimal places. NaN/Infinity are prohibited.
+11. **Materialize Defaults**: Any mechanical field missing in the source but having a mandatory default in the current schema MUST be populated before pruning.
 
 ## Hashing Algorithm
 
@@ -61,33 +60,18 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
 *   **Input**: The canonical JSON string bytes.
 *   **Output**: Hexadecimal string (64 characters, lowercase).
 
-## Schema Compatibility Contract
-
-1.  **Current Version**: Records matching `CURRENT_SCHEMA_VERSION` are processed normally.
-2.  **Older Versions**: MUST be migrated (materialized) to the current schema before hashing.
-3.  **Newer Versions (Compatible)**: If `schema_version` > `CURRENT_SCHEMA_VERSION` but the object validates against the current schema, the record MAY be processed but a warning SHOULD be logged.
-4.  **Newer Versions (Incompatible)**: If validation fails, the record MUST be rejected.
-
 ## Example (Gold Standard)
 
-**Canonical JSON (Actual stream has NO whitespace):**
+**Canonical JCS Object (Pretty-printed for readability):**
 ```json
 {
   "area": {
     "kind": "radius_circle",
-    "notes": null,
     "radius": {
-      "cap_level": null,
-      "cap_value": null,
-      "max_level": null,
-      "min_level": null,
       "mode": "fixed",
-      "per_level": null,
-      "rounding": null,
       "value": 20
     },
-    "scalar": null,
-    "shape_unit": null,
+    "shape_unit": "ft",
     "unit": "ft"
   },
   "casting_time": {
@@ -95,58 +79,67 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     "level_divisor": 1,
     "per_level": 0,
     "text": "1",
-    "unit": "Segment"
+    "unit": "segment"
   },
-  "class_list": [],
   "components": {
+    "divine_focus": false,
+    "experience": false,
+    "focus": false,
     "material": false,
     "somatic": true,
     "verbal": true
   },
   "damage": {
-    "base_dice": "1d6",
-    "level_divisor": 1,
-    "per_level_dice": "1d6",
-    "text": "1d6/level"
+    "combine_mode": "sum",
+    "kind": "modeled",
+    "parts": [
+      {
+        "application": {
+          "scope": "per_target",
+          "tick_driver": "fixed",
+          "ticks": 1
+        },
+        "base": {
+          "flat_modifier": 0,
+          "terms": [
+            {
+              "count": 1,
+              "per_die_modifier": 0,
+              "sides": 6
+            }
+          ]
+        },
+        "damage_type": "fire",
+        "id": "main",
+        "mr_interaction": "normal",
+        "save": {
+          "kind": "half"
+        }
+      }
+    ]
   },
   "description": "Explosion.\nLine two.",
   "duration": {
-    "condition": null,
     "duration": {
-      "cap_level": null,
-      "cap_value": null,
-      "max_level": null,
-      "min_level": null,
       "mode": "per_level",
       "per_level": 1,
-      "rounding": null,
       "value": 0
     },
     "kind": "time",
-    "notes": null,
-    "unit": "round",
-    "uses": null
+    "unit": "round"
   },
   "is_cantrip": 0,
   "is_quest_spell": 0,
   "level": 3,
+  "level_divisor": 1,
   "name": "Fireball",
   "range": {
-    "anchor": null,
     "distance": {
-      "cap_level": null,
-      "cap_value": null,
-      "max_level": null,
-      "min_level": null,
       "mode": "per_level",
       "per_level": 10,
-      "rounding": null,
       "value": 10
     },
     "kind": "distance",
-    "notes": null,
-    "region_unit": null,
-    "requires": null,
     "unit": "yd"
   },
   "school": "Evocation",

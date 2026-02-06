@@ -18,10 +18,17 @@
     "tradition": {
       "type": "string",
       "description": "The magical tradition of the spell.",
-      "enum": ["ARCANE", "DIVINE", "BOTH"]
+      "enum": [
+        "ARCANE",
+        "DIVINE",
+        "BOTH"
+      ]
     },
     "school": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The primary mechanical school of magic (for specialist rules).",
       "enum": [
         "Abjuration",
@@ -69,7 +76,10 @@
       "default": []
     },
     "sphere": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The divine sphere of influence (access control).",
       "enum": [
         "All",
@@ -161,7 +171,14 @@
       },
       "description": "Components required to cast the spell.",
       "additionalProperties": false,
-      "required": ["verbal", "somatic", "material", "focus", "divine_focus", "experience"]
+      "required": [
+        "verbal",
+        "somatic",
+        "material",
+        "focus",
+        "divine_focus",
+        "experience"
+      ]
     },
     "material_components": {
       "type": "array",
@@ -181,16 +198,16 @@
         "unit": {
           "type": "string",
           "enum": [
-            "Segment",
-            "Round",
-            "Turn",
-            "Hour",
-            "Minutes",
-            "Actions",
-            "Bonus Action",
-            "Reaction",
-            "Special",
-            "Instantaneous"
+            "segment",
+            "round",
+            "turn",
+            "hour",
+            "minute",
+            "action",
+            "bonus_action",
+            "reaction",
+            "special",
+            "instantaneous"
           ],
           "default": "Segment"
         },
@@ -210,7 +227,10 @@
           "default": 1
         }
       },
-      "required": ["text", "unit"],
+      "required": [
+        "text",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "duration": {
@@ -238,9 +258,15 @@
       "description": "Detailed experience cost mechanics."
     },
     "reversible": {
-      "type": ["integer", "null"],
+      "type": [
+        "integer",
+        "null"
+      ],
       "description": "Whether the spell is reversible (0 = No, 1 = Yes).",
-      "enum": [0, 1],
+      "enum": [
+        0,
+        1
+      ],
       "default": 0
     },
     "description": {
@@ -272,25 +298,40 @@
             "description": "Book title or collection name (e.g. 'Player's Handbook', 'Homebrew')."
           },
           "page": {
-            "type": ["integer", "string", "null"],
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ],
             "description": "Page number."
           },
           "note": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Additional notes (e.g. 'errata')."
           }
         },
-        "required": ["book"]
+        "required": [
+          "book"
+        ]
       },
       "default": []
     },
     "edition": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Game edition (e.g., '2e').",
       "default": null
     },
     "author": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Author credit.",
       "default": null
     },
@@ -301,20 +342,29 @@
       "default": "1.0.0"
     },
     "license": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "License information (e.g., 'OGL').",
       "default": null
     },
     "is_quest_spell": {
       "type": "integer",
       "description": "Whether this is a Quest spell (0 = No, 1 = Yes).",
-      "enum": [0, 1],
+      "enum": [
+        0,
+        1
+      ],
       "default": 0
     },
     "is_cantrip": {
       "type": "integer",
       "description": "Whether this is a Cantrip (0 = No, 1 = Yes).",
-      "enum": [0, 1],
+      "enum": [
+        0,
+        1
+      ],
       "default": 0
     },
     "schema_version": {
@@ -323,12 +373,18 @@
       "default": 1
     },
     "created_at": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "ISO-8601 timestamp of record creation.",
       "format": "date-time"
     },
     "updated_at": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "ISO-8601 timestamp of last update.",
       "format": "date-time"
     },
@@ -354,11 +410,21 @@
             "type": "string"
           }
         },
-        "required": ["id", "type", "path", "hash"]
+        "required": [
+          "id",
+          "type",
+          "path",
+          "hash"
+        ]
       }
     }
   },
-  "required": ["name", "level", "description", "tradition"],
+  "required": [
+    "name",
+    "level",
+    "description",
+    "tradition"
+  ],
   "additionalProperties": false,
   "allOf": [
     {
@@ -370,7 +436,9 @@
         }
       },
       "then": {
-        "required": ["school"],
+        "required": [
+          "school"
+        ],
         "properties": {
           "sphere": {
             "const": null
@@ -387,7 +455,9 @@
         }
       },
       "then": {
-        "required": ["sphere"],
+        "required": [
+          "sphere"
+        ],
         "properties": {
           "school": {
             "const": null
@@ -404,7 +474,10 @@
         }
       },
       "then": {
-        "required": ["school", "sphere"]
+        "required": [
+          "school",
+          "sphere"
+        ]
       }
     }
   ],
@@ -412,11 +485,16 @@
     "scalar": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode"],
+      "required": [
+        "mode"
+      ],
       "properties": {
         "mode": {
           "type": "string",
-          "enum": ["fixed", "per_level"]
+          "enum": [
+            "fixed",
+            "per_level"
+          ]
         },
         "value": {
           "type": "number",
@@ -444,7 +522,12 @@
         },
         "rounding": {
           "type": "string",
-          "enum": ["none", "floor", "ceil", "nearest"]
+          "enum": [
+            "none",
+            "floor",
+            "ceil",
+            "nearest"
+          ]
         }
       },
       "allOf": [
@@ -455,10 +538,14 @@
                 "const": "fixed"
               }
             },
-            "required": ["mode"]
+            "required": [
+              "mode"
+            ]
           },
           "then": {
-            "required": ["value"]
+            "required": [
+              "value"
+            ]
           }
         },
         {
@@ -468,10 +555,14 @@
                 "const": "per_level"
               }
             },
-            "required": ["mode"]
+            "required": [
+              "mode"
+            ]
           },
           "then": {
-            "required": ["per_level"]
+            "required": [
+              "per_level"
+            ]
           }
         }
       ]
@@ -479,7 +570,9 @@
     "AreaSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -510,7 +603,7 @@
             "ft",
             "yd",
             "mi",
-            "inches",
+            "inch",
             "ft2",
             "yd2",
             "square",
@@ -523,7 +616,12 @@
         },
         "shape_unit": {
           "type": "string",
-          "enum": ["ft", "yd", "mi", "inches"],
+          "enum": [
+            "ft",
+            "yd",
+            "mi",
+            "inch"
+          ],
           "description": "Unit for geometric dimensions (radii/length/height/width/etc.)."
         },
         "radius": {
@@ -561,7 +659,12 @@
         },
         "tile_unit": {
           "type": "string",
-          "enum": ["hex", "room", "floor", "square"]
+          "enum": [
+            "hex",
+            "room",
+            "floor",
+            "square"
+          ]
         },
         "tile_count": {
           "$ref": "#/$defs/scalar"
@@ -571,7 +674,14 @@
         },
         "count_subject": {
           "type": "string",
-          "enum": ["creature", "undead", "ally", "enemy", "object", "structure"],
+          "enum": [
+            "creature",
+            "undead",
+            "ally",
+            "enemy",
+            "object",
+            "structure"
+          ],
           "description": "What is being counted when kind is creatures/objects."
         },
         "region_unit": {
@@ -612,7 +722,12 @@
         },
         "moves_with": {
           "type": "string",
-          "enum": ["caster", "target", "object", "fixed"],
+          "enum": [
+            "caster",
+            "target",
+            "object",
+            "fixed"
+          ],
           "description": "Normalized motion behavior."
         },
         "notes": {
@@ -627,9 +742,16 @@
                 "const": "radius_circle"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
-          "then": {}
+          "then": {
+            "required": [
+              "radius",
+              "shape_unit"
+            ]
+          }
         },
         {
           "if": {
@@ -638,9 +760,34 @@
                 "const": "radius_sphere"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
-          "then": {}
+          "then": {
+            "required": [
+              "radius",
+              "shape_unit"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "cone"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "length",
+              "shape_unit"
+            ]
+          }
         },
         {
           "if": {
@@ -649,9 +796,16 @@
                 "const": "line"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
-          "then": {}
+          "then": {
+            "required": [
+              "length",
+              "shape_unit"
+            ]
+          }
         },
         {
           "if": {
@@ -660,9 +814,17 @@
                 "const": "rect"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
-          "then": {}
+          "then": {
+            "required": [
+              "length",
+              "width",
+              "shape_unit"
+            ]
+          }
         },
         {
           "if": {
@@ -671,9 +833,18 @@
                 "const": "rect_prism"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
-          "then": {}
+          "then": {
+            "required": [
+              "length",
+              "width",
+              "height",
+              "shape_unit"
+            ]
+          }
         },
         {
           "if": {
@@ -682,9 +853,17 @@
                 "const": "cylinder"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
-          "then": {}
+          "then": {
+            "required": [
+              "radius",
+              "height",
+              "shape_unit"
+            ]
+          }
         },
         {
           "if": {
@@ -693,9 +872,18 @@
                 "const": "wall"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
-          "then": {}
+          "then": {
+            "required": [
+              "length",
+              "height",
+              "thickness",
+              "shape_unit"
+            ]
+          }
         },
         {
           "if": {
@@ -704,9 +892,16 @@
                 "const": "cube"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
-          "then": {}
+          "then": {
+            "required": [
+              "edge",
+              "shape_unit"
+            ]
+          }
         },
         {
           "if": {
@@ -715,10 +910,15 @@
                 "const": "surface"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["surface_area", "unit"]
+            "required": [
+              "surface_area",
+              "unit"
+            ]
           }
         },
         {
@@ -728,10 +928,15 @@
                 "const": "volume"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["volume", "unit"]
+            "required": [
+              "volume",
+              "unit"
+            ]
           }
         },
         {
@@ -741,10 +946,15 @@
                 "const": "tiles"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["tile_unit", "tile_count"]
+            "required": [
+              "tile_unit",
+              "tile_count"
+            ]
           }
         },
         {
@@ -754,10 +964,15 @@
                 "const": "creatures"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["count", "count_subject"]
+            "required": [
+              "count",
+              "count_subject"
+            ]
           }
         },
         {
@@ -767,10 +982,15 @@
                 "const": "objects"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["count", "count_subject"]
+            "required": [
+              "count",
+              "count_subject"
+            ]
           }
         },
         {
@@ -780,10 +1000,14 @@
                 "const": "region"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["region_unit"]
+            "required": [
+              "region_unit"
+            ]
           }
         },
         {
@@ -793,10 +1017,14 @@
                 "const": "scope"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["scope_unit"]
+            "required": [
+              "scope_unit"
+            ]
           }
         }
       ]
@@ -804,7 +1032,9 @@
     "RangeSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -838,7 +1068,12 @@
         },
         "unit": {
           "type": "string",
-          "enum": ["ft", "yd", "mi", "inches"],
+          "enum": [
+            "ft",
+            "yd",
+            "mi",
+            "inches"
+          ],
           "description": "Linear unit for numeric ranges."
         },
         "distance": {
@@ -848,14 +1083,22 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["los", "loe"]
+            "enum": [
+              "los",
+              "loe"
+            ]
           },
           "uniqueItems": true,
           "description": "Additional hard constraints."
         },
         "anchor": {
           "type": "string",
-          "enum": ["caster", "target", "object", "fixed"],
+          "enum": [
+            "caster",
+            "target",
+            "object",
+            "fixed"
+          ],
           "description": "If range is relative to something other than the caster."
         },
         "region_unit": {
@@ -882,13 +1125,22 @@
           "if": {
             "properties": {
               "kind": {
-                "enum": ["distance", "distance_los", "distance_loe"]
+                "enum": [
+                  "distance",
+                  "distance_los",
+                  "distance_loe"
+                ]
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["distance", "unit"]
+            "required": [
+              "distance",
+              "unit"
+            ]
           }
         },
         {
@@ -898,16 +1150,22 @@
                 "const": "personal"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
             "not": {
               "anyOf": [
                 {
-                  "required": ["distance"]
+                  "required": [
+                    "distance"
+                  ]
                 },
                 {
-                  "required": ["unit"]
+                  "required": [
+                    "unit"
+                  ]
                 }
               ]
             }
@@ -920,16 +1178,22 @@
                 "const": "touch"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
             "not": {
               "anyOf": [
                 {
-                  "required": ["distance"]
+                  "required": [
+                    "distance"
+                  ]
                 },
                 {
-                  "required": ["unit"]
+                  "required": [
+                    "unit"
+                  ]
                 }
               ]
             }
@@ -942,7 +1206,9 @@
                 "const": "distance_los"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
             "properties": {
@@ -961,7 +1227,9 @@
                 "const": "distance_loe"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
             "properties": {
@@ -979,15 +1247,31 @@
       "title": "ExperienceComponentSpec",
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["none", "fixed", "per_unit", "formula", "tiered", "dm_adjudicated"]
+          "enum": [
+            "none",
+            "fixed",
+            "per_unit",
+            "formula",
+            "tiered",
+            "dm_adjudicated"
+          ]
         },
         "payer": {
           "type": "string",
-          "enum": ["caster", "primary_caster", "participant", "recipient", "item", "other"],
+          "enum": [
+            "caster",
+            "primary_caster",
+            "participant",
+            "recipient",
+            "item",
+            "other"
+          ],
           "default": "caster",
           "description": "Who pays the XP cost."
         },
@@ -1006,7 +1290,12 @@
         },
         "payment_semantics": {
           "type": "string",
-          "enum": ["spend", "loss", "drain", "sacrifice"],
+          "enum": [
+            "spend",
+            "loss",
+            "drain",
+            "sacrifice"
+          ],
           "default": "spend"
         },
         "can_reduce_level": {
@@ -1015,7 +1304,12 @@
         },
         "recoverability": {
           "type": "string",
-          "enum": ["normal_earning", "not_recoverable", "special_only", "dm"],
+          "enum": [
+            "normal_earning",
+            "not_recoverable",
+            "special_only",
+            "dm"
+          ],
           "default": "normal_earning"
         },
         "amount_xp": {
@@ -1025,7 +1319,10 @@
         "per_unit": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["xp_per_unit", "unit_kind"],
+          "required": [
+            "xp_per_unit",
+            "unit_kind"
+          ],
           "properties": {
             "xp_per_unit": {
               "type": "integer",
@@ -1050,7 +1347,12 @@
             },
             "rounding": {
               "type": "string",
-              "enum": ["none", "floor", "ceil", "nearest"],
+              "enum": [
+                "none",
+                "floor",
+                "ceil",
+                "nearest"
+              ],
               "default": "none"
             },
             "min_xp": {
@@ -1066,7 +1368,10 @@
         "formula": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["expr", "vars"],
+          "required": [
+            "expr",
+            "vars"
+          ],
           "properties": {
             "expr": {
               "type": "string",
@@ -1079,7 +1384,10 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["name", "var_kind"],
+                "required": [
+                  "name",
+                  "var_kind"
+                ],
                 "properties": {
                   "name": {
                     "type": "string",
@@ -1106,7 +1414,12 @@
             },
             "rounding": {
               "type": "string",
-              "enum": ["none", "floor", "ceil", "nearest"],
+              "enum": [
+                "none",
+                "floor",
+                "ceil",
+                "nearest"
+              ],
               "default": "none"
             },
             "min_xp": {
@@ -1125,7 +1438,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["when", "amount_xp"],
+            "required": [
+              "when",
+              "amount_xp"
+            ],
             "properties": {
               "when": {
                 "type": "string",
@@ -1169,16 +1485,24 @@
             "not": {
               "anyOf": [
                 {
-                  "required": ["amount_xp"]
+                  "required": [
+                    "amount_xp"
+                  ]
                 },
                 {
-                  "required": ["per_unit"]
+                  "required": [
+                    "per_unit"
+                  ]
                 },
                 {
-                  "required": ["formula"]
+                  "required": [
+                    "formula"
+                  ]
                 },
                 {
-                  "required": ["tiered"]
+                  "required": [
+                    "tiered"
+                  ]
                 }
               ]
             }
@@ -1193,7 +1517,9 @@
             }
           },
           "then": {
-            "required": ["amount_xp"]
+            "required": [
+              "amount_xp"
+            ]
           }
         },
         {
@@ -1205,7 +1531,9 @@
             }
           },
           "then": {
-            "required": ["per_unit"]
+            "required": [
+              "per_unit"
+            ]
           }
         },
         {
@@ -1217,7 +1545,9 @@
             }
           },
           "then": {
-            "required": ["formula"]
+            "required": [
+              "formula"
+            ]
           }
         },
         {
@@ -1229,7 +1559,9 @@
             }
           },
           "then": {
-            "required": ["tiered"]
+            "required": [
+              "tiered"
+            ]
           }
         },
         {
@@ -1241,7 +1573,9 @@
             }
           },
           "then": {
-            "required": ["dm_guidance"]
+            "required": [
+              "dm_guidance"
+            ]
           }
         }
       ]
@@ -1250,15 +1584,26 @@
       "title": "SpellDamageSpec",
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["none", "modeled", "dm_adjudicated"]
+          "enum": [
+            "none",
+            "modeled",
+            "dm_adjudicated"
+          ]
         },
         "combine_mode": {
           "type": "string",
-          "enum": ["sum", "max", "choose_one", "sequence"],
+          "enum": [
+            "sum",
+            "max",
+            "choose_one",
+            "sequence"
+          ],
           "default": "sum"
         },
         "parts": {
@@ -1288,7 +1633,9 @@
           },
           "then": {
             "not": {
-              "required": ["parts"]
+              "required": [
+                "parts"
+              ]
             }
           }
         },
@@ -1303,10 +1650,14 @@
           "then": {
             "anyOf": [
               {
-                "required": ["parts"]
+                "required": [
+                  "parts"
+                ]
               },
               {
-                "required": ["notes"]
+                "required": [
+                  "notes"
+                ]
               }
             ]
           }
@@ -1320,7 +1671,9 @@
             }
           },
           "then": {
-            "required": ["dm_guidance"]
+            "required": [
+              "dm_guidance"
+            ]
           }
         }
       ]
@@ -1328,7 +1681,13 @@
     "DamagePart": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "damage_type", "base", "application", "save"],
+      "required": [
+        "id",
+        "damage_type",
+        "base",
+        "application",
+        "save"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -1379,7 +1738,12 @@
         },
         "mr_interaction": {
           "type": "string",
-          "enum": ["normal", "ignores_mr", "special", "unknown"],
+          "enum": [
+            "normal",
+            "ignores_mr",
+            "special",
+            "unknown"
+          ],
           "default": "normal"
         },
         "notes": {
@@ -1391,7 +1755,9 @@
     "DicePool": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["terms"],
+      "required": [
+        "terms"
+      ],
       "properties": {
         "terms": {
           "type": "array",
@@ -1409,7 +1775,10 @@
     "DiceTerm": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["count", "sides"],
+      "required": [
+        "count",
+        "sides"
+      ],
       "properties": {
         "count": {
           "type": "integer",
@@ -1428,15 +1797,29 @@
     "ScalingRule": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "driver"],
+      "required": [
+        "kind",
+        "driver"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["add_dice_per_step", "add_flat_per_step", "set_base_by_level_band"]
+          "enum": [
+            "add_dice_per_step",
+            "add_flat_per_step",
+            "set_base_by_level_band"
+          ]
         },
         "driver": {
           "type": "string",
-          "enum": ["caster_level", "spell_level", "target_hd", "target_level", "choice", "other"]
+          "enum": [
+            "caster_level",
+            "spell_level",
+            "target_hd",
+            "target_level",
+            "choice",
+            "other"
+          ]
         },
         "step": {
           "type": "integer",
@@ -1459,7 +1842,11 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["min", "max", "base"],
+            "required": [
+              "min",
+              "max",
+              "base"
+            ],
             "properties": {
               "min": {
                 "type": "integer"
@@ -1494,7 +1881,9 @@
     "ApplicationSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scope"],
+      "required": [
+        "scope"
+      ],
       "properties": {
         "scope": {
           "type": "string",
@@ -1516,7 +1905,14 @@
         },
         "tick_driver": {
           "type": "string",
-          "enum": ["fixed", "caster_level", "spell_level", "duration", "choice", "dm"],
+          "enum": [
+            "fixed",
+            "caster_level",
+            "spell_level",
+            "duration",
+            "choice",
+            "dm"
+          ],
           "default": "fixed"
         }
       }
@@ -1524,16 +1920,27 @@
     "SaveSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["none", "half", "negates", "partial", "special"]
+          "enum": [
+            "none",
+            "half",
+            "negates",
+            "partial",
+            "special"
+          ]
         },
         "partial": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["numerator", "denominator"],
+          "required": [
+            "numerator",
+            "denominator"
+          ],
           "properties": {
             "numerator": {
               "type": "integer"
@@ -1549,21 +1956,36 @@
       "title": "MagicResistanceSpec",
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["unknown", "normal", "ignores_mr", "partial", "special"]
+          "enum": [
+            "unknown",
+            "normal",
+            "ignores_mr",
+            "partial",
+            "special"
+          ]
         },
         "applies_to": {
           "type": "string",
-          "enum": ["whole_spell", "harmful_effects_only", "beneficial_effects_only", "dm"],
+          "enum": [
+            "whole_spell",
+            "harmful_effects_only",
+            "beneficial_effects_only",
+            "dm"
+          ],
           "default": "whole_spell"
         },
         "partial": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["scope"],
+          "required": [
+            "scope"
+          ],
           "properties": {
             "scope": {
               "type": "string",
@@ -1597,11 +2019,18 @@
       "title": "SavingThrowSpec",
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["none", "single", "multiple", "dm_adjudicated"]
+          "enum": [
+            "none",
+            "single",
+            "multiple",
+            "dm_adjudicated"
+          ]
         },
         "single": {
           "$ref": "#/$defs/SingleSave"
@@ -1626,7 +2055,12 @@
     "SingleSave": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["save_type", "applies_to", "on_success", "on_failure"],
+      "required": [
+        "save_type",
+        "applies_to",
+        "on_success",
+        "on_failure"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -1663,12 +2097,25 @@
         },
         "applies_to": {
           "type": "string",
-          "enum": ["each_target", "each_round", "each_application", "once_per_cast", "special"],
+          "enum": [
+            "each_target",
+            "each_round",
+            "each_application",
+            "once_per_cast",
+            "special"
+          ],
           "default": "each_target"
         },
         "timing": {
           "type": "string",
-          "enum": ["on_hit", "on_contact", "on_entry", "end_of_round", "on_effect", "special"],
+          "enum": [
+            "on_hit",
+            "on_contact",
+            "on_entry",
+            "end_of_round",
+            "on_effect",
+            "special"
+          ],
           "default": "on_effect"
         },
         "on_success": {
@@ -1682,7 +2129,9 @@
     "SaveOutcomeEffect": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["result"],
+      "required": [
+        "result"
+      ],
       "properties": {
         "result": {
           "type": "string",
@@ -1705,7 +2154,9 @@
       "title": "MaterialComponentSpec",
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -1738,7 +2189,9 @@
     "DurationSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
@@ -1757,7 +2210,17 @@
         },
         "unit": {
           "type": "string",
-          "enum": ["segment", "round", "turn", "minute", "hour", "day", "week", "month", "year"],
+          "enum": [
+            "segment",
+            "round",
+            "turn",
+            "minute",
+            "hour",
+            "day",
+            "week",
+            "month",
+            "year"
+          ],
           "description": "Time unit used when kind = time."
         },
         "duration": {
@@ -1785,32 +2248,48 @@
                 "const": "time"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["unit", "duration"]
+            "required": [
+              "unit",
+              "duration"
+            ]
           }
         },
         {
           "if": {
             "properties": {
               "kind": {
-                "enum": ["instant", "permanent"]
+                "enum": [
+                  "instant",
+                  "permanent"
+                ]
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
             "not": {
               "anyOf": [
                 {
-                  "required": ["unit"]
+                  "required": [
+                    "unit"
+                  ]
                 },
                 {
-                  "required": ["duration"]
+                  "required": [
+                    "duration"
+                  ]
                 },
                 {
-                  "required": ["uses"]
+                  "required": [
+                    "uses"
+                  ]
                 }
               ]
             }
@@ -1820,13 +2299,21 @@
           "if": {
             "properties": {
               "kind": {
-                "enum": ["conditional", "until_triggered", "planar"]
+                "enum": [
+                  "conditional",
+                  "until_triggered",
+                  "planar"
+                ]
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["condition"]
+            "required": [
+              "condition"
+            ]
           }
         },
         {
@@ -1836,10 +2323,14 @@
                 "const": "usage_limited"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["uses"]
+            "required": [
+              "uses"
+            ]
           }
         },
         {
@@ -1849,16 +2340,22 @@
                 "const": "until_dispelled"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           },
           "then": {
             "not": {
               "anyOf": [
                 {
-                  "required": ["unit"]
+                  "required": [
+                    "unit"
+                  ]
                 },
                 {
-                  "required": ["duration"]
+                  "required": [
+                    "duration"
+                  ]
                 }
               ]
             }

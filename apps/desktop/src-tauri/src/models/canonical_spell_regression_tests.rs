@@ -1,7 +1,7 @@
 use crate::models::canonical_spell::CanonicalSpell;
 use crate::models::range_spec::RangeKind;
 use crate::models::scalar::ScalarMode;
-use crate::utils::parsers::area::AreaParser;
+
 use crate::utils::parsers::duration::DurationParser;
 use crate::utils::parsers::range::RangeParser;
 

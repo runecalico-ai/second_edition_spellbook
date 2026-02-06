@@ -28,11 +28,27 @@ pub struct SpellComponents {
     pub experience: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CastingTimeUnit {
+    #[default]
+    Segment,
+    Round,
+    Turn,
+    Hour,
+    Minute,
+    Action,
+    BonusAction,
+    Reaction,
+    Special,
+    Instantaneous,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct SpellCastingTime {
     pub text: String,
-    pub unit: String,
+    pub unit: CastingTimeUnit,
     #[serde(default = "default_one")]
     pub base_value: f64,
     #[serde(default)]
@@ -41,25 +57,9 @@ pub struct SpellCastingTime {
     pub level_divisor: f64,
 }
 
-impl Default for SpellCastingTime {
-    fn default() -> Self {
-        Self {
-            text: String::new(),
-            unit: String::new(),
-            base_value: 1.0,
-            per_level: 0.0,
-            level_divisor: 1.0,
-        }
-    }
-}
-
 impl SpellCastingTime {
     pub fn normalize(&mut self) {
-        if self.unit.is_empty() {
-            self.unit = "Segment".to_string();
-        }
         self.text = normalize_string(&self.text, NormalizationMode::Structured);
-        self.unit = match_schema_case(&self.unit);
         self.base_value = clamp_precision(self.base_value);
         self.per_level = clamp_precision(self.per_level);
         self.level_divisor = clamp_precision(self.level_divisor);
@@ -250,31 +250,40 @@ impl CanonicalSpell {
 fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
     match value {
         serde_json::Value::Object(obj) => {
-            // Fields to prune ONLY at root
+            // 1. Fields to prune ONLY at root
             if is_root {
-                obj.remove("id");
-                obj.remove("source_refs");
-                obj.remove("version");
-                obj.remove("edition");
-                obj.remove("author");
-                obj.remove("license");
-                obj.remove("schema_version");
-                obj.remove("created_at");
-                obj.remove("updated_at");
-                obj.remove("artifacts");
+                let root_meta = [
+                    "id",
+                    "source_refs",
+                    "version",
+                    "edition",
+                    "author",
+                    "license",
+                    "schema_version",
+                    "created_at",
+                    "updated_at",
+                    "artifacts",
+                ];
+                for k in root_meta {
+                    obj.remove(k);
+                }
             }
 
-            // Fields that should never be in the hash regardless of depth (if they are pure metadata)
-            // Note: We preserve "id" in nested objects because they are used for mechanics (e.g. DamagePart).
-            // but "artifacts", "source_refs", or "source_text" should probably always be removed if they ever appear nested.
+            // 2. Fields that should never be in the hash regardless of depth
             obj.remove("artifacts");
             obj.remove("source_refs");
             obj.remove("source_text");
 
-            // Recurse into remaining fields
-            for (_key, val) in obj.iter_mut() {
-                // If we encounter a nested object that is NOT a mechanical spec known to have mechanical IDs,
-                // we might want to be careful. But for now, we only prune the root ID.
+            // 3. Lean Hashing: Remove nulls, empty arrays, and empty strings.
+            // This ensures hash stability as the schema adds new optional properties.
+            obj.retain(|_, v| {
+                !v.is_null()
+                    && !(v.is_array() && v.as_array().unwrap().is_empty())
+                    && !(v.is_string() && v.as_str().unwrap().is_empty())
+            });
+
+            // 4. Recurse into remaining fields
+            for val in obj.values_mut() {
                 prune_metadata_recursive(val, false);
             }
         }
@@ -419,11 +428,8 @@ impl CanonicalSpell {
         }
 
         // Bugfix: Stop materializing casting_time if it is None in the source.
-        // We only normalize it if it exists.
         if let Some(ct) = &mut self.casting_time {
-            if ct.unit.is_empty() {
-                ct.unit = "Segment".to_string();
-            }
+            ct.normalize();
         }
 
         if self.schema_version == 0 {
@@ -509,27 +515,26 @@ fn match_schema_case(s: &str) -> String {
     let normalized = normalize_string(s, NormalizationMode::Structured);
     let lower = normalized.to_lowercase();
 
-    // Common complex enums from schema
+    // Common complex enums from schema (Lowercase singular per Rule 48/54)
     match lower.as_str() {
-        "segment" | "segments" => "Segment".to_string(),
-        "round" | "rounds" => "Round".to_string(),
-        "turn" | "turns" => "Turn".to_string(),
-        "hour" | "hours" => "Hour".to_string(),
-        "minute" | "minutes" => "Minutes".to_string(),
-        "action" | "actions" => "Actions".to_string(),
-        "bonus action" | "bonus actions" => "Bonus Action".to_string(),
-        "reaction" | "reactions" => "Reaction".to_string(),
-        "instant" | "instantaneous" => "Instantaneous".to_string(),
-        "special" => "Special".to_string(),
-        "foot radius" => "Foot Radius".to_string(),
-        "yard radius" => "Yard Radius".to_string(),
-        "mile radius" => "Mile Radius".to_string(),
-        "foot cube" => "Foot Cube".to_string(),
-        "yard cube" => "Yard Cube".to_string(),
-        "square feet" => "Square Feet".to_string(),
-        "cubic feet" => "Cubic Feet".to_string(),
-        "square yards" => "Square Yards".to_string(),
-        "cubic yards" => "Cubic Yards".to_string(),
+        "segment" | "segments" => "segment".to_string(),
+        "round" | "rounds" => "round".to_string(),
+        "turn" | "turns" => "turn".to_string(),
+        "hour" | "hours" => "hour".to_string(),
+        "minute" | "minutes" => "minute".to_string(),
+        "action" | "actions" => "action".to_string(),
+        "bonus action" | "bonus actions" => "bonus_action".to_string(),
+        "reaction" | "reactions" => "reaction".to_string(),
+        "instant" | "instantaneous" => "instantaneous".to_string(),
+        "special" => "special".to_string(),
+        "ft" | "foot" | "feet" => "ft".to_string(),
+        "yd" | "yard" | "yards" => "yd".to_string(),
+        "mi" | "mile" | "miles" => "mi".to_string(),
+        "inch" | "inches" => "inch".to_string(),
+        "ft2" | "sq ft" | "square feet" => "ft2".to_string(),
+        "yd2" | "sq yd" | "square yards" => "yd2".to_string(),
+        "ft3" | "cu ft" | "cubic feet" => "ft3".to_string(),
+        "yd3" | "cu yd" | "cubic yards" => "yd3".to_string(),
         "conjuration/summoning" => "Conjuration/Summoning".to_string(),
         "enchantment/charm" => "Enchantment/Charm".to_string(),
         "illusion/phantasm" => "Illusion/Phantasm".to_string(),
@@ -754,7 +759,7 @@ mod tests {
     fn test_regression_casting_time_units() {
         // Fix: Bonus Action and Reaction must be accepted andNormalized
         let units = vec!["bonus action", "reaction", "Bonus Actions"];
-        let expected = vec!["Bonus Action", "Reaction", "Bonus Action"];
+        let expected = vec!["bonus_action", "reaction", "bonus_action"];
 
         for (u, exp) in units.iter().zip(expected.iter()) {
             let normalized = match_schema_case(u);
@@ -1035,8 +1040,8 @@ mod tests {
         );
 
         // Non-skipped Option::None fields appear as `null` if not skipped.
-        // HOWEVER, material_components is now materialized to [] by normalize() for stability.
-        assert!(json.contains("\"material_components\":[]"));
+        // HOWEVER, material_components is now PRUNED by Lean Hashing if empty.
+        assert!(!json.contains("\"material_components\":[]"));
         assert!(json.contains("\"is_cantrip\":0")); // is_cantrip is i64, 0 for level 1
         assert!(
             !json.contains("\"schema_version\""),
@@ -1062,22 +1067,22 @@ mod tests {
         let json = spell.to_canonical_json().unwrap();
 
         // GIVEN a spell with tags = []
-        // THEN the canonical JSON MUST include "tags": []
+        // THEN the canonical JSON MUST OMIT "tags": [] (Lean Hashing)
         assert!(
-            json.contains("\"tags\":[]"),
-            "Empty tags array should be included in canonical JSON"
+            !json.contains("\"tags\":[]"),
+            "Empty tags array should be PRUNED in canonical JSON"
         );
         assert!(
-            json.contains("\"class_list\":[]"),
-            "Empty class_list array should be included"
+            !json.contains("\"class_list\":[]"),
+            "Empty class_list array should be PRUNED"
         );
         assert!(
-            json.contains("\"subschools\":[]"),
-            "Empty subschools array should be included"
+            !json.contains("\"subschools\":[]"),
+            "Empty subschools array should be PRUNED"
         );
         assert!(
-            json.contains("\"descriptors\":[]"),
-            "Empty descriptors array should be included"
+            !json.contains("\"descriptors\":[]"),
+            "Empty descriptors array should be PRUNED"
         );
     }
 
@@ -1246,7 +1251,7 @@ mod tests {
         spell.class_list = vec!["Wizard".into()];
         spell.casting_time = Some(SpellCastingTime {
             text: "1".into(),
-            unit: "Rounds".into(),
+            unit: CastingTimeUnit::Round,
             base_value: 1.0,
             per_level: 0.0,
             level_divisor: 1.0,
@@ -1271,12 +1276,12 @@ mod tests {
 
         let canonical_json = spell.to_canonical_json().unwrap();
         assert!(
-            canonical_json.contains("\"unit\":\"Round\""),
-            "Casting time unit should normalize to Round"
+            canonical_json.contains("\"unit\":\"round\""),
+            "Casting time unit should normalize to round"
         );
         assert!(
             canonical_json.contains("\"unit\":\"hour\""),
-            "Duration unit should normalize to hour (lowercase per new schema)"
+            "Duration unit should normalize to hour (lowercase singular per new standard)"
         );
     }
 
@@ -1445,10 +1450,10 @@ mod tests {
 
         let json = spell.to_canonical_json().unwrap();
 
-        // Verify presence of materialized defaults
+        // Lean Hashing: material_components: [] should be PRUNED
         assert!(
-            json.contains("\"material_components\":[]"),
-            "material_components should be materialized"
+            !json.contains("\"material_components\":[]"),
+            "material_components should be pruned"
         );
         assert!(
             !json.contains("\"saving_throw\""),
@@ -1551,7 +1556,17 @@ mod tests {
         spell.school = Some("Abjuration".into()); // REQUIRED for validation to even get to Area check
         spell.area = Some(AreaSpec {
             kind: AreaKind::Cylinder,
-            // Missing radius and shape_unit
+            radius: Some(SpellScalar {
+                mode: ScalarMode::Fixed,
+                value: Some(5.0),
+                ..Default::default()
+            }),
+            height: Some(SpellScalar {
+                mode: ScalarMode::Fixed,
+                value: Some(10.0),
+                ..Default::default()
+            }),
+            shape_unit: Some(AreaShapeUnit::Ft),
             ..Default::default()
         });
 
@@ -1604,16 +1619,62 @@ mod tests {
             let mut spell =
                 CanonicalSpell::new(format!("{:?}", kind), 1, "ARCANE".into(), "Desc".into());
             spell.school = Some("Abjuration".into());
-            spell.area = Some(AreaSpec {
-                kind,
-                // No dimensions provided
+
+            let scalar = Some(SpellScalar {
+                value: Some(5.0),
                 ..Default::default()
             });
 
+            spell.area = Some(AreaSpec {
+                kind,
+                radius: if kind == AreaKind::Cone || kind == AreaKind::Cylinder {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                length: if kind == AreaKind::Line
+                    || kind == AreaKind::Wall
+                    || kind == AreaKind::Cone
+                    || kind == AreaKind::Rect
+                {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                width: if kind == AreaKind::Rect || kind == AreaKind::Line || kind == AreaKind::Wall
+                {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                height: if kind == AreaKind::Wall
+                    || kind == AreaKind::Cube
+                    || kind == AreaKind::Cylinder
+                {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                edge: if kind == AreaKind::Cube {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                thickness: if kind == AreaKind::Wall {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                shape_unit: Some(AreaShapeUnit::Ft),
+                ..Default::default()
+            });
+
+            let val_res = spell.validate();
             assert!(
-                spell.validate().is_ok(),
-                "Validation failed for minimal area shape: {:?}",
-                kind
+                val_res.is_ok(),
+                "Validation failed for minimal area shape: {:?}. Error: {:?}",
+                kind,
+                val_res.err()
             );
         }
     }
@@ -2099,7 +2160,7 @@ mod tests {
         // Casting Time
         let ct = spell.casting_time.unwrap();
         assert_eq!(ct.base_value, 1.0);
-        assert_eq!(ct.unit, "Action");
+        assert_eq!(ct.unit, CastingTimeUnit::Action);
 
         // Components
         let c = spell.components.unwrap();
@@ -2230,7 +2291,7 @@ mod tests {
         let parser = SpellParser::new();
         let spec = parser.parse_area("10 inch radius").unwrap();
         assert_eq!(spec.kind, AreaKind::RadiusCircle);
-        assert_eq!(spec.unit, Some(AreaUnit::Inches));
+        assert_eq!(spec.unit, Some(AreaUnit::Inch));
     }
 
     #[test]
@@ -2376,9 +2437,10 @@ mod tests {
         let json = spell.to_canonical_json().unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        // Should be materialized in JSON
+        // Should be materialized in JSON if non-empty (reversible is 0)
+        // But material_components is PRUNED if empty (Lean Hashing)
         assert_eq!(value["reversible"], 0);
-        assert_eq!(value["material_components"], serde_json::json!([]));
+        assert!(value.get("material_components").is_none());
     }
 
     #[test]

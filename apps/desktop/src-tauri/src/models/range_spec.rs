@@ -187,8 +187,7 @@ impl RangeSpec {
             *t = crate::models::canonical_spell::normalize_string(
                 t,
                 crate::models::canonical_spell::NormalizationMode::Structured,
-            )
-            .to_lowercase();
+            );
             // Unit alias normalization with word boundaries (e.g. "10 yards" -> "10 yd"; "backyard" unchanged)
             *t = re_yards().replace_all(t, "yd").to_string();
             *t = re_yard().replace_all(&t, "yd").to_string();

@@ -18,7 +18,7 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     -   **Limit Precision** for all `number` fields to 6 decimal places.
 4.  **Collection Logic**: Deduplicate and sort all unordered arrays (`tags`, etc.).
 5.  **Tradition-Consistent Fields**: Clear tradition-inconsistent fields so they are never included in the hash: for `tradition = "ARCANE"`, clear `sphere`; for `tradition = "DIVINE"`, clear `school`; for `tradition = "BOTH"`, keep both. This ensures the content hash is stable regardless of whether the source had the other tradition's field set.
-6.  **Prune (Lean Hashing)**: Omit all fields with `null` values, empty collections (`[]`), or **empty objects (`{}`)** that are optional in the schema. This ensures hash stability as the schema adds new optional properties over time.
+6.  **Prune (Lean Hashing)**: Omit all fields with `null` values, **empty objects (`{}`)**, and empty strings. Empty arrays (`[]`) are omitted **only at root** for optional array keys (`class_list`, `tags`, `subschools`, `descriptors`); required or nested empty arrays (e.g. `damage.parts` when `kind=modeled`) are **retained** so the canonical JSON remains schema-valid.
 7.  **Serialize**: Generate the byte stream following **RFC 8785 (JCS)**.
 
 ## Canonicalization Rules
@@ -45,7 +45,7 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     *   **Conditional Sorting for Damage Parts**: The `damage.parts` array sorting behavior depends on `damage.combine_mode`:
         -   **`sum`, `max`, `choose_one`**: Parts are sorted lexicographically by `id` to ensure order-independent hashing.
         -   **`sequence`**: Parts preserve their original array order, as sequence implies ordered execution.
-6.  **Lean Hashing (Omission)**: To ensure future-proof stability, all `null` values, empty strings, empty collections (`[]`), and empty objects (`{}`) MUST be OMITTED from the canonical representation if they match the schema's default/optional behavior.
+6.  **Lean Hashing (Omission)**: To ensure future-proof stability, all `null` values, empty strings, and empty objects (`{}`) MUST be OMITTED. Empty arrays (`[]`) are omitted **only at root** for optional array keys (`class_list`, `tags`, `subschools`, `descriptors`); required or nested empty arrays (e.g. `damage.parts` when `kind=modeled`) MUST be RETAINED so the canonical JSON remains schema-valid.
     *   **Exclusion of Required Fields**: Fields marked as `required` in `spell.schema.json` MUST ALWAYS be included in the hash, even if they equal a default value (e.g., `components.verbal: false`). Pruning ONLY applies to optional fields or fields where the schema provides a default but doesn't require presence.
     *   **Empty objects**: Keys whose value is an empty object (`{}`) are omitted; pruning runs after recursing into children so nested empty objects are removed first.
 
@@ -71,7 +71,7 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
         |-------|------|-------------|
         | `name`, `tradition`, `school`, `sphere` | `Structured` | Collapse all whitespace |
         | `description` | `Textual` | Preserve paragraph breaks |
-        | `RangeSpec.text` | LowercaseStructured + unit alias normalization (word boundaries) | Collapse whitespace, lowercase, then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
+        | `RangeSpec.text` | Structured + unit alias normalization (word boundaries) | Collapse whitespace (preserve case), then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
         | `DurationSpec.condition`, `TieredXp.when`, `SpellCastingTime.text` | `Structured` | Collapse all whitespace |
         | `FormulaVar.name` | LowercaseStructured + spaces to underscores (schema pattern `^[a-z][a-z0-9_]{0,31}$`) | Variable names for hash/validation |
         | `*.notes`, `*.dm_guidance`, `*.description`, `*.special_rule`, `*.label`, `*.unit_label`, `*.source_text` | `Textual` | Preserve paragraph breaks |

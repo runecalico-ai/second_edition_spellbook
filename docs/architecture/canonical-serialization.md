@@ -86,7 +86,7 @@ For canonical form, `DiceTerm` values in damage (and scaling) are normalized: `c
 
 ### 2.8 Lean Hashing (Optional Fields & Empty Collections)
 To ensure hash stability as the schema evolves, optional fields that are empty or equal to their default values are **omitted** from the canonical JSON:
-- Empty arrays (`[]`) are removed
+- **Empty arrays** at **root** are removed only for optional array keys: `class_list`, `tags`, `subschools`, `descriptors`. Required or nested empty arrays (e.g. `damage.parts` when `kind=modeled`) are **retained** so the canonical JSON remains schema-valid.
 - Empty strings (`""`) are removed
 - Empty objects (`{}`) are removed
 - Null values are removed
@@ -155,7 +155,7 @@ The following table shows which normalization mode applies to specific text fiel
 | `name` | `Structured` | Spell name should collapse whitespace |
 | `description` | `Textual` | Preserve paragraph breaks |
 | **RangeSpec** |  |  |
-| `RangeSpec.text` | LowercaseStructured + unit alias normalization (word boundaries) | Collapse whitespace, lowercase, then unit aliases with word boundaries |
+| `RangeSpec.text` | Structured + unit alias normalization (word boundaries) | Collapse whitespace (preserve case), then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
 | `RangeSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **AreaSpec** |  |  |
 | `AreaSpec.notes` | `Textual` | Allow multi-line clarifications |
@@ -530,7 +530,7 @@ Key functions:
 - `CanonicalSpell::to_canonical_json()` - Public API: clones, normalizes, then produces canonical JSON (does **not** run schema validation)
 - `CanonicalSpell::to_canonical_json_pre_normalized()` - Internal: produces canonical JSON from an already-normalized instance (used by `compute_hash()` to avoid double normalization)
 - `CanonicalSpell::compute_hash()` - Validates against schema, then produces canonical JSON and returns SHA-256 hex string
-- `prune_metadata_recursive()` - Removes metadata fields and empty objects from JSON value (after recursing into children)
+- `prune_metadata_recursive()` - Removes metadata fields, nulls, empty strings, and empty objects; removes empty arrays only at root for optional keys (`class_list`, `tags`, `subschools`, `descriptors`). Required or nested empty arrays (e.g. `damage.parts`) are retained.
 
 > **Validation and canonical output:** `to_canonical_json()` does **not** run schema validation. For schema-compliant canonical output, callers must either call `validate()` before `to_canonical_json()`, or use `compute_hash()`, which validates first and then produces the canonical JSON internally. Using `to_canonical_json()` alone can yield JSON that does not conform to `spell.schema.json`.
 

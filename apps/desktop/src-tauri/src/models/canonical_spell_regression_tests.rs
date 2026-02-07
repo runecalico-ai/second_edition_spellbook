@@ -164,8 +164,8 @@ fn test_range_text_structured_mode_preserves_case() {
     r1.normalize();
     r2.normalize();
 
-    // Structured mode NOW lowercases RangeSpec.text (Rule update 2.10)
-    assert_eq!(r1.text, Some("line of sight".to_string()));
+    // Structured mode preserves case; only whitespace is collapsed
+    assert_eq!(r1.text, Some("Line of Sight".to_string()));
     assert_eq!(r2.text, Some("line of sight".to_string()));
 }
 
@@ -248,8 +248,8 @@ fn test_range_text_preserves_case() {
 
     spec.normalize();
 
-    // Structured mode now converts to lowercase for RangeSpec.text
-    assert_eq!(spec.text, Some("line of sight".to_string()));
+    // Structured mode preserves case, only collapses whitespace (canonical-serialization spec)
+    assert_eq!(spec.text, Some("Line of Sight".to_string()));
 }
 
 #[test]

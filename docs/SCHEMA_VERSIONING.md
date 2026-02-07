@@ -85,7 +85,7 @@ Content hashes are used to:
 
 ### Implementation
 
-The `schema_version` field is **excluded from canonical JSON** before hashing (see `prune_metadata_recursive` in `canonical_spell.rs`, which also removes other root metadata, all-depth metadata such as `source_text`, and empty objects/arrays/strings).
+The `schema_version` field is **excluded from canonical JSON** before hashing (see `prune_metadata_recursive` in `canonical_spell.rs`, which also removes other root metadata, all-depth metadata such as `source_text`, and empty objects/strings; empty arrays are only pruned at root for optional keys `class_list`, `tags`, `subschools`, `descriptors`—required or nested empty arrays are retained).
 
 **Result**: Two identical spells with different schema versions produce the **same content hash**.
 

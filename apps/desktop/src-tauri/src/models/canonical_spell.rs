@@ -279,6 +279,14 @@ impl CanonicalSpell {
     }
 }
 
+/// Root-level array keys that are optional per schema; empty arrays at these paths may be pruned.
+/// Required arrays (e.g. damage.parts when kind=modeled) must not be pruned when empty.
+const OPTIONAL_ROOT_ARRAY_KEYS: &[&str] = &["class_list", "tags", "subschools", "descriptors"];
+
+fn is_optional_root_array_key(key: &str) -> bool {
+    OPTIONAL_ROOT_ARRAY_KEYS.contains(&key)
+}
+
 /// Recursively removes metadata fields from a JSON value.
 /// `is_root` specifies if we are at the top-level of the spell object.
 fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
@@ -313,10 +321,14 @@ fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
                 prune_metadata_recursive(val, false);
             }
 
-            // 4. Lean Hashing: Remove nulls, empty arrays, empty strings, and empty objects.
-            obj.retain(|_, v| {
+            // 4. Lean Hashing: Remove nulls, empty strings, empty objects. Only prune empty
+            // arrays at root for optional array keys (class_list, tags, etc.); required arrays
+            // like damage.parts when kind=modeled must be retained when empty.
+            obj.retain(|k, v| {
                 !v.is_null()
-                    && (!v.is_array() || !v.as_array().unwrap().is_empty())
+                    && (!v.is_array()
+                        || !v.as_array().unwrap().is_empty()
+                        || !(is_root && is_optional_root_array_key(k)))
                     && (!v.is_string() || !v.as_str().unwrap().is_empty())
                     && (!v.is_object() || !v.as_object().unwrap().is_empty())
             });
@@ -1374,6 +1386,32 @@ mod tests {
         assert!(
             !json.contains("\"descriptors\":[]"),
             "Empty descriptors array should be PRUNED"
+        );
+    }
+
+    /// Schema requires damage.parts when kind=modeled; empty parts array must be retained in canonical JSON.
+    #[test]
+    fn test_damage_modeled_empty_parts_retained_in_canonical_json() {
+        use crate::models::damage::{DamageKind, SpellDamageSpec};
+
+        let mut spell = CanonicalSpell::new(
+            "Modeled Empty Parts".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Spell with modeled damage and no parts.".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.damage = Some(SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            parts: Some(vec![]),
+            ..Default::default()
+        });
+
+        let json = spell.to_canonical_json().unwrap();
+        assert!(
+            json.contains("\"parts\":[]"),
+            "damage.parts when kind=modeled must be retained when empty (schema required); got: {}",
+            json
         );
     }
 
@@ -2891,11 +2929,11 @@ mod tests {
 
         spell.normalize();
 
-        // LowercaseStructured + word-boundary unit alias (ft. -> ft)
+        // Structured (preserve case) + word-boundary unit alias (ft. -> ft when lowercase)
         assert_eq!(
             spell.range.as_ref().unwrap().text.as_ref().unwrap(),
-            "60 ft",
-            "range text: collapse whitespace, lowercase, unit alias with word boundaries"
+            "60 FT.",
+            "range text: collapse whitespace, preserve case; unit alias only matches lowercase"
         );
     }
 

@@ -40,6 +40,8 @@ pub struct ImportSpell {
     pub is_quest_spell: i64,
     #[serde(default, alias = "is_cantrip")]
     pub is_cantrip: i64,
+    #[serde(default, alias = "schema_version")]
+    pub schema_version: Option<i64>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -164,6 +166,8 @@ pub struct PreviewSpell {
     pub is_quest_spell: i64,
     #[serde(default, alias = "is_cantrip")]
     pub is_cantrip: i64,
+    #[serde(default, alias = "schema_version")]
+    pub schema_version: Option<i64>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

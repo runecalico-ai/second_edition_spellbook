@@ -114,8 +114,12 @@ During normalization, tradition-inconsistent fields are **cleared** before seria
 
 This ensures the content hash is identical whether or not the source had the other tradition's field set.
 
-### 2.10 Unit-Based Identity
-Units are **never converted** during canonicalization. Two spells with equivalent physical distances but different units (e.g., "10 yd" vs "30 ft") produce **different** hashes. This preserves the original specification's intent.
+### 2.10 Unit-Based Identity & Alias Normalization
+Units are **never converted** during canonicalization (e.g., "10 yd" and "30 ft" are distinct). However, unit **aliases** in structured text fields (like `RangeSpec.text`) are normalized to canonical forms for hash stability:
+- `yards`, `yard`, `yd.` -> `yd`
+- `feet`, `foot`, `ft.` -> `ft`
+- `miles`, `mile`, `mi.` -> `mi`
+- `inches`, `inch`, `in.` -> `inch`
 
 ### 2.11 Mixed-Unit Range Fallback
 Variable ranges with distinct units (e.g., "1 yd + 1 ft/level") cannot be modeled as `kind="distance"` without lossy conversion. Instead, they fallback to:
@@ -146,7 +150,7 @@ The following table shows which normalization mode applies to specific text fiel
 | `name` | `Structured` | Spell name should collapse whitespace |
 | `description` | `Textual` | Preserve paragraph breaks |
 | **RangeSpec** |  |  |
-| `RangeSpec.text` | `Structured` | Collapse whitespace in range text |
+| `RangeSpec.text` | `Structured` | Collapse whitespace + Unit Alias Normalization |
 | `RangeSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **AreaSpec** |  |  |
 | `AreaSpec.notes` | `Textual` | Allow multi-line clarifications |

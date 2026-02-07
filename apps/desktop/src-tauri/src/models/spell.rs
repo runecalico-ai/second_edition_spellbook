@@ -141,5 +141,7 @@ pub struct SpellDetail {
     pub is_quest_spell: i64,
     #[serde(alias = "is_cantrip")]
     pub is_cantrip: i64,
+    #[serde(alias = "schema_version")]
+    pub schema_version: Option<i64>,
     pub artifacts: Option<Vec<SpellArtifact>>,
 }

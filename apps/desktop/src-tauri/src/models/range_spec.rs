@@ -135,7 +135,21 @@ impl RangeSpec {
             *t = crate::models::canonical_spell::normalize_string(
                 t,
                 crate::models::canonical_spell::NormalizationMode::Structured,
-            );
+            )
+            .to_lowercase();
+            // Unit alias normalization for hash stability (e.g., "10 yards" vs "10 yd")
+            *t = t
+                .replace("yards", "yd")
+                .replace("yard", "yd")
+                .replace("yd.", "yd")
+                .replace("feet", "ft")
+                .replace("foot", "ft")
+                .replace("ft.", "ft")
+                .replace("miles", "mi")
+                .replace("mile", "mi")
+                .replace("mi.", "mi")
+                .replace("inches", "inch")
+                .replace("in.", "inch");
         }
         if let Some(n) = &mut self.notes {
             *n = crate::models::canonical_spell::normalize_string(

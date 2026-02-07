@@ -1,6 +1,6 @@
 ---
 name: rust
-description: Rust systems programming expertise for Tauri desktop application backend development with memory safety and performance optimization
+description: Rust systems programming expertise for Tauri desktop application backend development with memory safety and performance optimization. Use when Rust is selected as the primary language for the project. Use when writing Rust for Tauri backend development.
 risk_level: MEDIUM
 ---
 

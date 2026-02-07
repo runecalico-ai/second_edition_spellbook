@@ -49,7 +49,7 @@ pub fn run_hash_backfill(
             id, name, level, school, sphere, class_list, range, components,
             material_components, casting_time, duration, area, saving_throw,
             reversible, description, tags, source, edition, author, license,
-            is_quest_spell, is_cantrip, damage, magic_resistance
+            is_quest_spell, is_cantrip, damage, magic_resistance, schema_version
         FROM spell WHERE content_hash IS NULL
     "#,
     )?;
@@ -81,6 +81,7 @@ pub fn run_hash_backfill(
                 is_cantrip: row.get(21)?,
                 damage: row.get(22)?,
                 magic_resistance: row.get(23)?,
+                schema_version: row.get(24)?,
                 artifacts: None,
             })
         })?
@@ -191,6 +192,9 @@ pub fn run_hash_backfill(
             canonical.components = Some(parser.parse_components(comp_str));
         }
 
+        // Normalize BEFORE hashing/serializing to ensure the stored data is clean
+        canonical.normalize();
+
         let hash_result = canonical.compute_hash();
         if let Ok(hash) = hash_result {
             canonical.id = Some(hash.clone()); // Store hash in the record
@@ -249,7 +253,7 @@ pub fn recompute_all_hashes(
             id, name, level, school, sphere, class_list, range, components,
             material_components, casting_time, duration, area, saving_throw,
             reversible, description, tags, source, edition, author, license,
-            is_quest_spell, is_cantrip, content_hash, damage, magic_resistance
+            is_quest_spell, is_cantrip, content_hash, damage, magic_resistance, schema_version
         FROM spell
     "#,
     )?;
@@ -281,6 +285,7 @@ pub fn recompute_all_hashes(
                 is_cantrip: row.get(21)?,
                 damage: row.get(23)?,
                 magic_resistance: row.get(24)?,
+                schema_version: row.get(25)?,
                 artifacts: None,
             };
             let hash: Option<String> = row.get(22)?;
@@ -323,6 +328,9 @@ pub fn recompute_all_hashes(
         if let Some(s) = &detail.components {
             canonical.components = Some(parser.parse_components(s));
         }
+
+        // Normalize BEFORE hashing/serializing to ensure the stored data is clean
+        canonical.normalize();
 
         if let Ok(new_hash) = canonical.compute_hash() {
             if Some(&new_hash) != old_hash.as_ref() {

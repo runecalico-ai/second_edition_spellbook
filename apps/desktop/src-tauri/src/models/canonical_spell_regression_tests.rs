@@ -164,8 +164,8 @@ fn test_range_text_structured_mode_preserves_case() {
     r1.normalize();
     r2.normalize();
 
-    // Structured mode preserves case (per docs line 136), so these are NOT equal
-    assert_eq!(r1.text, Some("Line of Sight".to_string()));
+    // Structured mode NOW lowercases RangeSpec.text (Rule update 2.10)
+    assert_eq!(r1.text, Some("line of sight".to_string()));
     assert_eq!(r2.text, Some("line of sight".to_string()));
 }
 
@@ -248,8 +248,8 @@ fn test_range_text_preserves_case() {
 
     spec.normalize();
 
-    // Structured mode preserves case
-    assert_eq!(spec.text, Some("Line of Sight".to_string()));
+    // Structured mode now converts to lowercase for RangeSpec.text
+    assert_eq!(spec.text, Some("line of sight".to_string()));
 }
 
 #[test]
@@ -305,14 +305,17 @@ fn test_regression_experience_normalization() {
 }
 
 #[test]
-fn test_regression_schema_version_rejection() {
+fn test_regression_schema_version_future_warning() {
     let mut spell = CanonicalSpell::new("Future Spell".into(), 1, "ARCANE".into(), "Desc".into());
     spell.school = Some("Abjuration".into());
     spell.schema_version = crate::models::canonical_spell::CURRENT_SCHEMA_VERSION + 1;
 
     let result = spell.validate();
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("newer schema version"));
+    // Rule update: Future versions are now warnings, not hard errors
+    assert!(
+        result.is_ok(),
+        "Future schema versions should be allowed with a warning"
+    );
 }
 
 #[test]

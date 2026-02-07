@@ -65,8 +65,8 @@ impl AreaParser {
                 "foot" | "ft." | "ft" | "'" | "feet" => {
                     (Some(AreaUnit::Ft), Some(AreaShapeUnit::Ft))
                 }
-                "yard" | "yd." | "yd" => (Some(AreaUnit::Yd), Some(AreaShapeUnit::Yd)),
-                "mile" | "mi." | "mi" => (Some(AreaUnit::Mi), Some(AreaShapeUnit::Mi)),
+                "yard" | "yd." | "yd" | "yards" => (Some(AreaUnit::Yd), Some(AreaShapeUnit::Yd)),
+                "mile" | "mi." | "mi" | "miles" => (Some(AreaUnit::Mi), Some(AreaShapeUnit::Mi)),
                 "inch" | "in." | "in" | "inches" | "\"" => {
                     (Some(AreaUnit::Inch), Some(AreaShapeUnit::Inch))
                 }

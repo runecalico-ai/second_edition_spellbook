@@ -78,7 +78,7 @@ fn fetch_character_bundle(
                     s.material_components, s.casting_time, s.duration, s.area, s.saving_throw,
                     s.reversible, s.description, s.tags, s.source, s.edition, s.author,
                     s.license, s.is_quest_spell, s.is_cantrip, s.class_list,
-                    s.damage, s.magic_resistance,
+                    s.damage, s.magic_resistance, s.schema_version,
                     ccs.list_type, ccs.notes
              FROM character_class_spell ccs
              JOIN spell s ON s.id = ccs.spell_id
@@ -111,10 +111,11 @@ fn fetch_character_bundle(
                 class_list: row.get(21)?,
                 damage: row.get(22)?,
                 magic_resistance: row.get(23)?,
+                schema_version: row.get(24)?,
                 artifacts: None,
             };
-            let list_type: String = row.get(24)?;
-            let notes: Option<String> = row.get(25)?;
+            let list_type: String = row.get(25)?;
+            let notes: Option<String> = row.get(26)?;
 
             Ok(BundleClassSpell {
                 spell,

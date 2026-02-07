@@ -36,7 +36,7 @@ impl RangeParser {
             )
             .unwrap(),
             range_anchor_regex: Regex::new(r#"(?i)(?:from|centered on)\s+(caster|target|object|fixed|self|point of impact)"#).unwrap(),
-            range_region_regex: Regex::new(r#"(?i)\((structure|building|bridge|ship|fortress|region|domain|demiplane|plane)\)"#).unwrap(),
+            range_region_regex: Regex::new(r#"(?i)\((object|structure|building|bridge|ship|fortress|region|domain|demiplane|plane)\)"#).unwrap(),
         }
     }
 
@@ -315,8 +315,14 @@ impl RangeParser {
                         .get(3)
                         .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
                     let mut unit_raw = caps.get(4).map(|m| m.as_str()).unwrap_or("");
+                    let unit2_raw = caps.get(5).map(|m| m.as_str()).unwrap_or("");
+
                     if unit_raw.is_empty() {
-                        unit_raw = unit1_raw;
+                        unit_raw = if !unit2_raw.is_empty() {
+                            unit2_raw
+                        } else {
+                            unit1_raw
+                        };
                     }
 
                     let u1 = map_unit(unit1_raw);

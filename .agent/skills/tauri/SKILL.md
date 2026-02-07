@@ -1,6 +1,6 @@
 ---
 name: tauri
-description: Cross-platform desktop application framework combining Rust backend with web frontend, emphasizing security and performance
+description: Tauri Cross-platform desktop application framework combining Rust backend with web frontend, emphasizing security and performance. Use when Tauri is selected as the primary framework for the project.
 risk_level: HIGH
 ---
 

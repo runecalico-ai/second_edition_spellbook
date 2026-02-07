@@ -2,7 +2,6 @@ use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
 use crate::models::{SpellArtifact, SpellCreate, SpellDetail, SpellSummary, SpellUpdate};
-use crate::utils::spell_parser::SpellParser;
 use chrono::Utc;
 use rusqlite::params;
 use rusqlite::{Connection, OptionalExtension};
@@ -75,7 +74,7 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
             "SELECT id, name, school, sphere, class_list, level, range, components,
                 material_components, casting_time, duration, area, saving_throw, reversible,
                 description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
-                damage, magic_resistance
+                damage, magic_resistance, schema_version
          FROM spell WHERE id = ?",
             [id],
             |row| {
@@ -104,6 +103,7 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
                     is_cantrip: row.get(21)?,
                     damage: row.get(22)?,
                     magic_resistance: row.get(23)?,
+                    schema_version: row.get(24)?,
                     artifacts: None,
                 })
             },
@@ -295,24 +295,7 @@ fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, Str
 pub fn canonicalize_spell_detail(
     detail: SpellDetail,
 ) -> Result<(CanonicalSpell, String, String), AppError> {
-    let parser = SpellParser::new();
-    let mut canonical = CanonicalSpell::try_from(detail.clone()).map_err(AppError::Validation)?;
-
-    if let Some(s) = &detail.range {
-        canonical.range = Some(parser.parse_range(s));
-    }
-    if let Some(s) = &detail.duration {
-        canonical.duration = Some(parser.parse_duration(s));
-    }
-    if let Some(s) = &detail.casting_time {
-        canonical.casting_time = Some(parser.parse_casting_time(s));
-    }
-    if let Some(s) = &detail.area {
-        canonical.area = parser.parse_area(s);
-    }
-    if let Some(s) = &detail.components {
-        canonical.components = Some(parser.parse_components(s));
-    }
+    let mut canonical = CanonicalSpell::try_from(detail).map_err(AppError::Validation)?;
 
     // Normalize BEFORE hashing/serializing to ensure the stored data is clean
     canonical.normalize();
@@ -322,6 +305,9 @@ pub fn canonicalize_spell_detail(
         .map_err(|e| AppError::Validation(format!("Hash error: {}", e)))?;
 
     // Store FULL JSON (with metadata) but normalized
+    // Fix: Set id to hash so it's included in the canonical_data JSON in the DB
+    canonical.id = Some(hash.clone());
+
     let json = serde_json::to_string(&canonical)
         .map_err(|e| AppError::Validation(format!("JSON error: {}", e)))?;
 
@@ -384,6 +370,7 @@ pub fn apply_spell_update_with_conn(
         license: spell.license.clone(),
         is_quest_spell: spell.is_quest_spell,
         is_cantrip: spell.is_cantrip,
+        schema_version: None, // Will be populated/upgraded by canonicalize_spell_detail
         artifacts: None,
     };
     let (canonical, hash, json) = canonicalize_spell_detail(detail)?;
@@ -524,6 +511,7 @@ pub async fn create_spell(
             license: spell.license.clone(),
             is_quest_spell: spell.is_quest_spell,
             is_cantrip: spell.is_cantrip,
+            schema_version: None,
             artifacts: None,
         };
         let (canonical, hash, json) = canonicalize_spell_detail(detail)?;

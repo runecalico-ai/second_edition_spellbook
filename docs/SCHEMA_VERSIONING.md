@@ -32,7 +32,7 @@ Every `CanonicalSpell` includes a `schema_version` field with a default value of
 When a spell with `schema_version: 0` is normalized, it is **automatically upgraded** to version 1:
 
 ```rust
-if self.schema_version == 0 {
+if self.schema_version == 0 || self.schema_version < CURRENT_SCHEMA_VERSION {
     self.schema_version = CURRENT_SCHEMA_VERSION;
 }
 ```

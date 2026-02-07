@@ -376,6 +376,7 @@ pub async fn import_files(
                         license: spell.license.clone(),
                         is_quest_spell: spell.is_quest_spell,
                         is_cantrip: spell.is_cantrip,
+                        schema_version: spell.schema_version,
                         artifacts: None,
                     };
                     let (canonical, hash, json) = canonicalize_spell_detail(detail.clone())?;
@@ -466,6 +467,7 @@ pub async fn import_files(
                         reversible: spell.reversible, tags: spell.tags.clone(),
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
                         is_cantrip: spell.is_cantrip,
+                        schema_version: spell.schema_version,
                         artifacts: None,
                     });
 
@@ -553,6 +555,7 @@ pub async fn import_files(
                         license: spell.license.clone(),
                         is_quest_spell: spell.is_quest_spell,
                         is_cantrip: spell.is_cantrip,
+                        schema_version: spell.schema_version,
                         artifacts: None,
                     };
                     let (canonical, hash, json) = canonicalize_spell_detail(detail.clone())?;
@@ -637,6 +640,7 @@ pub async fn import_files(
                         reversible: spell.reversible, tags: spell.tags.clone(),
                         edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
                         is_cantrip: spell.is_cantrip,
+                        schema_version: spell.schema_version,
                         artifacts: None,
                     });
 

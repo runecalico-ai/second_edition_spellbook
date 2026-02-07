@@ -299,7 +299,7 @@ fn test_regression_experience_normalization() {
     };
     spec.normalize();
     let formula = spec.formula.unwrap();
-    assert_eq!(formula.vars[0].name, "X");
+    assert_eq!(formula.vars[0].name, "x", "FormulaVar.name is normalized to schema-valid lowercase");
     let per_unit = spec.per_unit.unwrap();
     assert_eq!(per_unit.unit_label, Some("Creatures".into()));
 }
@@ -386,18 +386,29 @@ fn test_regression_normalization_mode_distinction() {
     use crate::models::experience::FormulaVar;
     use crate::models::experience::VarKind;
 
-    // 1. FormulaVar.name: Structured (Collapses whitespace, PRESERVES case)
-    let mut var = FormulaVar {
-        name: "  Caster  Level  ".into(),
-        var_kind: VarKind::CasterLevel,
-        label: None,
+    // 1. FormulaVar.name: LowercaseStructured + spaces to underscores (schema-valid ^[a-z][a-z0-9_]{0,31}$)
+    use crate::models::experience::{ExperienceFormula, ExperienceKind, RoundingMode};
+    let mut spec = crate::models::experience::ExperienceComponentSpec {
+        kind: ExperienceKind::Formula,
+        formula: Some(ExperienceFormula {
+            expr: "CL * 10".into(),
+            vars: vec![FormulaVar {
+                name: "  Caster  Level  ".into(),
+                var_kind: VarKind::CasterLevel,
+                label: None,
+            }],
+            rounding: RoundingMode::None,
+            min_xp: None,
+            max_xp: None,
+        }),
+        ..Default::default()
     };
-    // We need to normalize it within a spec context or call normalize_string directly
-    var.name = crate::models::canonical_spell::normalize_string(
-        &var.name,
-        crate::models::canonical_spell::NormalizationMode::Structured,
+    spec.normalize();
+    assert_eq!(
+        spec.formula.as_ref().unwrap().vars[0].name,
+        "caster_level",
+        "FormulaVar.name must be schema-valid (lowercase, underscores)"
     );
-    assert_eq!(var.name, "Caster Level");
 
     // 2. DamagePart.id: LowercaseStructured (Collapses whitespace, LOWERCASE)
     let mut part = DamagePart {
@@ -427,4 +438,227 @@ fn test_regression_enum_alias_deserialization() {
     assert_eq!(dt1, DamageType::Fire);
     assert_eq!(dt2, DamageType::Fire);
     assert_eq!(dt3, DamageType::Fire);
+}
+
+// ---- Regression tests for canonical hashing fixes (bugs, gaps, concerns) ----
+
+#[test]
+fn test_regression_range_text_word_boundaries() {
+    // BUG-3: Unit alias replacement must use word boundaries; substrings (e.g. "backyard", "footprint") unchanged.
+    use crate::models::range_spec::{RangeKind, RangeSpec};
+
+    let mut spell_backyard = CanonicalSpell::new("Backyard".into(), 1, "ARCANE".into(), "Desc".into());
+    spell_backyard.school = Some("Evocation".into());
+    spell_backyard.class_list = vec!["Wizard".into()];
+    spell_backyard.range = Some(RangeSpec {
+        kind: RangeKind::Special,
+        text: Some("backyard".to_string()),
+        unit: None,
+        distance: None,
+        requires: None,
+        anchor: None,
+        region_unit: None,
+        notes: None,
+    });
+
+    let mut spell_yards = spell_backyard.clone();
+    spell_yards.name = "Yards".to_string();
+    spell_yards.range.as_mut().unwrap().text = Some("10 yards".to_string());
+
+    let mut spell_ft_dot = spell_backyard.clone();
+    spell_ft_dot.name = "FtDot".to_string();
+    spell_ft_dot.range.as_mut().unwrap().text = Some("60 ft.".to_string());
+
+    spell_backyard.normalize();
+    spell_yards.normalize();
+    spell_ft_dot.normalize();
+
+    assert_eq!(
+        spell_backyard.range.as_ref().unwrap().text.as_deref(),
+        Some("backyard"),
+        "backyard must be unchanged (no substring replacement)"
+    );
+    assert_eq!(
+        spell_yards.range.as_ref().unwrap().text.as_deref(),
+        Some("10 yd"),
+        "10 yards must normalize to 10 yd"
+    );
+    assert_eq!(
+        spell_ft_dot.range.as_ref().unwrap().text.as_deref(),
+        Some("60 ft"),
+        "60 ft. must normalize to 60 ft"
+    );
+}
+
+#[test]
+fn test_regression_empty_object_pruned_from_canonical_json() {
+    // GAP-3: Lean Hashing must remove empty objects (e.g. clamp_total: {}).
+    use crate::models::damage::{
+        ApplicationSpec, ClampSpec, DamagePart, DamageSaveSpec, DicePool, DiceTerm,
+        SpellDamageSpec,
+    };
+    use crate::models::damage::{DamageKind, DamageType};
+
+    let mut spell = CanonicalSpell::new(
+        "Empty Obj Regression".into(),
+        1,
+        "ARCANE".into(),
+        "Desc".into(),
+    );
+    spell.school = Some("Evocation".into());
+    spell.class_list = vec!["Wizard".into()];
+    spell.damage = Some(SpellDamageSpec {
+        kind: DamageKind::Modeled,
+        parts: Some(vec![DamagePart {
+            id: "main".to_string(),
+            damage_type: DamageType::Fire,
+            base: DicePool {
+                terms: vec![DiceTerm {
+                    count: 1,
+                    sides: 6,
+                    per_die_modifier: 0,
+                }],
+                flat_modifier: 0,
+            },
+            clamp_total: Some(ClampSpec {
+                min_total: None,
+                max_total: None,
+            }),
+            application: ApplicationSpec::default(),
+            save: DamageSaveSpec::default(),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    });
+
+    let json = spell.to_canonical_json().unwrap();
+    assert!(
+        !json.contains("\"clamp_total\":{}"),
+        "Empty clamp_total object must be pruned from canonical JSON"
+    );
+}
+
+#[test]
+fn test_regression_experience_cost_source_text_excluded_from_hash() {
+    // BUG-2: source_text is metadata; is_default() must not depend on it; same hash for None vs default-with-source_text.
+    use crate::models::experience::{
+        ExperienceComponentSpec, ExperienceKind, ExperiencePayer, PaymentTiming,
+        PaymentSemantics, Recoverability,
+    };
+
+    let default_with_source = ExperienceComponentSpec {
+        kind: ExperienceKind::None,
+        payer: ExperiencePayer::Caster,
+        payment_timing: PaymentTiming::OnCompletion,
+        payment_semantics: PaymentSemantics::Spend,
+        can_reduce_level: true,
+        recoverability: Recoverability::NormalEarning,
+        amount_xp: None,
+        per_unit: None,
+        formula: None,
+        tiered: None,
+        dm_guidance: None,
+        source_text: Some("XP, no cost".to_string()),
+        notes: None,
+    };
+
+    let mut spell1 = CanonicalSpell::new("XP Hash".into(), 1, "ARCANE".into(), "Desc".into());
+    spell1.school = Some("Abjuration".into());
+    spell1.class_list = vec!["Wizard".into()];
+    spell1.experience_cost = None;
+
+    let mut spell2 = spell1.clone();
+    spell2.experience_cost = Some(default_with_source);
+
+    let hash1 = spell1.compute_hash().unwrap();
+    let hash2 = spell2.compute_hash().unwrap();
+    assert_eq!(
+        hash1, hash2,
+        "Hash must be identical when experience_cost is mechanically default but has source_text set"
+    );
+}
+
+#[test]
+fn test_regression_dice_term_clamping_in_spell() {
+    // CONCERN-3: DiceTerm count/sides clamped in canonical form; spell with invalid values still normalizes and hashes.
+    use crate::models::damage::{
+        ApplicationSpec, DamagePart, DamageSaveSpec, DicePool, DiceTerm, SpellDamageSpec,
+    };
+    use crate::models::damage::{DamageKind, DamageType};
+
+    let mut spell = CanonicalSpell::new(
+        "Dice Clamp Regression".into(),
+        1,
+        "ARCANE".into(),
+        "Desc".into(),
+    );
+    spell.school = Some("Evocation".into());
+    spell.class_list = vec!["Wizard".into()];
+    spell.damage = Some(SpellDamageSpec {
+        kind: DamageKind::Modeled,
+        parts: Some(vec![DamagePart {
+            id: "main".to_string(),
+            damage_type: DamageType::Fire,
+            base: DicePool {
+                terms: vec![
+                    DiceTerm {
+                        count: -1,
+                        sides: 6,
+                        per_die_modifier: 0,
+                    },
+                    DiceTerm {
+                        count: 2,
+                        sides: 0,
+                        per_die_modifier: 0,
+                    },
+                ],
+                flat_modifier: 0,
+            },
+            application: ApplicationSpec::default(),
+            save: DamageSaveSpec::default(),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    });
+
+    spell.normalize();
+    let terms = &spell.damage.as_ref().unwrap().parts.as_ref().unwrap()[0].base.terms;
+    assert_eq!(terms[0].count, 0, "count must be clamped to >= 0");
+    assert_eq!(terms[0].sides, 6, "sides unchanged when >= 1");
+    assert_eq!(terms[1].count, 2, "count unchanged when >= 0");
+    assert_eq!(terms[1].sides, 1, "sides must be clamped to >= 1");
+
+    let hash = spell.compute_hash();
+    assert!(hash.is_ok(), "Spell with clamped dice must still hash: {:?}", hash.err());
+}
+
+#[test]
+fn test_regression_subschools_descriptors_case_normalization() {
+    // GAP-4: subschools/descriptors differing only by case must produce the same hash.
+    let mut spell1 = CanonicalSpell::new("Taxonomy Case".into(), 1, "ARCANE".into(), "Desc".into());
+    spell1.school = Some("Evocation".into());
+    spell1.class_list = vec!["Wizard".into()];
+    spell1.subschools = vec!["Fire".to_string()];
+    spell1.descriptors = vec!["Mind-Affecting".to_string()];
+
+    let mut spell2 = spell1.clone();
+    spell2.subschools = vec!["fire".to_string()];
+    spell2.descriptors = vec!["mind-affecting".to_string()];
+
+    assert_eq!(
+        spell1.compute_hash().unwrap(),
+        spell2.compute_hash().unwrap(),
+        "subschools/descriptors case differences must normalize to same hash"
+    );
+}
+
+#[test]
+fn test_regression_duration_spec_deny_unknown_fields() {
+    // GAP-1: DurationSpec must reject unknown fields at deserialization.
+    let json = r#"{"kind": "time", "unit": "round", "unknown_field": "error"}"#;
+    let result: Result<crate::models::duration_spec::DurationSpec, _> = serde_json::from_str(json);
+    assert!(
+        result.is_err(),
+        "DurationSpec must reject unknown field"
+    );
 }

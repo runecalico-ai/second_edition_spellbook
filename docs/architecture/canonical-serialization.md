@@ -16,8 +16,8 @@ Before JCS processing, the `CanonicalSpell` object undergoes the following norma
 Fields representing unordered sets have their elements sorted lexicographically and deduplicated:
 - `class_list`: Sorted (A-Z), deduplicated.
 - `tags`: Sorted (A-Z), deduplicated.
-- `subschools`: Sorted (A-Z), deduplicated.
-- `descriptors`: Sorted (A-Z), deduplicated.
+- `subschools`: Normalized for casing (e.g. schema-case/title-style) then sorted and deduplicated for hash stability.
+- `descriptors`: Normalized for casing (e.g. schema-case/title-style) then sorted and deduplicated for hash stability.
 
 **Important Exceptions (Order Preserved):**
 - `material_components`: Order is preserved **as listed in the source text**. Two spells with components in different orders produce different hashes. This is intentional for simplicity. Duplicate components are kept as separate entries.
@@ -68,6 +68,7 @@ To ensure spells hash consistently regardless of whether defaults were explicitl
 | `MaterialComponentSpec.is_consumed` | `false` | If omitted |
 
 > **Precedence**: Defaults are materialized **first**, then Lean Hashing (§2.8) removes fields that equal their default values or are empty collections.
+> **ExperienceComponentSpec**: The spec is pruned when it is mechanically default (e.g. `kind: none`). `source_text` is metadata (excluded from hash) and is **not** used for default detection, so a spell with only `source_text` set still hashes the same as one with no experience cost.
 
 ### 2.6 Hashing Casing Standard
 **All fields in the `CanonicalSpell` object MUST use `snake_case`.** This is a deliberate choice to ensure interoperability with the official JSON Schema and to distinguish between high-integrity content (snake_case) and transient IPC data (camelCase).
@@ -80,10 +81,14 @@ fn clamp_precision(val: f64) -> f64 {
 }
 ```
 
+### 2.7.1 DiceTerm and integer bounds
+For canonical form, `DiceTerm` values in damage (and scaling) are normalized: `count` is clamped to ≥ 0 and `sides` to ≥ 1, matching schema constraints. Negative or zero sides from source data are clamped rather than rejected at deserialization.
+
 ### 2.8 Lean Hashing (Optional Fields & Empty Collections)
 To ensure hash stability as the schema evolves, optional fields that are empty or equal to their default values are **omitted** from the canonical JSON:
 - Empty arrays (`[]`) are removed
 - Empty strings (`""`) are removed
+- Empty objects (`{}`) are removed
 - Null values are removed
 - **Optional fields** equal to their materialized defaults (from §2.5) are removed (e.g., `reversible: 0` is omitted).
 
@@ -115,7 +120,7 @@ During normalization, tradition-inconsistent fields are **cleared** before seria
 This ensures the content hash is identical whether or not the source had the other tradition's field set.
 
 ### 2.10 Unit-Based Identity & Alias Normalization
-Units are **never converted** during canonicalization (e.g., "10 yd" and "30 ft" are distinct). However, unit **aliases** in structured text fields (like `RangeSpec.text`) are normalized to canonical forms for hash stability:
+Units are **never converted** during canonicalization (e.g., "10 yd" and "30 ft" are distinct). However, unit **aliases** in structured text fields (like `RangeSpec.text`) are normalized to canonical forms for hash stability. Replacement is **word-boundary aware** (e.g. "10 yards" → "10 yd", "backyard" unchanged):
 - `yards`, `yard`, `yd.` -> `yd`
 - `feet`, `foot`, `ft.` -> `ft`
 - `miles`, `mile`, `mi.` -> `mi`
@@ -150,7 +155,7 @@ The following table shows which normalization mode applies to specific text fiel
 | `name` | `Structured` | Spell name should collapse whitespace |
 | `description` | `Textual` | Preserve paragraph breaks |
 | **RangeSpec** |  |  |
-| `RangeSpec.text` | `Structured` | Collapse whitespace + Unit Alias Normalization |
+| `RangeSpec.text` | LowercaseStructured + unit alias normalization (word boundaries) | Collapse whitespace, lowercase, then unit aliases with word boundaries |
 | `RangeSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **AreaSpec** |  |  |
 | `AreaSpec.notes` | `Textual` | Allow multi-line clarifications |
@@ -177,7 +182,7 @@ The following table shows which normalization mode applies to specific text fiel
 | `ExperienceComponentSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
 | `ExperienceComponentSpec.source_text` | `Textual` | Preserve source formatting |
 | `ExperienceFormula.expr` | `Exact` | Preserve mathematical formulas exactly |
-| `FormulaVar.name` | `Structured` | Variable names should collapse whitespace |
+| `FormulaVar.name` | LowercaseStructured + spaces to underscores (schema pattern `^[a-z][a-z0-9_]{0,31}$`) | Variable names for hash/validation |
 | `FormulaVar.label` | `Textual` | Allow multi-line variable labels |
 | `PerUnitXp.unit_label` | `Textual` | Allow multi-line unit labels |
 | `TieredXp.when` | `Structured` | Condition text should collapse whitespace |
@@ -205,13 +210,17 @@ All line endings (`\r\n` and `\r`) are normalized to `\n`.
 6. Compute SHA-256 hash of the bytes.
 7. Encode hash as a lowercase hex string (64 characters).
 
+### 4.1 Validation runs on full JSON
+`validate()` is run on the full spell JSON (including metadata). Therefore, invalid metadata (e.g. `id` or `version` format) can cause `compute_hash()` to fail even though those fields are excluded from the hash.
+
 ```rust
 pub fn compute_hash(&self) -> Result<String, String> {
     let mut normalized_clone = self.clone();
     normalized_clone.normalize();
     normalized_clone.validate()?;
 
-    let canonical_json = normalized_clone.to_canonical_json()?;
+    // Internal path: no second normalize; uses pre-normalized serialization.
+    let canonical_json = normalized_clone.to_canonical_json_pre_normalized()?;
     let mut hasher = Sha256::new();
     hasher.update(canonical_json.as_bytes());
     let result = hasher.finalize();
@@ -475,8 +484,8 @@ a1b2c3d4e5f6...
 |-------|------|-------|
 | `school` | string | Arcane school |
 | `sphere` | string | Divine sphere |
-| `subschools` | string[] | Sorted, deduplicated |
-| `descriptors` | string[] | Sorted, deduplicated |
+| `subschools` | string[] | Casing normalized, then sorted, deduplicated |
+| `descriptors` | string[] | Casing normalized, then sorted, deduplicated |
 | `class_list` | string[] | Sorted, deduplicated |
 | `tags` | string[] | Sorted, deduplicated |
 
@@ -517,13 +526,14 @@ The canonical serialization is implemented in (paths from repository root):
 - `apps/desktop/src-tauri/schemas/spell.schema.json` - JSON Schema for validation
 
 Key functions:
-- `CanonicalSpell::normalize()` - Applies all normalization rules
-- `CanonicalSpell::to_canonical_json()` - Produces canonical JSON string (does **not** run schema validation)
+- `CanonicalSpell::normalize()` - Applies all normalization rules (order documented at top of `normalize()`)
+- `CanonicalSpell::to_canonical_json()` - Public API: clones, normalizes, then produces canonical JSON (does **not** run schema validation)
+- `CanonicalSpell::to_canonical_json_pre_normalized()` - Internal: produces canonical JSON from an already-normalized instance (used by `compute_hash()` to avoid double normalization)
 - `CanonicalSpell::compute_hash()` - Validates against schema, then produces canonical JSON and returns SHA-256 hex string
-- `prune_metadata_recursive()` - Removes metadata fields from JSON value
+- `prune_metadata_recursive()` - Removes metadata fields and empty objects from JSON value (after recursing into children)
 
 > **Validation and canonical output:** `to_canonical_json()` does **not** run schema validation. For schema-compliant canonical output, callers must either call `validate()` before `to_canonical_json()`, or use `compute_hash()`, which validates first and then produces the canonical JSON internally. Using `to_canonical_json()` alone can yield JSON that does not conform to `spell.schema.json`.
 
 ---
 
-*Last Updated: 2026-02-06*
+*Last Updated: 2026-02-07*

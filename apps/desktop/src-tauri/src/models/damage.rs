@@ -324,6 +324,11 @@ impl SpellDamageSpec {
 
         if let Some(parts) = &mut self.parts {
             for part in parts.iter_mut() {
+                // Canonical form: clamp count >= 0 and sides >= 1 (schema constraints).
+                for term in part.base.terms.iter_mut() {
+                    term.count = term.count.max(0);
+                    term.sides = term.sides.max(1);
+                }
                 part.id = crate::models::canonical_spell::normalize_string(
                     &part.id,
                     crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
@@ -342,14 +347,24 @@ impl SpellDamageSpec {
                 }
                 if let Some(scaling_rules) = &mut part.scaling {
                     for rule in scaling_rules.iter_mut() {
+                        if let Some(dice_inc) = &mut rule.dice_increment {
+                            dice_inc.count = dice_inc.count.max(0);
+                            dice_inc.sides = dice_inc.sides.max(1);
+                        }
+                        if let Some(bands) = &mut rule.level_bands {
+                            for band in bands.iter_mut() {
+                                for term in band.base.terms.iter_mut() {
+                                    term.count = term.count.max(0);
+                                    term.sides = term.sides.max(1);
+                                }
+                            }
+                            bands.sort_by_key(|b| (b.min, b.max));
+                        }
                         if let Some(rn) = &mut rule.notes {
                             *rn = crate::models::canonical_spell::normalize_string(
                                 rn,
                                 crate::models::canonical_spell::NormalizationMode::Textual,
                             );
-                        }
-                        if let Some(bands) = &mut rule.level_bands {
-                            bands.sort_by_key(|b| (b.min, b.max));
                         }
                     }
                     // Sort scaling rules by kind, driver, and step
@@ -386,6 +401,44 @@ impl SpellDamageSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_dice_term_normalization_clamping() {
+        // CONCERN-3: negative count and zero sides are clamped for canonical form.
+        let mut spec = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sum,
+            parts: Some(vec![DamagePart {
+                id: "main".to_string(),
+                damage_type: DamageType::Fire,
+                base: DicePool {
+                    terms: vec![
+                        DiceTerm {
+                            count: -1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        },
+                        DiceTerm {
+                            count: 2,
+                            sides: 0,
+                            per_die_modifier: 0,
+                        },
+                    ],
+                    flat_modifier: 0,
+                },
+                application: ApplicationSpec::default(),
+                save: DamageSaveSpec::default(),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        spec.normalize();
+        let terms = &spec.parts.as_ref().unwrap()[0].base.terms;
+        assert_eq!(terms[0].count, 0, "count must be clamped to >= 0");
+        assert_eq!(terms[0].sides, 6, "sides unchanged when already >= 1");
+        assert_eq!(terms[1].count, 2, "count unchanged when already >= 0");
+        assert_eq!(terms[1].sides, 1, "sides must be clamped to >= 1");
+    }
 
     #[test]
     fn test_sequence_mode_preserves_order() {

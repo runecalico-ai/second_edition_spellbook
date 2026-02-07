@@ -1,5 +1,7 @@
 use crate::models::scalar::SpellScalar;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -122,6 +124,56 @@ pub struct RangeSpec {
     pub notes: Option<String>,
 }
 
+// Word-boundary unit alias regexes (longer tokens first to avoid partial replacement)
+fn re_yards() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\byards\b").unwrap())
+}
+fn re_yard() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\byard\b").unwrap())
+}
+fn re_yd_dot() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\byd\.").unwrap())
+}
+fn re_feet() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bfeet\b").unwrap())
+}
+fn re_foot() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bfoot\b").unwrap())
+}
+fn re_ft_dot() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bft\.").unwrap())
+}
+fn re_miles() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bmiles\b").unwrap())
+}
+fn re_mile() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bmile\b").unwrap())
+}
+fn re_mi_dot() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bmi\.").unwrap())
+}
+fn re_inches() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\binches\b").unwrap())
+}
+fn re_inch() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\binch\b").unwrap())
+}
+fn re_in_dot() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bin\.\b").unwrap())
+}
+
 impl RangeSpec {
     pub fn normalize(&mut self) {
         if let Some(reqs) = &mut self.requires {
@@ -137,19 +189,19 @@ impl RangeSpec {
                 crate::models::canonical_spell::NormalizationMode::Structured,
             )
             .to_lowercase();
-            // Unit alias normalization for hash stability (e.g., "10 yards" vs "10 yd")
-            *t = t
-                .replace("yards", "yd")
-                .replace("yard", "yd")
-                .replace("yd.", "yd")
-                .replace("feet", "ft")
-                .replace("foot", "ft")
-                .replace("ft.", "ft")
-                .replace("miles", "mi")
-                .replace("mile", "mi")
-                .replace("mi.", "mi")
-                .replace("inches", "inch")
-                .replace("in.", "inch");
+            // Unit alias normalization with word boundaries (e.g. "10 yards" -> "10 yd"; "backyard" unchanged)
+            *t = re_yards().replace_all(t, "yd").to_string();
+            *t = re_yard().replace_all(&t, "yd").to_string();
+            *t = re_yd_dot().replace_all(&t, "yd").to_string();
+            *t = re_feet().replace_all(&t, "ft").to_string();
+            *t = re_foot().replace_all(&t, "ft").to_string();
+            *t = re_ft_dot().replace_all(&t, "ft").to_string();
+            *t = re_miles().replace_all(&t, "mi").to_string();
+            *t = re_mile().replace_all(&t, "mi").to_string();
+            *t = re_mi_dot().replace_all(&t, "mi").to_string();
+            *t = re_inches().replace_all(&t, "inch").to_string();
+            *t = re_inch().replace_all(&t, "inch").to_string();
+            *t = re_in_dot().replace_all(&t, "inch").to_string();
         }
         if let Some(n) = &mut self.notes {
             *n = crate::models::canonical_spell::normalize_string(
@@ -158,5 +210,74 @@ impl RangeSpec {
             );
         }
         crate::models::canonical_spell::normalize_scalar(&mut self.distance);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_range_text_unit_alias_word_boundaries() {
+        // Word-boundary replacement: only whole words are normalized; substrings are preserved.
+        let mut spec_yd = RangeSpec {
+            kind: RangeKind::Distance,
+            text: Some("10 yards".to_string()),
+            unit: Some(RangeUnit::Yd),
+            distance: None,
+            requires: None,
+            anchor: None,
+            region_unit: None,
+            notes: None,
+        };
+        spec_yd.normalize();
+        assert_eq!(spec_yd.text.as_deref(), Some("10 yd"), "yards -> yd");
+
+        let mut spec_backyard = RangeSpec {
+            kind: RangeKind::Special,
+            text: Some("backyard".to_string()),
+            unit: None,
+            distance: None,
+            requires: None,
+            anchor: None,
+            region_unit: None,
+            notes: None,
+        };
+        spec_backyard.normalize();
+        assert_eq!(
+            spec_backyard.text.as_deref(),
+            Some("backyard"),
+            "backyard must be unchanged (no substring replacement)"
+        );
+
+        let mut spec_ft = RangeSpec {
+            kind: RangeKind::Distance,
+            text: Some("1 foot".to_string()),
+            unit: Some(RangeUnit::Ft),
+            distance: None,
+            requires: None,
+            anchor: None,
+            region_unit: None,
+            notes: None,
+        };
+        spec_ft.normalize();
+        assert_eq!(spec_ft.text.as_deref(), Some("1 ft"), "foot -> ft");
+
+        let mut spec_footprint = RangeSpec {
+            kind: RangeKind::Special,
+            text: Some("footprint".to_string()),
+            unit: None,
+            distance: None,
+            requires: None,
+            anchor: None,
+            region_unit: None,
+            notes: None,
+        };
+        spec_footprint.normalize();
+        assert_eq!(
+            spec_footprint.text.as_deref(),
+            Some("footprint"),
+            "footprint must be unchanged"
+        );
     }
 }

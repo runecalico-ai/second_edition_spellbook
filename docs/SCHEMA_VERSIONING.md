@@ -85,16 +85,7 @@ Content hashes are used to:
 
 ### Implementation
 
-The `schema_version` field is **excluded from canonical JSON** before hashing:
-
-```rust
-fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
-    if is_root {
-        obj.remove("schema_version");  // Excluded from hash
-        // ... other metadata fields
-    }
-}
-```
+The `schema_version` field is **excluded from canonical JSON** before hashing (see `prune_metadata_recursive` in `canonical_spell.rs`, which also removes other root metadata, all-depth metadata such as `source_text`, and empty objects/arrays/strings).
 
 **Result**: Two identical spells with different schema versions produce the **same content hash**.
 

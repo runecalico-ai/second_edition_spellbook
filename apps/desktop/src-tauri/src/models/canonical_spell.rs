@@ -267,14 +267,14 @@ impl CanonicalSpell {
         let mut clone = self.clone();
         // Heavy Normalization (includes sorting/deduplication of arrays and materialization of defaults)
         clone.normalize();
+        clone.to_canonical_json_pre_normalized()
+    }
 
-        let mut value = serde_json::to_value(&clone).map_err(|err| err.to_string())?;
-
-        // Recursive Metadata Exclusion: Excludes strictly non-content fields like source_refs,
-        // artifacts, edition, etc., while preserving nested mechanical IDs like those in
-        // DamagePart or SingleSave.
+    /// Produces canonical JSON assuming `self` is already normalized. Used by `compute_hash()` to
+    /// avoid double normalization and an extra clone. Callers must have called `normalize()` first.
+    fn to_canonical_json_pre_normalized(&self) -> Result<String, String> {
+        let mut value = serde_json::to_value(self).map_err(|err| err.to_string())?;
         prune_metadata_recursive(&mut value, true);
-
         to_jcs_string(&value).map_err(|err| err.to_string())
     }
 }
@@ -308,18 +308,18 @@ fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
             obj.remove("source_refs");
             obj.remove("source_text");
 
-            // 3. Lean Hashing: Remove nulls, empty arrays, and empty strings.
-            // This ensures hash stability as the schema adds new optional properties.
+            // 3. Recurse into children first (so nested objects can become empty)
+            for val in obj.values_mut() {
+                prune_metadata_recursive(val, false);
+            }
+
+            // 4. Lean Hashing: Remove nulls, empty arrays, empty strings, and empty objects.
             obj.retain(|_, v| {
                 !v.is_null()
                     && (!v.is_array() || !v.as_array().unwrap().is_empty())
                     && (!v.is_string() || !v.as_str().unwrap().is_empty())
+                    && (!v.is_object() || !v.as_object().unwrap().is_empty())
             });
-
-            // 4. Recurse into remaining fields
-            for val in obj.values_mut() {
-                prune_metadata_recursive(val, false);
-            }
         }
         serde_json::Value::Array(arr) => {
             for val in arr.iter_mut() {
@@ -331,12 +331,13 @@ fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
 }
 
 impl CanonicalSpell {
+    /// See docs/architecture/canonical-serialization.md §4.1: validation runs on full JSON (including metadata).
     pub fn compute_hash(&self) -> Result<String, String> {
         let mut normalized_clone = self.clone();
         normalized_clone.normalize();
         normalized_clone.validate()?;
 
-        let canonical_json = normalized_clone.to_canonical_json()?;
+        let canonical_json = normalized_clone.to_canonical_json_pre_normalized()?;
         let mut hasher = Sha256::new();
         hasher.update(canonical_json.as_bytes());
         let result = hasher.finalize();
@@ -389,6 +390,11 @@ impl CanonicalSpell {
 
     /// Recursively normalizes all string and number fields for deterministic hashing.
     /// Also sorts and deduplicates unordered arrays.
+    ///
+    /// Order of operations (matches canonical-serialization contract: Materialize → Sanitize → … → Prune):
+    /// string sanitization and sub-spec normalization; tradition-consistent clearing; default
+    /// materialization and pruning; component materialization and pruning; schema version migration;
+    /// array sort/dedup (subschools/descriptors with casing normalization).
     pub fn normalize(&mut self) {
         self.name = normalize_string(&self.name, NormalizationMode::Structured);
         self.tradition =
@@ -477,6 +483,7 @@ impl CanonicalSpell {
             }
         }
 
+        // Prune default experience_cost before syncing components so metadata-only (e.g. source_text) doesn't affect hash.
         if let Some(xp) = &self.experience_cost {
             if xp.is_default() {
                 self.experience_cost = None;
@@ -494,7 +501,7 @@ impl CanonicalSpell {
             });
         }
 
-        // If experience_cost is present, force experience component to true
+        // If experience_cost is still present after pruning, force experience component to true.
         if self.experience_cost.is_some() {
             if let Some(comp) = &mut self.components {
                 comp.experience = true;
@@ -536,15 +543,16 @@ impl CanonicalSpell {
             .iter()
             .map(|s| normalize_string(s, NormalizationMode::Structured))
             .collect();
+        // Subschools and descriptors: normalize casing (match_schema_case) for hash stability.
         self.subschools = self
             .subschools
             .iter()
-            .map(|s| normalize_string(s, NormalizationMode::Structured))
+            .map(|s| match_schema_case(s))
             .collect();
         self.descriptors = self
             .descriptors
             .iter()
-            .map(|s| normalize_string(s, NormalizationMode::Structured))
+            .map(|s| match_schema_case(s))
             .collect();
 
         // Sort and deduplicate after normalization to catch duplicates created by normalization (e.g. whitespace collapse)
@@ -637,7 +645,9 @@ fn match_schema_case(s: &str) -> String {
         "elemental rain" => "Elemental Rain".to_string(),
         "elemental sun" => "Elemental Sun".to_string(),
         _ => {
-            // Fallback to simple title case for standard one-word enums
+            // Intentionally simple fallback: first character only. For single-word or unknown enum
+            // values. Multi-word unrecognized values may not be fully title-cased and could still
+            // fail schema validation.
             let mut c = lower.chars();
             match c.next() {
                 None => String::new(),
@@ -1173,6 +1183,64 @@ mod tests {
     }
 
     #[test]
+    fn test_experience_cost_default_with_source_text_same_hash() {
+        // BUG-2: source_text is metadata (excluded from hash); is_default() must not depend on it.
+        // Two spells that differ only by experience_cost: None vs Some(default with source_text set) must produce the same hash.
+        let default_with_source = ExperienceComponentSpec {
+            kind: crate::models::experience::ExperienceKind::None,
+            payer: crate::models::experience::ExperiencePayer::Caster,
+            payment_timing: crate::models::experience::PaymentTiming::OnCompletion,
+            payment_semantics: crate::models::experience::PaymentSemantics::Spend,
+            can_reduce_level: true,
+            recoverability: crate::models::experience::Recoverability::NormalEarning,
+            amount_xp: None,
+            per_unit: None,
+            formula: None,
+            tiered: None,
+            dm_guidance: None,
+            source_text: Some("XP, no cost".to_string()),
+            notes: None,
+        };
+        assert!(
+            default_with_source.is_default(),
+            "Spec with only source_text set must be considered default"
+        );
+
+        let mut spell1 = CanonicalSpell::new(
+            "XP Default Hash".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell1.school = Some("Abjuration".to_string());
+        spell1.class_list = vec!["Wizard".to_string()];
+        spell1.experience_cost = None;
+
+        let mut spell2 = spell1.clone();
+        spell2.experience_cost = Some(default_with_source);
+
+        let mut norm1 = spell1.clone();
+        let mut norm2 = spell2.clone();
+        norm1.normalize();
+        norm2.normalize();
+        assert_eq!(
+            norm1.experience_cost, norm2.experience_cost,
+            "After normalize both must prune default experience_cost"
+        );
+        assert_eq!(
+            norm1.components, norm2.components,
+            "After normalize components must match (no experience flag from pruned cost)"
+        );
+
+        let hash1 = spell1.compute_hash().unwrap();
+        let hash2 = spell2.compute_hash().unwrap();
+        assert_eq!(
+            hash1, hash2,
+            "Hash must be identical when experience_cost is mechanically default but has source_text set"
+        );
+    }
+
+    #[test]
     fn test_compute_hash_fails_on_invalid_spell() {
         let mut spell = CanonicalSpell::new(
             "Invalid".to_string(),
@@ -1221,6 +1289,54 @@ mod tests {
         assert!(
             !json.contains("\"schema_version\""),
             "schema_version should be excluded from canonical JSON"
+        );
+    }
+
+    #[test]
+    fn test_empty_object_pruned() {
+        // GAP-3: Lean Hashing must remove empty objects (e.g. clamp_total: {})
+        use crate::models::damage::{
+            ApplicationSpec, ClampSpec, DamagePart, DamageSaveSpec, DicePool, DiceTerm,
+            SpellDamageSpec,
+        };
+        use crate::models::damage::{DamageKind, DamageType};
+
+        let mut spell = CanonicalSpell::new(
+            "Empty Obj Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+        spell.damage = Some(SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            parts: Some(vec![DamagePart {
+                id: "main".to_string(),
+                damage_type: DamageType::Fire,
+                base: DicePool {
+                    terms: vec![DiceTerm {
+                        count: 1,
+                        sides: 6,
+                        per_die_modifier: 0,
+                    }],
+                    flat_modifier: 0,
+                },
+                clamp_total: Some(ClampSpec {
+                    min_total: None,
+                    max_total: None,
+                }),
+                application: ApplicationSpec::default(),
+                save: DamageSaveSpec::default(),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        let json = spell.to_canonical_json().unwrap();
+        assert!(
+            !json.contains("\"clamp_total\":{}"),
+            "Empty clamp_total object must be pruned from canonical JSON"
         );
     }
 
@@ -1558,6 +1674,26 @@ mod tests {
             spell1.compute_hash().unwrap(),
             spell2.compute_hash().unwrap(),
             "School 'abjuration' must be corrected to Title Case"
+        );
+    }
+
+    #[test]
+    fn test_subschools_descriptors_case_normalization() {
+        // GAP-4: subschools and descriptors differing only by case must produce the same hash.
+        let mut spell1 = CanonicalSpell::new("Taxonomy".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Evocation".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.subschools = vec!["Fire".to_string()];
+        spell1.descriptors = vec!["Mind-Affecting".to_string()];
+
+        let mut spell2 = spell1.clone();
+        spell2.subschools = vec!["fire".to_string()];
+        spell2.descriptors = vec!["mind-affecting".to_string()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "subschools/descriptors case differences must normalize to same hash"
         );
     }
 
@@ -2755,10 +2891,11 @@ mod tests {
 
         spell.normalize();
 
-        // Structured normalization: collapse whitespace, lowercase, and alias normalization
+        // LowercaseStructured + word-boundary unit alias (ft. -> ft)
         assert_eq!(
             spell.range.as_ref().unwrap().text.as_ref().unwrap(),
-            "60 ft"
+            "60 ft",
+            "range text: collapse whitespace, lowercase, unit alias with word boundaries"
         );
     }
 

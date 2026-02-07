@@ -18,7 +18,7 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
     -   **Limit Precision** for all `number` fields to 6 decimal places.
 4.  **Collection Logic**: Deduplicate and sort all unordered arrays (`tags`, etc.).
 5.  **Tradition-Consistent Fields**: Clear tradition-inconsistent fields so they are never included in the hash: for `tradition = "ARCANE"`, clear `sphere`; for `tradition = "DIVINE"`, clear `school`; for `tradition = "BOTH"`, keep both. This ensures the content hash is stable regardless of whether the source had the other tradition's field set.
-6.  **Prune (Lean Hashing)**: Omit all fields with `null` values OR empty collections (`[]`) that are optional in the schema. This ensures hash stability as the schema adds new optional properties over time.
+6.  **Prune (Lean Hashing)**: Omit all fields with `null` values, empty collections (`[]`), or **empty objects (`{}`)** that are optional in the schema. This ensures hash stability as the schema adds new optional properties over time.
 7.  **Serialize**: Generate the byte stream following **RFC 8785 (JCS)**.
 
 ## Canonicalization Rules
@@ -38,15 +38,16 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
         -   **Optional Mechanical Specs**: `range`, `components`, `material_components`, `casting_time`, `duration`, `area`, `damage`, `saving_throw`, `magic_resistance`, `experience_cost`, `reversible`, `is_quest_spell`, `is_cantrip`
         -   **Taxonomic fields**: `class_list`, `tags`, `subschools`, `descriptors`
 3.  **Physical Serialization (JCS)**: Follow **RFC 8785**. This handles key sorting, whitespace removal, escaping, and number formatting deterministically.
-4.  **Array Normalization & Deduplication**: Unordered sets MUST be deduplicated and then sorted lexicographically.
+4.  **Array Normalization & Deduplication**: Unordered sets MUST be deduplicated and then sorted lexicographically. For `subschools` and `descriptors`, elements are normalized for casing (e.g. schema-case/title-style) before sort/dedup for hash stability.
     *   **Applied Fields**: `class_list`, `tags`, `subschools`, `descriptors`.
 5.  **Sequenced Arrays**: Arrays representing ordered execution blocks MUST preserve their original order. They MUST NOT be sorted.
     *   **Applied Fields**: `saving_throw.multiple`, `damage.parts` (when `combine_mode = "sequence"`).
     *   **Conditional Sorting for Damage Parts**: The `damage.parts` array sorting behavior depends on `damage.combine_mode`:
         -   **`sum`, `max`, `choose_one`**: Parts are sorted lexicographically by `id` to ensure order-independent hashing.
         -   **`sequence`**: Parts preserve their original array order, as sequence implies ordered execution.
-6.  **Lean Hashing (Omission)**: To ensure future-proof stability, all `null` values, empty strings, and empty collections (`[]`) MUST be OMITTED from the canonical representation if they match the schema's default/optional behavior.
+6.  **Lean Hashing (Omission)**: To ensure future-proof stability, all `null` values, empty strings, empty collections (`[]`), and empty objects (`{}`) MUST be OMITTED from the canonical representation if they match the schema's default/optional behavior.
     *   **Exclusion of Required Fields**: Fields marked as `required` in `spell.schema.json` MUST ALWAYS be included in the hash, even if they equal a default value (e.g., `components.verbal: false`). Pruning ONLY applies to optional fields or fields where the schema provides a default but doesn't require presence.
+    *   **Empty objects**: Keys whose value is an empty object (`{}`) are omitted; pruning runs after recursing into children so nested empty objects are removed first.
 
 7.  **Enum & Unit Normalization (Unified Strategy)**: All enum values MUST match the exact casing and spelling defined in `spell.schema.json`.
     *   **Robust Matching**: To accommodate varied source data, the system uses a case-insensitive matching strategy with support for legacy variants (e.g., `Title Case`, `SCREAMING_SNAKE_CASE`).
@@ -70,7 +71,9 @@ To ensure bit-for-bit identity, the following steps MUST be performed in order:
         |-------|------|-------------|
         | `name`, `tradition`, `school`, `sphere` | `Structured` | Collapse all whitespace |
         | `description` | `Textual` | Preserve paragraph breaks |
-        | `RangeSpec.text`, `DurationSpec.condition`, `TieredXp.when`, `SpellCastingTime.text`, `FormulaVar.name` | `Structured` | Collapse all whitespace |
+        | `RangeSpec.text` | LowercaseStructured + unit alias normalization (word boundaries) | Collapse whitespace, lowercase, then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
+        | `DurationSpec.condition`, `TieredXp.when`, `SpellCastingTime.text` | `Structured` | Collapse all whitespace |
+        | `FormulaVar.name` | LowercaseStructured + spaces to underscores (schema pattern `^[a-z][a-z0-9_]{0,31}$`) | Variable names for hash/validation |
         | `*.notes`, `*.dm_guidance`, `*.description`, `*.special_rule`, `*.label`, `*.unit_label`, `*.source_text` | `Textual` | Preserve paragraph breaks |
         | `SingleSave.id`, `DamagePart.id`, `MrPartialSpec.part_ids` | `LowercaseStructured` | Lowercase + collapse |
         | `ExperienceFormula.expr` | `Exact` | Trim only, preserve formulas |

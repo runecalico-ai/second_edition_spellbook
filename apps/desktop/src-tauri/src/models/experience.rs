@@ -235,6 +235,7 @@ fn default_recoverability() -> Recoverability {
 
 impl ExperienceComponentSpec {
     pub fn is_default(&self) -> bool {
+        // source_text is metadata (excluded from hash); do not use for default detection.
         self.kind == ExperienceKind::None
             && self.payer == ExperiencePayer::Caster
             && self.payment_timing == PaymentTiming::OnCompletion
@@ -244,7 +245,6 @@ impl ExperienceComponentSpec {
             && self.tiered.is_none()
             && self.can_reduce_level
             && self.recoverability == Recoverability::NormalEarning
-            && self.source_text.is_none()
             && self.notes.is_none()
             && self.amount_xp.is_none()
             && self.dm_guidance.is_none()
@@ -285,10 +285,15 @@ impl ExperienceComponentSpec {
                 crate::models::canonical_spell::NormalizationMode::Exact,
             );
             for var in &mut formula.vars {
+                // Schema requires ^[a-z][a-z0-9_]{0,31}$; normalize to lowercase and underscores.
                 var.name = crate::models::canonical_spell::normalize_string(
                     &var.name,
-                    crate::models::canonical_spell::NormalizationMode::Structured,
+                    crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
                 );
+                var.name = var.name.replace(' ', "_");
+                if var.name.len() > 32 {
+                    var.name = var.name.chars().take(32).collect();
+                }
                 if let Some(l) = &mut var.label {
                     *l = crate::models::canonical_spell::normalize_string(
                         l,

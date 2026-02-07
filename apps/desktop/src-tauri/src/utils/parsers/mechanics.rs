@@ -36,12 +36,26 @@ impl MechanicsParser {
         }
 
         let mut parts = Vec::new();
-        // Support multiple parts separated by semicolon or " and "
-        let split_regex = Regex::new(r"(?i);\s*|\s+and\s+").unwrap();
-        let items: Vec<&str> = split_regex
+        // Support multiple parts separated by ";", " and ", or " + "
+        let split_regex = Regex::new(r"(?i);\s*|\s+and\s+|\s+\+\s+").unwrap();
+        let raw_items: Vec<&str> = split_regex
             .split(input_clean)
             .filter(|s| !s.trim().is_empty())
             .collect();
+
+        // Merge orphan modifiers: "1d6" + "2" from "1d6 + 2" split -> "1d6 + 2" (single part)
+        let orphan_mod_regex = Regex::new(r"^\s*[+]?\s*\d+\s*$").unwrap();
+        let mut items: Vec<String> = Vec::new();
+        for raw in raw_items {
+            let s = raw.trim();
+            if let Some(last) = items.last_mut() {
+                if orphan_mod_regex.is_match(s) && last.contains('d') {
+                    *last = format!("{} + {}", last, s);
+                    continue;
+                }
+            }
+            items.push(s.to_string());
+        }
 
         if items.is_empty() {
             return SpellDamageSpec {
@@ -55,7 +69,7 @@ impl MechanicsParser {
         let tick_regex = Regex::new(r"(?i)for\s+(\d+)\s+round").unwrap();
 
         for (i, item) in items.iter().enumerate() {
-            let item_clean = item.trim();
+            let item_clean = item.as_str().trim();
             if !self.dice_term_regex.is_match(item_clean)
                 && !item_clean.to_lowercase().contains("special")
             {
@@ -268,8 +282,8 @@ impl MechanicsParser {
         }
 
         // Split by delimiters to detect multiple saves
-        // Delimiters: ";", " and ", " or " (case insensitive)
-        let split_regex = Regex::new(r"(?i)(?:;| and | or )").unwrap();
+        // Delimiters: ";", " and ", " or ", " then " (case insensitive)
+        let split_regex = Regex::new(r"(?i)(?:;| and | or |\s+then\s+)").unwrap();
         let parts: Vec<&str> = split_regex
             .split(input_clean)
             .filter(|s| !s.trim().is_empty())
@@ -277,15 +291,17 @@ impl MechanicsParser {
 
         // Check if the entire input matches a standard category to avoid incorrect splitting
         // (e.g. "Rod, Staff, or Wand" should not be split by " or ")
+        // " then " overrides this: "Save vs Spell, then Save vs Poison" must parse as multiple
         let lower = input_clean.to_lowercase();
-        let is_standard_complex = lower.contains("rod")
-            || lower.contains("staff")
-            || lower.contains("wand")
-            || lower.contains("poison")
-            || lower.contains("death")
-            || lower.contains("paraly")
-            || lower.contains("poly")
-            || lower.contains("petri");
+        let is_standard_complex = !lower.contains(" then ")
+            && (lower.contains("rod")
+                || lower.contains("staff")
+                || lower.contains("wand")
+                || lower.contains("poison")
+                || lower.contains("death")
+                || lower.contains("paraly")
+                || lower.contains("poly")
+                || lower.contains("petri"));
 
         if parts.len() > 1 && !is_standard_complex {
             let mut saves = Vec::new();
@@ -427,7 +443,9 @@ impl MechanicsParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ExperienceKind, MagicResistanceKind, SaveResult, SavingThrowKind};
+    use crate::models::{
+        ExperienceKind, MagicResistanceKind, SaveResult, SaveType, SavingThrowKind,
+    };
 
     #[test]
     fn test_parse_damage_complex() {
@@ -446,8 +464,8 @@ mod tests {
     fn test_parse_multi_part_damage() {
         let parser = MechanicsParser::new();
 
-        // GIVEN "1d6 fire + 1d6 cold"
-        let dmg = parser.parse_damage("1d6 fire and 1d6 cold");
+        // GIVEN "1d6 fire + 1d6 cold" (verification spec delimiter)
+        let dmg = parser.parse_damage("1d6 fire + 1d6 cold");
         assert_eq!(dmg.kind, crate::models::damage::DamageKind::Modeled);
         let parts = dmg.parts.as_ref().unwrap();
         assert_eq!(parts.len(), 2);
@@ -467,6 +485,23 @@ mod tests {
         );
         assert_eq!(parts[1].base.terms[0].count, 1);
         assert_eq!(parts[1].base.terms[0].sides, 6);
+
+        // "and" delimiter also works
+        let dmg_and = parser.parse_damage("1d6 fire and 1d6 cold");
+        assert_eq!(dmg_and.parts.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_parse_damage_flat_modifier_preserved() {
+        let parser = MechanicsParser::new();
+        // "1d6 + 2" must not be split; flat modifier must be preserved
+        let dmg = parser.parse_damage("1d6 + 2");
+        assert_eq!(dmg.kind, crate::models::damage::DamageKind::Modeled);
+        let parts = dmg.parts.as_ref().unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].base.terms[0].count, 1);
+        assert_eq!(parts[0].base.terms[0].sides, 6);
+        assert_eq!(parts[0].base.flat_modifier, 2);
     }
 
     #[test]
@@ -570,6 +605,14 @@ mod tests {
         assert_eq!(m4.len(), 2);
         assert_eq!(m4[0].on_success.result, SaveResult::ReducedEffect);
         assert_eq!(m4[1].on_success.result, SaveResult::NoEffect);
+
+        // 4b. Multiple Saves ("then") - per verification spec
+        let res_then = parser.parse_saving_throw("Save vs Spell, then Save vs Poison");
+        assert_eq!(res_then.kind, SavingThrowKind::Multiple);
+        let m_then = res_then.multiple.unwrap();
+        assert_eq!(m_then.len(), 2);
+        assert_eq!(m_then[0].save_type, SaveType::Spell);
+        assert_eq!(m_then[1].save_type, SaveType::ParalyzationPoisonDeath);
 
         // 5. Save Type mapping
         let res5 = parser.parse_saving_throw("Rod, Staff, or Wand");

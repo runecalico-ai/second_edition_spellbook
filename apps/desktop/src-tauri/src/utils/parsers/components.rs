@@ -161,10 +161,11 @@ impl ComponentsParser {
         }
 
         let mut results = Vec::new();
-        // Updated regex to handle optional content after gp value (e.g., ", consumed")
         let gp_regex = Regex::new(r"(?i)(?:worth\s+)?(\d+(?:\.\d+)?)\s*gp").unwrap();
         let consumed_regex = Regex::new(r"(?i)\b(consumed|expended|destroyed)\b").unwrap();
-        // Regex to remove empty parentheses - moved outside loop for performance
+        // Remove entire parenthetical block containing gp value (handles "ruby (worth 1000 gp, consumed)")
+        let paren_with_gp_regex =
+            Regex::new(r"(?i)\([^)]*(?:worth\s+)?\d+(?:\.\d+)?\s*gp[^)]*\)").unwrap();
         let empty_parens_regex = Regex::new(r"\(\s*\)").unwrap();
 
         for p in parts {
@@ -178,9 +179,9 @@ impl ComponentsParser {
             // Extract GP value
             if let Some(caps) = gp_regex.captures(&p) {
                 gp_value = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
-                // Remove the entire parenthetical content containing the gp value
-                // This handles cases like "(100 gp)" or "(worth 100 gp, consumed)"
-                name = gp_regex.replace(&name, "").to_string();
+                // Remove the entire parenthetical block containing gp (not just the gp substring)
+                // Handles "(100 gp)", "(worth 1000 gp)", "(worth 1000 gp, consumed)", etc.
+                name = paren_with_gp_regex.replace_all(&name, "").to_string();
             }
 
             // Detect if consumed
@@ -188,9 +189,8 @@ impl ComponentsParser {
                 is_consumed = true;
             }
 
-            // Clean up the name: trim and remove empty parentheses
+            // Clean up the name: trim and remove any remaining empty parentheses
             name = name.trim().to_string();
-            // Remove parentheses and their contents if only whitespace remains
             name = empty_parens_regex.replace_all(&name, "").to_string();
             name = name.trim().to_string();
 
@@ -298,11 +298,12 @@ mod tests {
     fn test_parse_material_component_consumed() {
         let parser = ComponentsParser::new();
 
-        // Test consumed flag
+        // Test consumed flag; name must be clean (no "ruby (, consumed)" remnant)
         let mats = parser.parse_material_components("ruby (worth 1000 gp, consumed)");
         assert_eq!(mats.len(), 1);
         assert_eq!(mats[0].gp_value, Some(1000.0));
         assert!(mats[0].is_consumed.unwrap_or(false));
+        assert_eq!(mats[0].name, "ruby");
 
         // Test "expended" variant
         let mats2 = parser.parse_material_components("gem (100 gp, expended)");

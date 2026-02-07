@@ -16,6 +16,7 @@ use crate::utils::spell_parser::SpellParser;
 use std::fmt::Write as FmtWrite;
 
 pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 0;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -356,7 +357,14 @@ impl CanonicalSpell {
         let instance =
             serde_json::to_value(self).map_err(|e| format!("Serialization error: {}", e))?;
 
-        // Version Validation: Versions < 1 are migrated during normalization.
+        // Version Validation: Reject incompatible (invalid) versions.
+        if self.schema_version < MIN_SUPPORTED_SCHEMA_VERSION {
+            return Err(format!(
+                "Incompatible schema version {} for spell '{}'. Minimum supported version is {}.",
+                self.schema_version, self.name, MIN_SUPPORTED_SCHEMA_VERSION
+            ));
+        }
+
         // Versions > CURRENT are logged as warnings for forward compatibility.
         if self.schema_version > CURRENT_SCHEMA_VERSION {
             eprintln!("WARNING: Spell '{}' uses a newer schema version ({}). This application supports up to version {}. Forward compatibility is not guaranteed.",
@@ -506,13 +514,16 @@ impl CanonicalSpell {
             }
         }
 
-        if self.schema_version < CURRENT_SCHEMA_VERSION && self.schema_version != 0 {
-            eprintln!("WARNING: Spell '{}' uses an older schema version ({}). Migrating to version {} for hashing.",
-                 self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
-        }
+        // Only migrate versions in [MIN_SUPPORTED, CURRENT); reject < MIN_SUPPORTED in validate()
+        if self.schema_version >= MIN_SUPPORTED_SCHEMA_VERSION {
+            if self.schema_version < CURRENT_SCHEMA_VERSION && self.schema_version != 0 {
+                eprintln!("WARNING: Spell '{}' uses an older schema version ({}). Migrating to version {} for hashing.",
+                     self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
+            }
 
-        if self.schema_version == 0 || self.schema_version < CURRENT_SCHEMA_VERSION {
-            self.schema_version = CURRENT_SCHEMA_VERSION;
+            if self.schema_version == 0 || self.schema_version < CURRENT_SCHEMA_VERSION {
+                self.schema_version = CURRENT_SCHEMA_VERSION;
+            }
         }
 
         self.class_list = self
@@ -1975,6 +1986,24 @@ mod tests {
         assert!(
             result.is_ok(),
             "Schema version 0 should now be allowed for migration"
+        );
+    }
+
+    #[test]
+    fn test_validate_schema_version_rejected() {
+        let mut spell = CanonicalSpell::new("Invalid".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.schema_version = -1;
+        let result = spell.validate();
+        assert!(
+            result.is_err(),
+            "Schema version < MIN_SUPPORTED must be rejected"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Incompatible schema version"),
+            "Error message should indicate incompatible version"
         );
     }
 

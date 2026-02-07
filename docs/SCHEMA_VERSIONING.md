@@ -19,6 +19,7 @@ Defined in [`canonical_spell.rs`](file:///c:/Users/vitki/OneDrive/GitHub/runecal
 
 ```rust
 pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 0;
 ```
 
 Every `CanonicalSpell` includes a `schema_version` field with a default value of `1`.
@@ -41,9 +42,13 @@ This ensures legacy spells created before schema versioning was implemented are 
 
 ### Validation Behavior
 
-During spell validation, the system handles version mismatches gracefully:
+During spell validation, the system handles version mismatches as follows:
 
-#### Older Versions (< 1)
+#### Invalid Versions (< 0)
+- **Behavior**: Reject with error
+- **Result**: Import and hash computation fail
+
+#### Older Versions (< 1, >= 0)
 - **Behavior**: Logs a warning, allows migration
 - **Warning Message**:
   ```
@@ -164,6 +169,7 @@ These changes can be made without incrementing the schema version.
 
 | Schema Version | Application Behavior |
 |----------------|---------------------|
+| `< 0` | **Rejected** – Import and hashing fail |
 | `0` | Auto-migrated to version 1 during normalization |
 | `1` (current) | Processed normally, validated against current schema |
 | `> 1` (future) | Warning logged, processed with forward compatibility mode |

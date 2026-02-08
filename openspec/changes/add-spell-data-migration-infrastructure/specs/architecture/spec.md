@@ -18,6 +18,7 @@ The system SHALL provide administrative CLI tools to manage the lifecycle of spe
 #### Scenario: Recomputing Hashes
 - **WHEN** the user runs `spellbook-desktop --recompute-hashes`
 - **THEN** the system SHALL re-calculate hashes for all spells in the `library` and update the `content_hash` column
+- **AND** SHALL report to stderr and migration.log in the form "Recomputed N hashes, M updated." (total count N, changed count M)
 
 #### Scenario: Integrity Check
 - **WHEN** the user runs `spellbook-desktop --check-integrity`

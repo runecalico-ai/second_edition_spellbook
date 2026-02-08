@@ -9,6 +9,7 @@ use crate::models::{
     SpellDetail, SpellUpdate,
 };
 use crate::sidecar::call_sidecar;
+use crate::utils::migration_manager;
 use chrono::Utc;
 use dirs::data_dir as system_data_dir;
 use regex::Regex;
@@ -452,6 +453,7 @@ pub async fn import_files(
                         conn.last_insert_rowid()
                     };
 
+                    migration_manager::sync_check_spell(&conn, spell_id);
                     local_imported.push(SpellDetail {
                         id: Some(spell_id),
                         name: spell.name.clone(),
@@ -625,6 +627,7 @@ pub async fn import_files(
                         conn.last_insert_rowid()
                     };
 
+                    migration_manager::sync_check_spell(&conn, spell_id);
                     local_imported.push(SpellDetail {
                         id: Some(spell_id),
                         name: spell.name.clone(),

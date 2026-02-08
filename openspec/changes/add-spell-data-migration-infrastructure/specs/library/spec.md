@@ -31,3 +31,5 @@ During the data migration lifecycle, the system MUST ensure data integrity betwe
 - **WHEN** a record is updated
 - **THEN** the system SHALL perform a "sync check" on every spell update (no optional toggle) to ensure that the value in the flat columns (e.g., `range`) matches the corresponding value extracted from the `canonical_data` JSON
 - **AND** SHALL log any discrepancies found during runtime (e.g. to stderr)
+
+Implementation: the sync check runs after every spell write—`update_spell` (via `apply_spell_update_with_conn`), `upsert_spell` (after UPDATE or INSERT), and both import paths (after each spell UPDATE or INSERT).

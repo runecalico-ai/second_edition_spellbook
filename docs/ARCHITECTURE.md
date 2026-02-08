@@ -110,7 +110,7 @@ Legacy spell data (from imports or migrations) is converted to these structured 
 - **MechanicsParser** (`src/utils/parsers/mechanics.rs`): Parses damage, saves, MR, XP
 - **ComponentsParser** (`src/utils/parsers/components.rs`): Parses components and casting time
 
-See [MIGRATION.md](./MIGRATION.md) for detailed parser patterns and examples.
+See [MIGRATION.md](./MIGRATION.md) for detailed parser patterns and examples. Dual-write scope (legacy → canonical only; canonical-only updates would require backfilling legacy columns) is documented in [MIGRATION.md](./MIGRATION.md#dual-write-scope).
 
 ### Hashing Flow
 ```mermaid

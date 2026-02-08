@@ -396,6 +396,7 @@ pub fn recompute_all_hashes(
     let parser = SpellParser::new();
     let tx = conn.unchecked_transaction()?;
 
+    let total = spells.len();
     let mut changed_count = 0;
 
     for (detail, old_hash) in spells {
@@ -456,11 +457,12 @@ pub fn recompute_all_hashes(
     tx.commit()?;
     writeln!(
         log_file,
-        "[{}] Re-computation complete. {} spells updated.",
+        "[{}] Re-computation complete. Recomputed {} hashes, {} updated.",
         Utc::now(),
+        total,
         changed_count
     )?;
-    eprintln!("Recomputed hashes. {} updated.", changed_count);
+    eprintln!("Recomputed {} hashes, {} updated.", total, changed_count);
 
     Ok(())
 }
@@ -695,6 +697,7 @@ pub fn restore_backup(
         backup.step(-1)?;
     }
 
+    // Verify the restored database (conn is the destination and now holds the backup content).
     let result: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
     if result != "ok" {
         eprintln!("Warning: integrity check failed after restore: {}", result);
@@ -1052,6 +1055,71 @@ mod tests {
         assert!(!canonical_json.contains("\"edition\""));
         assert!(!canonical_json.contains("\"author\""));
         assert!(!canonical_json.contains("\"id\""));
+
+        Ok(())
+    }
+
+    /// Regression test: recompute_all_hashes SELECT column order and row mapping must stay in sync.
+    /// Builds a minimal spell table with the same column order as the SELECT and asserts one spell's hash/json.
+    #[test]
+    fn test_recompute_all_hashes_select_row_mapping_regression(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let db = Connection::open_in_memory()?;
+        // Table columns must match recompute_all_hashes SELECT list order (id, name, level, school, ...).
+        db.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER DEFAULT 0,
+                is_cantrip INTEGER DEFAULT 0,
+                content_hash TEXT,
+                damage TEXT,
+                magic_resistance TEXT,
+                schema_version INTEGER,
+                canonical_data TEXT
+            );
+            "#,
+        )?;
+        db.execute(
+            r#"INSERT INTO spell (name, level, description, school, range)
+               VALUES (?1, ?2, ?3, ?4, ?5)"#,
+            params!["Recompute Test", 3, "A test description.", "Evocation", "60 feet"],
+        )?;
+
+        let temp = tempdir()?;
+        recompute_all_hashes(&db, temp.path())?;
+
+        let (hash, json): (Option<String>, Option<String>) = db.query_row(
+            "SELECT content_hash, canonical_data FROM spell WHERE name = 'Recompute Test'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let hash = hash.expect("content_hash should be set");
+        let json = json.expect("canonical_data should be set");
+
+        assert!(!hash.is_empty());
+        assert!(json.contains(r#""name":"Recompute Test""#));
+        assert!(json.contains(r#""level":3"#));
+        assert!(json.contains(r#""school":"Evocation"#));
 
         Ok(())
     }

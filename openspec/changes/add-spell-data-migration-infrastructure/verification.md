@@ -53,7 +53,7 @@
   - GIVEN database with 10,000 spells
   - WHEN running hash backfill migration
   - THEN migration MUST complete within 60 seconds
-  - AND report progress every 1000 spells
+  - AND report progress every 100 spells
 
 ## End-to-End Workflows
 

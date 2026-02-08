@@ -28,10 +28,14 @@ If you suspect data issues:
   ```bash
   .\spellbook-desktop.exe --recompute-hashes
   ```
+  The command reports "Recomputed N hashes, M updated." to stderr and migration.log (N = total spells, M = count whose hash changed).
 - **Detect hash collisions**: If you have duplicate `content_hash` values, run `--detect-collisions`. The tool compares `canonical_data` for each duplicate group and reports either "Duplicate content (same spell data)" or "True hash collision (different content, same hash)" so you can fix or merge duplicates.
   ```bash
   .\spellbook-desktop.exe --detect-collisions
   ```
+
+### Dual-write scope
+Only **legacy → canonical** dual-write is implemented: when spells are created or updated, both legacy columns (e.g. `name`, `level`, `range`) and canonical fields (`canonical_data`, `content_hash`) are written. A future path that updates only `canonical_data` would need to backfill legacy columns for search and display.
 
 ### Backfill behavior
 During hash backfill, the application logs progress every 100 spells (e.g. "Migrating spell 100 of 1000...") and writes a final summary to stderr and `migration.log`: processed count, updated count, parse fallback count, hash failure count, and success/fallback percentages. If the backfill fails due to a hash collision (UNIQUE constraint on `content_hash`), a clear message is written to `migration.log` and stderr; fix duplicates or run `--detect-collisions` and retry.

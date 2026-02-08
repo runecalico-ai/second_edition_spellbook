@@ -616,7 +616,7 @@ pub async fn upsert_spell(
 
         let (canonical, hash, json) = canonicalize_spell_detail(spell.clone())?;
 
-        if let Some(id) = spell.id {
+        let spell_id = if let Some(id) = spell.id {
             conn.execute(
                 "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
                  components=?, material_components=?, casting_time=?, duration=?, area=?,
@@ -655,7 +655,7 @@ pub async fn upsert_spell(
                     id,
                 ],
             )?;
-            Ok::<i64, AppError>(id)
+            id
         } else {
             conn.execute(
                 "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
@@ -693,8 +693,10 @@ pub async fn upsert_spell(
                     canonical.schema_version,
                 ],
             )?;
-            Ok::<i64, AppError>(conn.last_insert_rowid())
-        }
+            conn.last_insert_rowid()
+        };
+        migration_manager::sync_check_spell(&conn, spell_id);
+        Ok::<i64, AppError>(spell_id)
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;

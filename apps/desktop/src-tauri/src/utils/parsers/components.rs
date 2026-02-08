@@ -81,6 +81,14 @@ impl ComponentsParser {
                 ..Default::default()
             };
         }
+        if lower.contains("segment") || lower.contains("segments") || lower == "seg" || lower.ends_with(" seg") {
+            return SpellCastingTime {
+                text: input.to_string(),
+                unit: CastingTimeUnit::Segment,
+                base_value: Some(base_val),
+                ..Default::default()
+            };
+        }
 
         SpellCastingTime {
             text: input.to_string(),
@@ -93,18 +101,45 @@ impl ComponentsParser {
     }
 
     pub fn parse_components(&self, input: &str) -> SpellComponents {
-        // Strict parsing by splitting commas and trimming
         let mut v = false;
         let mut s = false;
         let mut m = false;
-
-        let lower = input.to_lowercase().replace("divine focus", "divine-focus");
-        let parts: Vec<&str> = lower
-            .split(|c: char| c == ',' || c == ';' || c == '+' || c.is_whitespace())
-            .collect();
         let mut f = false;
         let mut df = false;
         let mut e = false;
+
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return SpellComponents { verbal: v, somatic: s, material: m, focus: f, divine_focus: df, experience: e };
+        }
+
+        // Undelimited 1–3 letter component string (e.g. "VSM", "VS", "V")
+        let has_delimiter = trimmed.contains(',') || trimmed.contains(';') || trimmed.contains('+')
+            || trimmed.split_whitespace().count() > 1;
+        if !has_delimiter && !trimmed.is_empty() && trimmed.len() <= 3 {
+            let lower = trimmed.to_lowercase();
+            if lower == "df" {
+                df = true;
+            } else {
+                for ch in lower.chars() {
+                    match ch {
+                        'v' => v = true,
+                        's' => s = true,
+                        'm' => m = true,
+                        'f' => f = true,
+                        'e' => e = true,
+                        _ => {}
+                    }
+                }
+            }
+            return SpellComponents { verbal: v, somatic: s, material: m, focus: f, divine_focus: df, experience: e };
+        }
+
+        // Strict parsing by splitting commas and trimming
+        let lower = trimmed.to_lowercase().replace("divine focus", "divine-focus");
+        let parts: Vec<&str> = lower
+            .split(|c: char| c == ',' || c == ';' || c == '+' || c.is_whitespace())
+            .collect();
 
         for part in parts {
             let p = part.trim().to_lowercase();
@@ -390,5 +425,43 @@ mod tests {
 
         let res2 = parser.parse_casting_time("1 reaction");
         assert_eq!(res2.unit, CastingTimeUnit::Reaction);
+    }
+
+    #[test]
+    fn test_parse_casting_time_segment() {
+        let parser = ComponentsParser::new();
+
+        let res = parser.parse_casting_time("1 segment");
+        assert_eq!(res.unit, CastingTimeUnit::Segment);
+
+        let res2 = parser.parse_casting_time("2 segments");
+        assert_eq!(res2.unit, CastingTimeUnit::Segment);
+
+        let res3 = parser.parse_casting_time("1 seg");
+        assert_eq!(res3.unit, CastingTimeUnit::Segment);
+    }
+
+    #[test]
+    fn test_parse_components_undelimited() {
+        let parser = ComponentsParser::new();
+
+        let res = parser.parse_components("VSM");
+        assert!(res.verbal);
+        assert!(res.somatic);
+        assert!(res.material);
+
+        let res2 = parser.parse_components("VS");
+        assert!(res2.verbal);
+        assert!(res2.somatic);
+        assert!(!res2.material);
+
+        let res3 = parser.parse_components("V");
+        assert!(res3.verbal);
+        assert!(!res3.somatic);
+        assert!(!res3.material);
+
+        let res4 = parser.parse_components("df");
+        assert!(res4.divine_focus);
+        assert!(!res4.verbal);
     }
 }

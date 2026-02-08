@@ -112,10 +112,6 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
         .optional()?
         .ok_or_else(|| AppError::NotFound("Spell not found".into()))?;
 
-    if let Some(sid) = spell.id {
-        migration_manager::sync_check_spell(conn, sid);
-    }
-
     let mut stmt = conn.prepare(
         "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
     )?;

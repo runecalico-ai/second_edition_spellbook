@@ -92,7 +92,8 @@ These patterns are parsed with high confidence into structured specifications.
 | Focus components | `"V, S, F (crystal orb)"` | `focus: true` |
 | Casting time units | `"1 action"`, `"1 round"`, `"10 minutes"` | `SpellCastingTime` struct |
 | Bonus/reaction | `"1 bonus action"`, `"1 reaction"` | Corresponding unit |
-| Segment casting | `"3 segments"` | `CastingTimeUnit::Segment` |
+| Segment casting | `"1 segment"`, `"2 segments"`, `"1 seg"` | `CastingTimeUnit::Segment` |
+| Undelimited components | `"VSM"`, `"VS"`, `"V"`, `"df"` (no commas/spaces) | Each character → V/S/M/F/E or `df` → divine_focus |
 
 #### MechanicsParser
 

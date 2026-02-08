@@ -138,7 +138,7 @@ The application uses a "Hash Backfill" system (`src/utils/migration_manager.rs`)
 - **Hashing**: All spells have a `content_hash` derived from their `CanonicalSpell` representation.
 - **Backfill**: Run during app start via `init_db(..., true)`. Logs progress every 100 spells and a final summary (processed, updated, parse fallbacks, hash failures). On UNIQUE constraint (hash collision), logs a clear message to migration.log and stderr and aborts. CLI commands should use `false` to avoid unintended mutations.
 - **Backup**: `migration_manager.rs` automatically creates a backup before starting any structural migration.
-- **Sync check**: On every spell update (including `update_spell`, `upsert_spell`, and import), a sync check compares flat columns to `canonical_data` and logs discrepancies (no env toggle).
+- **Sync check**: On every spell *write* (including `update_spell`, `upsert_spell`, and import), a sync check compares flat columns to `canonical_data` and logs discrepancies (no env toggle). It is not run on read (e.g. `get_spell`).
 
 **CLI Recovery Tools**:
 - `--check-integrity`: Recompute hash from `canonical_data` for each spell and compare to stored `content_hash`; report mismatches, NULL hashes, orphan `character_class_spell` rows, and duplicate hashes.

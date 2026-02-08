@@ -1123,4 +1123,102 @@ mod tests {
 
         Ok(())
     }
+
+    /// Integration test: two spells with identical content produce the same content_hash;
+    /// backfill hits UNIQUE constraint on commit and transaction rolls back.
+    #[test]
+    fn test_hash_collision_unique_constraint_rollback(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let db = Connection::open_in_memory()?;
+        db.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER DEFAULT 0,
+                is_cantrip INTEGER DEFAULT 0,
+                content_hash TEXT,
+                canonical_data TEXT,
+                schema_version INTEGER,
+                damage TEXT,
+                magic_resistance TEXT
+            );
+            CREATE UNIQUE INDEX idx_spell_content_hash ON spell(content_hash) WHERE content_hash IS NOT NULL;
+            "#,
+        )?;
+
+        // Two spells with identical legacy data so they produce the same content_hash
+        let same_desc = "Identical spell data for collision test.";
+        let same_name = "Collision Spell";
+        db.execute(
+            r#"INSERT INTO spell (name, level, description, school, range, components, casting_time, duration)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+            params![
+                same_name,
+                1,
+                same_desc,
+                "Evocation",
+                "60 feet",
+                "V, S, M",
+                "1 action",
+                "Instantaneous"
+            ],
+        )?;
+        db.execute(
+            r#"INSERT INTO spell (name, level, description, school, range, components, casting_time, duration)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+            params![
+                same_name,
+                1,
+                same_desc,
+                "Evocation",
+                "60 feet",
+                "V, S, M",
+                "1 action",
+                "Instantaneous"
+            ],
+        )?;
+
+        let temp = tempdir()?;
+        let result = run_hash_backfill(&db, temp.path());
+
+        assert!(result.is_err(), "Backfill should fail with UNIQUE constraint");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("UNIQUE") || err_msg.contains("unique"),
+            "Error should indicate UNIQUE constraint: {}",
+            err_msg
+        );
+
+        // Transaction must have rolled back: no spell should have content_hash set
+        let with_hash: i64 = db.query_row(
+            "SELECT COUNT(*) FROM spell WHERE content_hash IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(
+            with_hash, 0,
+            "After collision, transaction should roll back and no rows should have content_hash"
+        );
+
+        Ok(())
+    }
 }

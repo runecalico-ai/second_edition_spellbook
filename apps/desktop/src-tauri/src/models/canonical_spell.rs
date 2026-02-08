@@ -2449,13 +2449,13 @@ mod tests {
         assert!(!comps.somatic);
         assert!(!comps.material);
 
-        // Case: Combined string without separators (should NOT match)
+        // Case: Combined string without separators (VSM parses as V, S, M per parser spec)
         detail.components = Some("VSM".into());
         let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
         let comps = canon.components.unwrap();
-        assert!(!comps.verbal);
-        assert!(!comps.somatic);
-        assert!(!comps.material);
+        assert!(comps.verbal, "Undelimited VSM should parse as verbal");
+        assert!(comps.somatic, "Undelimited VSM should parse as somatic");
+        assert!(comps.material, "Undelimited VSM should parse as material");
     }
 
     #[test]

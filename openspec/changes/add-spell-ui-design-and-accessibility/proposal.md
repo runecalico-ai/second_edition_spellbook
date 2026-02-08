@@ -27,9 +27,9 @@ Implement a comprehensive UI polish layer on top of the structured data componen
 -   Visual regression testing
 
 ### Out of Scope
--   Functional component implementation (handled in Spec #3)
--   Backend logic (handled in Spec #1)
--   Data migration (handled in Spec #2)
+-   Functional component implementation (handled in Spec #3 - `update-spell-editor-structured-data`)
+-   Backend logic (handled in Spec #1 - `add-spell-canonical-hashing-foundation`)
+-   Data migration (handled in Spec #2 - `add-spell-data-migration-infrastructure`)
 
 ## Dependencies
 -   **Spec #3: `update-spell-editor-structured-data`**

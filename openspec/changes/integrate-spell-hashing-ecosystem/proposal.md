@@ -30,9 +30,9 @@ Update all major application subsystems to use canonical hashes:
 -   Integration documentation
 
 ### Out of Scope
--   Schema definition (Spec #1)
--   Migration of legacy data (Spec #2)
--   Spell Editor UI (Spec #3: `update-spell-editor-structured-data`)
+-   Schema definition (Spec #1 - `add-spell-canonical-hashing-foundation`)
+-   Migration of legacy data (Spec #2 - `add-spell-data-migration-infrastructure`)
+-   Spell Editor UI (Spec #3 - `update-spell-editor-structured-data`)
 
 ## Dependencies
 -   **Spec #1: `add-spell-canonical-hashing-foundation`**

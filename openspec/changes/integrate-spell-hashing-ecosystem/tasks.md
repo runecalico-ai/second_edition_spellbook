@@ -58,7 +58,9 @@
 - [ ] Migrate Spell Lists (per-class known/prepared sets in `character_class_spell`):
     - [ ] Update list items to reference `content_hash` instead of ID.
     - [ ] Create migration for existing lists (resolve IDs to hashes).
-    - [ ] Handle missing spells (show "Spell no longer in library" placeholder).
+    - [ ] Handle missing spells:
+        - [ ] Show "Spell no longer in library" placeholder.
+        - [ ] Provide "Remove" action to clear the broken reference.
 
 ## Artifact Integration
 - [ ] Migrate artifact spell references to content hash:
@@ -68,7 +70,9 @@
 ## Character Integration
 - [ ] Update Character Spellbook:
     - [ ] Reference spells by `content_hash` (pinned version).
-    - [ ] If that hash is missing from the library, show "Spell no longer in library" and optionally offer to remove the reference.
+    - [ ] If that hash is missing from the library:
+        - [ ] Show "Spell no longer in library" placeholder.
+        - [ ] Provide "Remove" action to clear the broken reference.
 
 ## Security Review
 ### SQL Injection & Input Validation

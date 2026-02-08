@@ -3,8 +3,9 @@
 ## Frontend Implementation
 ### Component Architecture
 - [ ] Create `StructuredFieldInput` component:
-    - [ ] Props: value, onChange, fieldType (range/duration/etc.).
-    - [ ] Render inputs: base_value (number), per_level (number), level_divisor (number), unit (dropdown).
+    - [ ] Props: value, onChange, fieldType (range/duration/area/casting_time/damage).
+    - [ ] Render inputs: base_value (number), per_level (number), divisor (number), unit (dropdown).
+    - [ ] Use lowercase unit values per canonical serialization spec (e.g., `"yd"`, `"ft"`, `"round"`).
     - [ ] Compute `.text` preview automatically based on inputs.
     - [ ] Display text preview below inputs (read-only, italic).
     - [ ] Implement locale-aware numeric input (handle `.` vs `,` decimal separators).
@@ -13,6 +14,14 @@
     - [ ] Render checkboxes: Verbal (V), Somatic (S), Material (M).
     - [ ] Output: `{verbal: boolean, somatic: boolean, material: boolean}`.
     - [ ] Display text preview: "V, S" or "V, S, M" based on checked boxes.
+    - [ ] When Material is checked, show sub-form for `MaterialComponentSpec`:
+        - [ ] Material name (text input).
+        - [ ] Quantity (number, default: 1.0).
+        - [ ] GP value (optional number).
+        - [ ] Is consumed (checkbox, default: false).
+        - [ ] Description (optional textarea).
+    - [ ] Support multiple material components (add/remove buttons).
+    - [ ] Preserve material component order (not sorted).
 - [ ] Create shared input validation utilities:
     - [ ] Validate number ranges (base_value >= 0, per_level >= 0).
     - [ ] Validate unit enums against schema.
@@ -24,18 +33,19 @@
     - [ ] Replace string input for `duration` with `StructuredFieldInput`.
     - [ ] Replace string input for `casting_time` with `StructuredFieldInput`.
     - [ ] Replace string input for `area` with `StructuredFieldInput`.
-- [ ] Integrate `ComponentCheckboxes` for components field.
+    - [ ] Replace string input for `damage` with `StructuredFieldInput` (damage pattern variation).
+- [ ] Integrate `ComponentCheckboxes` for components field (with material sub-form).
 - [ ] Add tradition-based validation:
     - [ ] If tradition = "ARCANE", require school selection.
     - [ ] If tradition = "DIVINE", require sphere selection.
     - [ ] If tradition = "BOTH", require both school and sphere.
     - [ ] Display validation errors inline.
 - [ ] Legacy data parsing and priority loading:
-    - [ ] Prioritize loading from `canonical_data` (JSON) if present.
-    - [ ] If `canonical_data` is missing, detect if fields are legacy string format.
-    - [ ] Auto-parse legacy strings using migration parser logic (reimplemented in frontend).
+    - [ ] Prioritize loading from `canonical_data` column (JSON blob, added in migration 12) if present.
+    - [ ] If `canonical_data` is null/missing, detect if fields are legacy string format.
+    - [ ] Call Tauri backend parser commands (avoid duplicating Rust parser logic in frontend).
     - [ ] Populate structured inputs with parsed values.
-    - [ ] Display warning if parsing failed (fallback used).
+    - [ ] Display warning banner if parsing fell back to `kind: "special"` (original text preserved in `.text` or `raw_legacy_value`).
 
 ### SpellDetail Display
 - [ ] Add hash display to `SpellDetail` view:
@@ -58,6 +68,10 @@
 - [ ] Test `ComponentCheckboxes` component:
     - [ ] Checkbox state to object conversion.
     - [ ] Text preview from checkboxes.
+    - [ ] Material sub-form visibility when M checked.
+    - [ ] Multiple material component add/remove.
+    - [ ] Material quantity validation (>= 1.0).
+    - [ ] Material name required validation.
 - [ ] Test legacy data parsing:
     - [ ] Parse simple range ("10 yards").
     - [ ] Parse variable range ("10 + 5/level yards").
@@ -78,12 +92,12 @@
     - [ ] Update user manual with structured field editing:
         - [ ] Document StructuredFieldInput component usage.
         - [ ] Explain how to enter base value, per-level, and units.
-        - [ ] Provide examples for common patterns (range, duration, damage).
-        - [ ] Document V/S/M checkbox usage.
+        - [ ] Provide examples for common patterns (range, duration, casting_time, area, damage).
+        - [ ] Document V/S/M checkbox usage and material component sub-form.
     - [ ] Update spell editor help:
         - [ ] Explain difference between legacy string and structured fields.
         - [ ] Document automatic text preview computation.
-        - [ ] Explain content hash visibility.
+        - [ ] Explain content hash visibility (computed by backend, displayed in UI).
 - [ ] Developer documentation:
     - [ ] Write component API guide:
         - [ ] `StructuredFieldInput` props and usage.

@@ -25,7 +25,7 @@ The application is moving from ID-based spell identity to content-addressable id
 
 - **Search**: Full-text search over spell description and over the human-readable text generated from structured fields (e.g. range, duration, area)—i.e. the text those types are composed from, not the complex types themselves—so users can find spells by content.
 - **Vault**: Store spell definitions in a content-addressable way (filename = hash) so duplicate content is deduplicated and integrity is verifiable.
-- **Import/Export**: Hash-based interchange (export ID = content hash), deduplication by hash, and a clear conflict-resolution flow when the same name has a different hash. **Export format:** Single-spell export = one `CanonicalSpell` JSON (optional top-level `schema_version`). Bundle export = wrapper object with `schema_version` and a `spells` array of `CanonicalSpell` (optionally a bundle format version field).
+- **Import/Export**: Hash-based interchange (export ID = content hash), deduplication by hash, and a clear conflict-resolution flow when the same name has a different hash. **Export format:** Single-spell export = one `CanonicalSpell` JSON (required top-level `schema_version`). Bundle export = wrapper object with required `schema_version`, required `bundle_format_version`, and a `spells` array of `CanonicalSpell`.
 - **References**: Spell lists and character spellbooks reference spells by content hash; missing spells are handled gracefully (e.g., placeholder or clear error).
 - **Security**: Rigorous validation and sanitization of imports (size limits, schema validation, no script injection), and safe FTS query construction.
 
@@ -46,21 +46,21 @@ The application is moving from ID-based spell identity to content-addressable id
 
 ### 2. Vault spell storage: hash-named files
 
-- **Decision:** Store spell definitions in the vault under a subfolder `spells/` as `spells/{content_hash}.json`. File content must match the hash (integrity check on read/write). The database remains the source of truth for “which spells exist”; vault files are content-addressable storage that can be GC’d when no spell references them. Vault files are written on spell insert/update (content-addressable by content hash). On spell delete, the vault file is removed by GC when no spell row references that hash (or may be deleted immediately when the last reference is removed—implementation choice).
+- **Decision:** Store spell definitions in the vault under a subfolder `spells/` as `spells/{content_hash}.json`. File content must match the hash (integrity check on read/write). The database remains the source of truth for “which spells exist”; vault files are content-addressable storage that can be GC’d when no spell references them. Vault files are written on spell insert/update (content-addressable by content hash). On spell delete, the vault file may be removed by either: (a) immediate deletion when the last reference is removed, or (b) deferred GC when no spell row references that hash. **Both approaches are valid**; the implementation may choose either or both (e.g., immediate delete for explicit user actions, GC for batch operations). Verification must cover both scenarios.
 - **Rationale:** Content-addressable storage gives deduplication, safe sharing, and integrity. Using the same hash as in the DB and in import/export keeps one canonical identifier across the ecosystem.
 - **Alternatives considered:** (a) Keep spells only in DB — rejected because the delta spec requires the vault to support hash-based spell storage. (b) Store by name — rejected (collision and versioning issues).
 
 ### 3. Import conflict resolution: name vs hash
 
 - **Decision:** When an imported spell has the same name as an existing spell but a different content hash, treat it as a conflict and present resolution options: Keep Existing, Replace with New, Keep Both (e.g., “Fireball (1)”), and "Apply to All” for the current import session only (not persisted). For large batches (e.g., 10+ conflicts), offer a summary dialog (Skip All, Replace All, Keep All, Review Each) to avoid dialog fatigue.
-- **Rationale:** Same name + different hash means the user might be updating a spell or importing a variant; forcing one behavior (e.g., always replace) would be surprising. Explicit resolution respects user intent. Numeric suffix (1), (2), … is the single convention for "Keep Both".
+- **Rationale:** Same name + different hash means the user might be updating a spell or importing a variant; forcing one behavior (e.g., always replace) would be surprising. Explicit resolution respects user intent. Numeric suffix (1), (2), … is the single convention for "Keep Both". **Collision handling:** If "Fireball (1)" already exists, increment to (2), (3), etc. until a unique name is found.
 - **Alternatives considered:** (a) Always replace — rejected (data loss risk). (b) Always keep both — rejected (clutter; user should choose).
 
-**Deduplication (same hash):** When an imported spell’s content hash already exists in the DB, do not insert a new row. Instead, skip insertion and merge metadata from the import into the existing spell (e.g. merge tags, append or merge `source_refs`). This keeps the library deduplicated while preserving new provenance.
+**Deduplication (same hash):** When an imported spell’s content hash already exists in the DB, do not insert a new row. Instead, skip insertion and merge metadata from the import into the existing spell. **Merge rules:** (1) Tags: union of existing and imported tags, no duplicates. (2) source_refs: append imported refs, deduplicate by URL. (3) Max limits: tags ≤ 100, source_refs ≤ 50. This keeps the library deduplicated while preserving new provenance.
 
 ### 4. Security: import limits and validation
 
-- **Decision:** Enforce file size limits (e.g., reject > 100 MB, warn/confirm > 10 MB), validate JSON schema and structure (reject deeply nested or huge arrays), sanitize text before display (XSS), and ensure FTS queries use parameterized/controlled construction (no raw user string in MATCH to prevent injection). Use a single bound parameter for the FTS MATCH expression (e.g. `… WHERE spell_fts MATCH ?`) and sanitize/escape FTS special characters in application code before binding. Implementers must escape FTS5 special characters (e.g. `"`, `-`, `*`) before binding the MATCH parameter; see SQLite FTS5 documentation for the full list. Validate URLs in `source_refs` (e.g., disallow `javascript:`).
+- **Decision:** Enforce file size limits (e.g., reject > 100 MB, warn/confirm > 10 MB), validate JSON schema and structure (reject deeply nested or huge arrays), sanitize text before display (XSS), and ensure FTS queries use parameterized/controlled construction (no raw user string in MATCH to prevent injection). Use a single bound parameter for the FTS MATCH expression (e.g. `… WHERE spell_fts MATCH ?`) and sanitize/escape FTS special characters in application code before binding. **FTS5 special characters to escape:** `"`, `*`, `(`, `)`, `^`, `:`, `-`, `+`, and the keywords `AND`, `OR`, `NOT`, `NEAR`. Validate URLs in `source_refs` (disallow `javascript:`, `data:`, and other non-http(s) protocols).
 - **Rationale:** Import is a primary attack surface (malicious or malformed files). Size and structure limits mitigate DoS; sanitization and safe FTS mitigate injection. Binding the search string as a single parameter and escaping FTS operators prevents injection while keeping the pattern clear for implementers.
 - **Alternatives considered:** (a) Trust imported content — rejected. (b) Sandbox parsing in a separate process — optional future hardening; not required for this change.
 
@@ -91,20 +91,20 @@ The application is moving from ID-based spell identity to content-addressable id
 
 ## Migration Plan
 
-1. **Order of work (recommended)**  
-   - Implement vault hash-based spell storage (`spells/{content_hash}.json`) and integrity check; then GC (on-demand first; periodic/after-import is implementation choice).  
-   - Add FTS indexing for structured/canonical text and switch search to MATCH (single `spell_fts` table).  
-   - Implement export with `id` = content hash; then import with validation, deduplication, and conflict resolution.  
-   - Migrate spell list, character spellbook, and artifact spell references to hash (DB migration + app logic).  
-   - Security pass: parameterized FTS (single bound param + escape FTS special chars), size limits, sanitization, URL validation.  
+1. **Order of work (recommended)**
+   - Implement vault hash-based spell storage (`spells/{content_hash}.json`) and integrity check; then GC (on-demand first; periodic/after-import is implementation choice).
+   - Add FTS indexing for structured/canonical text and switch search to MATCH (single `spell_fts` table).
+   - Implement export with `id` = content hash; then import with validation, deduplication, and conflict resolution.
+   - Migrate spell list, character spellbook, and artifact spell references to hash (DB migration + app logic).
+   - Security pass: parameterized FTS (single bound param + escape FTS special chars), size limits, sanitization, URL validation.
    - Documentation and E2E tests for import/export and conflict resolution.
 
-2. **Deployment**  
-   - Ship behind existing feature surface (no new flags required if migration is automatic).  
+2. **Deployment**
+   - Ship behind existing feature surface (no new flags required if migration is automatic).
    - Ensure Spec #2 migration has run so `content_hash` and canonical data exist before FTS/vault/import rely on them.
 
-3. **Rollback**  
-   - DB migrations for list/character hash references should be reversible (e.g., migration script that can restore ID references from a mapping table if we keep one temporarily). Before dropping `spell_id`, ensure a one-time mapping export or migration script can restore `spell_id` from `spell_content_hash` (join to `spell.id`) so rollback can repopulate `spell_id`.  
+3. **Rollback**
+   - DB migrations for list/character hash references should be reversible (e.g., migration script that can restore ID references from a mapping table if we keep one temporarily). Before dropping `spell_id`, ensure a one-time mapping export or migration script can restore `spell_id` from `spell_content_hash` (join to `spell.id`) so rollback can repopulate `spell_id`.
    - Vault: avoid deleting legacy spell files until the new hash-based flow is proven; keep rollback window where old code can still read legacy storage if needed.
 
 ## Resolved (pre-implementation decisions)

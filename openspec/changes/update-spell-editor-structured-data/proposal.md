@@ -9,26 +9,27 @@ Currently, the spell editor treats complex fields like Range, Duration, and Comp
 
 ## Solution
 Implement a set of specialized React components to handle structured spell data entry:
-1.  **`StructuredFieldInput`**: A reusable component for fields with Base Value, Per Level, Divisor, and Unit (e.g., Range, Duration).
-2.  **`ComponentCheckboxes`**: A dedicated input for Verbal, Somatic, and Material components.
+1.  **`StructuredFieldInput`**: A reusable component for fields with Base Value, Per Level, Divisor, and Unit (e.g., Range, Duration, Area, Casting Time, Damage).
+2.  **`ComponentCheckboxes`**: A dedicated input for Verbal, Somatic, and Material components, with a sub-form for material component details (name, quantity, cost, consumed).
 3.  **Editor Integration**: Replace legacy string inputs with these new components.
 4.  **Display**: Update the Spell Detail view to render structured data beautifully and show the content hash.
 
 ## Scope
 ### In Scope
--   Implementation of `StructuredFieldInput` component
--   Implementation of `ComponentCheckboxes` component
+-   Implementation of `StructuredFieldInput` component (range, duration, area, casting_time, damage)
+-   Implementation of `ComponentCheckboxes` component with material sub-form
 -   Integration into `SpellEditor` form
--   Legacy data auto-parsing on load (using Spec #2 parsers)
+-   Legacy data auto-parsing on load (via Tauri backend parsers)
 -   Tradition-based validation logic (e.g., Arcane requires School)
+-   Input validation (numeric constraints, unit enums, locale handling)
 -   `SpellDetail` view updates (hash display, badges)
 -   Component documentation and API guides
 
 ### Out of Scope
--   Backend schema changes (handled in Spec #1)
--   Data migration script (handled in Spec #2)
--   UI polish, accessibility, and E2E workflows (handled in Spec #4)
--   Import/Export (handled in Spec #5)
+-   Backend schema changes (handled in Spec #1 - `add-spell-canonical-hashing-foundation`)
+-   Data migration script (handled in Spec #2 - `add-spell-data-migration-infrastructure`)
+-   UI polish, accessibility, and E2E workflows (handled in Spec #4 - `Spell UI Design and Accessibility`)
+-   Import/Export (handled in Spec #5 - `integrate-spell-hashing-ecosystem`)
 
 ## Dependencies
 -   **Spec #1: `add-spell-canonical-hashing-foundation`**

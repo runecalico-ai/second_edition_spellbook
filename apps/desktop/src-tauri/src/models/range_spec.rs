@@ -122,6 +122,9 @@ pub struct RangeSpec {
     pub region_unit: Option<crate::models::area_spec::RegionUnit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// When parsing fails or falls back to Special, the original legacy string is stored here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_legacy_value: Option<String>,
 }
 
 // Word-boundary unit alias regexes (longer tokens first to avoid partial replacement)
@@ -221,6 +224,7 @@ mod tests {
         // Word-boundary replacement: only whole words are normalized; substrings are preserved.
         let mut spec_yd = RangeSpec {
             kind: RangeKind::Distance,
+            raw_legacy_value: None,
             text: Some("10 yards".to_string()),
             unit: Some(RangeUnit::Yd),
             distance: None,
@@ -234,6 +238,7 @@ mod tests {
 
         let mut spec_backyard = RangeSpec {
             kind: RangeKind::Special,
+            raw_legacy_value: None,
             text: Some("backyard".to_string()),
             unit: None,
             distance: None,
@@ -251,6 +256,7 @@ mod tests {
 
         let mut spec_ft = RangeSpec {
             kind: RangeKind::Distance,
+            raw_legacy_value: None,
             text: Some("1 foot".to_string()),
             unit: Some(RangeUnit::Ft),
             distance: None,
@@ -264,6 +270,7 @@ mod tests {
 
         let mut spec_footprint = RangeSpec {
             kind: RangeKind::Special,
+            raw_legacy_value: None,
             text: Some("footprint".to_string()),
             unit: None,
             distance: None,

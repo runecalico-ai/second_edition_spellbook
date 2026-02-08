@@ -268,6 +268,7 @@ impl AreaParser {
                 return Some(AreaSpec {
                     kind: AreaKind::Special,
                     notes: Some(input.to_string()),
+                    raw_legacy_value: Some(input.to_string()),
                     ..Default::default()
                 });
             }
@@ -316,6 +317,7 @@ impl AreaParser {
         Some(AreaSpec {
             kind: AreaKind::Special,
             notes: Some(input.to_string()),
+            raw_legacy_value: Some(input.to_string()),
             ..Default::default()
         })
     }

@@ -66,6 +66,9 @@ pub struct SpellCastingTime {
     pub per_level: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub level_divisor: Option<f64>,
+    /// When parsing fails or unit is Special, the original legacy string is stored here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_legacy_value: Option<String>,
 }
 
 impl SpellCastingTime {
@@ -1547,6 +1550,7 @@ mod tests {
             anchor: None,
             region_unit: None,
             notes: Some("Some  note".into()),
+            raw_legacy_value: None,
         });
 
         let mut spell2 = spell1.clone();
@@ -1597,6 +1601,7 @@ mod tests {
             base_value: Some(1.0),
             per_level: Some(0.0),
             level_divisor: Some(1.0),
+            raw_legacy_value: None,
         });
         spell.duration = Some(DurationSpec {
             kind: DurationKind::Time,
@@ -1614,6 +1619,7 @@ mod tests {
             notes: Some("2".to_string()), // Preserving text as notes if needed, though not strictly required for this test
             uses: None,
             condition: None,
+            raw_legacy_value: None,
         });
 
         let canonical_json = spell.to_canonical_json().unwrap();
@@ -1652,6 +1658,7 @@ mod tests {
             anchor: None,
             region_unit: None,
             notes: None,
+            raw_legacy_value: None,
         };
 
         spell1.range = Some(make_spec(10.0000001));
@@ -2292,6 +2299,7 @@ mod tests {
             anchor: None,
             region_unit: None,
             notes: None,
+            raw_legacy_value: None,
         });
 
         let mut value = serde_json::to_value(&spell).unwrap();

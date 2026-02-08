@@ -19,7 +19,7 @@ This process is **non-destructive**. Your original data is preserved.
 
 ### Troubleshooting
 If you suspect data issues:
-- **Check the logs**: A `migration.log` file is created in your data directory.
+- **Check the logs**: A `migration.log` file is created in your data directory. Logs are automatically rotated when they exceed 10MB or 30 days of age (rotated file: `migration.log.old`).
 - **Run Integrity Check**: You can run the application with the `--check-integrity` flag to scan for issues.
   ```bash
   .\spellbook-desktop.exe --check-integrity
@@ -103,6 +103,9 @@ Parsers convert legacy text strings into structured specification objects. Below
 
 > [!NOTE]
 > **Complex Duration Handling**: Parsers support most common patterns but may fall back to "Special" for highly conditional durations (e.g., "until dispelled or 1 day per level"). See [PARSER_COVERAGE.md](./PARSER_COVERAGE.md) for a complete coverage matrix and known limitations.
+
+> [!NOTE]
+> **Unparseable strings**: When parsing falls back to Special (or equivalent), the original legacy string is stored in the spec's **`raw_legacy_value`** field so it is preserved in `canonical_data` and included in hashing. See PARSER_COVERAGE.md for details.
 
 #### Component Patterns (`ComponentsParser`)
 

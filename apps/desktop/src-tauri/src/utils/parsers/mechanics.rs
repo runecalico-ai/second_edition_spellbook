@@ -61,6 +61,7 @@ impl MechanicsParser {
             return SpellDamageSpec {
                 kind: crate::models::damage::DamageKind::DmAdjudicated,
                 dm_guidance: Some(input_clean.to_string()),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
@@ -211,6 +212,7 @@ impl MechanicsParser {
             return SpellDamageSpec {
                 kind: crate::models::damage::DamageKind::DmAdjudicated,
                 dm_guidance: Some(input_clean.to_string()),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
@@ -221,6 +223,7 @@ impl MechanicsParser {
             parts: Some(parts),
             dm_guidance: None,
             notes: Some(input_clean.to_string()),
+            raw_legacy_value: None,
         }
     }
 

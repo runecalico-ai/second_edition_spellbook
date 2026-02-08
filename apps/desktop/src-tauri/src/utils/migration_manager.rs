@@ -2,9 +2,38 @@ use crate::models::spell::SpellDetail;
 use crate::models::{AreaKind, CanonicalSpell, DurationKind, RangeKind};
 use crate::utils::spell_parser::SpellParser;
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::io::Write;
 use std::path::Path;
+
+/// Rotate migration.log if it exceeds 10MB or is older than 30 days.
+fn maybe_rotate_log(log_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    const MAX_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10MB
+    const MAX_AGE_DAYS: i64 = 30;
+
+    if !log_path.exists() {
+        return Ok(());
+    }
+    let meta = std::fs::metadata(log_path)?;
+    let size_ok = meta.len() < MAX_SIZE_BYTES;
+    let age_ok = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| {
+            let now = Utc::now().timestamp();
+            let then = d.as_secs() as i64;
+            (now - then) < MAX_AGE_DAYS * 24 * 3600
+        })
+        .unwrap_or(true);
+    if size_ok && age_ok {
+        return Ok(());
+    }
+    let rotated = log_path.with_extension("log.old");
+    let _ = std::fs::remove_file(&rotated);
+    std::fs::rename(log_path, rotated)?;
+    Ok(())
+}
 
 pub fn run_hash_backfill(
     conn: &Connection,
@@ -23,10 +52,11 @@ pub fn run_hash_backfill(
     eprintln!("Backfilling hashes for {} spells...", count);
 
     let log_path = data_dir.join("migration.log");
+    let _ = maybe_rotate_log(&log_path);
     let mut log_file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_path)
+        .open(&log_path)
         .ok();
 
     if let Some(ref mut log) = log_file {
@@ -38,10 +68,25 @@ pub fn run_hash_backfill(
         );
     }
 
-    // Backup
+    // Backup using SQLite backup API (VACUUM INTO does not support parameter placeholders)
     let backup_path = data_dir.join(format!("spells_backup_{}.db", Utc::now().timestamp()));
     eprintln!("Backing up database to {:?}", backup_path);
-    conn.execute("VACUUM INTO ?", params![backup_path.to_str().unwrap()])?;
+    {
+        let mut backup_conn = Connection::open(&backup_path)?;
+        let backup = rusqlite::backup::Backup::new(conn, &mut backup_conn)?;
+        backup.step(-1)?;
+    }
+    // Verify backup integrity before proceeding
+    let meta = std::fs::metadata(&backup_path)?;
+    if meta.len() == 0 {
+        return Err("Backup file is empty".into());
+    }
+    let verify_conn = Connection::open(&backup_path)?;
+    let ok: String = verify_conn.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+    if ok != "ok" {
+        let _ = std::fs::remove_file(&backup_path);
+        return Err(format!("Backup integrity check failed: {}", ok).into());
+    }
 
     let mut stmt = conn.prepare(
         r#"
@@ -240,10 +285,11 @@ pub fn recompute_all_hashes(
     data_dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let log_path = data_dir.join("migration.log");
+    let _ = maybe_rotate_log(&log_path);
     let mut log_file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_path)?;
+        .open(&log_path)?;
 
     writeln!(log_file, "[{}] Starting hash re-computation...", Utc::now())?;
 
@@ -380,6 +426,30 @@ pub fn check_integrity(conn: &Connection) -> Result<(), Box<dyn std::error::Erro
         println!("No spells with NULL content_hash.");
     }
 
+    // Orphan check: character_class_spell referencing non-existent spell
+    let orphan_sql = "SELECT ccs.character_class_id, ccs.spell_id FROM character_class_spell ccs LEFT JOIN spell s ON s.id = ccs.spell_id WHERE s.id IS NULL";
+    let orphans: Vec<(i64, i64)> = match conn.prepare(orphan_sql) {
+        Ok(mut stmt) => stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map(|m| m.filter_map(Result::ok).collect())
+            .unwrap_or_default(),
+        Err(_) => vec![],
+    };
+    if !orphans.is_empty() {
+        eprintln!(
+            "Found {} character_class_spell row(s) referencing non-existent spell.id.",
+            orphans.len()
+        );
+        for (class_id, spell_id) in orphans.iter().take(10) {
+            eprintln!("  - character_class_id={}, spell_id={}", class_id, spell_id);
+        }
+        if orphans.len() > 10 {
+            eprintln!("  ... and {} more.", orphans.len() - 10);
+        }
+    } else {
+        println!("No orphan character_class_spell references.");
+    }
+
     // Check collisions
     let mut stmt = conn.prepare("SELECT content_hash, COUNT(*) as c FROM spell WHERE content_hash IS NOT NULL GROUP BY content_hash HAVING c > 1")?;
     let collisions = stmt.query_map([], |row| {
@@ -397,6 +467,87 @@ pub fn check_integrity(conn: &Connection) -> Result<(), Box<dyn std::error::Erro
     }
 
     Ok(())
+}
+
+/// Optional runtime sync-check: compare flat columns to canonical_data and log discrepancies.
+/// Enable by setting env var SPELLBOOK_SYNC_CHECK=1.
+pub fn sync_check_spell(conn: &Connection, spell_id: i64) {
+    if std::env::var("SPELLBOOK_SYNC_CHECK").unwrap_or_default() != "1" {
+        return;
+    }
+    type Row = (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+    let row: Option<Row> = conn
+        .query_row(
+            "SELECT range, duration, casting_time, area, components, canonical_data FROM spell WHERE id = ?",
+            [spell_id],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
+        )
+        .optional()
+        .ok()
+        .flatten();
+    let Some((range_flat, duration_flat, casting_time_flat, area_flat, components_flat, canonical_json)) = row else {
+        return;
+    };
+    let Some(canonical_json) = canonical_json else {
+        return;
+    };
+    let Ok(canonical) = serde_json::from_str::<CanonicalSpell>(&canonical_json) else {
+        return;
+    };
+    let parser = SpellParser::new();
+    let mut discrepancies = Vec::new();
+    if let Some(ref flat) = range_flat {
+        let parsed = parser.parse_range(flat);
+        if canonical.range.as_ref() != Some(&parsed) {
+            discrepancies.push("range");
+        }
+    }
+    if let Some(ref flat) = duration_flat {
+        let parsed = parser.parse_duration(flat);
+        if canonical.duration.as_ref() != Some(&parsed) {
+            discrepancies.push("duration");
+        }
+    }
+    if let Some(ref flat) = casting_time_flat {
+        let parsed = parser.parse_casting_time(flat);
+        if canonical.casting_time.as_ref() != Some(&parsed) {
+            discrepancies.push("casting_time");
+        }
+    }
+    if let Some(ref flat) = area_flat {
+        let parsed = parser.parse_area(flat);
+        if canonical.area != parsed {
+            discrepancies.push("area");
+        }
+    }
+    if let Some(ref flat) = components_flat {
+        let parsed = parser.parse_components(flat);
+        if canonical.components.as_ref() != Some(&parsed) {
+            discrepancies.push("components");
+        }
+    }
+    if !discrepancies.is_empty() {
+        eprintln!(
+            "[sync_check] spell_id={}: flat vs canonical mismatch: {:?}",
+            spell_id, discrepancies
+        );
+    }
 }
 
 use std::path::PathBuf;
@@ -490,20 +641,51 @@ pub fn detect_collisions(conn: &Connection) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-pub fn export_migration_report(data_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn export_migration_report(
+    conn: &Connection,
+    data_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     let log_path = data_dir.join("migration.log");
     if !log_path.exists() {
         return Err("No migration log found.".into());
     }
 
     let content = std::fs::read_to_string(&log_path)?;
-    let export_path = data_dir.join(format!("migration_report_{}.json", Utc::now().timestamp()));
-
-    // Simple JSON wrapping of log lines for now
-    use serde_json::json;
     let lines: Vec<&str> = content.lines().collect();
+
+    let spell_count: i64 = conn.query_row("SELECT COUNT(*) FROM spell", [], |r| r.get(0))?;
+
+    let mut parse_failures = serde_json::Map::new();
+    let range_fail = lines.iter().filter(|l| l.contains("Failed to parse range")).count();
+    let duration_fail = lines.iter().filter(|l| l.contains("Failed to parse duration")).count();
+    let casting_time_fail = lines
+        .iter()
+        .filter(|l| l.contains("Failed to parse casting_time"))
+        .count();
+    let area_fail = lines.iter().filter(|l| l.contains("Failed to parse area")).count();
+    parse_failures.insert(
+        "range".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(range_fail)),
+    );
+    parse_failures.insert(
+        "duration".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(duration_fail)),
+    );
+    parse_failures.insert(
+        "casting_time".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(casting_time_fail)),
+    );
+    parse_failures.insert(
+        "area".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(area_fail)),
+    );
+
+    let export_path = data_dir.join(format!("migration_report_{}.json", Utc::now().timestamp()));
+    use serde_json::json;
     let json_output = json!({
         "timestamp": Utc::now().to_rfc3339(),
+        "spell_count": spell_count,
+        "parse_failures": parse_failures,
         "log_lines": lines
     });
 

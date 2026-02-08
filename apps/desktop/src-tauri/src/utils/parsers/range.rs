@@ -333,6 +333,7 @@ impl RangeParser {
                         matched_spec = Some(RangeSpec {
                             kind: RangeKind::Special,
                             text: Some(input_clean.to_string()),
+                            raw_legacy_value: Some(input_clean.to_string()),
                             requires: requires.clone(),
                             anchor,
                             region_unit,
@@ -442,6 +443,7 @@ impl RangeParser {
             matched_spec.unwrap_or_else(|| RangeSpec {
                 kind: RangeKind::Special,
                 text: Some(input_clean.to_string()),
+                raw_legacy_value: Some(input_clean.to_string()),
                 requires: requires.clone(),
                 anchor,
                 region_unit,

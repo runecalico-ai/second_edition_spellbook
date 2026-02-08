@@ -252,6 +252,9 @@ pub struct AreaSpec {
     pub moves_with: Option<MovesWith>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// When parsing fails or falls back to Special, the original legacy string is stored here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_legacy_value: Option<String>,
 }
 
 impl AreaSpec {

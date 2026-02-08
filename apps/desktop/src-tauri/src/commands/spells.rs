@@ -2,6 +2,7 @@ use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
 use crate::models::{SpellArtifact, SpellCreate, SpellDetail, SpellSummary, SpellUpdate};
+use crate::utils::migration_manager;
 use chrono::Utc;
 use rusqlite::params;
 use rusqlite::{Connection, OptionalExtension};
@@ -110,6 +111,10 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
         )
         .optional()?
         .ok_or_else(|| AppError::NotFound("Spell not found".into()))?;
+
+    if let Some(sid) = spell.id {
+        migration_manager::sync_check_spell(conn, sid);
+    }
 
     let mut stmt = conn.prepare(
         "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
@@ -414,6 +419,7 @@ pub fn apply_spell_update_with_conn(
         ],
     )?;
 
+    migration_manager::sync_check_spell(conn, spell.id);
     Ok(spell.id)
 }
 

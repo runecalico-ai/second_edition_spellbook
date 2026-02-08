@@ -49,12 +49,12 @@
         - [x] Log each migration step with timestamp.
         - [x] Log post-migration stats.
 - [x] Provide rollback functionality:
-    - [ ] Add `--rollback-migration` CLI flag:
-        - [ ] Restore from latest backup.
-        - [ ] Verify restored database integrity.
-        - [ ] Re-run hash computation if needed.
-    - [ ] Add `--list-backups` CLI flag to show available backups.
-    - [ ] Add `--restore-backup <file>` CLI flag for manual restore.
+    - [x] Add `--rollback-migration` CLI flag:
+        - [x] Restore from latest backup.
+        - [x] Verify restored database integrity.
+        - [x] Re-run hash computation if needed.
+    - [x] Add `--list-backups` CLI flag to show available backups.
+    - [x] Add `--restore-backup <file>` CLI flag for manual restore.
 - [x] Document recovery procedures:
     - [x] Create TROUBLESHOOTING.md with recovery steps.
     - [x] Document common migration failure scenarios.

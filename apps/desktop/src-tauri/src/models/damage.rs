@@ -305,6 +305,9 @@ pub struct SpellDamageSpec {
     pub dm_guidance: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// When parsing fails or kind is DmAdjudicated, the original legacy string is stored here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_legacy_value: Option<String>,
 }
 
 impl SpellDamageSpec {
@@ -408,6 +411,7 @@ mod tests {
         let mut spec = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sum,
+            raw_legacy_value: None,
             parts: Some(vec![DamagePart {
                 id: "main".to_string(),
                 damage_type: DamageType::Fire,
@@ -445,6 +449,7 @@ mod tests {
         let mut spec = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sequence,
+            raw_legacy_value: None,
             parts: Some(vec![
                 DamagePart {
                     id: "z_initial".to_string(),
@@ -511,6 +516,7 @@ mod tests {
         let mut spec = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sum, // Non-sequence mode
+            raw_legacy_value: None,
             parts: Some(vec![
                 DamagePart {
                     id: "z_third".to_string(),
@@ -583,6 +589,7 @@ mod tests {
             let mut spec = SpellDamageSpec {
                 kind: DamageKind::Modeled,
                 combine_mode: mode,
+                raw_legacy_value: None,
                 parts: Some(vec![
                     DamagePart {
                         id: "z".to_string(),
@@ -638,6 +645,7 @@ mod tests {
         let mut spec1 = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sequence,
+            raw_legacy_value: None,
             parts: Some(vec![
                 DamagePart {
                     id: "first".to_string(),
@@ -677,6 +685,7 @@ mod tests {
         let mut spec2 = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sequence,
+            raw_legacy_value: None,
             parts: Some(vec![
                 DamagePart {
                     id: "second".to_string(), // Swapped order

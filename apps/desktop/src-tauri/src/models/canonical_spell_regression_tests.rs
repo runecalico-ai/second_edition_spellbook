@@ -463,6 +463,7 @@ fn test_regression_range_text_word_boundaries() {
         anchor: None,
         region_unit: None,
         notes: None,
+        raw_legacy_value: None,
     });
 
     let mut spell_yards = spell_backyard.clone();

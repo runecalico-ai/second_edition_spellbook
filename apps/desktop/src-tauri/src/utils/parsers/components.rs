@@ -88,6 +88,7 @@ impl ComponentsParser {
             base_value: Some(0.0),
             per_level: Some(0.0),
             level_divisor: Some(1.0),
+            raw_legacy_value: Some(input.to_string()),
         }
     }
 

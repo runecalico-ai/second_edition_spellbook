@@ -17,7 +17,7 @@ The system SHALL provide a parsing engine to convert legacy string-based fields 
 
 #### Scenario: Parsing Range String
 - **WHEN** a legacy spell has range "10 yards + 5/level"
-- **THEN** the parsing engine SHALL convert this to a structured duration object: `{"base": 10, "unit": "yards", "scaling": {"value": 5, "per": "level"}}`
+- **THEN** the parsing engine SHALL convert this to a structured **range** object: `{"base": 10, "unit": "yards", "scaling": {"value": 5, "per": "level"}}`
 
 #### Scenario: Handling Failed Parses
 - **WHEN** a legacy string cannot be automatically parsed with high confidence

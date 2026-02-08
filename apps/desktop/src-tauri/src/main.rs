@@ -31,8 +31,10 @@ fn main() {
     }
 
     if args.contains(&"--export-migration-report".to_string()) {
+        let pool = init_db(None, false).expect("Failed to init DB");
+        let conn = pool.get().expect("Failed to get connection");
         let data_dir = app_data_dir().expect("Failed to get data dir");
-        migration_manager::export_migration_report(&data_dir).expect("Export failed");
+        migration_manager::export_migration_report(&conn, &data_dir).expect("Export failed");
         return;
     }
 

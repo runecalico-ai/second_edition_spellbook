@@ -16,10 +16,10 @@ The application SHALL store all application data in a local SQLite database. The
 The system SHALL provide administrative CLI tools to manage the lifecycle of spell data hashes and migration states.
 
 #### Scenario: Recomputing Hashes
-- **WHEN** the user runs `spellbook-admin --recompute-hashes`
+- **WHEN** the user runs `spellbook-desktop --recompute-hashes`
 - **THEN** the system SHALL re-calculate hashes for all spells in the `library` and update the `content_hash` column
 
 #### Scenario: Integrity Check
-- **WHEN** the user runs `spellbook-admin --check-integrity`
+- **WHEN** the user runs `spellbook-desktop --check-integrity`
 - **THEN** the system SHALL verify that the `content_hash` matches the current `canonical_data` for every spell
 - **AND** report any discrepancies or corruption

@@ -284,6 +284,7 @@ impl DurationParser {
         DurationSpec {
             kind: DurationKind::Special,
             notes: Some(input.to_string()),
+            raw_legacy_value: Some(input.to_string()),
             ..Default::default()
         }
     }

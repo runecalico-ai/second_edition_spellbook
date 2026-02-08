@@ -85,6 +85,10 @@ pub struct DurationSpec {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+
+    /// When parsing fails or falls back to Special, the original legacy string is stored here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_legacy_value: Option<String>,
 }
 
 impl Default for DurationSpec {
@@ -96,6 +100,7 @@ impl Default for DurationSpec {
             condition: None,
             uses: None,
             notes: None,
+            raw_legacy_value: None,
         }
     }
 }

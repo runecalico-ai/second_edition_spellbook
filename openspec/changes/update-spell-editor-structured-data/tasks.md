@@ -2,26 +2,26 @@
 
 ## Frontend Implementation
 ### Component Architecture
-- **Scalar reference**: Dimension and scalar fields use schema shape `{ mode, value, per_level }` per `$defs/scalar` in `apps/desktop/src-tauri/schemas/spell.schema.json`.
+- **Scalar reference**: Dimension and scalar fields use schema shape `{ mode, value, per_level }` per `#/$defs/scalar` in `apps/desktop/src-tauri/schemas/spell.schema.json`.
 - [ ] Create `StructuredFieldInput` component (accepts `fieldType`, emits schema-native shape per spell.schema.json):
     - [ ] Props: value, onChange, fieldType (range | duration | casting_time).
-    - [ ] Emit shape by fieldType: **range** → RangeSpec (kind, unit, distance scalar { mode, value, per_level } where applicable); **duration** → DurationSpec (kind, unit, duration scalar where applicable); **casting_time** → flat object (base_value, per_level, level_divisor, unit, text).
-    - [ ] Render inputs appropriate to fieldType (for casting_time: base_value, per_level, level_divisor, unit; for range/duration: kind + scalar inputs mapping to distance/duration).
+    - [ ] Emit shape by fieldType: **range** → RangeSpec (per `#/$defs/RangeSpec`); **duration** → DurationSpec; **casting_time** → flat object (base_value, per_level, level_divisor, unit, text).
+    - [ ] Render inputs appropriate to fieldType. For **range** (full kind support): distance-based kinds → kind + scalar + unit; kind-only kinds → kind selector only; `special` → kind + raw_legacy_value. For **duration** (full kind support): `instant`/`permanent`/`until_dispelled`/`concentration` → kind only; `time` → kind + unit + duration scalar; `conditional`/`until_triggered`/`planar` → kind + condition text; `usage_limited` → kind + uses scalar; `special` → kind + raw_legacy_value. For casting_time: base_value, per_level, level_divisor, unit.
     - [ ] Use lowercase unit values per canonical serialization spec for serialization (e.g., `"yd"`, `"ft"`, `"round"`); UI may show human-friendly labels (e.g. "Yards") that map to these enums.
     - [ ] Compute `.text` preview automatically based on inputs.
     - [ ] Display text preview below inputs (read-only, italic).
     - [ ] Implement locale-aware numeric input (handle `.` vs `,` decimal separators).
     - [ ] Validate inputs against schema constraints.
 - [ ] Create `DamageForm` component:
-    - [ ] Handle `SpellDamageSpec` structure (per `SpellDamageSpec` in `apps/desktop/src-tauri/schemas/spell.schema.json`).
+    - [ ] Handle `SpellDamageSpec` structure (per `#/$defs/SpellDamageSpec` in spell.schema.json).
     - [ ] Enum selector for `kind`: "modeled", "dm_adjudicated", "none".
     - [ ] `modeled`:
         - [ ] Validated list of `DamagePart`. Each new part MUST satisfy schema required fields: id, damage_type, base, application, save. Use schema-default or UI defaults for application and save when adding a new part (e.g. instant / none or as defined in schema); if the backend/parser supplies defaults when creating a part, the UI MAY defer to those.
-        - [ ] Combine mode selector (sum, max, etc.).
+        - [ ] Combine mode selector: sum, max, choose_one, sequence (per `#/$defs/SpellDamageSpec` combine_mode enum).
     - [ ] `dm_adjudicated`: Text area for guidance.
-- [ ] Create `AreaForm` component (per `AreaSpec` in `apps/desktop/src-tauri/schemas/spell.schema.json`; dimensions use scalar `{ mode, value, per_level }` per schema):
+- [ ] Create `AreaForm` component (per `#/$defs/AreaSpec` in spell.schema.json; dimensions use `#/$defs/scalar`):
     - [ ] Enum selector for `kind`: point, radius_circle, radius_sphere, cone, line, rect, rect_prism, cylinder, wall, cube, volume, surface, tiles, creatures, objects, region, scope, special.
-    - [ ] Dynamic inputs based on kind (required fields per AreaSpec in spell.schema.json):
+    - [ ] Dynamic inputs based on kind (required fields per `#/$defs/AreaSpec`):
         - [ ] radius_circle / radius_sphere: `radius`, `shape_unit`.
         - [ ] cone / line: `length`, `shape_unit`.
         - [ ] rect: `length`, `width`, `shape_unit`.
@@ -37,21 +37,21 @@
         - [ ] scope: `scope_unit`.
         - [ ] point / special: kind only (special may show raw_legacy_value).
     - [ ] Support scalar inputs for dimensions (scalar = mode, value, per_level per schema; use helper or sub-fields).
-- [ ] Create `SavingThrowInput` component (per `SavingThrowSpec` in `apps/desktop/src-tauri/schemas/spell.schema.json`; enum selector for kind + optional custom/special field per spell-editor spec pattern):
+- [ ] Create `SavingThrowInput` component (per `#/$defs/SavingThrowSpec`; enum selector for kind + optional custom/special field per spell-editor spec pattern):
     - [ ] Enum selector for `kind`: "none", "single", "multiple", "dm_adjudicated".
     - [ ] If `single`, show SingleSave sub-form (save_type, applies_to, on_success, on_failure, etc.).
     - [ ] If `multiple`, show list of SingleSave sub-forms (add/remove).
     - [ ] If `dm_adjudicated`, show dm_guidance text area.
 - [ ] Create `MagicResistanceInput` component (enum selector for kind + optional custom/special field per spell-editor spec pattern):
     - [ ] Enum selector for `kind`: "unknown", "normal", "ignores_mr", "partial", "special".
-    - [ ] Enum selector for `applies_to`.
+    - [ ] Enum selector for `applies_to` (shown for ALL kinds; for partial/special, show both applies_to and kind-specific sub-form).
     - [ ] When kind is "partial", show sub-form for `partial`: scope (required), optional part_ids.
     - [ ] When kind is "special", show field for `special_rule` (optional text per schema).
 - [ ] Create `ComponentCheckboxes` component:
     - [ ] Render checkboxes: Verbal (V), Somatic (S), Material (M).
-    - [ ] Output: `components: { verbal, somatic, material }`; when material is true also manage (or pass to sibling) `material_components: MaterialComponentSpec[]` so SpellEditor state has both.
+    - [ ] Output: `components: { verbal, somatic, material }`; when material is true also manage (or pass to sibling) `material_components` per `#/$defs/MaterialComponentSpec` so SpellEditor state has both.
     - [ ] Display text preview: "V, S" or "V, S, M" based on checked boxes.
-    - [ ] When Material is checked, show sub-form for `MaterialComponentSpec`:
+    - [ ] When Material is checked, show sub-form for `#/$defs/MaterialComponentSpec`:
         - [ ] Material name (text input, required).
         - [ ] Quantity (number, default: 1.0).
         - [ ] GP value (optional number).
@@ -90,21 +90,22 @@
     - [ ] Display validation errors inline.
 - [ ] Legacy data parsing and priority loading:
     - [ ] Prioritize loading from `canonical_data` column (JSON blob; see add-spell-canonical-hashing-foundation) if present.
+    - [ ] Hybrid: If `canonical_data` exists but a field (e.g. range) is null/absent and legacy string exists, parse that field and merge into structured state.
     - [ ] If `canonical_data` is null/missing, detect if fields are legacy string format.
     - [ ] Call Tauri backend parser commands (see Backend tasks below); frontend MUST NOT duplicate Rust parser logic.
     - [ ] Populate structured inputs with parsed values.
     - [ ] Display warning banner if parsing fell back to `kind: "special"`. When kind is "special", the authoritative storage for the original legacy string is `raw_legacy_value`; the computed `.text` may mirror it for display.
 
 ### Backend (Tauri parser commands)
-- [ ] Expose spell parsers as Tauri commands if not already present (use existing `SpellParser` in `src-tauri/src/utils/spell_parser.rs`):
-    - [ ] `parse_spell_range(legacy: string)` → RangeSpec (schema-native).
-    - [ ] `parse_spell_duration(legacy: string)` → DurationSpec.
-    - [ ] `parse_spell_casting_time(legacy: string)` → casting_time object.
-    - [ ] `parse_spell_area(legacy: string)` → AreaSpec | null.
-    - [ ] `parse_spell_damage(legacy: string)` → SpellDamageSpec.
-    - [ ] `parse_spell_components(legacy: string)` → components + material_components where parseable (optional for legacy string loading).
+- [ ] Expose spell parsers as Tauri commands if not already present. Tauri command names MUST use `parse_spell_*` prefix (clear for frontend). Commands wrap `SpellParser` in `src-tauri/src/utils/spell_parser.rs`:
+    - [ ] `parse_spell_range(legacy: string)` → RangeSpec (wraps `SpellParser::parse_range`).
+    - [ ] `parse_spell_duration(legacy: string)` → DurationSpec (wraps `SpellParser::parse_duration`).
+    - [ ] `parse_spell_casting_time(legacy: string)` → casting_time object (wraps `SpellParser::parse_casting_time` via components).
+    - [ ] `parse_spell_area(legacy: string)` → AreaSpec | null (wraps `SpellParser::parse_area`).
+    - [ ] `parse_spell_damage(legacy: string)` → SpellDamageSpec (wraps `SpellParser::parse_damage`).
+    - [ ] `parse_spell_components(legacy: string)` → components + material_components where parseable (wraps `SpellParser::parse_components`; optional for legacy string loading).
     - [ ] Register commands in `lib.rs` invoke_handler.
-    - [ ] Return types MUST match spell.schema.json shapes (snake_case for JSON; Tauri may camelCase for JS).
+    - [ ] Return types MUST use camelCase for IPC per project standard (see project.md, DEVELOPMENT.md, src-tauri AGENTS.md). Backend structs MUST use `#[serde(rename_all = "camelCase")]`. Shapes conceptually match spell.schema.json; canonical storage in `canonical_data` uses snake_case (conversion happens when building CanonicalSpell for persistence).
 
 ### SpellDetail Display
 - [ ] Add hash display to `SpellDetail` view:
@@ -112,6 +113,7 @@
     - [ ] Add "Copy" button to copy full hash to clipboard.
     - [ ] Add "Expand" button to show full 64-character hash.
     - [ ] Style hash as code block (monospace, light gray background).
+    - [ ] Add data-testid: `spell-detail-hash-display`, `spell-detail-hash-copy`, `spell-detail-hash-expand` (per frontend-standards).
 - [ ] Render structured fields in detail view:
     - [ ] Display computed `.text` for range, duration, casting_time, area.
     - [ ] Display casting_time (e.g. computed `.text` or equivalent).

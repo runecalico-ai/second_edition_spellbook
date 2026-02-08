@@ -16,9 +16,18 @@ The Spell Editor MUST provide dedicated input components for structured spell da
 - AND the component MUST display a computed text preview in real-time.
 
 #### UI mapping to schema shapes
-- **Scalar shape**: Dimension and scalar fields use the schema scalar shape `{ mode: "fixed" | "per_level", value?, per_level?, ... }` per `$defs/scalar` in `apps/desktop/src-tauri/schemas/spell.schema.json`. Range distance, duration duration, and Area dimensions (radius, length, etc.) all use this shape.
-- **Range**: The editor shows a simplified scalar UI that maps to RangeSpec (e.g. kind=distance + distance=scalar { mode, value, per_level } + unit).
-- **Duration**: The editor shows a simplified scalar UI that maps to DurationSpec (kind + duration scalar + unit where applicable).
+- **Scalar shape**: Dimension and scalar fields use the schema scalar shape `{ mode: "fixed" | "per_level", value?, per_level?, ... }` per `#/$defs/scalar` in spell.schema.json. Range distance, duration duration, and Area dimensions (radius, length, etc.) all use this shape.
+- **Range** (full support for all RangeSpec kinds per `#/$defs/RangeSpec`):
+  - **Distance-based** (`distance`, `distance_los`, `distance_loe`): kind selector + scalar (mode, value, per_level) + unit.
+  - **Kind-only** (`personal`, `touch`, `los`, `loe`, `sight`, `hearing`, `voice`, `senses`, `same_room`, `same_structure`, `same_dungeon_level`, `wilderness`, `same_plane`, `interplanar`, `anywhere_on_plane`, `domain`, `unlimited`): kind selector only; no distance/unit (schema forbids them).
+  - **Special**: kind selector + `raw_legacy_value` text field.
+  - Kind selector is always shown; scalar/unit inputs are shown only when kind requires them.
+- **Duration** (full support for all DurationSpec kinds per `#/$defs/DurationSpec`):
+  - `instant`, `permanent`, `until_dispelled`, `concentration`: kind selector only (no unit/duration).
+  - `time`: kind + `unit` + `duration` scalar (mode, value, per_level).
+  - `conditional`, `until_triggered`, `planar`: kind + `condition` text.
+  - `usage_limited`: kind + `uses` scalar.
+  - `special`: kind + `raw_legacy_value` text.
 - **Casting time**: The UI maps 1:1 to the flat casting_time object (base_value, per_level, level_divisor, unit, text).
 
 #### Scenario: Legacy Data Loading
@@ -27,12 +36,20 @@ The Spell Editor MUST provide dedicated input components for structured spell da
 - THEN the editor MUST load structured values from `canonical_data`
 - AND populate all `StructuredFieldInput` components with those values.
 
+#### Scenario: Hybrid canonical_data (partial)
+- GIVEN a spell where `canonical_data` exists but a specific field (e.g. range, duration) is null or absent
+- AND a legacy string exists for that field (e.g. from flat columns)
+- WHEN opening the spell in the editor
+- THEN the editor MUST parse that field via the Tauri parser commands and merge the parsed structured value into the editor state for that field.
+
 #### Scenario: Legacy String Parsing
 - GIVEN a spell with null `canonical_data` and legacy string values
 - WHEN opening the spell in the editor
-- THEN the editor MUST call Tauri backend parser commands (`parse_spell_range`, `parse_spell_duration`, `parse_spell_casting_time`, `parse_spell_area`, `parse_spell_damage`, and optionally `parse_spell_components` for legacy component strings). These commands accept a legacy string and return the schema-native structured type; they are implemented in this change if not already present.
+- THEN the editor MUST call Tauri backend parser commands. Command names use `parse_spell_*` prefix: `parse_spell_range`, `parse_spell_duration`, `parse_spell_casting_time`, `parse_spell_area`, `parse_spell_damage`, and optionally `parse_spell_components` for legacy component strings. These commands wrap `SpellParser::parse_range`, `SpellParser::parse_duration`, etc. in `src-tauri/src/utils/spell_parser.rs`. Each accepts a legacy string and returns the schema-native structured type.
 - AND populate structured inputs with parsed values
-- AND display a warning banner if parsing fell back to `kind: "special"`. When kind is "special", the authoritative storage for the original legacy string is `raw_legacy_value`; the computed `.text` may mirror it for display.
+- AND display a warning banner if parsing fell back to `kind: "special"`. The banner MUST appear as a single banner at the top of the form, listing the fields that fell back to special (e.g. "Range and Duration could not be fully parsed; original text preserved"). When kind is "special", the authoritative storage for the original legacy string is `raw_legacy_value`; the computed `.text` may mirror it for display.
+
+**Parser fallbacks:** SpellParser returns schema-valid structured types (no `Result`); on parse failure it returns fallbacks such as `kind: "special"` with `raw_legacy_value` preserved. The UI MUST handle any unexpected parser errors (e.g. Tauri command failure) defensively (e.g. show error message, fall back to kind=special with raw string).
 
 ### Requirement: Component Input
 The Spell Editor MUST provide explicit controls for spell components.
@@ -42,7 +59,7 @@ The Spell Editor MUST provide explicit controls for spell components.
 - WHEN editing spell components
 - THEN the editor MUST render checkboxes for Verbal, Somatic, and Material only. Focus, divine_focus, and experience remain schema defaults (false) and are not exposed in the editor UI.
 - AND display a text preview (e.g., "V, S, M") based on selections.
-- ComponentCheckboxes MUST emit `components: { verbal, somatic, material }`; when material is true it MUST also manage (or pass to a sibling sub-form) `material_components: MaterialComponentSpec[]` so the full editor state includes both.
+- ComponentCheckboxes MUST emit `components: { verbal, somatic, material }`; when material is true it MUST also manage (or pass to a sibling sub-form) `material_components` per `#/$defs/MaterialComponentSpec` so the full editor state includes both.
 
 #### Scenario: Material Component Details
 - GIVEN the Material checkbox is checked
@@ -125,11 +142,11 @@ For fields whose schema has a kind/enum and optional custom or special content (
 - AND when kind is single or multiple, MUST show SingleSave sub-form(s) (save_type, applies_to, on_success, on_failure).
 - WHEN editing Magic Resistance
 - THEN the editor MUST render specific enum-based inputs (not generic strings)
-- AND UI labels (e.g. "Beneficial Effects Only") MUST map to schema enum values (e.g. `beneficial_effects_only`).
+- AND the `applies_to` enum selector MUST be displayed for ALL kinds (unknown, normal, ignores_mr, partial, special). UI labels (e.g. "Beneficial Effects Only") MUST map to schema enum values (e.g. `beneficial_effects_only`).
 
 #### Scenario: Magic Resistance partial and special
 - GIVEN the Spell Editor form and Magic Resistance is being edited
 - WHEN kind is "partial"
-- THEN the editor MUST show a sub-form for MagicResistanceSpec.partial: scope (required) and optional part_ids.
+- THEN the editor MUST show the `applies_to` selector AND a sub-form for MagicResistanceSpec.partial: scope (required) and optional part_ids.
 - WHEN kind is "special"
-- THEN the editor MUST show a field for special_rule (optional text, per schema).
+- THEN the editor MUST show the `applies_to` selector AND a field for special_rule (optional text, per schema).

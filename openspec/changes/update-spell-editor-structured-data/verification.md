@@ -1,5 +1,7 @@
 # Verification Plan: Spell Editor Structured Data Components
 
+**Parser behavior:** SpellParser returns schema-valid structured types; on parse failure it returns fallbacks (e.g. `kind: "special"` with `raw_legacy_value`). The UI must handle unexpected parser errors (e.g. Tauri command failure) defensively.
+
 ## Component Tests
 
 ### StructuredFieldInput Component
@@ -22,6 +24,12 @@
   - GIVEN `StructuredFieldInput` with fieldType = duration and user enters duration value 1, unit = "round"
   - WHEN onChange fires
   - THEN callback MUST receive DurationSpec shape (e.g. `kind` + `duration` scalar + `unit` where applicable)
+
+- [ ] **Test: Duration kind=time (scalar + unit)**
+  - GIVEN `StructuredFieldInput` with fieldType = duration, kind = "time"
+  - WHEN user enters duration value 1, per_level 0.5, unit = "round"
+  - THEN output MUST include `kind: "time"`, `unit: "round"`, and `duration` scalar with mode/value/per_level
+  - AND text preview MUST display the computed duration (e.g. "1 + 0.5/level round")
 
 - [ ] **Test: Text preview auto-computes**
   - GIVEN `StructuredFieldInput` (e.g. casting_time) with base_value = 10, per_level = 5, unit = "round"
@@ -277,3 +285,5 @@
   - GIVEN `AreaForm` with kind = "radius_circle"
   - WHEN user sets radius to mode = "per_level", value = 5, per_level = 2, shape_unit = "ft"
   - THEN output MUST include radius scalar `{ mode: "per_level", value: 5, per_level: 2 }` and shape_unit "ft"
+
+**Note:** Other Duration kinds (`instant`, `permanent`, `conditional`, `usage_limited`, etc.) and Area kinds (`point`, `special`, `region`, `scope`, etc.) are covered by schema validation and manual QA. Add targeted tests if gaps emerge.

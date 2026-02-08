@@ -21,6 +21,10 @@ The Spell Detail view MUST expose the spell's unique content hash.
 - GIVEN the hash display
 - THEN the hash MUST be styled as a code block (monospace font, light gray background).
 
+#### Scenario: Hash data-testid (E2E)
+- GIVEN the hash display
+- THEN the view MUST include `data-testid="spell-detail-hash-display"` on the hash text element, `data-testid="spell-detail-hash-copy"` on the Copy button, and `data-testid="spell-detail-hash-expand"` on the Expand button (per frontend-standards kebab-case naming).
+
 ### Requirement: Structured Field Rendering
 The Spell Detail view MUST render structured spell data in a human-readable format.
 

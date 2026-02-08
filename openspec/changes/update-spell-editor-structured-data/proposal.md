@@ -1,5 +1,16 @@
 # Update Spell Editor with Structured Data Components
 
+**This change is Spec #3** in the spell hashing ecosystem.
+
+### Dependencies / Spec Index
+| Spec | Change | Purpose |
+|------|--------|---------|
+| #1 | `add-spell-canonical-hashing-foundation` | Schema, hashing |
+| #2 | `add-spell-data-migration-infrastructure` | Parsing, migration |
+| **#3** | **update-spell-editor-structured-data** | **Structured editor UI (this change)** |
+| #4 | Spell UI Design and Accessibility | UI polish, a11y |
+| #5 | `integrate-spell-hashing-ecosystem` | Import/Export |
+
 ## Problem
 Currently, the spell editor treats complex fields like Range, Duration, and Components as simple strings. This prevents:
 1.  **Validation**: Users can enter nonsense or skip required fields.
@@ -31,10 +42,10 @@ Implement a set of specialized React components to handle structured spell data 
 -   Component documentation and API guides
 
 ### Out of Scope
--   Backend schema changes (handled in Spec #1 - `add-spell-canonical-hashing-foundation`)
--   Data migration script (handled in Spec #2 - `add-spell-data-migration-infrastructure`)
--   UI polish, accessibility, and E2E workflows (handled in Spec #4 - `Spell UI Design and Accessibility`)
--   Import/Export (handled in Spec #5 - `integrate-spell-hashing-ecosystem`)
+-   Backend schema changes (Spec #1 - `add-spell-canonical-hashing-foundation`)
+-   Data migration script (Spec #2 - `add-spell-data-migration-infrastructure`)
+-   UI polish, accessibility, and E2E workflows (Spec #4 - Spell UI Design and Accessibility)
+-   Import/Export (Spec #5 - `integrate-spell-hashing-ecosystem`)
 
 ### Component scope (components field)
 -   Only Verbal, Somatic, and Material are editable in this change. The schema also defines `focus`, `divine_focus`, and `experience`; these remain schema defaults (false) and are not exposed in the editor UI.

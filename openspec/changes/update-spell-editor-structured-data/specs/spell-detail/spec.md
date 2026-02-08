@@ -29,6 +29,21 @@ The Spell Detail view MUST render structured spell data in a human-readable form
 - WHEN viewing the detail
 - THEN the view MUST display the computed `.text` value (e.g., "10 yd", "1 round/level").
 
+#### Scenario: Casting Time Display
+- GIVEN a spell with structured `casting_time` data
+- WHEN viewing the detail
+- THEN the view MUST display the computed `.text` value (or equivalent human-readable casting time).
+
+#### Scenario: Saving Throw Display
+- GIVEN a spell with structured `saving_throw` data
+- WHEN viewing the detail
+- THEN the view MUST display kind and summary or dm_guidance in a human-readable format.
+
+#### Scenario: Magic Resistance Display
+- GIVEN a spell with structured `magic_resistance` data
+- WHEN viewing the detail
+- THEN the view MUST display kind and applies_to (where applicable) in a human-readable format.
+
 #### Scenario: Damage Display
 - GIVEN a spell with structured `damage` data
 - WHEN viewing the detail
@@ -47,4 +62,4 @@ The Spell Detail view MUST display spell components as visual badges.
 - GIVEN a spell with material_components populated
 - WHEN viewing the detail
 - THEN the view MUST display material component details
-- AND include name, quantity, gp_value, and consumed status where applicable.
+- AND include name, quantity, gp_value, and consumed status where applicable, and description and unit when present.

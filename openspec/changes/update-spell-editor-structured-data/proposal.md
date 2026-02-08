@@ -13,15 +13,15 @@ Implement a set of specialized React components to handle structured spell data 
 2.  **Specialized Forms**: Dedicated components for complex fields:
     -   **`AreaForm`**: Handles various shapes (Cone, Cube, Wall, etc.) and their specific dimensions.
     -   **`DamageForm`**: Handles complex damage models (dice pools, multiple parts, scaling).
-    -   **`SelectOrCustomInput`**: For enum-based fields like Saving Throw and Magic Resistance.
-2.  **`ComponentCheckboxes`**: A dedicated input for Verbal, Somatic, and Material components, with a sub-form for material component details (name, quantity, cost, consumed).
-3.  **Editor Integration**: Replace legacy string inputs with these new components.
-4.  **Display**: Update the Spell Detail view to render structured data beautifully and show the content hash.
+    -   **SavingThrowInput** and **MagicResistanceInput**: Enum-based selector for kind/options plus optional custom or special field (e.g. dm_guidance, raw_legacy_value) where the schema allows.
+3.  **`ComponentCheckboxes`**: A dedicated input for Verbal, Somatic, and Material components, with a sub-form for material component details (name, quantity, cost, consumed).
+4.  **Editor Integration**: Replace legacy string inputs with these new components.
+5.  **Display**: Update the Spell Detail view to render structured data beautifully and show the content hash.
 
 ## Scope
 ### In Scope
 -   Implementation of `StructuredFieldInput` component (Range, Duration, Casting Time)
--   Implementation of Specialized Forms (`AreaForm`, `DamageForm`, `SavingThrowInput`, `MagicResistanceInput`)
+-   Implementation of Specialized Forms (`AreaForm`, `DamageForm`, `SavingThrowInput`, `MagicResistanceInput`; SavingThrow and MagicResistance use enum selector + optional custom/special field pattern per spec)
 -   Implementation of `ComponentCheckboxes` component with material sub-form
 -   Integration into `SpellEditor` form
 -   Legacy data auto-parsing on load (via Tauri backend parsers)
@@ -35,6 +35,9 @@ Implement a set of specialized React components to handle structured spell data 
 -   Data migration script (handled in Spec #2 - `add-spell-data-migration-infrastructure`)
 -   UI polish, accessibility, and E2E workflows (handled in Spec #4 - `Spell UI Design and Accessibility`)
 -   Import/Export (handled in Spec #5 - `integrate-spell-hashing-ecosystem`)
+
+### Component scope (components field)
+-   Only Verbal, Somatic, and Material are editable in this change. The schema also defines `focus`, `divine_focus`, and `experience`; these remain schema defaults (false) and are not exposed in the editor UI.
 
 ## Dependencies
 -   **Spec #1: `add-spell-canonical-hashing-foundation`**

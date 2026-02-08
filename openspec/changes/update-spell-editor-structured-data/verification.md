@@ -8,24 +8,38 @@
   - THEN all numeric inputs MUST show schema defaults
   - AND unit selector MUST show default unit
 
-- [ ] **Test: Value change emits structured object**
-  - GIVEN user enters base_value = 10, unit = "yd"
+- [ ] **Test: Value change emits structured object (casting_time)**
+  - GIVEN `StructuredFieldInput` with fieldType = casting_time and user enters base_value = 10, unit = "round"
   - WHEN onChange fires
-  - THEN callback MUST receive `{text: "10 yd", unit: "yd", base_value: 10, per_level: 0, divisor: 1}`
+  - THEN callback MUST receive flat casting_time shape (e.g. `{text: "10 round", unit: "round", base_value: 10, per_level: 0, level_divisor: 1}`)
+
+- [ ] **Test: Value change emits structured object (range)**
+  - GIVEN `StructuredFieldInput` with fieldType = range and user enters distance value 10, unit = "yd"
+  - WHEN onChange fires
+  - THEN callback MUST receive RangeSpec shape (e.g. `{kind: "distance", distance: {mode: "fixed", value: 10}, unit: "yd"}`)
+
+- [ ] **Test: Value change emits structured object (duration)**
+  - GIVEN `StructuredFieldInput` with fieldType = duration and user enters duration value 1, unit = "round"
+  - WHEN onChange fires
+  - THEN callback MUST receive DurationSpec shape (e.g. `kind` + `duration` scalar + `unit` where applicable)
 
 - [ ] **Test: Text preview auto-computes**
-  - GIVEN base_value = 10, per_level = 5, unit = "yd"
-  - THEN text preview MUST display "10 + 5/level yd"
+  - GIVEN `StructuredFieldInput` (e.g. casting_time) with base_value = 10, per_level = 5, unit = "round"
+  - THEN text preview MUST display "10 + 5/level round"
+
+- [ ] **Test: Text preview auto-computes (range with yd)**
+  - GIVEN `StructuredFieldInput` with fieldType = range, distance value = 10, unit = "yd"
+  - THEN text preview MUST display the computed range text (e.g. "10 yd")
 
 - [ ] **Test: Validation enforces schema constraints**
   - GIVEN unit selector
   - WHEN user selects invalid unit (not in enum)
   - THEN component MUST reject and show error
 
-- [ ] **Test: Negative number rejection**
+- [ ] **Test: Negative number handling (clamp-on-change)**
   - GIVEN user enters base_value = -5
-  - THEN component MUST show validation error
-  - AND value MUST NOT be accepted
+  - THEN component MUST clamp to valid range (e.g. 0) per frontend-standards
+  - AND component state MUST NOT persist the invalid value
 
 - [ ] **Test: Decimal precision handling**
   - GIVEN user enters per_level = 0.5
@@ -39,13 +53,13 @@
   - AND display in locale-appropriate format
 
 - [ ] **Test: Maximum value limits**
-  - GIVEN user enters base_value exceeding reasonable maximum (e.g., 999999)
-  - THEN component MUST either accept or show warning based on field type
+  - GIVEN user enters a value exceeding the documented cap (999999) in a structured scalar field
+  - THEN component MUST show a warning and MUST allow the value (no clamp, no block save)
 
 ### ComponentCheckboxes Component
 - [ ] **Test: Checkbox state to object**
   - GIVEN user checks V and S, unchecks M
-  - THEN component MUST emit `{verbal: true, somatic: true, material: false}`
+  - THEN component MUST emit object including `components: { verbal: true, somatic: true, material: false }`
 
 - [ ] **Test: Text preview from checkboxes**
   - GIVEN V=true, S=true, M=false
@@ -82,13 +96,24 @@
 - [ ] **Test: Parse legacy string on first edit**
   - GIVEN spell with legacy `range = "10 yards"`
   - WHEN user opens spell in editor
-  - THEN `StructuredFieldInput` MUST auto-parse to `{base_value: 10, unit: "yd"}`
+  - THEN `StructuredFieldInput` (range) MUST auto-parse to RangeSpec shape (e.g. `{kind: "distance", distance: {mode: "fixed", value: 10}, unit: "yd"}`)
 
 - [ ] **Test: Fallback for unparseable legacy**
   - GIVEN spell with `range = "Special (DM discretion)"`
   - WHEN editor opens
   - THEN text field MUST show "Special (DM discretion)"
-  - AND structured fields MUST show defaults (`kind: "special"`, `base_value: 0`) with warning banner
+  - AND structured fields MUST show defaults (`kind: "special"`, `raw_legacy_value` preserved) with warning banner
+
+- [ ] **Test: Warning banner when legacy unparseable (kind special)**
+  - GIVEN spell with legacy range, duration, or casting_time that is unparseable (parser falls back to kind "special")
+  - WHEN editor loads the spell
+  - THEN a warning banner MUST be visible
+  - AND `raw_legacy_value` MUST be preserved for the unparseable field(s)
+
+- [ ] **Test: Legacy parsing uses Tauri parser commands**
+  - GIVEN spell with null canonical_data and legacy string for range (e.g. "10 yards")
+  - WHEN editor loads the spell
+  - THEN the frontend MUST obtain structured range by calling the Tauri command `parse_spell_range` (or equivalent) with the legacy string, not by parsing in the frontend
 
 ## Integration Tests
 
@@ -119,7 +144,7 @@
   - AND clicking copy button MUST copy full hash
 
 - [ ] **Test: Structured field rendering**
-  - GIVEN spell with structured `range = {kind: "distance", base_value: 10, unit: "yd"}`
+  - GIVEN spell with structured `range = {kind: "distance", distance: {mode: "fixed", value: 10}, unit: "yd"}`
   - WHEN viewing detail
   - THEN display MUST show computed text "10 yd"
 
@@ -127,20 +152,34 @@
   - GIVEN spell with `components = {verbal: true, somatic: true, material: false}`
   - THEN display MUST show "V, S" badges
 
-#### Scenario: Damage Editing
-- GIVEN the Spell Editor form
-- WHEN editing Damage
-- THEN the editor MUST render a `DamageForm`
-- AND allow selecting kind (None, Modeled, DM Adjudicated)
-- AND if Modeled, allow adding multiple damage parts
-- AND allow configuring damage type, dice pool, and scaling for each part.
+- [ ] **Test: Casting time rendering**
+  - GIVEN spell with structured casting_time (e.g. `.text` = "1 action")
+  - WHEN viewing detail
+  - THEN display MUST show the casting time in human-readable form
 
-#### Scenario: Area Editing
-- GIVEN the Spell Editor form
-- WHEN editing Area
-- THEN the editor MUST render an `AreaForm`
-- AND allow selecting kind (Cone, Cube, Sphere, etc.)
-- AND allow entering specific scalars (radius, length, etc.) based on kind.
+- [ ] **Test: Saving throw rendering**
+  - GIVEN spell with structured saving_throw (e.g. kind + dm_guidance or single save)
+  - WHEN viewing detail
+  - THEN display MUST show saving throw info in human-readable form
+
+- [ ] **Test: Magic resistance rendering**
+  - GIVEN spell with structured magic_resistance (e.g. kind + applies_to)
+  - WHEN viewing detail
+  - THEN display MUST show magic resistance info in human-readable form
+
+### SpellEditor Damage and Area Forms
+- [ ] **Test: DamageForm visible when editing damage**
+  - GIVEN the Spell Editor form
+  - WHEN the user is editing the Damage field
+  - THEN the editor MUST render a `DamageForm`
+  - AND the form MUST allow selecting kind (None, Modeled, DM Adjudicated)
+  - AND if Modeled, allow adding multiple damage parts and configuring damage type, dice pool, and scaling for each part
+
+- [ ] **Test: AreaForm visible when editing area**
+  - GIVEN the Spell Editor form
+  - WHEN the user is editing the Area field
+  - THEN the editor MUST render an `AreaForm`
+  - AND the form MUST allow selecting kind (Cone, Cube, Sphere, etc.) and entering specific scalars (radius, length, etc.) based on kind
 
 ### Material Component Confirmation
 - [ ] **Test: Uncheck with existing data**
@@ -191,14 +230,50 @@
   - THEN `radius`, `height`, and `shape_unit` inputs MUST be visible
 
 #### SavingThrowInput
-- [ ] **Test: Kind serialization**
+- [ ] **Test: Kind serialization (SavingThrowSpec)**
   - GIVEN `SavingThrowInput`
-  - WHEN user selects "Half"
-  - THEN output MUST be `{kind: "half"}`
-  - AND partial fraction inputs MUST be hidden
+  - WHEN user selects "None"
+  - THEN output MUST be `{kind: "none"}`
+
+- [ ] **Test: Single save sub-form**
+  - GIVEN `SavingThrowInput`
+  - WHEN user selects "Single"
+  - THEN SingleSave sub-form MUST appear (save_type, applies_to, on_success, on_failure)
+  - AND output MUST include `single` with valid SingleSave structure when filled
+
+- [ ] **Test: Multiple saves**
+  - GIVEN `SavingThrowInput`
+  - WHEN user selects "Multiple"
+  - THEN list of SingleSave sub-forms MUST appear with add/remove
+  - AND output MUST include `multiple` array of SingleSave
+
+- [ ] **Test: DM adjudicated**
+  - GIVEN `SavingThrowInput`
+  - WHEN user selects "DM Adjudicated"
+  - THEN dm_guidance text area MUST appear
+  - AND output MUST include `kind: "dm_adjudicated"` and `dm_guidance`
 
 #### MagicResistanceInput
 - [ ] **Test: Applies To selection**
   - GIVEN `MagicResistanceInput`
-  - WHEN user selects "Beneficial Effects Only"
-  - THEN output MUST be `{kind: "normal", applies_to: "beneficial_effects_only"}`
+  - WHEN user selects "Beneficial Effects Only" (UI label)
+  - THEN output MUST be `{kind: "normal", applies_to: "beneficial_effects_only"}` (schema enum value)
+  - AND the UI label "Beneficial Effects Only" MUST map to the schema value `beneficial_effects_only`
+
+- [ ] **Test: Partial sub-form**
+  - GIVEN `MagicResistanceInput`
+  - WHEN user selects kind = "partial"
+  - THEN sub-form for `partial` MUST appear (scope required, optional part_ids)
+  - AND output MUST include `partial: { scope, part_ids? }` when filled
+
+- [ ] **Test: Special rule field**
+  - GIVEN `MagicResistanceInput`
+  - WHEN user selects kind = "special"
+  - THEN `special_rule` field MUST appear (optional text)
+  - AND output MUST include `special_rule` when provided
+
+#### AreaForm (scalar per-level)
+- [ ] **Test: AreaForm scalar with per_level**
+  - GIVEN `AreaForm` with kind = "radius_circle"
+  - WHEN user sets radius to mode = "per_level", value = 5, per_level = 2, shape_unit = "ft"
+  - THEN output MUST include radius scalar `{ mode: "per_level", value: 5, per_level: 2 }` and shape_unit "ft"

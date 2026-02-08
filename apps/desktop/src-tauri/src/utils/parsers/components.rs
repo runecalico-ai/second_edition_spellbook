@@ -81,7 +81,11 @@ impl ComponentsParser {
                 ..Default::default()
             };
         }
-        if lower.contains("segment") || lower.contains("segments") || lower == "seg" || lower.ends_with(" seg") {
+        if lower.contains("segment")
+            || lower.contains("segments")
+            || lower == "seg"
+            || lower.ends_with(" seg")
+        {
             return SpellCastingTime {
                 text: input.to_string(),
                 unit: CastingTimeUnit::Segment,
@@ -110,11 +114,20 @@ impl ComponentsParser {
 
         let trimmed = input.trim();
         if trimmed.is_empty() {
-            return SpellComponents { verbal: v, somatic: s, material: m, focus: f, divine_focus: df, experience: e };
+            return SpellComponents {
+                verbal: v,
+                somatic: s,
+                material: m,
+                focus: f,
+                divine_focus: df,
+                experience: e,
+            };
         }
 
         // Undelimited 1–3 letter component string (e.g. "VSM", "VS", "V")
-        let has_delimiter = trimmed.contains(',') || trimmed.contains(';') || trimmed.contains('+')
+        let has_delimiter = trimmed.contains(',')
+            || trimmed.contains(';')
+            || trimmed.contains('+')
             || trimmed.split_whitespace().count() > 1;
         if !has_delimiter && !trimmed.is_empty() && trimmed.len() <= 3 {
             let lower = trimmed.to_lowercase();
@@ -132,11 +145,20 @@ impl ComponentsParser {
                     }
                 }
             }
-            return SpellComponents { verbal: v, somatic: s, material: m, focus: f, divine_focus: df, experience: e };
+            return SpellComponents {
+                verbal: v,
+                somatic: s,
+                material: m,
+                focus: f,
+                divine_focus: df,
+                experience: e,
+            };
         }
 
         // Strict parsing by splitting commas and trimming
-        let lower = trimmed.to_lowercase().replace("divine focus", "divine-focus");
+        let lower = trimmed
+            .to_lowercase()
+            .replace("divine focus", "divine-focus");
         let parts: Vec<&str> = lower
             .split(|c: char| c == ',' || c == ';' || c == '+' || c.is_whitespace())
             .collect();

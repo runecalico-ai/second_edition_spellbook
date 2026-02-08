@@ -1102,7 +1102,13 @@ mod tests {
         db.execute(
             r#"INSERT INTO spell (name, level, description, school, range)
                VALUES (?1, ?2, ?3, ?4, ?5)"#,
-            params!["Recompute Test", 3, "A test description.", "Evocation", "60 feet"],
+            params![
+                "Recompute Test",
+                3,
+                "A test description.",
+                "Evocation",
+                "60 feet"
+            ],
         )?;
 
         let temp = tempdir()?;
@@ -1127,8 +1133,7 @@ mod tests {
     /// Integration test: two spells with identical content produce the same content_hash;
     /// backfill hits UNIQUE constraint on commit and transaction rolls back.
     #[test]
-    fn test_hash_collision_unique_constraint_rollback(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_hash_collision_unique_constraint_rollback() -> Result<(), Box<dyn std::error::Error>> {
         let db = Connection::open_in_memory()?;
         db.execute_batch(
             r#"
@@ -1200,7 +1205,10 @@ mod tests {
         let temp = tempdir()?;
         let result = run_hash_backfill(&db, temp.path());
 
-        assert!(result.is_err(), "Backfill should fail with UNIQUE constraint");
+        assert!(
+            result.is_err(),
+            "Backfill should fail with UNIQUE constraint"
+        );
         let err_msg = result.unwrap_err().to_string();
         assert!(
             err_msg.contains("UNIQUE") || err_msg.contains("unique"),

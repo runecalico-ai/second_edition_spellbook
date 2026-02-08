@@ -3,13 +3,36 @@
 ## Frontend Implementation
 ### Component Architecture
 - [ ] Create `StructuredFieldInput` component:
-    - [ ] Props: value, onChange, fieldType (range/duration/area/casting_time/damage).
+    - [ ] Props: value, onChange, fieldType (range/duration/casting_time).
     - [ ] Render inputs: base_value (number), per_level (number), divisor (number), unit (dropdown).
     - [ ] Use lowercase unit values per canonical serialization spec (e.g., `"yd"`, `"ft"`, `"round"`).
     - [ ] Compute `.text` preview automatically based on inputs.
     - [ ] Display text preview below inputs (read-only, italic).
     - [ ] Implement locale-aware numeric input (handle `.` vs `,` decimal separators).
     - [ ] Validate inputs against schema constraints.
+- [ ] Create `DamageForm` component:
+    - [ ] Handle `DamageSpec` structure (schema lines 1283+).
+    - [ ] Enum selector for `kind`: "modeled", "dm_adjudicated", "none".
+    - [ ] `modeled`:
+        - [ ] Validated list of `DamagePart`.
+        - [ ] Combine mode selector (sum, max, etc.).
+    - [ ] `dm_adjudicated`: Text area for guidance.
+- [ ] Create `AreaForm` component:
+    - [ ] Enum selector for `kind` (cone, cube, sphere, cylinder, line, etc.).
+    - [ ] Dynamic inputs based on kind:
+        - [ ] Cone/Line: `length`, `shape_unit`.
+        - [ ] Sphere/Circle: `radius`, `shape_unit`.
+        - [ ] Cube/Square: `edge`, `shape_unit`.
+        - [ ] Cylinder: `radius`, `height`, `shape_unit`.
+        - [ ] Wall: `length`, `height`, `thickness`, `shape_unit`.
+        - [ ] Creatures/Objects: `count`, `count_subject`.
+    - [ ] Support `Scalar` inputs for dimensions (using helper or `StructuredFieldInput` for sub-fields).
+- [ ] Create `SavingThrowInput` component:
+    - [ ] Enum selector for `kind`: "none", "half", "negates", "partial", "special".
+    - [ ] If `partial`, show numerator/denominator inputs.
+- [ ] Create `MagicResistanceInput` component:
+    - [ ] Enum selector for `kind`: "unknown", "normal", "ignores_mr", "partial", "special".
+    - [ ] Enum selector for `applies_to`.
 - [ ] Create `ComponentCheckboxes` component:
     - [ ] Render checkboxes: Verbal (V), Somatic (S), Material (M).
     - [ ] Output: `{verbal: boolean, somatic: boolean, material: boolean}`.
@@ -22,6 +45,7 @@
         - [ ] Description (optional textarea).
     - [ ] Support multiple material components (add/remove buttons).
     - [ ] Preserve material component order (not sorted).
+    - [ ] **Confirmation Dialog**: If material components exist and user unchecks "Material", show confirmation dialog before clearing data.
 - [ ] Create shared input validation utilities:
     - [ ] Validate number ranges (base_value >= 0, per_level >= 0).
     - [ ] Validate unit enums against schema.
@@ -32,8 +56,14 @@
     - [ ] Replace string input for `range` with `StructuredFieldInput`.
     - [ ] Replace string input for `duration` with `StructuredFieldInput`.
     - [ ] Replace string input for `casting_time` with `StructuredFieldInput`.
-    - [ ] Replace string input for `area` with `StructuredFieldInput`.
-    - [ ] Replace string input for `damage` with `StructuredFieldInput` (damage pattern variation).
+- [ ] Integrate `AreaForm` into `SpellEditor`:
+    - [ ] Replace string input for `area` with `AreaForm`.
+- [ ] Integrate `DamageForm` into `SpellEditor`:
+    - [ ] Replace string input for `damage` with `DamageForm`.
+- [ ] Integrate `SavingThrowInput` into `SpellEditor`:
+    - [ ] Replace string input for `saving_throw` with `SavingThrowInput`.
+- [ ] Integrate `MagicResistanceInput` into `SpellEditor`:
+    - [ ] Replace string input for `magic_resistance` with `MagicResistanceInput`.
 - [ ] Integrate `ComponentCheckboxes` for components field (with material sub-form).
 - [ ] Add tradition-based validation:
     - [ ] If tradition = "ARCANE", require school selection.

@@ -126,3 +126,79 @@
 - [ ] **Test: Component badges**
   - GIVEN spell with `components = {verbal: true, somatic: true, material: false}`
   - THEN display MUST show "V, S" badges
+
+#### Scenario: Damage Editing
+- GIVEN the Spell Editor form
+- WHEN editing Damage
+- THEN the editor MUST render a `DamageForm`
+- AND allow selecting kind (None, Modeled, DM Adjudicated)
+- AND if Modeled, allow adding multiple damage parts
+- AND allow configuring damage type, dice pool, and scaling for each part.
+
+#### Scenario: Area Editing
+- GIVEN the Spell Editor form
+- WHEN editing Area
+- THEN the editor MUST render an `AreaForm`
+- AND allow selecting kind (Cone, Cube, Sphere, etc.)
+- AND allow entering specific scalars (radius, length, etc.) based on kind.
+
+### Material Component Confirmation
+- [ ] **Test: Uncheck with existing data**
+  - GIVEN material components list has 1 item
+  - WHEN user unchecks "Material"
+  - THEN a confirmation dialog MUST appear
+  - AND data MUST NOT be cleared yet
+
+- [ ] **Test: Confirming uncheck clears data**
+  - GIVEN confirmation dialog is open
+  - WHEN user clicks "Confirm"
+  - THEN `material` property MUST become false
+  - AND `material_components` array MUST become empty
+
+- [ ] **Test: Canceling uncheck preserves data**
+  - GIVEN confirmation dialog is open
+  - WHEN user clicks "Cancel"
+  - THEN `material` property MUST remain true
+  - AND `material_components` array MUST be preserved
+
+### Complex Form Components
+
+#### DamageForm
+- [ ] **Test: Kind selection**
+  - GIVEN `DamageForm`
+  - WHEN user selects "Modeled"
+  - THEN `parts` list and `combine_mode` selector MUST appear
+
+- [ ] **Test: Add Damage Part**
+  - GIVEN `DamageForm` in Modeled mode
+  - WHEN user clicks "Add Part"
+  - THEN a new `DamagePart` sub-form MUST appear
+  - AND it MUST have default values (e.g. 1d6 bludgeoning)
+
+- [ ] **Test: Dice Pool editing**
+  - GIVEN a `DamagePart`
+  - WHEN user changes dice count or sides
+  - THEN the changes MUST be reflected in the output object
+
+#### AreaForm
+- [ ] **Test: Kind selection**
+  - GIVEN `AreaForm`
+  - WHEN user selects "Cone"
+  - THEN `length` and `shape_unit` inputs MUST appear
+
+- [ ] **Test: Dynamic Inputs**
+  - GIVEN `AreaForm` with Kind="Cylinder"
+  - THEN `radius`, `height`, and `shape_unit` inputs MUST be visible
+
+#### SavingThrowInput
+- [ ] **Test: Kind serialization**
+  - GIVEN `SavingThrowInput`
+  - WHEN user selects "Half"
+  - THEN output MUST be `{kind: "half"}`
+  - AND partial fraction inputs MUST be hidden
+
+#### MagicResistanceInput
+- [ ] **Test: Applies To selection**
+  - GIVEN `MagicResistanceInput`
+  - WHEN user selects "Beneficial Effects Only"
+  - THEN output MUST be `{kind: "normal", applies_to: "beneficial_effects_only"}`

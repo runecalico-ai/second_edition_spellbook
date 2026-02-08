@@ -57,7 +57,7 @@ The following documentation has been updated to reflect the final state:
 - **User Guide**: [character_profiles.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/docs/user/character_profiles.md)
 - **Developer Guide**: [bundle_format.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/docs/bundle_format.md)
 - **Architecture**: [character_profiles_architecture.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/docs/dev/character_profiles_architecture.md)
-- **Best Practices**: [AGENTS.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/spellbook/apps/desktop/src/AGENTS.md)
+- **Best Practices**: [AGENTS.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src/AGENTS.md)
 
 ## Conclusion
 

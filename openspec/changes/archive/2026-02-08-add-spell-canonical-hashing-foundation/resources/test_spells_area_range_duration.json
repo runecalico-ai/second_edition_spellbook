@@ -1,0 +1,303 @@
+{
+  "format": "adnd2e-test-spells",
+  "version": "1.0.0",
+  "generated_at": "2026-02-01T21:31:24Z",
+  "spells": [
+    {
+      "id": "testspell-001",
+      "name": "Aegis Ward",
+      "description": "Aegis Ward",
+      "tradition": "DIVINE",
+      "level": 2,
+      "sphere": "Protection",
+      "range": {
+        "kind": "personal"
+      },
+      "area": {
+        "kind": "radius_circle",
+        "shape_unit": "ft",
+        "radius": {
+          "mode": "fixed",
+          "value": 10
+        },
+        "moves_with": "caster",
+        "notes": "Aura-style ward that moves with caster."
+      },
+      "duration": {
+        "kind": "time",
+        "unit": "turn",
+        "duration": {
+          "mode": "per_level",
+          "per_level": 1
+        }
+      }
+    },
+    {
+      "id": "testspell-002",
+      "name": "Mending Touch",
+      "description": "Mending Touch",
+      "tradition": "DIVINE",
+      "level": 1,
+      "sphere": "Healing",
+      "range": {
+        "kind": "touch"
+      },
+      "area": {
+        "kind": "creatures",
+        "count_subject": "creature",
+        "count": {
+          "mode": "fixed",
+          "value": 1
+        }
+      },
+      "duration": {
+        "kind": "instant"
+      }
+    },
+    {
+      "id": "testspell-003",
+      "name": "Arcane Emberburst",
+      "description": "Arcane Emberburst",
+      "tradition": "ARCANE",
+      "level": 3,
+      "school": "Evocation",
+      "range": {
+        "kind": "distance",
+        "unit": "yd",
+        "distance": {
+          "mode": "fixed",
+          "value": 100
+        }
+      },
+      "area": {
+        "kind": "radius_sphere",
+        "shape_unit": "ft",
+        "radius": {
+          "mode": "fixed",
+          "value": 20
+        }
+      },
+      "duration": {
+        "kind": "instant"
+      }
+    },
+    {
+      "id": "testspell-004",
+      "name": "Whisper Chain",
+      "description": "Whisper Chain",
+      "tradition": "ARCANE",
+      "level": 2,
+      "school": "Enchantment/Charm",
+      "range": {
+        "kind": "distance_los",
+        "unit": "yd",
+        "distance": {
+          "mode": "per_level",
+          "per_level": 10,
+          "cap_value": 120
+        },
+        "requires": [
+          "los"
+        ]
+      },
+      "area": {
+        "kind": "creatures",
+        "count_subject": "creature",
+        "count": {
+          "mode": "per_level",
+          "per_level": 1,
+          "cap_value": 6
+        },
+        "notes": "Targets selected individually within LOS."
+      },
+      "duration": {
+        "kind": "concentration",
+        "condition": "ends when caster stops concentrating"
+      }
+    },
+    {
+      "id": "testspell-005",
+      "name": "Frost Line",
+      "description": "Frost Line",
+      "tradition": "ARCANE",
+      "level": 4,
+      "school": "Evocation",
+      "range": {
+        "kind": "distance",
+        "unit": "ft",
+        "distance": {
+          "mode": "fixed",
+          "value": 60
+        }
+      },
+      "area": {
+        "kind": "line",
+        "shape_unit": "ft",
+        "length": {
+          "mode": "fixed",
+          "value": 60
+        },
+        "width": {
+          "mode": "fixed",
+          "value": 5
+        }
+      },
+      "duration": {
+        "kind": "time",
+        "unit": "round",
+        "duration": {
+          "mode": "fixed",
+          "value": 3
+        }
+      }
+    },
+    {
+      "id": "testspell-006",
+      "name": "Stone Wall Sigil",
+      "description": "Stone Wall Sigil",
+      "tradition": "ARCANE",
+      "level": 5,
+      "school": "Alteration",
+      "range": {
+        "kind": "distance",
+        "unit": "yd",
+        "distance": {
+          "mode": "fixed",
+          "value": 30
+        }
+      },
+      "area": {
+        "kind": "wall",
+        "shape_unit": "ft",
+        "length": {
+          "mode": "fixed",
+          "value": 40
+        },
+        "height": {
+          "mode": "fixed",
+          "value": 10
+        },
+        "thickness": {
+          "mode": "fixed",
+          "value": 1
+        }
+      },
+      "duration": {
+        "kind": "until_dispelled",
+        "notes": "Wall persists until dispelled or destroyed by DM adjudication."
+      }
+    },
+    {
+      "id": "testspell-007",
+      "name": "Sanctum Cube",
+      "description": "Sanctum Cube",
+      "tradition": "DIVINE",
+      "level": 4,
+      "sphere": "Protection",
+      "range": {
+        "kind": "distance",
+        "unit": "yd",
+        "distance": {
+          "mode": "fixed",
+          "value": 10
+        }
+      },
+      "area": {
+        "kind": "cube",
+        "shape_unit": "ft",
+        "edge": {
+          "mode": "fixed",
+          "value": 20
+        },
+        "moves_with": "fixed"
+      },
+      "duration": {
+        "kind": "time",
+        "unit": "hour",
+        "duration": {
+          "mode": "fixed",
+          "value": 1
+        }
+      }
+    },
+    {
+      "id": "testspell-008",
+      "name": "Hex Mist",
+      "description": "Hex Mist",
+      "tradition": "ARCANE",
+      "level": 3,
+      "school": "Conjuration/Summoning",
+      "range": {
+        "kind": "distance",
+        "unit": "yd",
+        "distance": {
+          "mode": "fixed",
+          "value": 60
+        }
+      },
+      "area": {
+        "kind": "tiles",
+        "tile_unit": "hex",
+        "tile_count": {
+          "mode": "fixed",
+          "value": 3
+        },
+        "notes": "Outdoor hex-scale area."
+      },
+      "duration": {
+        "kind": "time",
+        "unit": "turn",
+        "duration": {
+          "mode": "fixed",
+          "value": 2
+        }
+      }
+    },
+    {
+      "id": "testspell-009",
+      "name": "Domain Benediction",
+      "description": "Domain Benediction",
+      "tradition": "DIVINE",
+      "level": 7,
+      "sphere": "Summoning",
+      "range": {
+        "kind": "domain",
+        "region_unit": "domain",
+        "notes": "Only within the deity's consecrated domain."
+      },
+      "area": {
+        "kind": "region",
+        "region_unit": "domain",
+        "notes": "Affects a defined domain region."
+      },
+      "duration": {
+        "kind": "conditional",
+        "condition": "until next dawn"
+      }
+    },
+    {
+      "id": "testspell-010",
+      "name": "Ethereal Sightline",
+      "description": "Ethereal Sightline",
+      "tradition": "ARCANE",
+      "level": 6,
+      "school": "Divination",
+      "range": {
+        "kind": "los"
+      },
+      "area": {
+        "kind": "scope",
+        "scope_unit": "within_sight",
+        "notes": "Information revealed for anything within sight."
+      },
+      "duration": {
+        "kind": "usage_limited",
+        "uses": {
+          "mode": "fixed",
+          "value": 1
+        },
+        "notes": "Discharged after one successful revelation."
+      }
+    }
+  ]
+}

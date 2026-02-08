@@ -18,7 +18,7 @@ This change addresses 6 critical bugs discovered during code review:
 
 ### Bug 1: Modal Backdrop Promise Hang (Modal.tsx)
 
-**Location**: `spellbook/apps/desktop/src/ui/components/Modal.tsx:25-30`
+**Location**: `apps/desktop/src/ui/components/Modal.tsx:25-30`
 
 Clicking the modal backdrop calls `hideModal()` but doesn't resolve the Promise returned by `useModal.alert()` or `useModal.confirm()`. Promises only resolve via button `onClick` handlers.
 
@@ -26,7 +26,7 @@ Clicking the modal backdrop calls `hideModal()` but doesn't resolve the Promise 
 
 ### Bug 2: Import Conflict Key Collision (ImportWizard.tsx)
 
-**Location**: `spellbook/apps/desktop/src/ui/ImportWizard.tsx:158-159`
+**Location**: `apps/desktop/src/ui/ImportWizard.tsx:158-159`
 
 The `getConflictKey` function returns only `existing.id` when multiple incoming files match the same existing spell:
 
@@ -42,7 +42,7 @@ const getConflictKey = (conflict: SpellConflict, index: number) =>
 
 ### Bug 3: Character IPC Casing and Parameter Mismatches (CharacterManager.tsx, CharacterEditor.tsx)
 
-**Locations**: `spellbook/apps/desktop/src/ui/CharacterManager.tsx`, `spellbook/apps/desktop/src/ui/CharacterEditor.tsx`, `spellbook/apps/desktop/src-tauri/src/models/character.rs`
+**Locations**: `apps/desktop/src/ui/CharacterManager.tsx`, `apps/desktop/src/ui/CharacterEditor.tsx`, `apps/desktop/src-tauri/src/models/character.rs`
 
 The project lacks a consistent IPC casing strategy. Backend Rust models use `snake_case`, but the frontend and Tauri's default command parameter mapping expect `camelCase`. Specifically:
 1. **Command Arguments**: Commands taking struct inputs (like `update_character_details(input: UpdateCharacterDetailsInput)`) fail because the frontend passes `camelCase` but the Rust structs aren't configured to deserialize it.
@@ -52,7 +52,7 @@ The project lacks a consistent IPC casing strategy. Backend Rust models use `sna
 
 ### Bug 4: Import Filename Collision (import.rs)
 
-**Location**: `spellbook/apps/desktop/src-tauri/src/commands/import.rs:36-41, 195-198, 254-263`
+**Location**: `apps/desktop/src-tauri/src/commands/import.rs:36-41, 195-198, 254-263`
 
 The `sanitize_import_filename` function replaces non-safe characters with `_`:
 
@@ -77,7 +77,7 @@ fs::write(&path, &file.content)?;  // ← Overwrites if collision
 
 ### Bug 5: Overwrite Omits Identity Fields (import.rs)
 
-**Location**: `spellbook/apps/desktop/src-tauri/src/commands/import.rs:384-395, 508-519`
+**Location**: `apps/desktop/src-tauri/src/commands/import.rs:384-395, 508-519`
 
 The UPDATE statements for overwrite mode omit `name`, `level`, and `source`:
 
@@ -106,7 +106,7 @@ let existing_id: Option<i64> = conn.query_row(
 
 ### Bug 6: Character ID Hardcoded to Zero (characters.rs)
 
-**Location**: `spellbook/apps/desktop/src-tauri/src/commands/characters.rs:359, 381`
+**Location**: `apps/desktop/src-tauri/src/commands/characters.rs:359, 381`
 
 The `get_character_class_spells` function hardcodes `character_id: 0` in both query branches:
 

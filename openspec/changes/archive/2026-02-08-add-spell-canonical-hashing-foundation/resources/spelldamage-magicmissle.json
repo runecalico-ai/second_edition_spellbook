@@ -1,0 +1,27 @@
+{
+    "kind": "modeled",
+    "parts": [
+        {
+            "id": "missile",
+            "damage_type": "force",
+            "roll": {
+                "kind": "dice",
+                "dice": {
+                    "count": 1,
+                    "sides": 4,
+                    "modifier": 1
+                }
+            },
+            "application": {
+                "scope": "per_missile",
+                "ticks": 1,
+                "tick_source": "caster_level",
+                "notes": "ticks is computed externally: floor((caster_level+1)/2), capped by spell rules."
+            },
+            "save_interaction": {
+                "kind": "none"
+            }
+        }
+    ],
+    "notes": "Missile count is intentionally not hardcoded here; compute ticks via a separate 'missile_count' spec or a formula expression."
+}

@@ -1,0 +1,2972 @@
+use serde::{Deserialize, Serialize};
+use serde_json_canonicalizer::to_string as to_jcs_string;
+use sha2::{Digest, Sha256};
+use unicode_normalization::UnicodeNormalization;
+
+use crate::models::area_spec::*;
+use crate::models::damage::SpellDamageSpec;
+use crate::models::duration_spec::DurationSpec;
+use crate::models::experience::ExperienceComponentSpec;
+use crate::models::magic_resistance::MagicResistanceSpec;
+use crate::models::material::MaterialComponentSpec;
+use crate::models::range_spec::*;
+use crate::models::saving_throw::SavingThrowSpec;
+use crate::models::scalar::SpellScalar;
+use crate::utils::spell_parser::SpellParser;
+use std::fmt::Write as FmtWrite;
+
+pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 0;
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct SpellComponents {
+    pub verbal: bool,
+    pub somatic: bool,
+    pub material: bool,
+    pub focus: bool,
+    pub divine_focus: bool,
+    pub experience: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CastingTimeUnit {
+    #[default]
+    #[serde(alias = "SEGMENT", alias = "Segment")]
+    Segment,
+    #[serde(alias = "ROUND", alias = "Round")]
+    Round,
+    #[serde(alias = "TURN", alias = "Turn")]
+    Turn,
+    #[serde(alias = "HOUR", alias = "Hour")]
+    Hour,
+    #[serde(alias = "MINUTE", alias = "Minute")]
+    Minute,
+    #[serde(alias = "ACTION", alias = "Action")]
+    Action,
+    #[serde(alias = "BONUS_ACTION", alias = "BonusAction")]
+    BonusAction,
+    #[serde(alias = "REACTION", alias = "Reaction")]
+    Reaction,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+    #[serde(alias = "INSTANTANEOUS", alias = "Instantaneous")]
+    Instantaneous,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct SpellCastingTime {
+    pub text: String,
+    pub unit: CastingTimeUnit,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_value: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub per_level: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level_divisor: Option<f64>,
+    /// When parsing fails or unit is Special, the original legacy string is stored here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_legacy_value: Option<String>,
+}
+
+impl SpellCastingTime {
+    pub fn normalize(&mut self) {
+        self.text = normalize_string(&self.text, NormalizationMode::Structured);
+
+        // Rule 48/88: Materialize defaults then prune if equal to default
+        if let Some(v) = self.base_value {
+            let clamped = clamp_precision(v);
+            if clamped == 1.0 {
+                self.base_value = None;
+            } else {
+                self.base_value = Some(clamped);
+            }
+        }
+        if let Some(v) = self.per_level {
+            let clamped = clamp_precision(v);
+            if clamped == 0.0 {
+                self.per_level = None;
+            } else {
+                self.per_level = Some(clamped);
+            }
+        }
+        if let Some(v) = self.level_divisor {
+            let clamped = clamp_precision(v);
+            if clamped == 1.0 {
+                self.level_divisor = None;
+            } else {
+                self.level_divisor = Some(clamped);
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct SpellDamage {
+    pub text: String,
+    #[serde(default = "default_zero_string")]
+    pub base_dice: String,
+    #[serde(default = "default_zero_string")]
+    pub per_level_dice: String,
+    #[serde(default = "default_one")]
+    pub level_divisor: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cap_level: Option<f64>,
+}
+
+impl SpellDamage {
+    pub fn normalize(&mut self) {
+        self.text = normalize_string(&self.text, NormalizationMode::Structured);
+        self.base_dice = normalize_string(&self.base_dice, NormalizationMode::Structured);
+        self.per_level_dice = normalize_string(&self.per_level_dice, NormalizationMode::Structured);
+        self.level_divisor = clamp_precision(self.level_divisor);
+        self.cap_level = self.cap_level.map(clamp_precision);
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct SourceRef {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    pub book: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<serde_json::Value>, // Can be string or int
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+fn default_one() -> f64 {
+    1.0
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CanonicalSpell {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub name: String,
+    pub tradition: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub school: Option<String>,
+    #[serde(default)]
+    pub subschools: Vec<String>,
+    #[serde(default)]
+    pub descriptors: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sphere: Option<String>,
+    #[serde(default)]
+    pub class_list: Vec<String>,
+    pub level: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<RangeSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub components: Option<SpellComponents>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub material_components: Option<Vec<MaterialComponentSpec>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub casting_time: Option<SpellCastingTime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<DurationSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub area: Option<AreaSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub damage: Option<SpellDamageSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub magic_resistance: Option<MagicResistanceSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saving_throw: Option<SavingThrowSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experience_cost: Option<ExperienceComponentSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reversible: Option<i64>, // 0 or 1
+    pub description: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+
+    // Metadata - Skipped when hashing to canonical JSON, but kept for database/export
+    #[serde(default)]
+    pub source_refs: Vec<SourceRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default = "default_version")]
+    pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_quest_spell: Option<i64>, // 0 or 1
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_cantrip: Option<i64>, // 0 or 1
+
+    #[serde(default = "default_schema_version")]
+    pub schema_version: i64,
+
+    // Temporal Metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<serde_json::Value>, // Simplified for now as it's skipped in hash
+}
+
+fn default_version() -> String {
+    "1.0.0".into()
+}
+fn default_zero_string() -> String {
+    "0".into()
+}
+fn default_schema_version() -> i64 {
+    1
+}
+
+impl CanonicalSpell {
+    pub fn new(name: String, level: i64, tradition: String, description: String) -> Self {
+        Self {
+            id: None,
+            name,
+            level,
+            tradition,
+            description,
+            school: None,
+            subschools: vec![],
+            descriptors: vec![],
+            sphere: None,
+            class_list: vec![],
+            range: None,
+            components: None,
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            damage: None,
+            magic_resistance: None,
+            saving_throw: None,
+            experience_cost: None,
+            reversible: Some(0),
+            tags: vec![],
+            source_refs: vec![],
+            edition: None,
+            author: None,
+            version: default_version(),
+            license: None,
+            is_quest_spell: Some(0),
+            is_cantrip: Some((level == 0) as i64),
+            schema_version: CURRENT_SCHEMA_VERSION,
+            created_at: None,
+            updated_at: None,
+            artifacts: None,
+        }
+    }
+
+    pub fn to_canonical_json(&self) -> Result<String, String> {
+        let mut clone = self.clone();
+        // Heavy Normalization (includes sorting/deduplication of arrays and materialization of defaults)
+        clone.normalize();
+        clone.to_canonical_json_pre_normalized()
+    }
+
+    /// Produces canonical JSON assuming `self` is already normalized. Used by `compute_hash()` to
+    /// avoid double normalization and an extra clone. Callers must have called `normalize()` first.
+    fn to_canonical_json_pre_normalized(&self) -> Result<String, String> {
+        let mut value = serde_json::to_value(self).map_err(|err| err.to_string())?;
+        prune_metadata_recursive(&mut value, true);
+        to_jcs_string(&value).map_err(|err| err.to_string())
+    }
+}
+
+/// Root-level array keys that are optional per schema; empty arrays at these paths may be pruned.
+/// Required arrays (e.g. damage.parts when kind=modeled) must not be pruned when empty.
+const OPTIONAL_ROOT_ARRAY_KEYS: &[&str] = &["class_list", "tags", "subschools", "descriptors"];
+
+fn is_optional_root_array_key(key: &str) -> bool {
+    OPTIONAL_ROOT_ARRAY_KEYS.contains(&key)
+}
+
+/// Recursively removes metadata fields from a JSON value.
+/// `is_root` specifies if we are at the top-level of the spell object.
+fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
+    match value {
+        serde_json::Value::Object(obj) => {
+            // 1. Fields to prune ONLY at root
+            if is_root {
+                let root_meta = [
+                    "id",
+                    "source_refs",
+                    "version",
+                    "edition",
+                    "author",
+                    "license",
+                    "schema_version",
+                    "created_at",
+                    "updated_at",
+                    "artifacts",
+                ];
+                for k in root_meta {
+                    obj.remove(k);
+                }
+            }
+
+            // 2. Fields that should never be in the hash regardless of depth
+            obj.remove("artifacts");
+            obj.remove("source_refs");
+            obj.remove("source_text");
+
+            // 3. Recurse into children first (so nested objects can become empty)
+            for val in obj.values_mut() {
+                prune_metadata_recursive(val, false);
+            }
+
+            // 4. Lean Hashing: Remove nulls, empty strings, empty objects. Only prune empty
+            // arrays at root for optional array keys (class_list, tags, etc.); required arrays
+            // like damage.parts when kind=modeled must be retained when empty.
+            obj.retain(|k, v| {
+                if v.is_null() {
+                    return false;
+                }
+                if let Some(arr) = v.as_array() {
+                    if arr.is_empty() && is_root && is_optional_root_array_key(k) {
+                        return false;
+                    }
+                }
+                if let Some(s) = v.as_str() {
+                    if s.is_empty() {
+                        return false;
+                    }
+                }
+                if let Some(o) = v.as_object() {
+                    if o.is_empty() {
+                        return false;
+                    }
+                }
+                true
+            });
+        }
+        serde_json::Value::Array(arr) => {
+            for val in arr.iter_mut() {
+                prune_metadata_recursive(val, false);
+            }
+        }
+        _ => {}
+    }
+}
+
+impl CanonicalSpell {
+    /// See docs/architecture/canonical-serialization.md §4.1: validation runs on full JSON (including metadata).
+    pub fn compute_hash(&self) -> Result<String, String> {
+        let mut normalized_clone = self.clone();
+        normalized_clone.normalize();
+        normalized_clone.validate()?;
+
+        let canonical_json = normalized_clone.to_canonical_json_pre_normalized()?;
+        let mut hasher = Sha256::new();
+        hasher.update(canonical_json.as_bytes());
+        let result = hasher.finalize();
+        Ok(hex::encode(result))
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        use std::sync::OnceLock;
+        static COMPILED_SCHEMA: OnceLock<jsonschema::JSONSchema> = OnceLock::new();
+
+        let compiled = COMPILED_SCHEMA.get_or_init(|| {
+            const SCHEMA_STR: &str = include_str!("../../schemas/spell.schema.json");
+            let schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR)
+                .expect("Invalid embedded schema definition");
+            jsonschema::JSONSchema::compile(&schema).expect("Schema compilation error")
+        });
+
+        let instance =
+            serde_json::to_value(self).map_err(|e| format!("Serialization error: {}", e))?;
+
+        // Version Validation: Reject incompatible (invalid) versions.
+        if self.schema_version < MIN_SUPPORTED_SCHEMA_VERSION {
+            return Err(format!(
+                "Incompatible schema version {} for spell '{}'. Minimum supported version is {}.",
+                self.schema_version, self.name, MIN_SUPPORTED_SCHEMA_VERSION
+            ));
+        }
+
+        // Versions > CURRENT are logged as warnings for forward compatibility.
+        if self.schema_version > CURRENT_SCHEMA_VERSION {
+            eprintln!("WARNING: Spell '{}' uses a newer schema version ({}). This application supports up to version {}. Forward compatibility is not guaranteed.",
+                 self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
+        }
+
+        let result = compiled.validate(&instance);
+        if let Err(errors) = result {
+            let mut msg = String::new();
+            for error in errors {
+                let _ = writeln!(
+                    msg,
+                    "Validation error: {} at {}",
+                    error, error.instance_path
+                );
+            }
+            return Err(msg);
+        }
+
+        Ok(())
+    }
+
+    /// Recursively normalizes all string and number fields for deterministic hashing.
+    /// Also sorts and deduplicates unordered arrays.
+    ///
+    /// Order of operations (matches canonical-serialization contract: Materialize → Sanitize → … → Prune):
+    /// string sanitization and sub-spec normalization; tradition-consistent clearing; default
+    /// materialization and pruning; component materialization and pruning; schema version migration;
+    /// array sort/dedup (subschools/descriptors with casing normalization).
+    pub fn normalize(&mut self) {
+        self.name = normalize_string(&self.name, NormalizationMode::Structured);
+        self.tradition =
+            normalize_string(&self.tradition, NormalizationMode::Structured).to_uppercase();
+        self.school = self.school.as_ref().map(|s| match_schema_case(s));
+        self.description = normalize_string(&self.description, NormalizationMode::Textual);
+
+        if let Some(materials) = &mut self.material_components {
+            for m in materials.iter_mut() {
+                m.normalize();
+            }
+        }
+
+        if let Some(range) = &mut self.range {
+            range.normalize();
+        }
+
+        if let Some(ct) = &mut self.casting_time {
+            ct.normalize();
+        }
+
+        if let Some(dur) = &mut self.duration {
+            dur.normalize();
+        }
+
+        if let Some(area) = &mut self.area {
+            area.normalize();
+        }
+
+        if let Some(damage) = &mut self.damage {
+            damage.normalize();
+        }
+
+        if let Some(mr) = &mut self.magic_resistance {
+            mr.normalize();
+        }
+
+        if let Some(st) = &mut self.saving_throw {
+            st.normalize();
+        }
+
+        if let Some(xp) = &mut self.experience_cost {
+            xp.normalize();
+        }
+        self.sphere = self.sphere.as_ref().map(|s| match_schema_case(s));
+
+        // Prohibited fields for hashing: tradition-inconsistent fields are cleared so they never
+        // appear in canonical JSON. Ensures hash is identical whether or not source had the other
+        // tradition's field set (verification: prohibited field omission).
+        if self.tradition == "ARCANE" {
+            self.sphere = None;
+        }
+        if self.tradition == "DIVINE" {
+            self.school = None;
+        }
+
+        // Rule 88: Prune optional fields if they equal their materialized defaults (Lean Hashing)
+        // This ensures hash stability as the schema adds new optional properties.
+        if self.reversible == Some(0) {
+            self.reversible = None;
+        }
+
+        if self.is_quest_spell == Some(0) {
+            self.is_quest_spell = None;
+        }
+
+        if self.is_cantrip == Some(0) {
+            self.is_cantrip = None;
+        }
+
+        if let Some(materials) = &self.material_components {
+            if materials.is_empty() {
+                self.material_components = None;
+            }
+        }
+
+        if let Some(st) = &self.saving_throw {
+            if st.is_default() {
+                self.saving_throw = None;
+            }
+        }
+
+        if let Some(mr) = &self.magic_resistance {
+            if mr.is_default() {
+                self.magic_resistance = None;
+            }
+        }
+
+        // Prune default experience_cost before syncing components so metadata-only (e.g. source_text) doesn't affect hash.
+        if let Some(xp) = &self.experience_cost {
+            if xp.is_default() {
+                self.experience_cost = None;
+            }
+        }
+
+        if self.components.is_none() {
+            self.components = Some(SpellComponents {
+                verbal: false,
+                somatic: false,
+                material: false,
+                focus: false,
+                divine_focus: false,
+                experience: false,
+            });
+        }
+
+        // If experience_cost is still present after pruning, force experience component to true.
+        if self.experience_cost.is_some() {
+            if let Some(comp) = &mut self.components {
+                comp.experience = true;
+            }
+        }
+
+        // Rule 88: Prune components if all are false (default state)
+        if let Some(comp) = &self.components {
+            if !comp.verbal
+                && !comp.somatic
+                && !comp.material
+                && !comp.focus
+                && !comp.divine_focus
+                && !comp.experience
+            {
+                self.components = None;
+            }
+        }
+
+        // Only migrate versions in [MIN_SUPPORTED, CURRENT); reject < MIN_SUPPORTED in validate()
+        if self.schema_version >= MIN_SUPPORTED_SCHEMA_VERSION {
+            if self.schema_version < CURRENT_SCHEMA_VERSION && self.schema_version != 0 {
+                eprintln!("WARNING: Spell '{}' uses an older schema version ({}). Migrating to version {} for hashing.",
+                     self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
+            }
+
+            if self.schema_version == 0 || self.schema_version < CURRENT_SCHEMA_VERSION {
+                self.schema_version = CURRENT_SCHEMA_VERSION;
+            }
+        }
+
+        self.class_list = self
+            .class_list
+            .iter()
+            .map(|s| normalize_string(s, NormalizationMode::Structured))
+            .collect();
+        self.tags = self
+            .tags
+            .iter()
+            .map(|s| normalize_string(s, NormalizationMode::Structured))
+            .collect();
+        // Subschools and descriptors: normalize casing (match_schema_case) for hash stability.
+        self.subschools = self
+            .subschools
+            .iter()
+            .map(|s| match_schema_case(s))
+            .collect();
+        self.descriptors = self
+            .descriptors
+            .iter()
+            .map(|s| match_schema_case(s))
+            .collect();
+
+        // Sort and deduplicate after normalization to catch duplicates created by normalization (e.g. whitespace collapse)
+        self.class_list.sort();
+        self.class_list.dedup();
+        self.tags.sort();
+        self.tags.dedup();
+        self.subschools.sort();
+        self.subschools.dedup();
+        self.descriptors.sort();
+        self.descriptors.dedup();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum NormalizationMode {
+    Structured,          // Collapses all internal whitespace AND newlines
+    LowercaseStructured, // Structured + lowercase
+    Textual,             // Collapses horizontal whitespace, preserves newlines
+    Exact,               // NFC and trim, but NO internal whitespace collapsing
+}
+
+/// Normalizes a string: NFC, trim, and applies the specified normalization mode.
+pub(crate) fn normalize_string(s: &str, mode: NormalizationMode) -> String {
+    let nfc: String = s.nfc().collect();
+    let normalized = nfc.replace("\r\n", "\n").replace('\r', "\n");
+    let trimmed = normalized.trim();
+
+    match mode {
+        NormalizationMode::Structured => {
+            // Collapse ALL whitespace (including newlines) into single spaces
+            trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+        NormalizationMode::LowercaseStructured => {
+            // Collapse ALL whitespace (including newlines) into single spaces AND lowercase
+            trimmed
+                .to_lowercase()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        NormalizationMode::Textual => {
+            // Collapse internal horizontal whitespace but preserve all distinct lines.
+            // Rule 48 requires multiple empty lines to be collapsed into a single \n separator.
+            trimmed
+                .split('\n')
+                .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        NormalizationMode::Exact => trimmed.to_string(),
+    }
+}
+
+/// Matches a string against schema-defined enums case-insensitively, or falls back to Title Case.
+fn match_schema_case(s: &str) -> String {
+    let normalized = normalize_string(s, NormalizationMode::Structured);
+    let lower = normalized.to_lowercase();
+
+    // Common complex enums from schema (Lowercase singular per Rule 48/54)
+    match lower.as_str() {
+        "segment" | "segments" => "segment".to_string(),
+        "round" | "rounds" => "round".to_string(),
+        "turn" | "turns" => "turn".to_string(),
+        "hour" | "hours" => "hour".to_string(),
+        "minute" | "minutes" => "minute".to_string(),
+        "action" | "actions" => "action".to_string(),
+        "bonus action" | "bonus actions" => "bonus_action".to_string(),
+        "reaction" | "reactions" => "reaction".to_string(),
+        "instant" | "instantaneous" => "instantaneous".to_string(),
+        "special" => "special".to_string(),
+        "ft" | "foot" | "feet" => "ft".to_string(),
+        "yd" | "yard" | "yards" => "yd".to_string(),
+        "mi" | "mile" | "miles" => "mi".to_string(),
+        "inch" | "inches" => "inch".to_string(),
+        "ft2" | "sq ft" | "square feet" => "ft2".to_string(),
+        "yd2" | "sq yd" | "square yards" => "yd2".to_string(),
+        "ft3" | "cu ft" | "cubic feet" => "ft3".to_string(),
+        "yd3" | "cu yd" | "cubic yards" => "yd3".to_string(),
+        "conjuration/summoning" => "Conjuration/Summoning".to_string(),
+        "enchantment/charm" => "Enchantment/Charm".to_string(),
+        "illusion/phantasm" => "Illusion/Phantasm".to_string(),
+        "invocation/evocation" => "Invocation/Evocation".to_string(),
+        "mind-affecting" => "Mind-Affecting".to_string(),
+        "elemental air" => "Elemental Air".to_string(),
+        "elemental earth" => "Elemental Earth".to_string(),
+        "elemental fire" => "Elemental Fire".to_string(),
+        "elemental water" => "Elemental Water".to_string(),
+        "elemental rain" => "Elemental Rain".to_string(),
+        "elemental sun" => "Elemental Sun".to_string(),
+        _ => {
+            // Intentionally simple fallback: first character only. For single-word or unknown enum
+            // values. Multi-word unrecognized values may not be fully title-cased and could still
+            // fail schema validation.
+            let mut c = lower.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        }
+    }
+}
+
+pub(crate) fn normalize_scalar(s_opt: &mut Option<SpellScalar>) {
+    if let Some(s) = s_opt {
+        // Value Handling: Dependent on Mode
+        if let Some(v) = s.value {
+            let clamped = clamp_precision(v);
+            // If Fixed, value is required, so valid 0.0 must be preserved.
+            // If PerLevel, value is optional (base), so 0.0 implies explicit base 0.
+            // We clamp it, and then explicitly preserve it.
+            s.value = Some(clamped);
+        }
+
+        // PerLevel Handling
+        // Rule 66: Materialize value = 0 when mode="per_level" and omitted
+        if s.mode == crate::models::scalar::ScalarMode::PerLevel && s.value.is_none() {
+            s.value = Some(0.0);
+        }
+
+        if let Some(v) = s.per_level {
+            let clamped = clamp_precision(v);
+            // If PerLevel, per_level is required.
+            if s.mode == crate::models::scalar::ScalarMode::PerLevel {
+                s.per_level = Some(clamped);
+            } else {
+                // In Fixed mode, per_level should be 0 or None. If 0.0, strip it.
+                if clamped == 0.0 {
+                    s.per_level = None;
+                } else {
+                    s.per_level = Some(clamped);
+                }
+            }
+        }
+
+        if let Some(v) = s.cap_value {
+            let clamped = clamp_precision(v);
+            if clamped == 0.0 {
+                s.cap_value = None;
+            } else {
+                s.cap_value = Some(clamped);
+            }
+        }
+    }
+}
+
+/// Clamps floating point precision to 6 decimal places.
+pub(crate) fn clamp_precision(val: f64) -> f64 {
+    (val * 1_000_000.0).round() / 1_000_000.0
+}
+
+/// Helper to parse comma-separated strings into sorted Vecs
+fn parse_comma_list(input: &Option<String>) -> Vec<String> {
+    input
+        .as_ref()
+        .map(|s| {
+            let mut vec: Vec<String> = s
+                .split(',')
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect();
+            vec.sort();
+            vec.dedup();
+            vec
+        })
+        .unwrap_or_default()
+}
+
+impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
+    type Error = String;
+
+    fn try_from(detail: crate::models::spell::SpellDetail) -> Result<Self, Self::Error> {
+        // Tradition Inference
+        let tradition = match (&detail.school, &detail.sphere) {
+            (Some(_), Some(_)) => "BOTH".to_string(),
+            (Some(_), None) => "ARCANE".to_string(),
+            (None, Some(_)) => "DIVINE".to_string(),
+            (None, None) => return Err(format!("Spell '{}' (ID {:?}) is invalid: Must have a School (Arcane) or Sphere (Divine) defined.", detail.name, detail.id)),
+        };
+
+        let mut spell = Self::new(detail.name, detail.level, tradition, detail.description);
+
+        spell.school = detail.school.filter(|s| !s.is_empty());
+        spell.sphere = detail.sphere.filter(|s| !s.is_empty());
+        spell.class_list = parse_comma_list(&detail.class_list);
+        spell.tags = parse_comma_list(&detail.tags);
+
+        // Carry over schema version if present
+        if let Some(version) = detail.schema_version {
+            spell.schema_version = version;
+        }
+
+        let parser = SpellParser::new();
+
+        spell.range = detail
+            .range
+            .filter(|s| !s.is_empty())
+            .map(|s| parser.parse_range(&s));
+        spell.casting_time = detail
+            .casting_time
+            .filter(|s| !s.is_empty())
+            .map(|s| parser.parse_casting_time(&s));
+        spell.duration = detail
+            .duration
+            .filter(|s| !s.is_empty())
+            .map(|s| parser.parse_duration(&s));
+        spell.area = detail
+            .area
+            .filter(|s| !s.is_empty())
+            .and_then(|s| parser.parse_area(&s));
+
+        // Damage parsing
+        if let Some(dmg_str) = &detail.damage {
+            spell.damage = Some(parser.parse_damage(dmg_str));
+        } else {
+            // Fallback: heuristic? (None for now unless we search description)
+            spell.damage = None;
+        }
+
+        // Components parsing
+        if let Some(comp_str) = detail.components.filter(|s| !s.is_empty()) {
+            spell.components = Some(parser.parse_components(&comp_str));
+            // Also parse experience cost from components string
+            let xp_spec = parser.parse_experience_cost(&comp_str);
+            if xp_spec.kind != crate::models::experience::ExperienceKind::None {
+                spell.experience_cost = Some(xp_spec);
+            }
+        }
+
+        spell.material_components = detail
+            .material_components
+            .filter(|s| !s.is_empty())
+            .map(|s| parser.parse_material_components(&s));
+
+        // Saving Throw and Magic Resistance
+        if let Some(st_str) = detail.saving_throw.as_ref().filter(|s| !s.is_empty()) {
+            spell.saving_throw = Some(parser.parse_saving_throw(st_str));
+        }
+
+        if let Some(mr_str) = detail.magic_resistance.as_ref().filter(|s| !s.is_empty()) {
+            spell.magic_resistance = Some(parser.parse_magic_resistance(mr_str));
+        } else if let Some(st_str) = detail.saving_throw.as_ref().filter(|s| !s.is_empty()) {
+            // Heuristic fallback for MR
+            let mr_spec = parser.parse_magic_resistance(st_str);
+            if mr_spec.kind != crate::models::MagicResistanceKind::Unknown {
+                spell.magic_resistance = Some(mr_spec);
+            }
+        }
+
+        spell.reversible = Some(detail.reversible.unwrap_or(0));
+
+        // Metadata
+        if let Some(book) = detail.source {
+            spell.source_refs = vec![SourceRef {
+                system: detail.edition.clone(),
+                book,
+                page: None,
+                note: None,
+            }];
+        }
+
+        spell.edition = detail.edition;
+        spell.author = detail.author;
+        spell.license = detail.license;
+        spell.is_quest_spell = Some(detail.is_quest_spell);
+        spell.is_cantrip = Some(detail.is_cantrip);
+
+        Ok(spell)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::duration_spec::{DurationKind, DurationSpec, DurationUnit};
+    use crate::models::scalar::ScalarMode;
+
+    #[test]
+    fn test_regression_deserialization_defaults() {
+        // Fix: Missing tags/class_list should default to empty, not error
+        let json = r#"{
+            "name": "Test",
+            "level": 1,
+            "tradition": "ARCANE",
+            "description": "Desc",
+            "schema_version": 1,
+            "is_quest_spell": 0,
+            "is_cantrip": 0
+        }"#;
+
+        let spell: CanonicalSpell =
+            serde_json::from_str(json).expect("Should deserialize with defaults");
+        assert!(
+            spell.class_list.is_empty(),
+            "class_list should default to empty"
+        );
+        assert!(spell.tags.is_empty(), "tags should default to empty");
+    }
+
+    #[test]
+    fn test_regression_material_component_order() {
+        // Fix: Material components must NOT be sorted
+        let mut spell = CanonicalSpell::new("Order Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.material_components = Some(vec![
+            MaterialComponentSpec {
+                name: "Zebra".into(),
+                ..Default::default()
+            },
+            MaterialComponentSpec {
+                name: "Apple".into(),
+                ..Default::default()
+            },
+        ]);
+        spell.school = Some("Abjuration".into()); // Required for validation
+
+        // Normalize
+        spell.normalize();
+
+        // Assert order preserved
+        let mats = spell.material_components.as_ref().unwrap();
+        assert_eq!(mats[0].name, "Zebra");
+        assert_eq!(mats[1].name, "Apple");
+    }
+
+    #[test]
+    fn test_regression_casting_time_units() {
+        // Fix: Bonus Action and Reaction must be accepted andNormalized
+        let units = vec!["bonus action", "reaction", "Bonus Actions"];
+        let expected = vec!["bonus_action", "reaction", "bonus_action"];
+
+        for (u, exp) in units.iter().zip(expected.iter()) {
+            let normalized = match_schema_case(u);
+            assert_eq!(&normalized, exp, "Failed to normalize {}", u);
+        }
+    }
+
+    #[test]
+    fn test_regression_mechanical_fields_in_hash() {
+        // Fix: magic_resistance and experience_cost must be included in hash
+        let mut s1 = CanonicalSpell::new("Mech Test".into(), 1, "ARCANE".into(), "Desc".into());
+        s1.school = Some("Abjuration".into());
+
+        let mut s2 = s1.clone();
+        s2.magic_resistance = Some(crate::models::MagicResistanceSpec {
+            kind: crate::models::magic_resistance::MagicResistanceKind::Normal,
+            ..Default::default()
+        });
+
+        assert_ne!(
+            s1.compute_hash().unwrap(),
+            s2.compute_hash().unwrap(),
+            "Magic Resistance should affect hash"
+        );
+
+        let mut s3 = s1.clone();
+        s3.experience_cost = Some(crate::models::ExperienceComponentSpec {
+            kind: crate::models::experience::ExperienceKind::Fixed,
+            amount_xp: Some(100),
+            ..Default::default()
+        });
+
+        assert_ne!(
+            s1.compute_hash().unwrap(),
+            s3.compute_hash().unwrap(),
+            "Experience Cost should affect hash"
+        );
+    }
+
+    #[test]
+    fn test_regression_optional_field_omission() {
+        // Fix: Optional fields set to None must be OMITTED from JSON, not null
+        let spell = CanonicalSpell::new("Omit Test".into(), 1, "ARCANE".into(), "Desc".into());
+        let json = spell.to_canonical_json().unwrap();
+
+        // Check for absence of keys
+        assert!(!json.contains("\"school\":"), "school should be omitted");
+        assert!(!json.contains("\"sphere\":"), "sphere should be omitted");
+        assert!(!json.contains("\"range\":"), "range should be omitted");
+        assert!(
+            !json.contains("\"material_components\":"),
+            "material_components should be omitted"
+        );
+
+        // Check presence of required keys
+        assert!(json.contains("\"name\":\"Omit Test\""));
+        assert!(json.contains("\"level\":1"));
+    }
+
+    #[test]
+    fn test_prohibited_field_omission_arcane_sphere() {
+        // Verification: Arcane spell with sphere set must omit sphere from canonical output
+        // and produce the same hash as the same spell with sphere never present.
+        let mut with_sphere = CanonicalSpell::new(
+            "Prohibited Test".into(),
+            1,
+            "ARCANE".into(),
+            "Description".into(),
+        );
+        with_sphere.school = Some("Evocation".into());
+        with_sphere.sphere = Some("All".into()); // Tradition-inconsistent; must be cleared
+
+        let mut without_sphere = CanonicalSpell::new(
+            "Prohibited Test".into(),
+            1,
+            "ARCANE".into(),
+            "Description".into(),
+        );
+        without_sphere.school = Some("Evocation".into());
+        // sphere left None
+
+        let json_with = with_sphere.to_canonical_json().unwrap();
+        let json_without = without_sphere.to_canonical_json().unwrap();
+
+        assert!(
+            !json_with.contains("\"sphere\":"),
+            "canonical JSON for Arcane spell must OMIT sphere key even when source had sphere set"
+        );
+        assert_eq!(
+            json_with, json_without,
+            "canonical JSON must be identical for Arcane spell with or without sphere in source"
+        );
+        assert_eq!(
+            with_sphere.compute_hash().unwrap(),
+            without_sphere.compute_hash().unwrap(),
+            "hash must be identical for Arcane spell with or without sphere in source"
+        );
+    }
+
+    #[test]
+    fn test_identical_content_produces_identical_hash() {
+        let mut s1 = CanonicalSpell::new("Test Spell".into(), 1, "ARCANE".into(), "Desc".into());
+        s1.class_list = vec!["A".into(), "B".into()];
+        s1.school = Some("Necromancy".into());
+
+        let mut s2 = CanonicalSpell::new("Test Spell".into(), 1, "ARCANE".into(), "Desc".into());
+        s2.class_list = vec!["B".into(), "A".into()];
+        s2.school = Some("Necromancy".into());
+        // Arrays are sorted in new() or to_canonical_json
+
+        assert_eq!(
+            s1.to_canonical_json().unwrap(),
+            s2.to_canonical_json().unwrap()
+        );
+        assert_eq!(s1.compute_hash().unwrap(), s2.compute_hash().unwrap());
+    }
+
+    #[test]
+    fn test_content_change_produces_different_hash() {
+        let mut s1 = CanonicalSpell::new("Test Spell".into(), 1, "ARCANE".into(), "Desc".into());
+        s1.school = Some("Evocation".into());
+
+        let mut s2 = s1.clone();
+        s2.description = "New Desc".into();
+
+        assert_ne!(s1.compute_hash().unwrap(), s2.compute_hash().unwrap());
+    }
+
+    #[test]
+    fn test_compute_hash_stable() {
+        let mut spell1 = CanonicalSpell::new(
+            "Magic Missile".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Deals damage".to_string(),
+        );
+        spell1.school = Some("Evocation".into());
+
+        let mut spell2 = CanonicalSpell::new(
+            "Magic Missile".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Deals damage".to_string(),
+        );
+        spell2.school = Some("Evocation".into());
+
+        let hash1 = spell1.compute_hash().unwrap();
+        let hash2 = spell2.compute_hash().unwrap();
+
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash1.len(), 64);
+    }
+
+    #[test]
+    fn test_compute_hash_diff_content() {
+        let mut spell1 = CanonicalSpell::new(
+            "Magic Missile".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Deals damage".to_string(),
+        );
+        spell1.school = Some("Evocation".into());
+
+        let mut spell2 = CanonicalSpell::new(
+            "Fireball".to_string(),
+            3,
+            "ARCANE".to_string(),
+            "Explosion".to_string(),
+        );
+        spell2.school = Some("Evocation".into());
+
+        let hash1 = spell1.compute_hash().unwrap();
+        let hash2 = spell2.compute_hash().unwrap();
+
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_array_normalization_sorting() {
+        let mut spell1 = CanonicalSpell::new(
+            "Sort Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".to_string(), "Bard".to_string()];
+        spell1.tags = vec!["Offensive".to_string(), "Evocation".to_string()];
+
+        let mut spell2 = CanonicalSpell::new(
+            "Sort Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell2.school = Some("Abjuration".into());
+        spell2.class_list = vec!["Bard".to_string(), "Wizard".to_string()];
+        spell2.tags = vec!["Evocation".to_string(), "Offensive".to_string()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_validate_valid_arcane_spell() {
+        let mut spell = CanonicalSpell::new(
+            "Magic Missile".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Deals damage".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+
+        let result = spell.validate();
+        assert!(result.is_ok(), "Validation failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_validate_valid_divine_spell() {
+        let mut spell = CanonicalSpell::new(
+            "Cure Light Wounds".to_string(),
+            1,
+            "DIVINE".to_string(),
+            "Heals targets".to_string(),
+        );
+        spell.sphere = Some("Healing".to_string());
+        spell.class_list = vec!["Priest".to_string()];
+
+        let result = spell.validate();
+        assert!(result.is_ok(), "Validation failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_validate_missing_school_arcane() {
+        let mut spell = CanonicalSpell::new(
+            "Magic Missile".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Deals damage".to_string(),
+        );
+        // Missing school
+        spell.class_list = vec!["Wizard".to_string()]; // Add a class list to satisfy other requirements
+
+        let result = spell.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("school"));
+    }
+
+    #[test]
+    fn test_validate_missing_sphere_divine() {
+        let mut spell = CanonicalSpell::new(
+            "Cure Light Wounds".to_string(),
+            1,
+            "DIVINE".to_string(),
+            "Heals targets".to_string(),
+        );
+        // Missing sphere
+        spell.class_list = vec!["Cleric".to_string()]; // Add a class list to satisfy other requirements
+
+        let result = spell.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("sphere"));
+    }
+
+    #[test]
+    fn test_metadata_exclusion_from_hash() {
+        let mut spell1 = CanonicalSpell::new(
+            "Hash Stability".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Test metadata exclusion".to_string(),
+        );
+        spell1.school = Some("Abjuration".to_string());
+        spell1.class_list = vec!["Wizard".to_string()]; // Required for validation
+        spell1.version = "1.0.0".to_string();
+        spell1.author = Some("Original Author".to_string());
+
+        let mut spell2 = spell1.clone();
+        spell2.version = "1.1.0".to_string();
+        spell2.author = Some("New Author".to_string());
+        spell2.source_refs = vec![SourceRef {
+            system: None,
+            book: "Test Book".to_string(),
+            page: Some(serde_json::json!(123)),
+            note: None,
+        }];
+
+        let hash1 = spell1.compute_hash().unwrap();
+        let hash2 = spell2.compute_hash().unwrap();
+
+        assert_eq!(
+            hash1, hash2,
+            "Hash must be identical despite metadata changes"
+        );
+    }
+
+    #[test]
+    fn test_experience_cost_default_with_source_text_same_hash() {
+        // BUG-2: source_text is metadata (excluded from hash); is_default() must not depend on it.
+        // Two spells that differ only by experience_cost: None vs Some(default with source_text set) must produce the same hash.
+        let default_with_source = ExperienceComponentSpec {
+            kind: crate::models::experience::ExperienceKind::None,
+            payer: crate::models::experience::ExperiencePayer::Caster,
+            payment_timing: crate::models::experience::PaymentTiming::OnCompletion,
+            payment_semantics: crate::models::experience::PaymentSemantics::Spend,
+            can_reduce_level: true,
+            recoverability: crate::models::experience::Recoverability::NormalEarning,
+            amount_xp: None,
+            per_unit: None,
+            formula: None,
+            tiered: None,
+            dm_guidance: None,
+            source_text: Some("XP, no cost".to_string()),
+            notes: None,
+        };
+        assert!(
+            default_with_source.is_default(),
+            "Spec with only source_text set must be considered default"
+        );
+
+        let mut spell1 = CanonicalSpell::new(
+            "XP Default Hash".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell1.school = Some("Abjuration".to_string());
+        spell1.class_list = vec!["Wizard".to_string()];
+        spell1.experience_cost = None;
+
+        let mut spell2 = spell1.clone();
+        spell2.experience_cost = Some(default_with_source);
+
+        let mut norm1 = spell1.clone();
+        let mut norm2 = spell2.clone();
+        norm1.normalize();
+        norm2.normalize();
+        assert_eq!(
+            norm1.experience_cost, norm2.experience_cost,
+            "After normalize both must prune default experience_cost"
+        );
+        assert_eq!(
+            norm1.components, norm2.components,
+            "After normalize components must match (no experience flag from pruned cost)"
+        );
+
+        let hash1 = spell1.compute_hash().unwrap();
+        let hash2 = spell2.compute_hash().unwrap();
+        assert_eq!(
+            hash1, hash2,
+            "Hash must be identical when experience_cost is mechanically default but has source_text set"
+        );
+    }
+
+    #[test]
+    fn test_compute_hash_fails_on_invalid_spell() {
+        let mut spell = CanonicalSpell::new(
+            "Invalid".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Missing school".to_string(),
+        );
+        spell.school = None; // Explicitly ensure school is missing for ARCANE
+        spell.class_list = vec!["Wizard".to_string()]; // Add a class list to satisfy other requirements
+
+        let result = spell.compute_hash();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Validation error"));
+    }
+
+    #[test]
+    fn test_null_handling_and_formatting() {
+        let mut spell = CanonicalSpell::new(
+            "Null Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Test optional fields are null in JSON".to_string(),
+        );
+        spell.school = Some("Abjuration".to_string());
+        spell.class_list = vec!["Wizard".to_string()]; // Required for validation
+
+        let json = spell.to_canonical_json().unwrap();
+
+        // Standard fields should be present
+        assert!(json.contains("\"name\":\"Null Test\""));
+        assert!(json.contains("\"level\":1"));
+
+        // Option fields not in the struct but in schema should NOT be present if they are skipped or None
+        // Actually, our new struct doesn't have `source` but Has `author` etc. which are skipped.
+        assert!(
+            !json.contains("\"author\""),
+            "Skipped field should not be in JSON"
+        );
+
+        // Non-skipped Option::None fields appear as `null` if not skipped.
+        // HOWEVER, material_components is now PRUNED by Lean Hashing if empty.
+        assert!(!json.contains("\"material_components\":[]"));
+        // is_cantrip/is_quest_spell are NOW pruned if 0 (Lean Hashing)
+        assert!(!json.contains("\"is_cantrip\""));
+        assert!(!json.contains("\"is_quest_spell\""));
+        assert!(
+            !json.contains("\"schema_version\""),
+            "schema_version should be excluded from canonical JSON"
+        );
+    }
+
+    #[test]
+    fn test_empty_object_pruned() {
+        // GAP-3: Lean Hashing must remove empty objects (e.g. clamp_total: {})
+        use crate::models::damage::{
+            ApplicationSpec, ClampSpec, DamagePart, DamageSaveSpec, DicePool, DiceTerm,
+            SpellDamageSpec,
+        };
+        use crate::models::damage::{DamageKind, DamageType};
+
+        let mut spell = CanonicalSpell::new(
+            "Empty Obj Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+        spell.damage = Some(SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            parts: Some(vec![DamagePart {
+                id: "main".to_string(),
+                damage_type: DamageType::Fire,
+                base: DicePool {
+                    terms: vec![DiceTerm {
+                        count: 1,
+                        sides: 6,
+                        per_die_modifier: 0,
+                    }],
+                    flat_modifier: 0,
+                },
+                clamp_total: Some(ClampSpec {
+                    min_total: None,
+                    max_total: None,
+                }),
+                application: ApplicationSpec::default(),
+                save: DamageSaveSpec::default(),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        let json = spell.to_canonical_json().unwrap();
+        assert!(
+            !json.contains("\"clamp_total\":{}"),
+            "Empty clamp_total object must be pruned from canonical JSON"
+        );
+    }
+
+    #[test]
+    fn test_empty_array_omission() {
+        let mut spell = CanonicalSpell::new(
+            "Empty Array Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Test empty arrays in canonical JSON".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        // Explicitly set tags to empty array
+        spell.tags = vec![];
+        spell.class_list = vec![]; // Also test empty class_list
+        spell.subschools = vec![];
+        spell.descriptors = vec![];
+
+        let json = spell.to_canonical_json().unwrap();
+
+        // GIVEN a spell with tags = []
+        // THEN the canonical JSON MUST OMIT "tags": [] (Lean Hashing)
+        assert!(
+            !json.contains("\"tags\":[]"),
+            "Empty tags array should be PRUNED in canonical JSON"
+        );
+        assert!(
+            !json.contains("\"class_list\":[]"),
+            "Empty class_list array should be PRUNED"
+        );
+        assert!(
+            !json.contains("\"subschools\":[]"),
+            "Empty subschools array should be PRUNED"
+        );
+        assert!(
+            !json.contains("\"descriptors\":[]"),
+            "Empty descriptors array should be PRUNED"
+        );
+    }
+
+    /// Schema requires damage.parts when kind=modeled; empty parts array must be retained in canonical JSON.
+    #[test]
+    fn test_damage_modeled_empty_parts_retained_in_canonical_json() {
+        use crate::models::damage::{DamageKind, SpellDamageSpec};
+
+        let mut spell = CanonicalSpell::new(
+            "Modeled Empty Parts".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Spell with modeled damage and no parts.".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.damage = Some(SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            parts: Some(vec![]),
+            ..Default::default()
+        });
+
+        let json = spell.to_canonical_json().unwrap();
+        assert!(
+            json.contains("\"parts\":[]"),
+            "damage.parts when kind=modeled must be retained when empty (schema required); got: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_from_spell_detail_inference() {
+        use crate::models::spell::SpellDetail;
+
+        // 1. Arcane Inference (School only)
+        let mut detail = SpellDetail {
+            id: Some(1),
+            name: "Arcane Spell".into(),
+            school: Some("Evocation".into()),
+            sphere: None,
+            class_list: Some("Wizard, Sorcerer".into()),
+            level: 3,
+            range: Some("100 yards".into()),
+            components: Some("V, S, M".into()),
+            material_components: Some("Bat guano".into()),
+            casting_time: Some("1".into()),
+            duration: Some("Instantaneous".into()),
+            area: Some("20 ft. radius".into()),
+            saving_throw: Some("1/2".into()),
+            reversible: Some(0),
+            description: "Big boom".into(),
+            tags: Some("Fire, AoE".into()),
+            source: Some("PHB".into()),
+            edition: Some("2e".into()),
+            author: None,
+            license: None,
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            artifacts: None,
+            ..Default::default()
+        };
+
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        assert_eq!(canon.tradition, "ARCANE");
+        assert_eq!(canon.school, Some("Evocation".to_string()));
+        assert_eq!(canon.sphere, None);
+        assert_eq!(canon.class_list.len(), 2);
+        assert!(canon.class_list.contains(&"Wizard".to_string()));
+        assert!(canon.components.as_ref().unwrap().verbal);
+        assert!(canon.components.as_ref().unwrap().material);
+        assert_eq!(canon.source_refs[0].book, "PHB");
+
+        // 2. Divine Inference (Sphere only)
+        detail.school = None;
+        detail.sphere = Some("Healing".into());
+        // Since school is None, tradition defaults based on Sphere
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        assert_eq!(canon.tradition, "DIVINE");
+        assert_eq!(canon.school, None);
+        assert_eq!(canon.sphere, Some("Healing".to_string()));
+
+        // 3. Both Inference
+        detail.school = Some("Abjuration".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        assert_eq!(canon.tradition, "BOTH");
+        assert_eq!(canon.school, Some("Abjuration".to_string()));
+        assert_eq!(canon.sphere, Some("Healing".to_string()));
+
+        // 4. Default / Fallback tests moved to regression test
+    }
+
+    #[test]
+    fn test_id_assigned_does_not_change_hash() {
+        let mut spell = CanonicalSpell::new(
+            "ID Stability".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Hash should not change with ID".to_string(),
+        );
+        spell.school = Some("Abjuration".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+
+        let hash_no_id = spell.compute_hash().unwrap();
+
+        // Assign an ID (must match schema pattern: 64 hex chars)
+        spell.id = Some("a".repeat(64));
+        let hash_with_id = spell.compute_hash().unwrap();
+
+        assert_eq!(
+            hash_no_id, hash_with_id,
+            "Hash must remain identical even when an ID is assigned"
+        );
+    }
+
+    #[test]
+    fn test_normalization_nfc() {
+        // "e" + acute accent (U+0065 U+0301) vs "é" (U+00E9)
+        let s1_name = "Fiance\u{0301}";
+        let s2_name = "Fianc\u{00e9}";
+
+        let mut spell1 = CanonicalSpell::new(s1_name.into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+
+        let mut spell2 = CanonicalSpell::new(s2_name.into(), 1, "ARCANE".into(), "Desc".into());
+        spell2.school = Some("Abjuration".into());
+        spell2.class_list = vec!["Wizard".into()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "NFD and NFC strings must hash identically"
+        );
+    }
+
+    #[test]
+    fn test_normalization_whitespace_collapse() {
+        let mut spell1 = CanonicalSpell::new("Spell".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.range = Some(RangeSpec {
+            kind: RangeKind::Special,
+            text: None,
+            unit: None,
+            distance: None,
+            requires: None,
+            anchor: None,
+            region_unit: None,
+            notes: Some("Some  note".into()),
+            raw_legacy_value: None,
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.range.as_mut().unwrap().notes = Some("Some note".into());
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Internal whitespace must be collapsed"
+        );
+    }
+
+    #[test]
+    fn test_normalization_line_endings() {
+        let mut spell1 = CanonicalSpell::new(
+            "Line Endings".into(),
+            1,
+            "ARCANE".into(),
+            "Line1\r\nLine2".into(),
+        );
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+
+        let mut spell2 = CanonicalSpell::new(
+            "Line Endings".into(),
+            1,
+            "ARCANE".into(),
+            "Line1\nLine2".into(),
+        );
+        spell2.school = Some("Abjuration".into());
+        spell2.class_list = vec!["Wizard".into()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "CRLF and LF line endings must hash identically"
+        );
+    }
+
+    #[test]
+    fn test_time_unit_normalization_to_schema_enums() {
+        let mut spell = CanonicalSpell::new("Units".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.casting_time = Some(SpellCastingTime {
+            text: "1".into(),
+            unit: CastingTimeUnit::Round,
+            base_value: Some(1.0),
+            per_level: Some(0.0),
+            level_divisor: Some(1.0),
+            raw_legacy_value: None,
+        });
+        spell.duration = Some(DurationSpec {
+            kind: DurationKind::Time,
+            unit: Some(DurationUnit::Hour),
+            duration: Some(SpellScalar {
+                mode: ScalarMode::Fixed,
+                value: Some(2.0),
+                per_level: None,
+                min_level: None,
+                max_level: None,
+                cap_value: None,
+                cap_level: None,
+                rounding: None,
+            }),
+            notes: Some("2".to_string()), // Preserving text as notes if needed, though not strictly required for this test
+            uses: None,
+            condition: None,
+            raw_legacy_value: None,
+        });
+
+        let canonical_json = spell.to_canonical_json().unwrap();
+        assert!(
+            canonical_json.contains("\"unit\":\"round\""),
+            "Casting time unit should normalize to round"
+        );
+        assert!(
+            canonical_json.contains("\"unit\":\"hour\""),
+            "Duration unit should normalize to hour (lowercase singular per new standard)"
+        );
+    }
+
+    #[test]
+    fn test_normalization_float_precision() {
+        let mut spell1 = CanonicalSpell::new("Spell".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+
+        // Helper to make scalar
+        let make_spec = |val: f64| RangeSpec {
+            kind: RangeKind::Distance,
+            text: None,
+            unit: Some(RangeUnit::Yd),
+            distance: Some(SpellScalar {
+                mode: ScalarMode::Fixed,
+                value: Some(val),
+                per_level: None,
+                min_level: None,
+                max_level: None,
+                cap_value: None,
+                cap_level: None,
+                rounding: None,
+            }),
+            requires: None,
+            anchor: None,
+            region_unit: None,
+            notes: None,
+            raw_legacy_value: None,
+        };
+
+        spell1.range = Some(make_spec(10.0000001));
+
+        let mut spell2 = spell1.clone();
+        spell2.range = Some(make_spec(10.0000004));
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Floats must be rounded to 6 decimal places"
+        );
+
+        let mut spell3 = spell1.clone();
+        spell3.range = Some(make_spec(10.000001));
+        assert_ne!(
+            spell1.compute_hash().unwrap(),
+            spell3.compute_hash().unwrap(),
+            "Different values beyond 6 decimals must be different"
+        );
+    }
+
+    #[test]
+    fn test_array_deduplication() {
+        let mut spell1 =
+            CanonicalSpell::new("Deduplicate".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into(), "Wizard".into()];
+        spell1.tags = vec!["TagA".into(), "TagA".into()];
+
+        let mut spell2 = spell1.clone();
+        spell2.class_list = vec!["Wizard".into()];
+        spell2.tags = vec!["TagA".into()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Arrays must be deduplicated"
+        );
+    }
+
+    #[test]
+    fn test_casing_normalization_tradition() {
+        let mut spell1 = CanonicalSpell::new("Casing".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+
+        let mut spell2 = spell1.clone();
+        spell2.tradition = "arcane".into();
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Tradition 'arcane' must be normalized to 'ARCANE'"
+        );
+    }
+
+    #[test]
+    fn test_casing_normalization_enums() {
+        let mut spell1 = CanonicalSpell::new("Enums".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+
+        // Range is enum-typed now, so no string normalization to test there directly
+        // Testing string fields like School/Sphere is sufficient
+
+        let mut spell2 = spell1.clone();
+        spell2.school = Some("abjuration".into());
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "School 'abjuration' must be corrected to Title Case"
+        );
+    }
+
+    #[test]
+    fn test_subschools_descriptors_case_normalization() {
+        // GAP-4: subschools and descriptors differing only by case must produce the same hash.
+        let mut spell1 = CanonicalSpell::new("Taxonomy".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Evocation".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.subschools = vec!["Fire".to_string()];
+        spell1.descriptors = vec!["Mind-Affecting".to_string()];
+
+        let mut spell2 = spell1.clone();
+        spell2.subschools = vec!["fire".to_string()];
+        spell2.descriptors = vec!["mind-affecting".to_string()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "subschools/descriptors case differences must normalize to same hash"
+        );
+    }
+
+    #[test]
+    fn test_reversible_materialization() {
+        let mut spell1 =
+            CanonicalSpell::new("Reversible".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.reversible = Some(0);
+
+        let mut spell2 = spell1.clone();
+        spell2.reversible = None;
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "None reversible must hash identically to Some(0) due to default materialization"
+        );
+    }
+
+    #[test]
+    fn test_damage_without_cap_level_passes() {
+        let mut spell = CanonicalSpell::new(
+            "Damage Cap Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Testing null cap level".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+        spell.damage = Some(SpellDamageSpec {
+            kind: crate::models::damage::DamageKind::Modeled,
+            notes: Some("1d6".into()),
+            ..Default::default()
+        });
+
+        let result = spell.validate();
+        assert!(
+            result.is_ok(),
+            "Validation failed for null cap_level: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_regression_canonical_json_null_omission() {
+        // Bug: Optional fields were serializing as `null`, breaking deterministic hashing.
+        // Fix: Added `skip_serializing_if = "Option::is_none"`.
+        let mut spell = CanonicalSpell::new(
+            "Null Regression Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        // Explicitly set these to None to trigger potential null serialization
+        spell.material_components = None;
+        spell.saving_throw = None;
+        spell.reversible = None;
+        spell.damage = Some(SpellDamageSpec {
+            kind: crate::models::damage::DamageKind::Modeled,
+            notes: Some("1d6".into()),
+            ..Default::default()
+        });
+
+        let json = spell.to_canonical_json().unwrap();
+
+        // Lean Hashing: material_components: [] should be PRUNED
+        assert!(
+            !json.contains("\"material_components\":[]"),
+            "material_components should be pruned"
+        );
+        assert!(
+            !json.contains("\"saving_throw\""),
+            "saving_throw should be omitted"
+        );
+        assert!(
+            !json.contains("\"cap_level\""),
+            "cap_level inside damage should be omitted"
+        );
+
+        // Lean Hashing: reversible: 0 should be PRUNED
+        assert!(
+            !json.contains("\"reversible\""),
+            "reversible should be pruned if 0"
+        );
+    }
+
+    #[test]
+    fn test_regression_schema_version_exclusion_from_canonical_json() {
+        // Bug: schema_version was included in canonical JSON, making hashes change per schema version.
+        // Fix: schema_version is now removed during canonicalization for hashing.
+        // Note: It is STILL present in standard serialization for export/validation.
+        let spell = CanonicalSpell::new(
+            "Version Test".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+
+        let json = spell.to_canonical_json().unwrap();
+
+        assert!(
+            !json.contains("\"schema_version\""),
+            "schema_version must be EXCLUDED from canonical JSON"
+        );
+
+        // Verify it IS present in standard serialization
+        let standard_json = serde_json::to_string(&spell).unwrap();
+        assert!(
+            standard_json.contains("\"schema_version\":1"),
+            "schema_version must be PRESENT in standard JSON for export"
+        );
+    }
+
+    #[test]
+    fn test_issue_1_enum_normalization_casing() {
+        let mut spell = CanonicalSpell::new("Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("EVOCATION".into());
+        spell.normalize();
+        assert_eq!(
+            spell.school.as_deref(),
+            Some("Evocation"),
+            "Should normalize EVOCATION to Evocation"
+        );
+
+        spell.school = Some("aBjUrAtIoN".into());
+        spell.normalize();
+        assert_eq!(
+            spell.school.as_deref(),
+            Some("Abjuration"),
+            "Should normalize aBjUrAtIoN to Abjuration"
+        );
+    }
+
+    #[test]
+    fn test_issue_2_normalization_preserves_zero_value() {
+        use crate::models::scalar::*;
+        // Verify canonicalization doesn't strip value: 0.0 for PerLevel scalars
+        let mut spell = CanonicalSpell::new("Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+
+        // Manually construct scalar as if parsed
+        let scalar = SpellScalar {
+            mode: ScalarMode::PerLevel,
+            value: Some(0.0),
+            per_level: Some(1.0),
+            ..Default::default()
+        };
+
+        spell.duration = Some(crate::models::duration_spec::DurationSpec {
+            kind: crate::models::duration_spec::DurationKind::Time,
+            duration: Some(scalar),
+            ..Default::default()
+        });
+
+        spell.normalize();
+
+        let json = serde_json::to_value(&spell).unwrap();
+        let dur_json = json.get("duration").unwrap().get("duration").unwrap();
+        assert_eq!(
+            dur_json.get("value").unwrap().as_f64(),
+            Some(0.0),
+            "value: 0.0 should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_issue_3_area_spec_schema_requirements() {
+        let mut spell = CanonicalSpell::new("Area Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into()); // REQUIRED for validation to even get to Area check
+        spell.area = Some(AreaSpec {
+            kind: AreaKind::Cylinder,
+            radius: Some(SpellScalar {
+                mode: ScalarMode::Fixed,
+                value: Some(5.0),
+                ..Default::default()
+            }),
+            height: Some(SpellScalar {
+                mode: ScalarMode::Fixed,
+                value: Some(10.0),
+                ..Default::default()
+            }),
+            shape_unit: Some(AreaShapeUnit::Ft),
+            ..Default::default()
+        });
+
+        let result = spell.validate();
+        assert!(
+            result.is_ok(),
+            "Validation should succeed for partial Cylinder (missing radius/unit): {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_issue_4_components_hashing() {
+        let mut s1 = CanonicalSpell::new("Comp Test".into(), 1, "ARCANE".into(), "Desc".into());
+        s1.school = Some("Divination".into());
+        s1.components = None;
+
+        let mut s2 = CanonicalSpell::new("Comp Test".into(), 1, "ARCANE".into(), "Desc".into());
+        s2.school = Some("Divination".into());
+        s2.components = Some(SpellComponents {
+            verbal: false,
+            somatic: false,
+            material: false,
+            focus: false,
+            divine_focus: false,
+            experience: false,
+        });
+
+        let h1 = s1.compute_hash().expect("Hash 1");
+        let h2 = s2.compute_hash().expect("Hash 2");
+
+        assert_eq!(
+            h1, h2,
+            "Spells with None components and Default components should have identical hash"
+        );
+    }
+
+    #[test]
+    fn test_regression_varied_area_shapes() {
+        // Validation should succeed for various shapes with minimal fields (relaxed schema)
+        let shapes = vec![
+            AreaKind::Cone,
+            AreaKind::Line,
+            AreaKind::Rect,
+            AreaKind::Cube,
+            AreaKind::Wall,
+        ];
+
+        for kind in shapes {
+            let mut spell =
+                CanonicalSpell::new(format!("{:?}", kind), 1, "ARCANE".into(), "Desc".into());
+            spell.school = Some("Abjuration".into());
+
+            let scalar = Some(SpellScalar {
+                value: Some(5.0),
+                ..Default::default()
+            });
+
+            spell.area = Some(AreaSpec {
+                kind,
+                radius: if kind == AreaKind::Cone || kind == AreaKind::Cylinder {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                length: if kind == AreaKind::Line
+                    || kind == AreaKind::Wall
+                    || kind == AreaKind::Cone
+                    || kind == AreaKind::Rect
+                {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                width: if kind == AreaKind::Rect || kind == AreaKind::Line || kind == AreaKind::Wall
+                {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                height: if kind == AreaKind::Wall
+                    || kind == AreaKind::Cube
+                    || kind == AreaKind::Cylinder
+                {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                edge: if kind == AreaKind::Cube {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                thickness: if kind == AreaKind::Wall {
+                    scalar.clone()
+                } else {
+                    None
+                },
+                shape_unit: Some(AreaShapeUnit::Ft),
+                ..Default::default()
+            });
+
+            let val_res = spell.validate();
+            assert!(
+                val_res.is_ok(),
+                "Validation failed for minimal area shape: {:?}. Error: {:?}",
+                kind,
+                val_res.err()
+            );
+        }
+    }
+
+    #[test]
+    fn test_regression_duplicate_array_items_fail_validation() {
+        // Bug: parse_comma_list didn't deduplicate, schema has uniqueItems: true.
+        // If duplicates exist, validation fails, preventing hashing.
+
+        // Setup a spell with duplicates in class_list
+        // Setup a spell with duplicates in class_list
+        let detail = crate::models::spell::SpellDetail {
+            id: Some(1),
+            name: "Duplicate Test".into(),
+            school: Some("Evocation".into()),
+            sphere: None,
+            // Duplicates here:
+            class_list: Some("Wizard, Wizard, Sorcerer".into()),
+            level: 3,
+            range: Some("100 yards".into()),
+            components: Some("V".into()),
+            material_components: None,
+            casting_time: Some("1".into()),
+            duration: Some("Instantaneous".into()),
+            area: Some("20 ft. radius".into()),
+            saving_throw: Some("1/2".into()),
+            reversible: Some(0),
+            description: "Big boom".into(),
+            tags: Some("Fire, Fire".into()),
+            source: Some("PHB".into()),
+            edition: Some("2e".into()),
+            author: None,
+            license: None,
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            artifacts: None,
+            ..Default::default()
+        };
+
+        let canon = CanonicalSpell::try_from(detail).expect("Should convert successfully");
+
+        // Before Fix: this should FAIL validation because duplicates are present
+        // After Fix: this should PASS validation because duplicates are removed during conversion
+        let result = canon.validate();
+
+        // We assert true here because we WANT it to pass.
+        // If the bug exists, this test will fail, confirming the need for a fix.
+        assert!(
+            result.is_ok(),
+            "Validation failed due to duplicates: {:?}",
+            result.err()
+        );
+
+        // Verify dedup happened
+        assert_eq!(
+            canon.class_list.len(),
+            2,
+            "Class list should be deduped to 2 items"
+        );
+        assert_eq!(canon.tags.len(), 1, "Tags should be deduped to 1 item");
+    }
+
+    #[test]
+    fn test_regression_invalid_tradition_inference() {
+        // Bug: If School and Sphere are both None, tradition defaults to ARCANE but School is None.
+        // Fix: TryFrom should fail if neither is present.
+        let detail = crate::models::spell::SpellDetail {
+            id: Some(1),
+            name: "Ambiguous Spell".into(),
+            school: None,
+            sphere: None,
+            class_list: Some("Wizard".into()),
+            level: 1,
+            range: None,
+            components: None,
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            saving_throw: None,
+            reversible: None,
+            description: "Desc".into(),
+            tags: None,
+            source: None,
+            edition: None,
+            author: None,
+            license: None,
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            artifacts: None,
+            ..Default::default()
+        };
+
+        let result = CanonicalSpell::try_from(detail);
+
+        // Verify refactor: conversion MUST fail
+        assert!(
+            result.is_err(),
+            "Conversion should fail for spell with no School or Sphere"
+        );
+        let err = result.err().unwrap();
+        assert!(
+            err.contains("Must have a School"),
+            "Error message should mention School requirement"
+        );
+    }
+
+    #[test]
+    fn test_validate_schema_version_current() {
+        let mut spell = CanonicalSpell::new("V1".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.schema_version = CURRENT_SCHEMA_VERSION;
+        assert!(spell.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_schema_version_future_warning() {
+        let mut spell = CanonicalSpell::new("V100".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.schema_version = CURRENT_SCHEMA_VERSION + 1;
+        // Should PASS validation with a warning logging (verified via behavior, not return type)
+        assert!(spell.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_schema_version_migration_allowed() {
+        let mut spell = CanonicalSpell::new("V0".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.schema_version = 0; // Historically incompatible, now allowed
+        let result = spell.validate();
+        assert!(
+            result.is_ok(),
+            "Schema version 0 should now be allowed for migration"
+        );
+    }
+
+    #[test]
+    fn test_validate_schema_version_rejected() {
+        let mut spell = CanonicalSpell::new("Invalid".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.schema_version = -1;
+        let result = spell.validate();
+        assert!(
+            result.is_err(),
+            "Schema version < MIN_SUPPORTED must be rejected"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Incompatible schema version"),
+            "Error message should indicate incompatible version"
+        );
+    }
+
+    #[test]
+    fn test_hash_stability_across_schema_versions() {
+        let mut spell1 = CanonicalSpell::new("Stability".into(), 1, "ARCANE".into(), "Desc".into());
+        spell1.school = Some("Abjuration".into());
+        spell1.class_list = vec!["Wizard".into()];
+        spell1.schema_version = 1;
+
+        let mut spell2 = spell1.clone();
+        spell2.schema_version = 0; // Historical/migration version
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Hash must be identical across supported schema versions (0 and 1)"
+        );
+    }
+
+    #[test]
+    fn test_nested_deny_unknown_fields() {
+        // Test SpellComponents
+        let json =
+            r#"{"verbal": true, "somatic": true, "material": false, "unknown_field": "error"}"#;
+        let res: Result<SpellComponents, _> = serde_json::from_str(json);
+        assert!(
+            res.is_err(),
+            "Should reject unknown field in SpellComponents"
+        );
+
+        // Test SpellCastingTime
+        let json = r#"{"text": "1", "unit": "Round", "unknown_field": "error"}"#;
+        let res: Result<SpellCastingTime, _> = serde_json::from_str(json);
+        assert!(
+            res.is_err(),
+            "Should reject unknown field in SpellCastingTime"
+        );
+
+        // Test RangeSpec
+        let json = r#"{"kind": "touch", "unknown_field": "error"}"#;
+        let res: Result<RangeSpec, _> = serde_json::from_str(json);
+        assert!(res.is_err(), "Should reject unknown field in RangeSpec");
+
+        // Test CanonicalSpell top-level
+        let json = r#"{
+            "name": "Test",
+            "level": 1,
+            "tradition": "ARCANE",
+            "description": "Desc",
+            "unknown_top_level": "error"
+        }"#;
+        let res: Result<CanonicalSpell, _> = serde_json::from_str(json);
+        assert!(
+            res.is_err(),
+            "Should reject unknown field in CanonicalSpell"
+        );
+    }
+
+    #[test]
+    fn test_validation_strictly_rejects_unknown_properties() {
+        // This test ensures that the schema itself is strict, even if Serde didn't catch something
+        let mut spell = CanonicalSpell::new("Strict".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        // Confirm valid first
+        assert!(spell.validate().is_ok());
+
+        // Now manually create a JSON value with an extra field at top level
+        let mut value = serde_json::to_value(&spell).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("extra".to_string(), serde_json::json!("field"));
+
+        // Compile and validate
+        const SCHEMA_STR: &str = include_str!("../../schemas/spell.schema.json");
+        let schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR).unwrap();
+        let compiled = jsonschema::JSONSchema::compile(&schema).unwrap();
+
+        let result = compiled.validate(&value);
+        assert!(
+            result.is_err(),
+            "Schema should reject additionalProperties: false at top level"
+        );
+
+        // Test nested additional properties (e.g. range)
+        let mut spell =
+            CanonicalSpell::new("Strict Nested".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.range = Some(RangeSpec {
+            kind: RangeKind::Touch,
+            text: None,
+            unit: None,
+            distance: None,
+            requires: None,
+            anchor: None,
+            region_unit: None,
+            notes: None,
+            raw_legacy_value: None,
+        });
+
+        let mut value = serde_json::to_value(&spell).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .get_mut("range")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert("extra".to_string(), serde_json::json!("field"));
+
+        let result = compiled.validate(&value);
+        assert!(
+            result.is_err(),
+            "Schema should reject additionalProperties: false in range"
+        );
+    }
+
+    #[test]
+    fn test_is_quest_spell_is_cantrip_enum_constraint() {
+        let mut spell = CanonicalSpell::new("Enum Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        // 0 and 1 are valid
+        spell.is_quest_spell = Some(0);
+        spell.is_cantrip = Some(1);
+        assert!(spell.validate().is_ok());
+
+        spell.is_quest_spell = Some(1);
+        spell.is_cantrip = Some(0);
+        assert!(spell.validate().is_ok());
+
+        // Anything other than 0 or 1 should fail
+        let mut value = serde_json::to_value(&spell).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("is_quest_spell".into(), serde_json::json!(2));
+
+        const SCHEMA_STR: &str = include_str!("../../schemas/spell.schema.json");
+        let schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR).unwrap();
+        let compiled = jsonschema::JSONSchema::compile(&schema).unwrap();
+
+        assert!(
+            compiled.validate(&value).is_err(),
+            "Should reject 2 for is_quest_spell"
+        );
+
+        let mut value = serde_json::to_value(&spell).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("is_cantrip".into(), serde_json::json!(false));
+        assert!(
+            compiled.validate(&value).is_err(),
+            "Should reject boolean for is_cantrip"
+        );
+    }
+
+    #[test]
+    fn test_component_parsing_exact_match() {
+        use crate::models::spell::SpellDetail;
+
+        let mut detail = SpellDetail {
+            id: Some(1),
+            name: "Somatic Test".into(),
+            school: Some("Abjuration".into()),
+            sphere: None,
+            class_list: None,
+            level: 1,
+            range: None,
+            components: Some("Somatic".into()), // Should NOT match 'M'
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            saving_throw: None,
+            reversible: None,
+            description: "Desc".into(),
+            tags: None,
+            source: None,
+            edition: None,
+            author: None,
+            license: None,
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            artifacts: None,
+            ..Default::default()
+        };
+
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(!comps.verbal);
+        assert!(comps.somatic);
+        assert!(
+            !comps.material,
+            "Somatic should NOT set material=true despite containing 'm'"
+        );
+
+        detail.components = Some("V, S, M".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal);
+        assert!(comps.somatic);
+        assert!(comps.material);
+
+        detail.components = Some("verbal ; somatic".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal);
+        assert!(comps.somatic);
+        assert!(!comps.material);
+
+        // Case: Mixed case and extra whitespace
+        detail.components = Some("  vErBaL ,   S  ".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal);
+        assert!(comps.somatic);
+        assert!(!comps.material);
+
+        // Case: Unknown tokens and full words
+        detail.components = Some("V, Material, Focus".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal);
+        assert!(!comps.somatic);
+        assert!(comps.material);
+
+        // Case: Empty or nonsensical tokens
+        detail.components = Some(", ; ,".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(!comps.verbal);
+        assert!(!comps.somatic);
+        assert!(!comps.material);
+
+        detail.components = Some("".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        assert!(
+            canon.components.is_none(),
+            "Empty components string should result in None"
+        );
+        assert!(!comps.verbal);
+        assert!(!comps.somatic);
+        assert!(!comps.material);
+
+        // Case: Combined string without separators (VSM parses as V, S, M per parser spec)
+        detail.components = Some("VSM".into());
+        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
+        let comps = canon.components.unwrap();
+        assert!(comps.verbal, "Undelimited VSM should parse as verbal");
+        assert!(comps.somatic, "Undelimited VSM should parse as somatic");
+        assert!(comps.material, "Undelimited VSM should parse as material");
+    }
+
+    #[test]
+    fn test_metadata_preservation_for_storage() {
+        let mut spell =
+            CanonicalSpell::new("Metadata Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.author = Some("Test Author".into());
+        spell.edition = Some("2e".into());
+
+        // 1. Verify Standard Serialization KEEPS metadata
+        let standard_json = serde_json::to_string(&spell).unwrap();
+        assert!(
+            standard_json.contains("\"author\":\"Test Author\""),
+            "Standard JSON must contain author"
+        );
+        assert!(
+            standard_json.contains("\"edition\":\"2e\""),
+            "Standard JSON must contain edition"
+        );
+
+        // 2. Verify Canonical Serialization REMOVES metadata for hashing
+        let canonical_json = spell.to_canonical_json().unwrap();
+        assert!(
+            !canonical_json.contains("\"author\""),
+            "Canonical JSON must EXCLUDE author"
+        );
+        assert!(
+            !canonical_json.contains("\"edition\""),
+            "Canonical JSON must EXCLUDE edition"
+        );
+    }
+
+    #[test]
+    fn test_new_uses_current_schema_version() {
+        let spell = CanonicalSpell::new("V".into(), 1, "ARCANE".into(), "D".into());
+        assert_eq!(spell.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+    #[test]
+    fn test_complex_field_structuring_regression() {
+        use crate::models::spell::SpellDetail;
+
+        let detail = SpellDetail {
+            id: Some(1),
+            name: "Complex Scaling Spell".to_string(),
+            level: 3,
+            school: Some("Evocation".to_string()),
+            sphere: None,
+            class_list: Some("Wizard".to_string()),
+            range: Some("10 yards + 5 yards/level".to_string()),
+            components: Some("V, S, M (gem)".to_string()),
+            material_components: Some("Gem".to_string()),
+            casting_time: Some("1 action".to_string()),
+            duration: Some("1 round / 2 levels".to_string()),
+            area: Some("20-foot radius".to_string()),
+            saving_throw: Some("None".to_string()),
+            reversible: Some(0),
+            description: "Desc".to_string(),
+            tags: Some("tag".to_string()),
+            source: Some("Test".to_string()),
+            edition: Some("2e".to_string()),
+            author: Some("Me".to_string()),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            license: None,
+            artifacts: None,
+            ..Default::default()
+        };
+
+        let spell = CanonicalSpell::try_from(detail).unwrap();
+
+        // Range
+        let r = spell.range.unwrap();
+        assert_eq!(r.kind, RangeKind::Distance);
+        let dist = r.distance.unwrap();
+        assert_eq!(dist.value.unwrap(), 10.0);
+        assert_eq!(dist.per_level.unwrap(), 5.0);
+        assert_eq!(r.unit, Some(RangeUnit::Yd));
+
+        // Duration
+        let d = spell.duration.unwrap();
+        // "1 round / 2 levels" -> 0.5 round per level
+        assert_eq!(d.duration.unwrap().per_level.unwrap(), 0.5);
+        assert_eq!(d.unit, Some(DurationUnit::Round));
+
+        // Area
+        let a = spell.area.unwrap();
+        assert_eq!(a.kind, AreaKind::RadiusCircle);
+        assert_eq!(a.radius.unwrap().value.unwrap(), 20.0);
+        assert_eq!(a.unit.unwrap(), AreaUnit::Ft);
+
+        // Casting Time
+        let ct = spell.casting_time.unwrap();
+        assert_eq!(ct.base_value.unwrap_or(1.0), 1.0);
+        assert_eq!(ct.unit, CastingTimeUnit::Action);
+
+        // Components
+        let c = spell.components.unwrap();
+        assert!(c.verbal);
+        assert!(c.somatic);
+        assert!(c.material);
+    }
+
+    #[test]
+    fn test_parser_schema_compliance_deep_dive() {
+        use crate::models::spell::SpellDetail;
+        // Setup: A spell with complex area that needs parsing -> AreaSpec -> Validation
+        let detail = SpellDetail {
+            id: Some(999),
+            name: "Deep Dive Area".to_string(),
+            level: 3,
+            school: Some("Evocation".to_string()),
+            sphere: None,
+            class_list: Some("Wizard".to_string()),
+            range: Some("0".to_string()),
+            components: Some("V".to_string()),
+            material_components: None,
+            casting_time: Some("1".to_string()),
+            duration: Some("Instantaneous".to_string()),
+            area: Some("20 ft. radius".to_string()), // Target of test
+            saving_throw: Some("None".to_string()),
+            reversible: Some(0),
+            description: "Desc".to_string(),
+            tags: None,
+            source: Some("Test".to_string()),
+            edition: Some("2e".to_string()),
+            author: Some("Me".to_string()),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            license: None,
+            artifacts: None,
+            ..Default::default()
+        };
+
+        // 1. Conversion (Parser Logic)
+        let canon = CanonicalSpell::try_from(detail).expect("Canonicalization should succeed");
+
+        let area = canon.area.as_ref().expect("Area should be parsed");
+        assert_eq!(area.kind, AreaKind::RadiusCircle);
+        assert_eq!(area.radius.as_ref().unwrap().value, Some(20.0));
+        assert_eq!(area.unit, Some(AreaUnit::Ft));
+
+        // 2. Validation (Schema Logic)
+        // This ensures the AreaSpec struct we built is actually valid against the JSON Schema
+        let validation_res = canon.validate();
+        assert!(
+            validation_res.is_ok(),
+            "CanonicalSpell with AreaSpec failed schema validation: {:?}",
+            validation_res.err()
+        );
+
+        // 3. Round-trip hash check
+        let hash = canon.compute_hash().expect("Hash computation failed");
+        assert_eq!(hash.len(), 64);
+    }
+
+    #[test]
+    fn test_parser_cone_unit_bug() {
+        use crate::models::canonical_spell::{AreaKind, AreaShapeUnit, AreaUnit};
+        use crate::utils::spell_parser::SpellParser;
+        let parser = SpellParser::new();
+
+        // This should parse as Yards
+        let spec = parser.parse_area("30 yard cone").unwrap();
+        assert_eq!(spec.kind, AreaKind::Cone);
+        assert_eq!(spec.unit, Some(AreaUnit::Yd));
+        assert_eq!(spec.shape_unit, Some(AreaShapeUnit::Yd));
+        assert_eq!(spec.length.unwrap().value, Some(30.0));
+    }
+
+    #[test]
+    fn test_validation_explicit_duration_spec_success() {
+        use crate::models::duration_spec::{DurationKind, DurationSpec, DurationUnit};
+        use crate::models::scalar::{ScalarMode, SpellScalar};
+
+        let mut spell = CanonicalSpell::new(
+            "Valid Duration Spec".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
+        spell.school = Some("Abjuration".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        spell.duration = Some(DurationSpec {
+            kind: DurationKind::Time,
+            unit: Some(DurationUnit::Round),
+            duration: Some(SpellScalar {
+                value: Some(1.0),
+                mode: ScalarMode::Fixed,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        let result = spell.validate();
+        assert!(
+            result.is_ok(),
+            "Validation failed with explicit duration: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_normalization_preserves_newlines() {
+        let input = "Line 1\nLine 2 \n  Line 3";
+        let output = normalize_string(input, NormalizationMode::Textual);
+        assert_eq!(output, "Line 1\nLine 2\nLine 3");
+
+        let input2 = "Line 1\r\nLine 2\n\nLine 3";
+        let output2 = normalize_string(input2, NormalizationMode::Textual);
+        // \r\n -> \n, and multiple empty lines are collapsed to a single \n separator (Rule 48)
+        assert_eq!(output2, "Line 1\nLine 2\nLine 3");
+
+        let input3 = "Line 1\n\n\nLine 2";
+        let output3 = normalize_string(input3, NormalizationMode::Textual);
+        assert_eq!(output3, "Line 1\nLine 2");
+    }
+
+    #[test]
+    fn test_regression_inches_area_unit() {
+        use crate::utils::spell_parser::SpellParser;
+        let parser = SpellParser::new();
+        let spec = parser.parse_area("10 inch radius").unwrap();
+        assert_eq!(spec.kind, AreaKind::RadiusCircle);
+        assert_eq!(spec.unit, Some(AreaUnit::Inch));
+    }
+
+    #[test]
+    fn test_regression_line_width_optional() {
+        let mut spell = CanonicalSpell::new("Line Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        // Line without width (new schema relaxation)
+        spell.area = Some(AreaSpec {
+            kind: AreaKind::Line,
+            unit: Some(AreaUnit::Ft),
+            shape_unit: Some(AreaShapeUnit::Ft),
+            length: Some(SpellScalar::fixed(60.0)),
+            ..Default::default()
+        });
+
+        assert!(
+            spell.validate().is_ok(),
+            "Line should be valid without width"
+        );
+    }
+
+    #[test]
+    fn test_unit_based_identity_distinction() {
+        let mut spell_yd = CanonicalSpell::new("Dist".into(), 1, "ARCANE".into(), "D".into());
+        spell_yd.school = Some("Evocation".into());
+        spell_yd.class_list = vec!["Wizard".into()];
+        spell_yd.range = Some(RangeSpec {
+            kind: RangeKind::Distance,
+            unit: Some(RangeUnit::Yd),
+            distance: Some(SpellScalar::fixed(1.0)),
+            ..Default::default()
+        });
+
+        let mut spell_ft = spell_yd.clone();
+        spell_ft.range.as_mut().unwrap().unit = Some(RangeUnit::Ft);
+        spell_ft.range.as_mut().unwrap().distance = Some(SpellScalar::fixed(3.0));
+
+        let hash_yd = spell_yd.compute_hash().unwrap();
+        let hash_ft = spell_ft.compute_hash().unwrap();
+
+        assert_ne!(
+            hash_yd, hash_ft,
+            "1 yard and 3 feet must produce different hashes (unit preservation)"
+        );
+    }
+
+    #[test]
+    fn test_hash_stability_reordered_lists() {
+        let mut spell1 = CanonicalSpell::new(
+            "Test Spell".to_string(),
+            3,
+            "Arcane".to_string(),
+            "A test spell.".to_string(),
+        );
+        spell1.school = Some("Abjuration".to_string());
+        spell1.class_list = vec!["Wizard".to_string(), "Cleric".to_string()];
+        spell1.tags = vec!["combat".to_string(), "utility".to_string()];
+
+        let mut spell2 = spell1.clone();
+        spell2.class_list = vec!["Cleric".to_string(), "Wizard".to_string()];
+        spell2.tags = vec!["utility".to_string(), "combat".to_string()];
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Reordered string lists should result in same hash"
+        );
+    }
+
+    #[test]
+    fn test_hash_stability_reordered_mechanics() {
+        let mut spell1 = CanonicalSpell::new(
+            "Nuke".to_string(),
+            5,
+            "Arcane".to_string(),
+            "Big boom.".to_string(),
+        );
+        spell1.school = Some("Evocation".to_string());
+        spell1.class_list = vec!["Wizard".to_string()];
+
+        // Damage parts reordered
+        use crate::models::damage::{DamagePart, DamageType, DicePool, DiceTerm, SpellDamageSpec};
+
+        let part_a = DamagePart {
+            id: "a".to_string(),
+            damage_type: DamageType::Fire,
+            base: DicePool {
+                terms: vec![DiceTerm {
+                    count: 10,
+                    sides: 6,
+                    per_die_modifier: 0,
+                }],
+                flat_modifier: 0,
+            },
+            ..Default::default()
+        };
+        let part_b = DamagePart {
+            id: "b".to_string(),
+            damage_type: DamageType::Cold,
+            base: DicePool {
+                terms: vec![DiceTerm {
+                    count: 5,
+                    sides: 4,
+                    per_die_modifier: 0,
+                }],
+                flat_modifier: 0,
+            },
+            ..Default::default()
+        };
+
+        spell1.damage = Some(SpellDamageSpec {
+            kind: crate::models::damage::DamageKind::Modeled,
+            parts: Some(vec![part_a.clone(), part_b.clone()]),
+            ..Default::default()
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.damage.as_mut().unwrap().kind = crate::models::damage::DamageKind::Modeled;
+        spell2.damage.as_mut().unwrap().parts = Some(vec![part_b, part_a]);
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Reordered damage parts should result in same hash"
+        );
+    }
+
+    #[test]
+    fn test_default_value_materialization() {
+        let mut spell = CanonicalSpell::new(
+            "Default Test".to_string(),
+            1,
+            "Arcane".to_string(),
+            "Test.".to_string(),
+        );
+
+        // Initially None
+        spell.reversible = None;
+        spell.material_components = None;
+
+        let json = spell.to_canonical_json().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Should be PRUNED in JSON if it equals default (Lean Hashing)
+        assert!(value.get("reversible").is_none());
+        assert!(value.get("material_components").is_none());
+    }
+
+    #[test]
+    fn test_metadata_pruning_preserves_mechanical_ids() {
+        let mut spell = CanonicalSpell::new(
+            "ID Test".to_string(),
+            1,
+            "Arcane".to_string(),
+            "Test.".to_string(),
+        );
+        spell.id = Some("root_id".to_string());
+
+        use crate::models::damage::{DamagePart, DamageType, DicePool, DiceTerm, SpellDamageSpec};
+        spell.damage = Some(SpellDamageSpec {
+            parts: Some(vec![DamagePart {
+                id: "nested_id".to_string(),
+                damage_type: DamageType::Acid,
+                base: DicePool {
+                    terms: vec![DiceTerm {
+                        count: 1,
+                        sides: 4,
+                        per_die_modifier: 0,
+                    }],
+                    flat_modifier: 0,
+                },
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        let json = spell.to_canonical_json().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Root ID should be gone
+        assert!(value.get("id").is_none(), "Root ID should be pruned");
+
+        // Nested mechanical ID should be preserved
+        let nested_id = value["damage"]["parts"][0]["id"].as_str().unwrap();
+        assert_eq!(
+            nested_id, "nested_id",
+            "Nested mechanical ID should be preserved"
+        );
+    }
+
+    #[test]
+    fn test_id_normalization_regression() {
+        use crate::models::damage::{DamagePart, DamageType, DicePool, DiceTerm, SpellDamageSpec};
+        use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec, SingleSave};
+
+        let mut spell =
+            CanonicalSpell::new("ID Normalization".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+
+        // 1. DamagePart.id
+        spell.damage = Some(SpellDamageSpec {
+            parts: Some(vec![DamagePart {
+                id: "  Part ID  ".to_string(),
+                damage_type: DamageType::Fire,
+                base: DicePool {
+                    terms: vec![DiceTerm {
+                        count: 1,
+                        sides: 6,
+                        per_die_modifier: 0,
+                    }],
+                    flat_modifier: 0,
+                },
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        // 2. SingleSave.id
+        spell.saving_throw = Some(SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            single: Some(SingleSave {
+                id: Some("  Save ID  ".to_string()),
+                save_type: crate::models::saving_throw::SaveType::Spell,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        spell.normalize();
+
+        assert_eq!(
+            spell.damage.as_ref().unwrap().parts.as_ref().unwrap()[0].id,
+            "part id"
+        );
+        assert_eq!(
+            spell
+                .saving_throw
+                .as_ref()
+                .unwrap()
+                .single
+                .as_ref()
+                .unwrap()
+                .id
+                .as_ref()
+                .unwrap(),
+            "save id"
+        );
+    }
+
+    #[test]
+    fn test_range_text_normalization_regression() {
+        let mut spell = CanonicalSpell::new("Range Text".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.school = Some("Evocation".into());
+        spell.class_list = vec!["Wizard".into()];
+        spell.range = Some(RangeSpec {
+            kind: RangeKind::Distance,
+            text: Some("  60   FT.  ".to_string()),
+            unit: Some(RangeUnit::Ft),
+            distance: Some(crate::models::scalar::SpellScalar::fixed(60.0)),
+            ..Default::default()
+        });
+
+        spell.normalize();
+
+        // Structured (preserve case) + word-boundary unit alias (ft. -> ft when lowercase)
+        assert_eq!(
+            spell.range.as_ref().unwrap().text.as_ref().unwrap(),
+            "60 FT.",
+            "range text: collapse whitespace, preserve case; unit alias only matches lowercase"
+        );
+    }
+
+    #[test]
+    fn test_range_parser_populates_text_regression() {
+        use crate::utils::parsers::range::RangeParser;
+        let parser = RangeParser::new();
+
+        let inputs = vec!["60 ft.", "Touch", "Sight (LOS)", "Special Notes"];
+        for input in inputs {
+            let res = parser.parse(input);
+            assert_eq!(res.text.unwrap(), input);
+        }
+    }
+}

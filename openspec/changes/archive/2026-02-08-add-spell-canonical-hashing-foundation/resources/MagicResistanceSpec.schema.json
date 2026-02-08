@@ -1,0 +1,102 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.com/schemas/MagicResistanceSpec.schema.json",
+    "title": "MagicResistanceSpec",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "kind"
+    ],
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": [
+                "unknown",
+                "normal",
+                "ignores_mr",
+                "partial",
+                "special"
+            ],
+            "description": "Spell-wide MR interaction."
+        },
+        "applies_to": {
+            "type": "string",
+            "enum": [
+                "whole_spell",
+                "harmful_effects_only",
+                "beneficial_effects_only",
+                "dm"
+            ],
+            "default": "whole_spell"
+        },
+        "partial": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "scope"
+            ],
+            "properties": {
+                "scope": {
+                    "type": "string",
+                    "enum": [
+                        "damage_only",
+                        "non_damage_only",
+                        "primary_effect_only",
+                        "secondary_effects_only",
+                        "by_part_id"
+                    ]
+                },
+                "part_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "maxLength": 32
+                    }
+                },
+                "notes": {
+                    "type": "string",
+                    "maxLength": 1024
+                }
+            }
+        },
+        "special_rule": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Human-readable rule text when kind=special."
+        },
+        "notes": {
+            "type": "string",
+            "maxLength": 1024
+        }
+    },
+    "allOf": [
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "partial"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "partial"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "special"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "special_rule"
+                ]
+            }
+        }
+    ]
+}

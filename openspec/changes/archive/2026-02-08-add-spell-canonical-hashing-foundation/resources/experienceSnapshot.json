@@ -1,0 +1,13 @@
+{
+    "resolved_xp_cost": {
+        "min_xp": 0,
+        "max_xp": 9000,
+        "deterministic": false,
+        "depends_on": [
+            "choice.effect"
+        ],
+        "payer": "caster",
+        "timing": "on_completion",
+        "semantics": "spend"
+    }
+}

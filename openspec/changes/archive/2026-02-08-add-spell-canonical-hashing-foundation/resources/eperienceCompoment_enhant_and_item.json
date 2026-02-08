@@ -1,0 +1,13 @@
+{
+    "kind": "per_unit",
+    "payer": "caster",
+    "payment_timing": "on_completion",
+    "payment_semantics": "spend",
+    "per_unit": {
+        "xp_per_unit": 100,
+        "unit_kind": "gp_value_1000",
+        "rounding": "ceil",
+        "min_xp": 0
+    },
+    "notes": "Base item value should be specified by your item-creation pipeline."
+}

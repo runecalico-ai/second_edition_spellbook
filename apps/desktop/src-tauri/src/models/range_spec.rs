@@ -190,17 +190,17 @@ impl RangeSpec {
             );
             // Unit alias normalization with word boundaries (e.g. "10 yards" -> "10 yd"; "backyard" unchanged)
             *t = re_yards().replace_all(t, "yd").to_string();
-            *t = re_yard().replace_all(&t, "yd").to_string();
-            *t = re_yd_dot().replace_all(&t, "yd").to_string();
-            *t = re_feet().replace_all(&t, "ft").to_string();
-            *t = re_foot().replace_all(&t, "ft").to_string();
-            *t = re_ft_dot().replace_all(&t, "ft").to_string();
-            *t = re_miles().replace_all(&t, "mi").to_string();
-            *t = re_mile().replace_all(&t, "mi").to_string();
-            *t = re_mi_dot().replace_all(&t, "mi").to_string();
-            *t = re_inches().replace_all(&t, "inch").to_string();
-            *t = re_inch().replace_all(&t, "inch").to_string();
-            *t = re_in_dot().replace_all(&t, "inch").to_string();
+            *t = re_yard().replace_all(t, "yd").to_string();
+            *t = re_yd_dot().replace_all(t, "yd").to_string();
+            *t = re_feet().replace_all(t, "ft").to_string();
+            *t = re_foot().replace_all(t, "ft").to_string();
+            *t = re_ft_dot().replace_all(t, "ft").to_string();
+            *t = re_miles().replace_all(t, "mi").to_string();
+            *t = re_mile().replace_all(t, "mi").to_string();
+            *t = re_mi_dot().replace_all(t, "mi").to_string();
+            *t = re_inches().replace_all(t, "inch").to_string();
+            *t = re_inch().replace_all(t, "inch").to_string();
+            *t = re_in_dot().replace_all(t, "inch").to_string();
         }
         if let Some(n) = &mut self.notes {
             *n = crate::models::canonical_spell::normalize_string(

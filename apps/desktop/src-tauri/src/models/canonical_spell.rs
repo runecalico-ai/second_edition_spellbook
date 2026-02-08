@@ -325,12 +325,25 @@ fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
             // arrays at root for optional array keys (class_list, tags, etc.); required arrays
             // like damage.parts when kind=modeled must be retained when empty.
             obj.retain(|k, v| {
-                !v.is_null()
-                    && (!v.is_array()
-                        || !v.as_array().unwrap().is_empty()
-                        || !(is_root && is_optional_root_array_key(k)))
-                    && (!v.is_string() || !v.as_str().unwrap().is_empty())
-                    && (!v.is_object() || !v.as_object().unwrap().is_empty())
+                if v.is_null() {
+                    return false;
+                }
+                if let Some(arr) = v.as_array() {
+                    if arr.is_empty() && is_root && is_optional_root_array_key(k) {
+                        return false;
+                    }
+                }
+                if let Some(s) = v.as_str() {
+                    if s.is_empty() {
+                        return false;
+                    }
+                }
+                if let Some(o) = v.as_object() {
+                    if o.is_empty() {
+                        return false;
+                    }
+                }
+                true
             });
         }
         serde_json::Value::Array(arr) => {

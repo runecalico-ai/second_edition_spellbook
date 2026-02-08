@@ -299,7 +299,10 @@ fn test_regression_experience_normalization() {
     };
     spec.normalize();
     let formula = spec.formula.unwrap();
-    assert_eq!(formula.vars[0].name, "x", "FormulaVar.name is normalized to schema-valid lowercase");
+    assert_eq!(
+        formula.vars[0].name, "x",
+        "FormulaVar.name is normalized to schema-valid lowercase"
+    );
     let per_unit = spec.per_unit.unwrap();
     assert_eq!(per_unit.unit_label, Some("Creatures".into()));
 }
@@ -447,7 +450,8 @@ fn test_regression_range_text_word_boundaries() {
     // BUG-3: Unit alias replacement must use word boundaries; substrings (e.g. "backyard", "footprint") unchanged.
     use crate::models::range_spec::{RangeKind, RangeSpec};
 
-    let mut spell_backyard = CanonicalSpell::new("Backyard".into(), 1, "ARCANE".into(), "Desc".into());
+    let mut spell_backyard =
+        CanonicalSpell::new("Backyard".into(), 1, "ARCANE".into(), "Desc".into());
     spell_backyard.school = Some("Evocation".into());
     spell_backyard.class_list = vec!["Wizard".into()];
     spell_backyard.range = Some(RangeSpec {
@@ -494,8 +498,7 @@ fn test_regression_range_text_word_boundaries() {
 fn test_regression_empty_object_pruned_from_canonical_json() {
     // GAP-3: Lean Hashing must remove empty objects (e.g. clamp_total: {}).
     use crate::models::damage::{
-        ApplicationSpec, ClampSpec, DamagePart, DamageSaveSpec, DicePool, DiceTerm,
-        SpellDamageSpec,
+        ApplicationSpec, ClampSpec, DamagePart, DamageSaveSpec, DicePool, DiceTerm, SpellDamageSpec,
     };
     use crate::models::damage::{DamageKind, DamageType};
 
@@ -542,8 +545,8 @@ fn test_regression_empty_object_pruned_from_canonical_json() {
 fn test_regression_experience_cost_source_text_excluded_from_hash() {
     // BUG-2: source_text is metadata; is_default() must not depend on it; same hash for None vs default-with-source_text.
     use crate::models::experience::{
-        ExperienceComponentSpec, ExperienceKind, ExperiencePayer, PaymentTiming,
-        PaymentSemantics, Recoverability,
+        ExperienceComponentSpec, ExperienceKind, ExperiencePayer, PaymentSemantics, PaymentTiming,
+        Recoverability,
     };
 
     let default_with_source = ExperienceComponentSpec {
@@ -622,14 +625,20 @@ fn test_regression_dice_term_clamping_in_spell() {
     });
 
     spell.normalize();
-    let terms = &spell.damage.as_ref().unwrap().parts.as_ref().unwrap()[0].base.terms;
+    let terms = &spell.damage.as_ref().unwrap().parts.as_ref().unwrap()[0]
+        .base
+        .terms;
     assert_eq!(terms[0].count, 0, "count must be clamped to >= 0");
     assert_eq!(terms[0].sides, 6, "sides unchanged when >= 1");
     assert_eq!(terms[1].count, 2, "count unchanged when >= 0");
     assert_eq!(terms[1].sides, 1, "sides must be clamped to >= 1");
 
     let hash = spell.compute_hash();
-    assert!(hash.is_ok(), "Spell with clamped dice must still hash: {:?}", hash.err());
+    assert!(
+        hash.is_ok(),
+        "Spell with clamped dice must still hash: {:?}",
+        hash.err()
+    );
 }
 
 #[test]
@@ -657,8 +666,5 @@ fn test_regression_duration_spec_deny_unknown_fields() {
     // GAP-1: DurationSpec must reject unknown fields at deserialization.
     let json = r#"{"kind": "time", "unit": "round", "unknown_field": "error"}"#;
     let result: Result<crate::models::duration_spec::DurationSpec, _> = serde_json::from_str(json);
-    assert!(
-        result.is_err(),
-        "DurationSpec must reject unknown field"
-    );
+    assert!(result.is_err(), "DurationSpec must reject unknown field");
 }

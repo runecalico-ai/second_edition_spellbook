@@ -3,9 +3,9 @@
 ## MODIFIED Requirements
 
 ### Requirement: Search Compatibility
-The Search system MUST index the `text` property of new structured fields.
+The Search system MUST index the human-readable text derived from structured fields.
 
 #### Scenario: Structured Field Indexing
 - GIVEN the new structured fields
 - WHEN building search index
-- THEN `text` property MUST be indexed.
+- THEN the human-readable text derived from those fields MUST be indexed.

@@ -204,6 +204,10 @@
           "type": "number",
           "description": "Level increment divisor.",
           "default": 1
+        },
+        "raw_legacy_value": {
+          "type": "string",
+          "description": "When parsing fails or unit is Special, the original legacy string is stored here for admin review."
         }
       },
       "required": ["text", "unit"],
@@ -610,6 +614,10 @@
         },
         "notes": {
           "type": "string"
+        },
+        "raw_legacy_value": {
+          "type": "string",
+          "description": "When parsing fails or kind is special, the original legacy string is stored here for admin review."
         }
       },
       "allOf": [
@@ -897,6 +905,10 @@
         },
         "notes": {
           "type": "string"
+        },
+        "raw_legacy_value": {
+          "type": "string",
+          "description": "When parsing fails or kind is special, the original legacy string is stored here for admin review."
         }
       },
       "allOf": [
@@ -1297,6 +1309,10 @@
         "notes": {
           "type": "string",
           "maxLength": 2048
+        },
+        "raw_legacy_value": {
+          "type": "string",
+          "description": "When parsing fails or kind is dm_adjudicated, the original legacy string is stored here for admin review."
         }
       },
       "allOf": [
@@ -1797,6 +1813,10 @@
         "notes": {
           "type": "string",
           "description": "Freeform clarification; must not contain mechanical formulas."
+        },
+        "raw_legacy_value": {
+          "type": "string",
+          "description": "When parsing fails or kind is special, the original legacy string is stored here for admin review."
         }
       },
       "allOf": [

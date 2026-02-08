@@ -20,7 +20,7 @@ This process is **non-destructive**. Your original data is preserved.
 ### Troubleshooting
 If you suspect data issues:
 - **Check the logs**: A `migration.log` file is created in your data directory. Logs are automatically rotated when they exceed 10MB or 30 days of age (rotated file: `migration.log.old`).
-- **Run Integrity Check**: You can run the application with the `--check-integrity` flag to scan for issues.
+- **Run Integrity Check**: Run the application with the `--check-integrity` flag. It verifies that every spell's stored `content_hash` matches the hash recomputed from its `canonical_data`, and reports NULL hashes, orphan references, and duplicate hashes.
   ```bash
   .\spellbook-desktop.exe --check-integrity
   ```
@@ -28,12 +28,18 @@ If you suspect data issues:
   ```bash
   .\spellbook-desktop.exe --recompute-hashes
   ```
+- **Detect hash collisions**: If you have duplicate `content_hash` values, run `--detect-collisions`. The tool compares `canonical_data` for each duplicate group and reports either "Duplicate content (same spell data)" or "True hash collision (different content, same hash)" so you can fix or merge duplicates.
+  ```bash
+  .\spellbook-desktop.exe --detect-collisions
+  ```
+
+### Backfill behavior
+During hash backfill, the application logs progress every 100 spells (e.g. "Migrating spell 100 of 1000...") and writes a final summary to stderr and `migration.log`: processed count, updated count, parse fallback count, hash failure count, and success/fallback percentages. If the backfill fails due to a hash collision (UNIQUE constraint on `content_hash`), a clear message is written to `migration.log` and stderr; fix duplicates or run `--detect-collisions` and retry.
 
 ### Restoring from Backup
-If data is corrupted, you can restore from the backup created automatically.
-1.  Navigate to your data directory (e.g., `%APPDATA%/SpellbookVault` on Windows).
-2.  Identify the `spells_backup_....db` file.
-3.  Rename it to `spellbook.sqlite3` (replacing the current file).
+If data is corrupted, you can restore from a backup:
+- **CLI**: Use `--restore-backup <path>` to restore from a backup file. The application runs an integrity check on the restored database and reports failure if the check does not return "ok".
+- **Manual**: Navigate to your data directory (e.g., `%APPDATA%/SpellbookVault` on Windows), identify the `spells_backup_....db` file, and replace the main database file (e.g. rename the backup to `spellbook.sqlite3`).
 
 ---
 

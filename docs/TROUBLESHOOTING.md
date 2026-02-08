@@ -6,9 +6,9 @@ This guide provides solutions for common issues encountered during the migration
 
 ### 1. "Migration Failed" or Application Crash on Start
 If the application fails to start during the migration phase:
-- **Check `migration.log`**: Locate this file in your data directory (e.g., `%APPDATA%\SpellbookVault`). usage
-- **Look for constraint violations**: If the log shows `UNIQUE constraint failed: spell.content_hash`, it means you have duplicate spells.
-    - **Fix**: Run with `--detect-collisions` to identify duplicates, then manually assume one is correct or delete the duplicate via SQL.
+- **Check `migration.log`**: Locate this file in your data directory (e.g., `%APPDATA%\SpellbookVault`).
+- **Look for constraint violations**: If the log or stderr shows a message like "Hash collision: two or more spells produced the same content_hash. Migration aborted. See migration.log. Fix duplicates or run --detect-collisions.", you have duplicate content hashes.
+    - **Fix**: Run `.\spellbook-desktop.exe --detect-collisions` to list duplicate groups. The tool reports "Duplicate content (same spell data)" when spells are identical (safe to deduplicate) or "True hash collision (different content, same hash)" when content differs (requires manual resolution). Resolve duplicates (e.g. delete or merge via SQL or the UI), then restart.
 
 ### 2. Missing or Incorrect Parsed Data
 If spells have unexpected values in structured fields (e.g., `kind: "special"` when a specific pattern was expected):
@@ -37,7 +37,7 @@ This section provides detailed guidance for diagnosing and resolving parser-rela
 Parsers are designed to **never fail**. When a pattern isn't recognized, the parser returns a valid struct with:
 
 1. **`kind: "special"`** (or equivalent fallback type)
-2. **Original text preserved** in `notes`, `text`, or `condition` field
+2. **Original text preserved** in the spec's `raw_legacy_value` field (and in `notes`, `text`, or `condition` where applicable)
 3. **Log entry written** to `migration.log`
 
 This ensures the migration completes successfully even when parsers encounter unfamiliar patterns.
@@ -240,7 +240,7 @@ If the database is unusable, you can restore from an automatic backup.
    ```powershell
    .\spellbook-desktop.exe --restore-backup "C:\Users\You\...\spells_backup_123456.db"
    ```
-   *Note: This will overwrite your current database.*
+   *Note: This will overwrite your current database. After copying the backup, the app runs `PRAGMA integrity_check` on the restored DB; if the result is not "ok", the restore fails and an error is reported.*
 
 3. **Quick rollback to latest backup**:
    ```powershell

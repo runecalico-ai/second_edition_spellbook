@@ -22,12 +22,12 @@ The system SHALL provide a parsing engine to convert legacy string-based fields 
 #### Scenario: Handling Failed Parses
 - **WHEN** a legacy string cannot be automatically parsed with high confidence
 - **THEN** the system SHALL store the original string in a `raw_legacy_value` field within the JSON
-- **AND** flag the record for manual admin review
+- **AND** SHALL log parse failures (e.g. in migration.log) for admin review; the system need not persist a separate "flagged" state
 
 ### Requirement: Expand-and-Contract Synchronization
 During the data migration lifecycle, the system MUST ensure data integrity between the "Legacy" (columns) and "Structured" (JSON) representations of spell data.
 
 #### Scenario: Data Consistency Enforcement
 - **WHEN** a record is updated
-- **THEN** the system SHALL perform a "sync check" to ensure that the value in the flat columns (e.g., `range`) matches the corresponding value extracted from the `canonical_data` JSON
-- **AND** log any discrepancies found during runtime
+- **THEN** the system SHALL perform a "sync check" on every spell update (no optional toggle) to ensure that the value in the flat columns (e.g., `range`) matches the corresponding value extracted from the `canonical_data` JSON
+- **AND** SHALL log any discrepancies found during runtime (e.g. to stderr)

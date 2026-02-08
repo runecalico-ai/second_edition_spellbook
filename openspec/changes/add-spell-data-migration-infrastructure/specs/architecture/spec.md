@@ -21,5 +21,25 @@ The system SHALL provide administrative CLI tools to manage the lifecycle of spe
 
 #### Scenario: Integrity Check
 - **WHEN** the user runs `spellbook-desktop --check-integrity`
-- **THEN** the system SHALL verify that the `content_hash` matches the current `canonical_data` for every spell
-- **AND** report any discrepancies or corruption
+- **THEN** the system SHALL verify that the `content_hash` matches the current `canonical_data` for every spell (by recomputing the hash from `canonical_data` and comparing to the stored `content_hash`)
+- **AND** report any mismatches, NULL hashes, orphan references, or duplicate hashes
+
+#### Scenario: Hash Backfill Progress and Report
+- **WHEN** the hash backfill runs (e.g. on startup for spells with NULL `content_hash`)
+- **THEN** the system SHALL log progress every 100 spells (e.g. "Migrating spell 100 of 1000...")
+- **AND** SHALL write a final summary to stderr and migration.log: processed count, updated count, parse fallback count, hash failure count, and success/fallback percentages
+
+#### Scenario: Hash Collision Handling
+- **WHEN** the backfill transaction fails due to a UNIQUE constraint on `content_hash`
+- **THEN** the system SHALL log a clear message to migration.log and stderr: that two or more spells produced the same content_hash, migration aborted, and to fix duplicates or run `--detect-collisions`
+- **AND** SHALL fail gracefully (application may still start; CLI reports the error)
+
+#### Scenario: Restore Backup Integrity
+- **WHEN** the user runs `spellbook-desktop --restore-backup <path>` (or equivalent) and the restore copy completes
+- **THEN** the system SHALL run `PRAGMA integrity_check` on the restored database connection
+- **AND** SHALL return an error and report the result if the result is not "ok"
+
+#### Scenario: Detect Collisions Content Comparison
+- **WHEN** the user runs `spellbook-desktop --detect-collisions` and duplicate `content_hash` values exist
+- **THEN** the system SHALL for each duplicate group compare `canonical_data` of all spells sharing that hash
+- **AND** SHALL report "Duplicate content (same spell data)" when all are identical, or "True hash collision (different content, same hash)" when content differs

@@ -22,9 +22,9 @@
 
 ## Database (Expand & Contract Strategy)
 - [x] **Step 1: Expand Schema**:
-    - [x] `ALTER TABLE spells ADD COLUMN canonical_data TEXT;` (JSON blob)
-    - [x] `ALTER TABLE spells ADD COLUMN content_hash TEXT;`
-    - [x] `CREATE UNIQUE INDEX idx_spells_content_hash ON spells(content_hash) WHERE content_hash IS NOT NULL;`
+    - [x] `ALTER TABLE spell ADD COLUMN canonical_data TEXT;` (JSON blob)
+    - [x] `ALTER TABLE spell ADD COLUMN content_hash TEXT;`
+    - [x] `CREATE UNIQUE INDEX idx_spell_content_hash ON spell(content_hash) WHERE content_hash IS NOT NULL;`
 - [x] **Step 2: Dual-Write / Sync Logic**:
     - [x] Implement backend trigger/hook:
         - [x] When `canonical_data` is updated -> Auto-update legacy columns (range, duration, etc.) for search compatibility.

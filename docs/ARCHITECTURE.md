@@ -11,7 +11,7 @@ To ensure spell uniqueness and version tracking, we use a Canonical Spell Hashin
 ### Implementation
 - **Model**: `CanonicalSpell` (in `src/models/canonical_spell.rs`).
 - **Data Model**: Uses a nested struct hierarchy for complex fields (`SpellRange`, `SpellCastingTime`, `SpellDuration`, `SpellArea`, `SpellDamage`, `SpellComponents`, `SourceRef`).
-- **Schema**: `schemas/spell.schema.json` (aligned with the official OpenSpec resource).
+- **Schema**: `schemas/spell.schema.json` (aligned with the official OpenSpec resource). The schema allows optional `raw_legacy_value` (string) on `casting_time`, RangeSpec, DurationSpec, AreaSpec, and SpellDamageSpec for fallback storage when parsing is inconclusive; see [Canonical Serialization](./architecture/canonical-serialization.md#221-fallback-storage-raw_legacy_value).
 - **Serialization**: RFC 8785 (JCS) with sorted keys and array normalization.
 - **Hashing**: SHA-256 of the canonical JSON string.
 - **Casing Standard**: **All canonical data MUST use `snake_case`.** This distinguishes it from IPC data, which uses `camelCase`.

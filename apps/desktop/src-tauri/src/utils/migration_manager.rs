@@ -135,11 +135,26 @@ pub fn run_hash_backfill(
 
     let parser = SpellParser::new();
 
+    let mut processed: u32 = 0;
+    let mut parse_fallback_count: u32 = 0;
+    let mut hash_fail_count: u32 = 0;
+    let mut updated_count: u32 = 0;
+    let total = spells.len();
+
     // Using unchecked_transaction to allow transaction on shared reference
     // (safe if we are the only one operating on this connection in this scope)
     let tx = conn.unchecked_transaction()?;
 
     for detail in spells {
+        processed += 1;
+        if processed.is_multiple_of(100) {
+            let msg = format!("Migrating spell {} of {}...", processed, total);
+            if let Some(log) = &mut log_file {
+                let _ = writeln!(log, "[{}] {}", Utc::now(), msg);
+            }
+            eprintln!("{}", msg);
+        }
+
         let canonical_res = CanonicalSpell::try_from(detail.clone());
 
         if let Err(e) = canonical_res {
@@ -157,6 +172,7 @@ pub fn run_hash_backfill(
         }
 
         let mut canonical = canonical_res.unwrap();
+        let mut spell_had_parse_fallback = false;
 
         // Apply parsers to structure the data
         if let Some(range_str) = &detail.range {
@@ -165,6 +181,7 @@ pub fn run_hash_backfill(
                 && range_str.to_lowercase() != "special"
                 && !range_str.trim().is_empty()
             {
+                spell_had_parse_fallback = true;
                 if let Some(log) = &mut log_file {
                     let _ = writeln!(
                         log,
@@ -183,6 +200,7 @@ pub fn run_hash_backfill(
                 && duration_str.to_lowercase() != "special"
                 && !duration_str.trim().is_empty()
             {
+                spell_had_parse_fallback = true;
                 if let Some(log) = &mut log_file {
                     let _ = writeln!(
                         log,
@@ -201,6 +219,7 @@ pub fn run_hash_backfill(
                 && cast_str.to_lowercase() != "special"
                 && !cast_str.trim().is_empty()
             {
+                spell_had_parse_fallback = true;
                 if let Some(log) = &mut log_file {
                     let _ = writeln!(
                         log,
@@ -220,6 +239,7 @@ pub fn run_hash_backfill(
                     && area_str.to_lowercase() != "special"
                     && !area_str.trim().is_empty()
                 {
+                    spell_had_parse_fallback = true;
                     if let Some(log) = &mut log_file {
                         let _ = writeln!(
                             log,
@@ -232,6 +252,9 @@ pub fn run_hash_backfill(
                 }
             }
             canonical.area = res;
+        }
+        if spell_had_parse_fallback {
+            parse_fallback_count += 1;
         }
         if let Some(comp_str) = &detail.components {
             canonical.components = Some(parser.parse_components(comp_str));
@@ -249,13 +272,16 @@ pub fn run_hash_backfill(
                     "UPDATE spell SET canonical_data = ?1, content_hash = ?2, schema_version = ?3 WHERE id = ?4",
                     params![json, hash, canonical.schema_version, detail.id],
                 )?;
-                if rows == 0 {
+                if rows > 0 {
+                    updated_count += 1;
+                } else {
                     eprintln!("WARNING: Update for spell {:?} affected 0 rows!", detail.id);
                 }
             } else {
                 eprintln!("Failed to serialize JSON for spell {:?}", detail.id);
             }
         } else {
+            hash_fail_count += 1;
             let err = hash_result.err().unwrap_or_default();
             if let Some(log) = &mut log_file {
                 let _ = writeln!(
@@ -273,9 +299,36 @@ pub fn run_hash_backfill(
         }
     }
 
-    tx.commit()?;
+    let summary = format!(
+        "Backfill complete. Processed: {}, updated: {}, parse fallbacks: {}, hash failures: {}.",
+        processed, updated_count, parse_fallback_count, hash_fail_count
+    );
+    if let Some(log) = &mut log_file {
+        let _ = writeln!(log, "[{}] {}", Utc::now(), summary);
+    }
+    eprintln!("{}", summary);
+    let total_u = total as u32;
+    if total_u > 0 {
+        let pct = (updated_count * 100) / total_u;
+        let fallback_pct = (parse_fallback_count * 100) / total_u;
+        eprintln!(
+            "Successfully updated: {} ({}%), Fallback used: {} ({}%)",
+            updated_count, pct, parse_fallback_count, fallback_pct
+        );
+    }
 
-    eprintln!("Backfill complete.");
+    if let Err(e) = tx.commit() {
+        let msg = e.to_string();
+        let is_unique_constraint = msg.contains("UNIQUE constraint failed");
+        if is_unique_constraint {
+            let collision_msg = "Hash collision: two or more spells produced the same content_hash. Migration aborted. See migration.log. Fix duplicates or run --detect-collisions.";
+            if let Some(ref mut log) = log_file {
+                let _ = writeln!(log, "[{}] {}", Utc::now(), collision_msg);
+            }
+            eprintln!("{}", collision_msg);
+        }
+        return Err(e.into());
+    }
 
     Ok(())
 }
@@ -426,6 +479,52 @@ pub fn check_integrity(conn: &Connection) -> Result<(), Box<dyn std::error::Erro
         println!("No spells with NULL content_hash.");
     }
 
+    // Hash-vs-canonical verification: recompute hash from canonical_data and compare to stored content_hash
+    let mut hash_check_stmt = conn.prepare(
+        "SELECT id, name, canonical_data, content_hash FROM spell WHERE canonical_data IS NOT NULL AND content_hash IS NOT NULL",
+    )?;
+    let hash_check_rows = hash_check_stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+    let mut hash_mismatch_count = 0u32;
+    let mut hash_mismatch_examples: Vec<(i64, String)> = Vec::new();
+    const MAX_MISMATCH_EXAMPLES: usize = 10;
+    for row in hash_check_rows {
+        let (id, name, canonical_data, content_hash) = row?;
+        if let Ok(canonical) = serde_json::from_str::<CanonicalSpell>(&canonical_data) {
+            if let Ok(recomputed) = canonical.compute_hash() {
+                if recomputed != content_hash {
+                    hash_mismatch_count += 1;
+                    if hash_mismatch_examples.len() < MAX_MISMATCH_EXAMPLES {
+                        hash_mismatch_examples.push((id, name));
+                    }
+                }
+            }
+        }
+    }
+    if hash_mismatch_count > 0 {
+        eprintln!(
+            "Hash mismatch (content_hash != recomputed from canonical_data): {} spell(s).",
+            hash_mismatch_count
+        );
+        for (id, name) in &hash_mismatch_examples {
+            eprintln!("  - id={}, name={:?}", id, name);
+        }
+        if hash_mismatch_count as usize > MAX_MISMATCH_EXAMPLES {
+            eprintln!(
+                "  ... and {} more.",
+                hash_mismatch_count as usize - MAX_MISMATCH_EXAMPLES
+            );
+        }
+    } else {
+        println!("All stored content_hash values match canonical_data.");
+    }
+
     // Orphan check: character_class_spell referencing non-existent spell
     let orphan_sql = "SELECT ccs.character_class_id, ccs.spell_id FROM character_class_spell ccs LEFT JOIN spell s ON s.id = ccs.spell_id WHERE s.id IS NULL";
     let orphans: Vec<(i64, i64)> = match conn.prepare(orphan_sql) {
@@ -469,12 +568,8 @@ pub fn check_integrity(conn: &Connection) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-/// Optional runtime sync-check: compare flat columns to canonical_data and log discrepancies.
-/// Enable by setting env var SPELLBOOK_SYNC_CHECK=1.
+/// Runtime sync-check: compare flat columns to canonical_data and log discrepancies.
 pub fn sync_check_spell(conn: &Connection, spell_id: i64) {
-    if std::env::var("SPELLBOOK_SYNC_CHECK").unwrap_or_default() != "1" {
-        return;
-    }
     type Row = (
         Option<String>,
         Option<String>,
@@ -501,7 +596,15 @@ pub fn sync_check_spell(conn: &Connection, spell_id: i64) {
         .optional()
         .ok()
         .flatten();
-    let Some((range_flat, duration_flat, casting_time_flat, area_flat, components_flat, canonical_json)) = row else {
+    let Some((
+        range_flat,
+        duration_flat,
+        casting_time_flat,
+        area_flat,
+        components_flat,
+        canonical_json,
+    )) = row
+    else {
         return;
     };
     let Some(canonical_json) = canonical_json else {
@@ -585,11 +688,18 @@ pub fn restore_backup(
 
     // Create a backup object to copy FROM src (backup) TO conn (main)
     // new(from, to) -> from=backup, to=main
-    let backup = rusqlite::backup::Backup::new(&src_conn, conn)?;
+    {
+        let backup = rusqlite::backup::Backup::new(&src_conn, conn)?;
+        // Perform backup (restore)
+        // step(-1) copies the whole pages
+        backup.step(-1)?;
+    }
 
-    // Perform backup (restore)
-    // step(-1) copies the whole pages
-    backup.step(-1)?;
+    let result: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+    if result != "ok" {
+        eprintln!("Warning: integrity check failed after restore: {}", result);
+        return Err(format!("Integrity check failed after restore: {}", result).into());
+    }
 
     println!("Restore complete.");
 
@@ -612,25 +722,47 @@ pub fn rollback_migration(
 pub fn detect_collisions(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
     println!("Scanning for hash collisions...");
     let mut stmt = conn.prepare("SELECT content_hash, COUNT(*) as c FROM spell WHERE content_hash IS NOT NULL GROUP BY content_hash HAVING c > 1")?;
-    let collisions = stmt.query_map([], |row| {
-        let hash: String = row.get(0)?;
-        let count: i64 = row.get(1)?;
-        Ok((hash, count))
-    })?;
+    let collisions: Vec<(String, i64)> = stmt
+        .query_map([], |row| {
+            let hash: String = row.get(0)?;
+            let count: i64 = row.get(1)?;
+            Ok((hash, count))
+        })?
+        .filter_map(Result::ok)
+        .collect();
 
+    let mut detail_stmt =
+        conn.prepare("SELECT id, name, canonical_data FROM spell WHERE content_hash = ?")?;
     let mut found = false;
-    for c in collisions {
-        let (hash, count) = c?;
-        println!("COLLISION: Hash {} appears {} times.", hash, count);
-        let mut detail_stmt = conn.prepare("SELECT id, name FROM spell WHERE content_hash = ?")?;
-        let names: Vec<String> = detail_stmt
-            .query_map([&hash], |r| {
-                let id: i64 = r.get(0)?;
-                let name: String = r.get(1)?;
-                Ok(format!("{} ({})", name, id))
-            })?
+    for (hash, count) in collisions {
+        let rows: Vec<(i64, String, Option<String>)> = detail_stmt
+            .query_map([&hash], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .filter_map(Result::ok)
             .collect();
+        let canonical_datas: Vec<&str> =
+            rows.iter().filter_map(|(_, _, cd)| cd.as_deref()).collect();
+        let all_identical =
+            canonical_datas.len() >= 2 && canonical_datas.windows(2).all(|w| w[0] == w[1]);
+        let names: Vec<String> = rows
+            .iter()
+            .map(|(id, name, _)| format!("{} ({})", name, id))
+            .collect();
+        if all_identical {
+            println!(
+                "Duplicate content (same spell data): hash {} appears {} times.",
+                hash, count
+            );
+        } else if canonical_datas.len() < 2 {
+            println!(
+                "Duplicate hash (cannot compare: canonical_data missing for some): {} appears {} times.",
+                hash, count
+            );
+        } else {
+            println!(
+                "True hash collision (different content, same hash): {} appears {} times.",
+                hash, count
+            );
+        }
         println!("  - Spells: {}", names.join(", "));
         found = true;
     }
@@ -656,13 +788,22 @@ pub fn export_migration_report(
     let spell_count: i64 = conn.query_row("SELECT COUNT(*) FROM spell", [], |r| r.get(0))?;
 
     let mut parse_failures = serde_json::Map::new();
-    let range_fail = lines.iter().filter(|l| l.contains("Failed to parse range")).count();
-    let duration_fail = lines.iter().filter(|l| l.contains("Failed to parse duration")).count();
+    let range_fail = lines
+        .iter()
+        .filter(|l| l.contains("Failed to parse range"))
+        .count();
+    let duration_fail = lines
+        .iter()
+        .filter(|l| l.contains("Failed to parse duration"))
+        .count();
     let casting_time_fail = lines
         .iter()
         .filter(|l| l.contains("Failed to parse casting_time"))
         .count();
-    let area_fail = lines.iter().filter(|l| l.contains("Failed to parse area")).count();
+    let area_fail = lines
+        .iter()
+        .filter(|l| l.contains("Failed to parse area"))
+        .count();
     parse_failures.insert(
         "range".to_string(),
         serde_json::Value::Number(serde_json::Number::from(range_fail)),

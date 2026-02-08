@@ -27,6 +27,9 @@ Fields representing unordered sets have their elements sorted lexicographically 
 ### 2.2 Nulls vs Omitted
 - **Omitted (skip_serializing_if)**: Optional fields (like `range`, `school`, `sphere`, etc.) are **omitted** from the JSON if they are `None`. This is the preferred standard over literal `null` values for better forward compatibility.
 
+### 2.2.1 Fallback storage (raw_legacy_value)
+When parsing falls back to a generic type (e.g. "special" unit or kind), the original legacy string MAY be stored in an optional **`raw_legacy_value`** field on the spec. The JSON schema (`schemas/spell.schema.json`) allows this property on `casting_time`, `range` (RangeSpec), `duration` (DurationSpec), `area` (AreaSpec), and `damage` (SpellDamageSpec). This field is **included in the canonical hash** (it is content, not metadata) so that different fallback text produces different hashes.
+
 ### 2.3 Metadata Exclusion
 
 The following fields are **excluded from the canonical hash** but preserved for storage and export:

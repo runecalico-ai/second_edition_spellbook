@@ -18,7 +18,7 @@
 - [ ] **Test: Value change emits structured object (range)**
   - GIVEN `StructuredFieldInput` with fieldType = range and user enters distance value 10, unit = "yd"
   - WHEN onChange fires
-  - THEN callback MUST receive RangeSpec shape (e.g. `{kind: "distance", distance: {mode: "fixed", value: 10}, unit: "yd"}`)
+  - THEN callback MUST receive RangeSpec shape (per `#/$defs/RangeSpec`, e.g. `{kind: "distance", distance: {mode: "fixed", value: 10}, unit: "yd"}`)
 
 - [ ] **Test: Value change emits structured object (duration)**
   - GIVEN `StructuredFieldInput` with fieldType = duration and user enters duration value 1, unit = "round"
@@ -104,12 +104,21 @@
   - THEN component MUST show validation error
   - AND save MUST be blocked
 
+- [ ] **Test: Material component order preservation**
+  - GIVEN `ComponentCheckboxes` with multiple material components
+  - WHEN user adds components in order: ["diamond", "ruby", "sapphire"]
+  - AND user removes "ruby" (middle component)
+  - AND user adds "emerald"
+  - THEN final order MUST be ["diamond", "sapphire", "emerald"] (preserves original order, new items appended)
+  - AND order MUST be preserved in emitted `material_components` array
+  - AND order MUST match user's input order (not sorted alphabetically)
+
 
 ### Legacy Data Parsing
 - [ ] **Test: Parse legacy string on first edit**
   - GIVEN spell with legacy `range = "10 yards"`
   - WHEN user opens spell in editor
-  - THEN `StructuredFieldInput` (range) MUST auto-parse to RangeSpec shape (e.g. `{kind: "distance", distance: {mode: "fixed", value: 10}, unit: "yd"}`)
+  - THEN `StructuredFieldInput` (range) MUST auto-parse to RangeSpec shape (per `#/$defs/RangeSpec`, e.g. `{kind: "distance", distance: {mode: "fixed", value: 10}, unit: "yd"}`)
 
 - [ ] **Test: Fallback for unparseable legacy**
   - GIVEN spell with `range = "Special (DM discretion)"`
@@ -141,6 +150,47 @@
   - THEN the frontend MUST use only Tauri parse commands (`parse_spell_range`, `parse_spell_duration`, etc.) to populate structured fields
   - AND MUST NOT implement or invoke duplicate parsing logic in the frontend for these fields
 
+- [ ] **Test: Empty canonical_data object {}**
+  - GIVEN spell with `canonical_data = "{}"` (empty object, not null)
+  - AND legacy strings exist for range, duration, casting_time
+  - WHEN editor loads the spell
+  - THEN editor MUST treat empty object as all fields missing
+  - AND MUST parse all legacy strings via Tauri parser commands
+  - AND populate structured inputs with parsed values
+
+- [ ] **Test: canonical_data with null vs missing fields**
+  - GIVEN spell with `canonical_data` containing `{"range": null, "duration": {...}}` (range is null, duration exists)
+  - AND legacy string exists for range
+  - WHEN editor loads the spell
+  - THEN editor MUST treat null range as missing (parse legacy string)
+  - AND MUST use existing duration from canonical_data (do not parse legacy duration string)
+  - AND verify that `undefined` checks take precedence over `null` checks per hybrid loading logic
+
+- [ ] **Test: Parser command failure (IPC error)**
+  - GIVEN spell with null canonical_data and legacy range string
+  - WHEN editor loads the spell
+  - AND Tauri command `parse_spell_range` fails (IPC error, command unavailable)
+  - THEN editor MUST show error message to user
+  - AND MUST fall back to `kind: "special"` with `raw_legacy_value` set to original legacy string
+  - AND MUST include "Range" in warning banner listing unparseable fields
+
+- [ ] **Test: Invalid parser output validation**
+  - GIVEN spell with null canonical_data and legacy range string
+  - WHEN editor loads the spell
+  - AND Tauri command `parse_spell_range` returns invalid shape (type mismatch, missing required fields)
+  - THEN frontend MUST validate parser output against TypeScript types
+  - AND if validation fails, MUST treat as parser failure
+  - AND MUST fall back to `kind: "special"` with `raw_legacy_value`
+  - AND MUST include field in warning banner
+
+- [ ] **Test: Multiple parser failures aggregated**
+  - GIVEN spell with null canonical_data and legacy strings for range, duration, area
+  - WHEN editor loads the spell
+  - AND parser commands fail for range and duration (but area succeeds)
+  - THEN editor MUST aggregate failures into single warning banner
+  - AND banner MUST list "Range and Duration could not be fully parsed; original text preserved"
+  - AND area MUST be populated with parsed structured value (no error)
+
 ## Integration Tests
 
 ### SpellEditor Tradition Validation
@@ -157,10 +207,12 @@
   - WHEN attempting to save
   - THEN save MUST be blocked
 
-- [ ] **Test: BOTH tradition requires both**
+- [ ] **Test: BOTH tradition requires both** (KNOWN GAP - validation not yet implemented)
   - GIVEN tradition = "BOTH"
   - WHEN either school or sphere is null
   - THEN save MUST be blocked
+  - AND validation errors MUST appear for the missing field(s)
+  - **NOTE**: This test currently fails as the validation is not yet implemented. This MUST be completed before marking this change as complete.
 
 ### SpellDetail Display
 - [ ] **Test: Hash display with copy button**
@@ -247,6 +299,14 @@
   - AND it MUST have default values (e.g. 1d6 bludgeoning)
   - AND it MUST have a unique, stable ID assigned immediately.
 
+- [ ] **Test: Damage part ID collision handling (edge case)**
+  - GIVEN `DamageForm` with multiple parts
+  - WHEN two parts are created simultaneously (same timestamp)
+  - AND ID collision is detected (same ID generated)
+  - THEN implementation MUST handle collision gracefully
+  - AND MUST regenerate ID or append additional random characters
+  - AND final IDs MUST be unique and schema-compliant (match `^[a-z][a-z0-9_]{0,31}$`)
+
 - [ ] **Test: Dice Pool editing**
   - GIVEN a `DamagePart`
   - WHEN user changes dice count or sides
@@ -263,7 +323,7 @@
   - THEN `radius`, `height`, and `shape_unit` inputs MUST be visible
 
 #### SavingThrowInput
-- [ ] **Test: Kind serialization (SavingThrowSpec)**
+- [ ] **Test: Kind serialization (SavingThrowSpec per `#/$defs/SavingThrowSpec`)**
   - GIVEN `SavingThrowInput`
   - WHEN user selects "None"
   - THEN output MUST be `{kind: "none"}`

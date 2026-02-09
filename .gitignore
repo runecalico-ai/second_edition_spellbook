@@ -38,3 +38,6 @@ apps/desktop/tests/screenshots/
 apps/desktop/tests/snapshots/
 apps/desktop/tests/tmp/
 apps/desktop/playwright-report/
+
+*storybook.log
+storybook-static

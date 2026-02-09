@@ -55,6 +55,16 @@ pub struct SpellCreate {
     pub is_quest_spell: i64,
     #[serde(alias = "is_cantrip")]
     pub is_cantrip: i64,
+    // Structured Data Spec Objects
+    pub range_spec: Option<crate::models::RangeSpec>,
+    pub components_spec: Option<crate::models::SpellComponents>,
+    pub material_components_spec: Option<Vec<crate::models::MaterialComponentSpec>>,
+    pub casting_time_spec: Option<crate::models::SpellCastingTime>,
+    pub duration_spec: Option<crate::models::DurationSpec>,
+    pub area_spec: Option<crate::models::AreaSpec>,
+    pub saving_throw_spec: Option<crate::models::SavingThrowSpec>,
+    pub damage_spec: Option<crate::models::SpellDamageSpec>,
+    pub magic_resistance_spec: Option<crate::models::MagicResistanceSpec>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
@@ -92,6 +102,16 @@ pub struct SpellUpdate {
     pub is_quest_spell: i64,
     #[serde(alias = "is_cantrip")]
     pub is_cantrip: i64,
+    // Structured Data Spec Objects
+    pub range_spec: Option<crate::models::RangeSpec>,
+    pub components_spec: Option<crate::models::SpellComponents>,
+    pub material_components_spec: Option<Vec<crate::models::MaterialComponentSpec>>,
+    pub casting_time_spec: Option<crate::models::SpellCastingTime>,
+    pub duration_spec: Option<crate::models::DurationSpec>,
+    pub area_spec: Option<crate::models::AreaSpec>,
+    pub saving_throw_spec: Option<crate::models::SavingThrowSpec>,
+    pub damage_spec: Option<crate::models::SpellDamageSpec>,
+    pub magic_resistance_spec: Option<crate::models::MagicResistanceSpec>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -144,4 +164,20 @@ pub struct SpellDetail {
     #[serde(alias = "schema_version")]
     pub schema_version: Option<i64>,
     pub artifacts: Option<Vec<SpellArtifact>>,
+    /// JSON blob of structured spell data (snake_case). Present when spell has been canonicalized.
+    #[serde(alias = "canonical_data")]
+    pub canonical_data: Option<String>,
+    /// Content-addressed hash (SHA-256) of canonical_data.
+    #[serde(alias = "content_hash")]
+    pub content_hash: Option<String>,
+    // Structured Data Spec Objects
+    pub range_spec: Option<crate::models::RangeSpec>,
+    pub components_spec: Option<crate::models::SpellComponents>,
+    pub material_components_spec: Option<Vec<crate::models::MaterialComponentSpec>>,
+    pub casting_time_spec: Option<crate::models::SpellCastingTime>,
+    pub duration_spec: Option<crate::models::DurationSpec>,
+    pub area_spec: Option<crate::models::AreaSpec>,
+    pub saving_throw_spec: Option<crate::models::SavingThrowSpec>,
+    pub damage_spec: Option<crate::models::SpellDamageSpec>,
+    pub magic_resistance_spec: Option<crate::models::MagicResistanceSpec>,
 }

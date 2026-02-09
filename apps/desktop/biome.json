@@ -10,7 +10,8 @@
       "**/*.sqlite3*",
       "**/*.zip",
       "**/playwright-report/**",
-      "**/test-results/**"
+      "**/test-results/**",
+      "**/storybook-static/**"
     ]
   },
   "organizeImports": {

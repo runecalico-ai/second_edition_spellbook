@@ -91,6 +91,61 @@
     - [ ] Error messages associated with fields (`aria-describedby`).
     - [ ] Success states announced (`role="status"`).
 
+## Theme Support
+### Application Theme System
+- [ ] Create Zustand theme store (`store/useTheme.ts`):
+    - [ ] Theme state: 'light' | 'dark' | 'system'
+    - [ ] Toggle function: switch between light/dark
+    - [ ] Persist to localStorage with key 'theme'
+    - [ ] Initialize from localStorage or system preference
+- [ ] Add theme initialization script to `index.html`:
+    - [ ] Inline script in `<head>` (before React hydration)
+    - [ ] Read localStorage or system preference
+    - [ ] Apply `dark` class to `<html>` element immediately
+- [ ] Create ThemeToggle component (`ui/components/ThemeToggle.tsx`):
+    - [ ] Icon button with sun/moon icons
+    - [ ] ARIA labels: "Switch to light mode" / "Switch to dark mode"
+    - [ ] `aria-pressed` to indicate current state
+    - [ ] Keyboard accessible (Enter/Space)
+    - [ ] Visible focus indicator (2px outline)
+- [ ] Integrate theme toggle into navigation (`ui/App.tsx`):
+    - [ ] Add ThemeToggle to header/navigation
+    - [ ] Ensure accessible placement
+- [ ] Update `main.tsx` to initialize theme store on mount
+- [ ] Remove hardcoded dark classes from `index.html`:
+    - [ ] Remove `class="bg-neutral-950 text-neutral-100"` from `<body>`
+    - [ ] Use theme-aware Tailwind classes instead
+
+### Storybook Theme Integration
+- [ ] Install theme addon (if needed): `@storybook/addon-toolbars` or use built-in
+- [ ] Create Storybook decorator for theme application:
+    - [ ] Read theme from Zustand store or localStorage
+    - [ ] Apply `dark` class to Storybook's HTML element
+    - [ ] Sync with toolbar selection
+- [ ] Update `.storybook/preview.ts`:
+    - [ ] Add theme toolbar with light/dark options
+    - [ ] Configure decorator to apply theme class
+    - [ ] Ensure theme persists across story navigation
+- [ ] Test components in both themes:
+    - [ ] Verify all components render correctly in light mode
+    - [ ] Verify all components render correctly in dark mode
+    - [ ] Check color contrast in both themes
+
+### Theme Accessibility & Testing
+- [ ] Verify theme toggle keyboard navigation:
+    - [ ] Tab to theme toggle button
+    - [ ] Activate with Enter/Space
+    - [ ] Screen reader announces theme change
+- [ ] Test color contrast in both themes:
+    - [ ] Use Storybook a11y addon to verify WCAG 2.1 AA
+    - [ ] Test all text colors (body, headings, links)
+    - [ ] Test interactive elements (buttons, inputs)
+    - [ ] Test error states (red text on both backgrounds)
+- [ ] Add E2E test for theme switching:
+    - [ ] Test: User toggles theme, preference persists on reload
+    - [ ] Test: System preference detection on first visit
+    - [ ] Test: Theme applies immediately (no flash)
+
 ## Testing
 ### E2E Workflows
 - [ ] Test: New user creates first spell (22-step workflow).
@@ -98,7 +153,10 @@
 - [ ] Test: Validation error handling (14-step workflow).
 - [ ] Test: Keyboard-only navigation (17-step workflow).
 - [ ] Test: Screen reader experience.
+- [ ] Test: Theme switching workflow.
 
 ### Visual Regression
 - [ ] Screenshot test: StructuredFieldInput (empty, filled, error, disabled).
 - [ ] Screenshot test: SpellEditor with all structured fields.
+- [ ] Screenshot test: Components in light theme.
+- [ ] Screenshot test: Components in dark theme.

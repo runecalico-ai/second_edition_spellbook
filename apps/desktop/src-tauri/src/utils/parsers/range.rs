@@ -552,6 +552,26 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_range_fallback_unparseable() {
+        let parser = RangeParser::new();
+        let res = parser.parse("xyz gibberish 123");
+        assert_eq!(res.kind, RangeKind::Special);
+        assert_eq!(res.raw_legacy_value.as_deref(), Some("xyz gibberish 123"));
+    }
+
+    #[test]
+    fn test_parse_range_variable_yards_format() {
+        let parser = RangeParser::new();
+        let res = parser.parse("10 + 5/level yards");
+        assert_eq!(res.kind, RangeKind::Distance);
+        let dist = res.distance.unwrap();
+        assert_eq!(dist.mode, ScalarMode::PerLevel);
+        assert_eq!(dist.value.unwrap(), 10.0);
+        assert_eq!(dist.per_level.unwrap(), 5.0);
+        assert_eq!(res.unit, Some(RangeUnit::Yd));
+    }
+
+    #[test]
     fn test_parse_range_enhanced_logic() {
         let parser = RangeParser::new();
 

@@ -29,6 +29,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_spell,
+            parse_spell_range,
+            parse_spell_duration,
+            parse_spell_casting_time,
+            parse_spell_area,
+            parse_spell_damage,
+            parse_spell_components,
             list_spells,
             create_spell,
             update_spell,

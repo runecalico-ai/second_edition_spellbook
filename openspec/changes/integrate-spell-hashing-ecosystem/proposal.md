@@ -16,6 +16,8 @@ Update all major application subsystems to use canonical hashes:
 5.  **Integration**: Update Character and Spell List modules to reference spells by hash.
 
 ## Scope
+**Definitions:** In this change, **Spell List** means the per-class spell sets (known/prepared) stored in `character_class_spell`, not a separate list entity.
+
 ### In Scope
 -   Search implementation (FTS5 virtual table, indexing triggers)
 -   Import/Export logic with hash-based deduplication
@@ -23,16 +25,18 @@ Update all major application subsystems to use canonical hashes:
 -   Vault implementation (hash-based file storage)
 -   Spell List verification and migration
 -   Character spellbook integration
+-   Artifact table: migrate spell references to content hash (see design)
 -   Security review (import validation, sanitization, size limits)
 -   Integration documentation
 
 ### Out of Scope
--   Schema definition (Spec #1)
--   Migration of legacy data (Spec #2)
--   Spell Editor UI (Spec #3)
+-   Schema definition (Spec #1 - `add-spell-canonical-hashing-foundation`)
+-   Migration of legacy data (Spec #2 - `add-spell-data-migration-infrastructure`)
+-   Spell Editor UI (Spec #3 - `update-spell-editor-structured-data`)
 
 ## Dependencies
 -   **Spec #1: `add-spell-canonical-hashing-foundation`**
     - Requires hash logic for all integrations.
 -   **Spec #2: `add-spell-data-migration-infrastructure`**
     - Requires data to be migrated before indexing/integration can fully work.
+-   **Spec #3: `update-spell-editor-structured-data`** (Spell Editor UI) — out of scope for this change.

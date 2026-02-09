@@ -36,6 +36,7 @@ export const Single: Story = {
     value: {
       kind: 'single',
       single: {
+        id: 'main_save',
         saveType: 'spell',
         appliesTo: 'each_target',
         onSuccess: { result: 'no_effect' },
@@ -51,6 +52,7 @@ export const SingleParalyzation: Story = {
     value: {
       kind: 'single',
       single: {
+        id: 'poison_save',
         saveType: 'paralyzation_poison_death',
         appliesTo: 'each_target',
         onSuccess: { result: 'reduced_effect' },
@@ -67,12 +69,14 @@ export const Multiple: Story = {
       kind: 'multiple',
       multiple: [
         {
+          id: 'spell_save',
           saveType: 'spell',
           appliesTo: 'each_target',
           onSuccess: { result: 'no_effect' },
           onFailure: { result: 'full_effect' },
         },
         {
+          id: 'breath_save',
           saveType: 'breath_weapon',
           appliesTo: 'each_target',
           onSuccess: { result: 'reduced_effect' },

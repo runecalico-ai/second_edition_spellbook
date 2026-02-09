@@ -777,50 +777,46 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
         let parser = SpellParser::new();
 
         // Prioritize structured spec objects if provided by frontend
-        spell.range = if let Some(spec) = detail.range_spec {
-            Some(spec)
-        } else {
+        spell.range = detail.range_spec.or_else(|| {
             detail
                 .range
+                .as_ref()
                 .filter(|s| !s.is_empty())
-                .map(|s| parser.parse_range(&s))
-        };
+                .map(|s| parser.parse_range(s))
+        });
 
-        spell.casting_time = if let Some(spec) = detail.casting_time_spec {
-            Some(spec)
-        } else {
+        spell.casting_time = detail.casting_time_spec.or_else(|| {
             detail
                 .casting_time
+                .as_ref()
                 .filter(|s| !s.is_empty())
-                .map(|s| parser.parse_casting_time(&s))
-        };
+                .map(|s| parser.parse_casting_time(s))
+        });
 
-        spell.duration = if let Some(spec) = detail.duration_spec {
-            Some(spec)
-        } else {
+        spell.duration = detail.duration_spec.or_else(|| {
             detail
                 .duration
+                .as_ref()
                 .filter(|s| !s.is_empty())
-                .map(|s| parser.parse_duration(&s))
-        };
+                .map(|s| parser.parse_duration(s))
+        });
 
-        spell.area = if let Some(spec) = detail.area_spec {
-            Some(spec)
-        } else {
+        spell.area = detail.area_spec.or_else(|| {
             detail
                 .area
+                .as_ref()
                 .filter(|s| !s.is_empty())
-                .and_then(|s| parser.parse_area(&s))
-        };
+                .and_then(|s| parser.parse_area(s))
+        });
 
         // Damage parsing
-        spell.damage = if let Some(spec) = detail.damage_spec {
-            Some(spec)
-        } else if let Some(dmg_str) = &detail.damage {
-            Some(parser.parse_damage(dmg_str))
-        } else {
-            None
-        };
+        spell.damage = detail.damage_spec.or_else(|| {
+            detail
+                .damage
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|dmg_str| parser.parse_damage(dmg_str))
+        });
 
         // Components parsing
         if let Some(spec) = detail.components_spec {
@@ -840,39 +836,44 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
             }
         }
 
-        spell.material_components = if let Some(spec) = detail.material_components_spec {
-            Some(spec)
-        } else {
+        spell.material_components = detail.material_components_spec.or_else(|| {
             detail
                 .material_components
+                .as_ref()
                 .filter(|s| !s.is_empty())
-                .map(|s| parser.parse_material_components(&s))
-        };
+                .map(|s| parser.parse_material_components(s))
+        });
 
         // Saving Throw and Magic Resistance
-        spell.saving_throw = if let Some(spec) = detail.saving_throw_spec {
-            Some(spec)
-        } else if let Some(st_str) = detail.saving_throw.as_ref().filter(|s| !s.is_empty()) {
-            Some(parser.parse_saving_throw(st_str))
-        } else {
-            None
-        };
+        spell.saving_throw = detail.saving_throw_spec.or_else(|| {
+            detail
+                .saving_throw
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|st_str| parser.parse_saving_throw(st_str))
+        });
 
-        spell.magic_resistance = if let Some(spec) = detail.magic_resistance_spec {
-            Some(spec)
-        } else if let Some(mr_str) = detail.magic_resistance.as_ref().filter(|s| !s.is_empty()) {
-            Some(parser.parse_magic_resistance(mr_str))
-        } else if let Some(st_str) = detail.saving_throw.as_ref().filter(|s| !s.is_empty()) {
-            // Heuristic fallback for MR
-            let mr_spec = parser.parse_magic_resistance(st_str);
-            if mr_spec.kind != crate::models::MagicResistanceKind::Unknown {
-                Some(mr_spec)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        spell.magic_resistance = detail.magic_resistance_spec.or_else(|| {
+            detail
+                .magic_resistance
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|mr_str| parser.parse_magic_resistance(mr_str))
+                .or_else(|| {
+                    detail
+                        .saving_throw
+                        .as_ref()
+                        .filter(|s| !s.is_empty())
+                        .and_then(|st_str| {
+                            let mr_spec = parser.parse_magic_resistance(st_str);
+                            if mr_spec.kind != crate::models::MagicResistanceKind::Unknown {
+                                Some(mr_spec)
+                            } else {
+                                None
+                            }
+                        })
+                })
+        });
 
         spell.reversible = Some(detail.reversible.unwrap_or(0));
 

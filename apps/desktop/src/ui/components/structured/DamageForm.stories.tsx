@@ -54,7 +54,7 @@ export const ModeledSinglePart: Story = {
             terms: [{ count: 1, sides: 6 }],
             flatModifier: 0,
           },
-          application: 'instant',
+          application: { scope: 'per_target' },
           save: { kind: 'none' },
         },
       ],
@@ -76,7 +76,7 @@ export const ModeledMultipleParts: Story = {
             terms: [{ count: 1, sides: 6 }],
             flatModifier: 0,
           },
-          application: 'instant',
+          application: { scope: 'per_target' },
           save: { kind: 'none' },
         },
         {
@@ -86,7 +86,7 @@ export const ModeledMultipleParts: Story = {
             terms: [{ count: 1, sides: 4 }],
             flatModifier: 2,
           },
-          application: 'instant',
+          application: { scope: 'per_target' },
           save: { kind: 'none' },
         },
       ],
@@ -95,7 +95,7 @@ export const ModeledMultipleParts: Story = {
   },
 };
 
-export const ModeledWithModifier: Story = {
+export const ComplexScalingAndClamping: Story = {
   args: {
     value: {
       kind: 'modeled',
@@ -104,12 +104,25 @@ export const ModeledWithModifier: Story = {
         {
           id: generateDamagePartId(),
           damageType: 'fire',
+          label: 'Fireball base',
           base: {
-            terms: [{ count: 2, sides: 6 }],
-            flatModifier: 3,
+            terms: [{ count: 1, sides: 6, perDieModifier: 1 }],
+            flatModifier: 0,
           },
-          application: 'instant',
-          save: { kind: 'none' },
+          application: { scope: 'per_target' },
+          save: { kind: 'half' },
+          scaling: [
+            {
+              kind: 'add_dice_per_step',
+              driver: 'caster_level',
+              step: 1,
+              diceIncrement: { count: 1, sides: 6 },
+              maxSteps: 9,
+            },
+          ],
+          clampTotal: {
+            maxTotal: 60,
+          },
         },
       ],
     },
@@ -117,31 +130,34 @@ export const ModeledWithModifier: Story = {
   },
 };
 
-export const ModeledMaxCombine: Story = {
+export const MultiLevelBands: Story = {
   args: {
     value: {
       kind: 'modeled',
-      combineMode: 'max',
+      combineMode: 'sum',
       parts: [
         {
           id: generateDamagePartId(),
-          damageType: 'fire',
+          damageType: 'magic',
+          label: 'Magic Missile-ish',
           base: {
-            terms: [{ count: 1, sides: 6 }],
-            flatModifier: 0,
+            terms: [{ count: 1, sides: 4 }],
+            flatModifier: 1,
           },
-          application: 'instant',
+          application: { scope: 'per_missile' },
           save: { kind: 'none' },
-        },
-        {
-          id: generateDamagePartId(),
-          damageType: 'cold',
-          base: {
-            terms: [{ count: 1, sides: 8 }],
-            flatModifier: 0,
-          },
-          application: 'instant',
-          save: { kind: 'none' },
+          scaling: [
+            {
+              kind: 'set_base_by_level_band',
+              driver: 'caster_level',
+              step: 2,
+              levelBands: [
+                { min: 1, max: 2, base: { terms: [{ count: 1, sides: 4 }], flatModifier: 1 } },
+                { min: 3, max: 4, base: { terms: [{ count: 2, sides: 4 }], flatModifier: 2 } },
+                { min: 5, max: 6, base: { terms: [{ count: 3, sides: 4 }], flatModifier: 3 } },
+              ],
+            },
+          ],
         },
       ],
     },

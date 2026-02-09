@@ -355,6 +355,41 @@ export interface SaveSpec {
   partial?: { numerator: number; denominator: number };
 }
 
+export type ScalingKind = "add_dice_per_step" | "add_flat_per_step" | "set_base_by_level_band";
+export type ScalingDriver = "caster_level" | "spell_level" | "target_hd" | "target_level" | "choice" | "other";
+
+export interface LevelBand {
+  min: number;
+  max: number;
+  base: DicePool;
+}
+
+export interface ScalingRule {
+  kind: ScalingKind;
+  driver: ScalingDriver;
+  step: number;
+  maxSteps?: number;
+  diceIncrement?: DiceTerm;
+  /** Alias when loading from canonical_data (snake_case). */
+  dice_increment?: DiceTerm;
+  flatIncrement?: number;
+  /** Alias when loading from canonical_data (snake_case). */
+  flat_increment?: number;
+  levelBands?: LevelBand[];
+  /** Alias when loading from canonical_data (snake_case). */
+  level_bands?: LevelBand[];
+  notes?: string;
+}
+
+export interface ClampSpec {
+  minTotal?: number;
+  /** Alias when loading from canonical_data (snake_case). */
+  min_total?: number;
+  maxTotal?: number;
+  /** Alias when loading from canonical_data (snake_case). */
+  max_total?: number;
+}
+
 export interface DamagePart {
   id: string;
   damageType: DamageType;
@@ -362,7 +397,10 @@ export interface DamagePart {
   application?: ApplicationSpec;
   save?: SaveSpec;
   label?: string;
-  scaling?: unknown[];
+  scaling?: ScalingRule[];
+  clampTotal?: ClampSpec;
+  /** Alias when loading from canonical_data (snake_case). */
+  clamp_total?: ClampSpec;
   mrInteraction?: "normal" | "ignores_mr" | "special" | "unknown";
   notes?: string;
 }
@@ -450,8 +488,8 @@ export interface SpellComponents {
 
 /** Generate a stable part ID per schema pattern ^[a-z][a-z0-9_]{0,31}$ */
 export function generateDamagePartId(): string {
-  const ts = Date.now().toString(36);
-  const r = Math.random().toString(36).slice(2, 8);
+  const ts = Date.now();
+  const r = Math.random().toString(36).substring(2, 9);
   return `part_${ts}_${r}`.slice(0, 32);
 }
 

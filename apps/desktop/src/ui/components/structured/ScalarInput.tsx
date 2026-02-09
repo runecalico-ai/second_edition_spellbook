@@ -1,5 +1,5 @@
 import type { SpellScalar } from "../../../types/spell";
-import { clampScalar, parseNumericInput } from "../../../lib/validation";
+import { clampScalar, parseNumericInput, isAboveAdvisoryCap, VALIDATION } from "../../../lib/validation";
 
 interface ScalarInputProps {
   value: SpellScalar;
@@ -90,8 +90,14 @@ export function ScalarInput({
             ? handleValueChange(e.target.value)
             : handlePerLevelChange(e.target.value)
         }
-        className="w-20 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+        className={`w-20 bg-neutral-900 border ${isAboveAdvisoryCap(effectiveValue) ? "border-yellow-500" : "border-neutral-700"
+          } rounded px-2 py-1 text-sm text-neutral-100`}
       />
+      {isAboveAdvisoryCap(effectiveValue) && (
+        <span className="text-[10px] text-yellow-500 font-medium">
+          Above {VALIDATION.advisoryCap} advisory cap
+        </span>
+      )}
     </div>
   );
 }

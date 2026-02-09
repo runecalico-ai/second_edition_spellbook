@@ -42,12 +42,28 @@ import type {
   ApplicationScope,
   SaveKind,
   SaveType,
+  SaveOutcome,
   SaveOutcomeEffect,
   ScalarMode,
+  ScalingKind,
+  ScalingDriver,
+  ScalingRule,
+  LevelBand,
+  DiceTerm,
 } from "../types/spell";
 
 // Mirrors SpellDetail struct from backend
-// Scalars are normalized during canonicalization in the backend.
+function normalizeDicePool(p: any): DicePool {
+  if (!p) return { terms: [{ count: 1, sides: 6 }], flatModifier: 0 };
+  return {
+    terms: (p.terms as any[] | undefined)?.map((t) => ({
+      count: t.count,
+      sides: t.sides,
+      perDieModifier: t.perDieModifier ?? t.per_die_modifier,
+    })) ?? [{ count: 1, sides: 6 }],
+    flatModifier: p.flatModifier ?? p.flat_modifier,
+  };
+}
 
 function normalizeScalar(o: unknown): { mode: ScalarMode; value?: number; perLevel?: number } | undefined {
   if (!o || typeof o !== "object") return undefined;
@@ -85,13 +101,28 @@ function normalizeAreaSpec(a: Record<string, unknown>): AreaSpec {
 function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
   const parts = (d.parts as unknown[] | undefined)?.map((p) => {
     const x = p as Record<string, unknown>;
-    const app = x.application as Record<string, unknown> | undefined;
-    const sav = x.save as Record<string, unknown> | undefined;
+    const app = (x.application ?? x.application) as Record<string, unknown> | undefined;
+    const sav = (x.save ?? x.save) as Record<string, unknown> | undefined;
+    const scaling = ((x.scaling ?? x.scaling) as unknown[] | undefined)?.map((s) => {
+      const rs = s as Record<string, unknown>;
+      return {
+        kind: rs.kind as ScalingKind,
+        driver: rs.driver as ScalingDriver,
+        step: rs.step as number,
+        maxSteps: (rs.maxSteps ?? rs.max_steps) as number,
+        diceIncrement: normalizeDicePool({ terms: [rs.diceIncrement ?? rs.dice_increment] }).terms[0],
+        flatIncrement: (rs.flatIncrement ?? rs.flat_increment) as number,
+        levelBands: (rs.levelBands ?? rs.level_bands) as LevelBand[] | undefined,
+        notes: rs.notes as string,
+      } as ScalingRule;
+    });
+    const clamp = (x.clampTotal ?? x.clamp_total) as Record<string, unknown> | undefined;
+
     return {
       id: x.id as string,
       label: x.label as string,
       damageType: (x.damageType ?? x.damage_type) as string,
-      base: (x.base ?? { terms: [{ count: 1, sides: 6 }], flatModifier: 0 }) as DicePool,
+      base: normalizeDicePool(x.base),
       application: app ? {
         scope: app.scope as ApplicationScope,
         ticks: app.ticks as number,
@@ -102,6 +133,11 @@ function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
         partial: sav.partial as { numerator: number; denominator: number },
       } : undefined,
       mrInteraction: (x.mrInteraction ?? x.mr_interaction) as DamagePart["mrInteraction"],
+      scaling,
+      clampTotal: clamp ? {
+        minTotal: (clamp.minTotal ?? clamp.min_total) as number,
+        maxTotal: (clamp.maxTotal ?? clamp.max_total) as number,
+      } : undefined,
       notes: x.notes as string,
     } as DamagePart;
   });
@@ -111,21 +147,30 @@ function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
     parts: parts as SpellDamageSpec["parts"],
     dmGuidance: (d.dmGuidance ?? d.dm_guidance) as string,
     rawLegacyValue: (d.rawLegacyValue ?? d.raw_legacy_value) as string,
+    notes: d.notes as string,
   } as SpellDamageSpec;
 }
 
 function normalizeSingleSave(s: unknown): SingleSave | undefined {
   if (!s || typeof s !== "object") return undefined;
   const x = s as Record<string, unknown>;
+  const onSuccessRaw = (x.onSuccess ?? x.on_success) as Record<string, unknown> | undefined;
+  const onFailureRaw = (x.onFailure ?? x.on_failure) as Record<string, unknown> | undefined;
   return {
     id: x.id as string,
     saveType: (x.saveType ?? x.save_type) as SaveType,
     saveVs: (x.saveVs ?? x.save_vs) as string,
     modifier: (x.modifier as number) ?? 0,
     appliesTo: (x.appliesTo ?? x.applies_to) as string,
-    timing: x.timing as string,
-    onSuccess: (x.onSuccess ?? x.on_success) as SaveOutcomeEffect,
-    onFailure: (x.onFailure ?? x.on_failure) as SaveOutcomeEffect,
+    timing: (x.timing ?? x.timing) as string,
+    onSuccess: {
+      result: (onSuccessRaw?.result as SaveOutcome | undefined) ?? "no_effect",
+      notes: (onSuccessRaw?.notes as string | undefined) ?? "",
+    },
+    onFailure: {
+      result: (onFailureRaw?.result as SaveOutcome | undefined) ?? "full_effect",
+      notes: (onFailureRaw?.notes as string | undefined) ?? "",
+    },
   };
 }
 
@@ -150,6 +195,23 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
     specialRule: (m.specialRule ?? m.special_rule) as string,
     notes: m.notes as string,
   } as MagicResistanceSpec;
+}
+
+/** Lightweight runtime validation for parser output; on failure treat as parse failure. */
+function isRangeSpec(x: unknown): x is RangeSpec {
+  return !!x && typeof x === "object" && "kind" in x && typeof (x as RangeSpec).kind === "string";
+}
+function isDurationSpec(x: unknown): x is DurationSpec {
+  return !!x && typeof x === "object" && "kind" in x && typeof (x as DurationSpec).kind === "string";
+}
+function isSpellCastingTimeLike(x: unknown): x is SpellCastingTime {
+  return !!x && typeof x === "object" && "unit" in x && typeof (x as SpellCastingTime).unit === "string";
+}
+function isAreaSpec(x: unknown): x is AreaSpec {
+  return !!x && typeof x === "object" && "kind" in x && typeof (x as AreaSpec).kind === "string";
+}
+function isSpellDamageSpec(x: unknown): x is SpellDamageSpec {
+  return !!x && typeof x === "object" && "kind" in x && typeof (x as SpellDamageSpec).kind === "string";
 }
 
 export default function SpellEditor() {
@@ -195,6 +257,8 @@ export default function SpellEditor() {
   const [structuredMaterialComponents, setStructuredMaterialComponents] =
     useState<MaterialComponentSpec[]>([]);
   const [hashExpanded, setHashExpanded] = useState(false);
+  type Tradition = "ARCANE" | "DIVINE" | "BOTH";
+  const [tradition, setTradition] = useState<Tradition>("ARCANE");
 
   const isNew = id === "new";
 
@@ -205,6 +269,9 @@ export default function SpellEditor() {
         .then((data) => {
           if (data) {
             setForm(data);
+            const hasSchool = !!data.school?.trim();
+            const hasSphere = !!data.sphere?.trim();
+            setTradition(hasSchool && hasSphere ? "BOTH" : hasSchool ? "ARCANE" : hasSphere ? "DIVINE" : "ARCANE");
             const fromCanonical = {
               range: false,
               duration: false,
@@ -334,11 +401,35 @@ export default function SpellEditor() {
                 // ignore parse error, fall back to legacy
               }
             }
+            const fallbackRange = (legacy: string | null) => {
+              if (legacy) setStructuredRange({ kind: "special", rawLegacyValue: legacy });
+              else setStructuredRange(null);
+            };
+            const fallbackDuration = (legacy: string | null) => {
+              if (legacy) setStructuredDuration({ kind: "special", rawLegacyValue: legacy });
+              else setStructuredDuration(null);
+            };
+            const fallbackCastingTime = (legacy: string | null) => {
+              if (legacy) setStructuredCastingTime({ text: legacy, unit: "special", rawLegacyValue: legacy });
+              else setStructuredCastingTime(null);
+            };
+            const fallbackArea = (legacy: string | null) => {
+              if (legacy) setStructuredArea({ kind: "special", rawLegacyValue: legacy });
+              else setStructuredArea(null);
+            };
+            const fallbackDamage = (legacy: string | null) => {
+              if (legacy) setStructuredDamage({ kind: "dm_adjudicated", rawLegacyValue: legacy, dmGuidance: legacy });
+              else setStructuredDamage(defaultSpellDamageSpec());
+            };
+
             if (!fromCanonical.range) {
               if (data.range) {
                 invoke<RangeSpec>("parse_spell_range", { legacy: data.range })
-                  .then((parsed) => setStructuredRange(parsed as RangeSpec))
-                  .catch(() => setStructuredRange(null));
+                  .then((parsed) => {
+                    if (!isRangeSpec(parsed)) fallbackRange(data.range);
+                    else setStructuredRange(parsed);
+                  })
+                  .catch(() => fallbackRange(data.range));
               } else {
                 setStructuredRange(null);
               }
@@ -346,8 +437,11 @@ export default function SpellEditor() {
             if (!fromCanonical.duration) {
               if (data.duration) {
                 invoke<DurationSpec>("parse_spell_duration", { legacy: data.duration })
-                  .then((parsed) => setStructuredDuration(parsed as DurationSpec))
-                  .catch(() => setStructuredDuration(null));
+                  .then((parsed) => {
+                    if (!isDurationSpec(parsed)) fallbackDuration(data.duration);
+                    else setStructuredDuration(parsed);
+                  })
+                  .catch(() => fallbackDuration(data.duration));
               } else {
                 setStructuredDuration(null);
               }
@@ -357,8 +451,11 @@ export default function SpellEditor() {
                 invoke<SpellCastingTime>("parse_spell_casting_time", {
                   legacy: data.castingTime,
                 })
-                  .then((parsed) => setStructuredCastingTime(parsed as SpellCastingTime))
-                  .catch(() => setStructuredCastingTime(null));
+                  .then((parsed) => {
+                    if (!isSpellCastingTimeLike(parsed)) fallbackCastingTime(data.castingTime);
+                    else setStructuredCastingTime(parsed);
+                  })
+                  .catch(() => fallbackCastingTime(data.castingTime));
               } else {
                 setStructuredCastingTime(null);
               }
@@ -366,8 +463,11 @@ export default function SpellEditor() {
             if (!fromCanonical.area) {
               if (data.area) {
                 invoke<AreaSpec | null>("parse_spell_area", { legacy: data.area })
-                  .then((parsed) => setStructuredArea(parsed ?? defaultAreaSpec()))
-                  .catch(() => setStructuredArea(null));
+                  .then((parsed) => {
+                    if (parsed === null || !isAreaSpec(parsed)) fallbackArea(data.area);
+                    else setStructuredArea(parsed);
+                  })
+                  .catch(() => fallbackArea(data.area));
               } else {
                 setStructuredArea(null);
               }
@@ -375,8 +475,11 @@ export default function SpellEditor() {
             if (!fromCanonical.damage) {
               if (data.damage) {
                 invoke<SpellDamageSpec>("parse_spell_damage", { legacy: data.damage })
-                  .then((parsed) => setStructuredDamage(parsed as SpellDamageSpec))
-                  .catch(() => setStructuredDamage(null));
+                  .then((parsed) => {
+                    if (!isSpellDamageSpec(parsed)) fallbackDamage(data.damage);
+                    else setStructuredDamage(parsed);
+                  })
+                  .catch(() => fallbackDamage(data.damage));
               } else {
                 setStructuredDamage(defaultSpellDamageSpec());
               }
@@ -448,7 +551,8 @@ export default function SpellEditor() {
 
   const isArcane = !!form.school?.trim();
   const isDivine = !!form.sphere?.trim();
-  const isBothTradition = isArcane && isDivine;
+  const getIsBothTradition = () => isArcane && isDivine;
+  const isBothTradition = getIsBothTradition();
 
   const getLevelDisplay = (level: number) => {
     if (level === 0 && form.isCantrip) return "Cantrip";
@@ -469,21 +573,10 @@ export default function SpellEditor() {
   const isConflictRestricted = form.level >= 10 && form.isQuestSpell === 1;
   const isCantripRestricted = form.isCantrip === 1 && form.level !== 0;
 
-  // BOTH tradition validation: when tradition = BOTH (both fields non-empty), require both to be non-empty
-  // This validates that if a spell has BOTH tradition, both school and sphere must be present
-  const schoolTrimmed = form.school?.trim() || "";
-  const sphereTrimmed = form.sphere?.trim() || "";
-
-  // Check if both fields exist in form (user has interacted with both, indicating potential BOTH tradition)
-  const schoolExists = form.school !== undefined;
-  const sphereExists = form.sphere !== undefined;
-  const bothFieldsExist = schoolExists && sphereExists;
-
-  // Validate: if both fields exist in form and one is non-empty while the other is empty,
-  // that's invalid for BOTH tradition (user has entered both but one is missing)
-  // This handles the case where user starts with BOTH tradition but clears one field
-  const isBothTraditionMissingSchool = bothFieldsExist && schoolTrimmed === "" && sphereTrimmed !== "";
-  const isBothTraditionMissingSphere = bothFieldsExist && sphereTrimmed === "" && schoolTrimmed !== "";
+  const isArcaneMissingSchool = tradition === "ARCANE" && !form.school?.trim();
+  const isDivineMissingSphere = tradition === "DIVINE" && !form.sphere?.trim();
+  const isBothMissingSchool = tradition === "BOTH" && !form.school?.trim();
+  const isBothMissingSphere = tradition === "BOTH" && !form.sphere?.trim();
 
   const validationErrors = [
     isNameInvalid && "Name is required",
@@ -493,8 +586,10 @@ export default function SpellEditor() {
     isQuestRestricted && "Quest spells are Divine (has Sphere) only",
     isConflictRestricted && "A spell cannot be both Epic and Quest",
     isCantripRestricted && "Cantrips must be Level 0",
-    isBothTraditionMissingSchool && "School is required for BOTH tradition spells",
-    isBothTraditionMissingSphere && "Sphere is required for BOTH tradition spells",
+    isArcaneMissingSchool && "School is required for Arcane tradition",
+    isDivineMissingSphere && "Sphere is required for Divine tradition",
+    isBothMissingSchool && "School is required for Both tradition",
+    isBothMissingSphere && "Sphere is required for Both tradition",
   ].filter(Boolean) as string[];
 
   const specialFallbackFields = [
@@ -838,6 +933,24 @@ export default function SpellEditor() {
             </p>
           )}
         </div>
+
+        <div>
+          <label htmlFor="spell-tradition" className="block text-sm text-neutral-400">
+            Tradition
+          </label>
+          <select
+            id="spell-tradition"
+            data-testid="spell-tradition-select"
+            aria-label="Spell tradition"
+            value={tradition}
+            onChange={(e) => setTradition(e.target.value as Tradition)}
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+          >
+            <option value="ARCANE">Arcane</option>
+            <option value="DIVINE">Divine</option>
+            <option value="BOTH">Both</option>
+          </select>
+        </div>
         <div>
           <label htmlFor="spell-school" className="block text-sm text-neutral-400">
             School
@@ -845,23 +958,23 @@ export default function SpellEditor() {
           <input
             id="spell-school"
             data-testid="spell-school-input"
-            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${isBothTraditionMissingSchool ? "border-red-500" : "border-neutral-700"
-              }`}
+            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.level >= 10 && !form.school && !getIsBothTradition()) || isArcaneMissingSchool || isBothMissingSchool ? "border-red-500" : "border-neutral-700"}`}
             value={form.school || ""}
-            disabled={sphereTrimmed !== "" && schoolTrimmed === "" && form.school === undefined}
             onChange={(e) => handleChange("school", e.target.value)}
           />
-          {sphereTrimmed !== "" && schoolTrimmed === "" && form.school === undefined && (
-            <p className="text-[10px] text-neutral-500 mt-0.5 italic">Disabled for Divine-only spells (enter School to enable BOTH tradition)</p>
-          )}
-          {form.level >= 10 && !form.school && !isBothTradition && (
+          {form.level >= 10 && !form.school && !getIsBothTradition() && (
             <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane">
               School is required for Epic (Arcane) spells.
             </p>
           )}
-          {isBothTraditionMissingSchool && (
+          {isArcaneMissingSchool && (
+            <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane-tradition">
+              School is required for Arcane tradition.
+            </p>
+          )}
+          {isBothMissingSchool && (
             <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-both">
-              School is required for BOTH tradition spells.
+              School is required for Both tradition.
             </p>
           )}
         </div>
@@ -872,23 +985,23 @@ export default function SpellEditor() {
           <input
             id="spell-sphere"
             data-testid="spell-sphere-input"
-            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${isBothTraditionMissingSphere ? "border-red-500" : "border-neutral-700"
-              }`}
+            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.isQuestSpell === 1 && !form.sphere && !getIsBothTradition()) || isDivineMissingSphere || isBothMissingSphere ? "border-red-500" : "border-neutral-700"}`}
             value={form.sphere || ""}
-            disabled={schoolTrimmed !== "" && sphereTrimmed === "" && form.sphere === undefined}
             onChange={(e) => handleChange("sphere", e.target.value)}
           />
-          {schoolTrimmed !== "" && sphereTrimmed === "" && form.sphere === undefined && (
-            <p className="text-[10px] text-neutral-500 mt-0.5 italic">Disabled for Arcane-only spells (enter Sphere to enable BOTH tradition)</p>
-          )}
-          {form.isQuestSpell === 1 && !form.sphere && !isBothTradition && (
+          {form.isQuestSpell === 1 && !form.sphere && !getIsBothTradition() && (
             <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine">
               Sphere is required for Quest (Divine) spells.
             </p>
           )}
-          {isBothTraditionMissingSphere && (
+          {isDivineMissingSphere && (
+            <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine-tradition">
+              Sphere is required for Divine tradition.
+            </p>
+          )}
+          {isBothMissingSphere && (
             <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-both">
-              Sphere is required for BOTH tradition spells.
+              Sphere is required for Both tradition.
             </p>
           )}
         </div>

@@ -207,12 +207,11 @@
   - WHEN attempting to save
   - THEN save MUST be blocked
 
-- [ ] **Test: BOTH tradition requires both** (KNOWN GAP - validation not yet implemented)
-  - GIVEN tradition = "BOTH"
+- [ ] **Test: BOTH tradition requires both**
+  - GIVEN user selects tradition = "BOTH"
   - WHEN either school or sphere is null
   - THEN save MUST be blocked
   - AND validation errors MUST appear for the missing field(s)
-  - **NOTE**: This test currently fails as the validation is not yet implemented. This MUST be completed before marking this change as complete.
 
 ### SpellDetail Display
 - [ ] **Test: Hash display with copy button**

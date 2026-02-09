@@ -204,6 +204,18 @@ function SingleSaveForm({
   return (
     <div className="flex flex-col gap-2 p-2 bg-neutral-900/50 rounded">
       <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          data-testid={`${dataTestIdPrefix}-id`}
+          aria-label="Save ID"
+          placeholder="id (snake_case)"
+          value={save.id ?? ""}
+          onChange={(e) => {
+            const val = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+            onChange({ id: val || undefined });
+          }}
+          className="w-24 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100 font-mono"
+        />
         <select
           data-testid={`${dataTestIdPrefix}-save-type`}
           aria-label="Save type"
@@ -334,6 +346,6 @@ function SingleSaveForm({
           />
         </div>
       </div>
-    </div>
+    </div >
   );
 }

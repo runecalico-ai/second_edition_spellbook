@@ -64,6 +64,11 @@
   - GIVEN user enters a value exceeding the documented cap (999999) in a structured scalar field
   - THEN component MUST show a warning and MUST allow the value (no clamp, no block save)
 
+- [ ] **Test: Internal modularity of StructuredFieldInput**
+  - GIVEN `StructuredFieldInput`
+  - THEN the component MUST be internally modular (shared scalar foundation but distinct kind-selection logic per fieldType)
+  - AND verify that changing `fieldType` updates the kind-selection options correctly.
+
 ### ComponentCheckboxes Component
 - [ ] **Test: Checkbox state to object**
   - GIVEN user checks V and S, unchecks M
@@ -76,7 +81,7 @@
 - [ ] **Test: Material sub-form visibility**
   - GIVEN user checks M checkbox
   - THEN material component sub-form MUST appear
-  - AND sub-form MUST include: name, quantity, gp_value, is_consumed, description
+  - AND sub-form MUST include: name, quantity, gp_value, is_consumed, description, unit
 
 - [ ] **Test: Multiple material components**
   - GIVEN material sub-form is visible
@@ -89,9 +94,9 @@
   - THEN component MUST emit `material_components: [{name: "powdered diamond", quantity: 1.0, gp_value: 100.0, is_consumed: true}]`
 
 - [ ] **Test: Material quantity validation**
-  - GIVEN user enters quantity = 0 or negative
+  - GIVEN user enters negative quantity or value < 1
   - THEN component MUST show validation error
-  - AND quantity MUST default to 1.0 per schema
+  - AND component MUST clamp to minimum 1 (or 1.0) per spec so persisted value is >= 1
 
 - [ ] **Test: Material name required**
   - GIVEN user adds material component
@@ -118,10 +123,23 @@
   - THEN a warning banner MUST be visible
   - AND `raw_legacy_value` MUST be preserved for the unparseable field(s)
 
+- [ ] **Test: Single banner lists all fields that fell back to special**
+  - GIVEN spell with legacy range and duration both unparseable (e.g. custom text)
+  - WHEN editor loads the spell
+  - THEN a single warning banner MUST appear at the top of the form
+  - AND the banner MUST list all affected fields (e.g. "Range and Duration could not be fully parsed; original text preserved")
+  - AND there MUST NOT be separate banners per field
+
 - [ ] **Test: Legacy parsing uses Tauri parser commands**
   - GIVEN spell with null canonical_data and legacy string for range (e.g. "10 yards")
   - WHEN editor loads the spell
   - THEN the frontend MUST obtain structured range by calling the Tauri command `parse_spell_range` (or equivalent) with the legacy string, not by parsing in the frontend
+
+- [ ] **Test: No client-side parsing for structured fields**
+  - GIVEN spell with null canonical_data and legacy strings for range, duration, casting_time, area, or damage
+  - WHEN editor loads the spell
+  - THEN the frontend MUST use only Tauri parse commands (`parse_spell_range`, `parse_spell_duration`, etc.) to populate structured fields
+  - AND MUST NOT implement or invoke duplicate parsing logic in the frontend for these fields
 
 ## Integration Tests
 
@@ -216,11 +234,18 @@
   - WHEN user selects "Modeled"
   - THEN `parts` list and `combine_mode` selector MUST appear
 
+- [ ] **Test: Kind selection (None)**
+  - GIVEN `DamageForm` with existing parts
+  - WHEN user selects "None"
+  - THEN `parts` list and `combine_mode` selector MUST be hidden
+  - AND output MUST be `{kind: "none"}` (parts cleared or ignored)
+
 - [ ] **Test: Add Damage Part**
   - GIVEN `DamageForm` in Modeled mode
   - WHEN user clicks "Add Part"
   - THEN a new `DamagePart` sub-form MUST appear
   - AND it MUST have default values (e.g. 1d6 bludgeoning)
+  - AND it MUST have a unique, stable ID assigned immediately.
 
 - [ ] **Test: Dice Pool editing**
   - GIVEN a `DamagePart`
@@ -262,10 +287,12 @@
   - AND output MUST include `kind: "dm_adjudicated"` and `dm_guidance`
 
 #### MagicResistanceInput
-- [ ] **Test: Applies To selection**
+- [ ] **Test: Applies To selection visibility**
   - GIVEN `MagicResistanceInput`
-  - WHEN user selects "Beneficial Effects Only" (UI label)
-  - THEN output MUST be `{kind: "normal", applies_to: "beneficial_effects_only"}` (schema enum value)
+  - WHEN kind is "unknown"
+  - THEN `applies_to` selector MUST be hidden or disabled
+  - WHEN kind is "normal"
+  - THEN `applies_to` selector MUST be visible.
   - AND the UI label "Beneficial Effects Only" MUST map to the schema value `beneficial_effects_only`
 
 - [ ] **Test: Partial sub-form**

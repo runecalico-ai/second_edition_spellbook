@@ -20,12 +20,12 @@ Currently, the spell editor treats complex fields like Range, Duration, and Comp
 
 ## Solution
 Implement a set of specialized React components to handle structured spell data entry:
-1.  **`StructuredFieldInput`**: A reusable component for linear scalar fields with units (e.g., Range, Duration, Casting Time).
+1.  **`StructuredFieldInput`**: A reusable component for linear scalar fields with units (e.g., Range, Duration, Casting Time). Internally modular to handle distinct kind enums while sharing scalar logic.
 2.  **Specialized Forms**: Dedicated components for complex fields:
     -   **`AreaForm`**: Handles various shapes (Cone, Cube, Wall, etc.) and their specific dimensions.
     -   **`DamageForm`**: Handles complex damage models (dice pools, multiple parts, scaling).
     -   **SavingThrowInput** and **MagicResistanceInput**: Enum-based selector for kind/options plus optional custom or special field (e.g. dm_guidance, raw_legacy_value) where the schema allows.
-3.  **`ComponentCheckboxes`**: A dedicated input for Verbal, Somatic, and Material components, with a sub-form for material component details (name, quantity, cost, consumed).
+3.  **`ComponentCheckboxes`**: A dedicated input for Verbal, Somatic, and Material components, with a sub-form for material component details (name, quantity, gp_value or GP value, consumed).
 4.  **Editor Integration**: Replace legacy string inputs with these new components.
 5.  **Display**: Update the Spell Detail view to render structured data beautifully and show the content hash.
 

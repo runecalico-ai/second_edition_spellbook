@@ -13,6 +13,11 @@ The Spell Editor MUST provide dedicated input components for structured spell da
   - **range** → RangeSpec (e.g. `kind`, `unit`, `distance: { mode, value, per_level }` where applicable)
   - **duration** → DurationSpec (e.g. `kind`, `unit`, `duration` scalar where applicable)
   - **casting_time** → flat object (`base_value`, `per_level`, `level_divisor`, `unit`, `text`)
+- AND the component MUST be internally modular, using a common scalar/unit input foundation but providing distinct layout or kind-selection logic for each `fieldType`.
+- AND the component MUST initialize with a valid default state when created empty:
+  - **Range**: `kind: "distance"`, `unit: "ft"`, `distance: { mode: "fixed", value: 0 }`
+  - **Duration**: `kind: "instant"` (simplest valid state)
+  - **Casting Time**: `base_value: 1`, `unit: "action"`, `text: "1 action"` (editor default for blank state; canonical materialization uses unit "segment" when unit is omitted)
 - AND the component MUST display a computed text preview in real-time.
 
 #### UI mapping to schema shapes
@@ -37,7 +42,8 @@ The Spell Editor MUST provide dedicated input components for structured spell da
 - AND populate all `StructuredFieldInput` components with those values.
 
 #### Scenario: Hybrid canonical_data (partial)
-- GIVEN a spell where `canonical_data` exists but a specific field (e.g. range, duration) is null or absent
+- GIVEN a spell where `canonical_data` exists (is not null)
+- BUT a specific key (e.g. "range", "duration") is **missing** from the JSON object (undefined, not just null)
 - AND a legacy string exists for that field (e.g. from flat columns)
 - WHEN opening the spell in the editor
 - THEN the editor MUST parse that field via the Tauri parser commands and merge the parsed structured value into the editor state for that field.
@@ -49,7 +55,7 @@ The Spell Editor MUST provide dedicated input components for structured spell da
 - AND populate structured inputs with parsed values
 - AND display a warning banner if parsing fell back to `kind: "special"`. The banner MUST appear as a single banner at the top of the form, listing the fields that fell back to special (e.g. "Range and Duration could not be fully parsed; original text preserved"). When kind is "special", the authoritative storage for the original legacy string is `raw_legacy_value`; the computed `.text` may mirror it for display.
 
-**Parser fallbacks:** SpellParser returns schema-valid structured types (no `Result`); on parse failure it returns fallbacks such as `kind: "special"` with `raw_legacy_value` preserved. The UI MUST handle any unexpected parser errors (e.g. Tauri command failure) defensively (e.g. show error message, fall back to kind=special with raw string).
+**Parser fallbacks:** SpellParser returns schema-valid structured types (no `Result`); on parse failure it returns fallbacks such as `kind: "special"` with `raw_legacy_value` preserved. The UI MUST handle any unexpected parser errors (e.g. Tauri command failure) defensively (e.g. show error message, fall back to kind=special with raw string). If a parse command is unavailable or returns an IPC error, the editor MUST treat the field as unparseable: show the warning banner and preserve raw legacy value (kind=special) where possible; if the whole load fails, show a clear error message and do not corrupt form state.
 
 ### Requirement: Component Input
 The Spell Editor MUST provide explicit controls for spell components.
@@ -59,12 +65,15 @@ The Spell Editor MUST provide explicit controls for spell components.
 - WHEN editing spell components
 - THEN the editor MUST render checkboxes for Verbal, Somatic, and Material only. Focus, divine_focus, and experience remain schema defaults (false) and are not exposed in the editor UI.
 - AND display a text preview (e.g., "V, S, M") based on selections.
-- ComponentCheckboxes MUST emit `components: { verbal, somatic, material }`; when material is true it MUST also manage (or pass to a sibling sub-form) `material_components` per `#/$defs/MaterialComponentSpec` so the full editor state includes both.
+- ComponentCheckboxes MUST accept `components` and `material_components` as props.
+- It MUST emit `components: { verbal, somatic, material }` on change.
+- It MUST also emit `material_components` (array of MaterialComponentSpec) when the material sub-form is modified.
+- The parent `SpellEditor` is responsible for merging these distinct events into the form state.
 
 #### Scenario: Material Component Details
 - GIVEN the Material checkbox is checked
 - THEN the editor MUST display a sub-form for material component details
-- AND the sub-form MUST include: name (required), quantity, gp_value (optional), is_consumed, description (optional). Material component sub-form MAY include optional `unit` when the UI exposes it; schema supports optional `unit`.
+- AND the sub-form MUST include: name (required), quantity, gp_value (optional), is_consumed, description (optional), and unit (optional). The UI MUST expose the `unit` field.
 - AND quantity MUST be stored as a number; canonical serialization materializes it as 1.0 when omitted. Validation MUST enforce quantity >= 1 (or >= 1.0); default display 1.0 keeps hashing consistent.
 - AND the editor MUST support multiple material components with add/remove controls.
 - AND the editor MUST preserve order of components.
@@ -123,6 +132,7 @@ The Spell Editor MUST provide specialized forms for complex fields.
 - THEN the editor MUST render a `DamageForm`
 - AND allow selecting kind (None, Modeled, DM Adjudicated) with human-readable labels; form value and serialization MUST use schema enums (e.g. `"none"`, `"modeled"`, `"dm_adjudicated"`)
 - AND if Modeled, allow adding multiple damage parts. Each DamagePart MUST satisfy schema required fields (id, damage_type, base, application, save). When adding a new part, the UI MUST provide default or schema-compliant values for application and save (e.g. instant/none per schema); implementation MAY defer to backend/parser defaults when creating a part.
+- AND each DamagePart MUST be assigned a stable, unique ID upon creation (e.g. `part_<timestamp>_<random>` or similar, matching schema pattern `^[a-z][a-z0-9_]{0,31}$`) to ensure deterministic hashing and list stability.
 - AND allow configuring damage type, dice pool, and scaling for each part.
 
 #### Scenario: Area Editing
@@ -130,10 +140,10 @@ The Spell Editor MUST provide specialized forms for complex fields.
 - WHEN editing Area
 - THEN the editor MUST render an `AreaForm`
 - AND allow selecting kind (Cone, Cube, Sphere, etc.)
-- AND allow entering specific scalars (radius, length, etc.) based on kind.
+- AND allow entering specific scalars (radius, length, etc.) based on kind. Geometric dimensions use `shape_unit` per AreaSpec; surface/volume kinds use the scalar plus `unit`.
 
 #### Pattern: Enum selector + optional custom/special field
-For fields whose schema has a kind/enum and optional custom or special content (e.g. dm_guidance, raw_legacy_value), the editor MUST provide an enum-based selector for kind/options plus an optional custom or special field when the schema allows. SavingThrowInput and MagicResistanceInput follow this pattern; no shared component name is mandated.
+For fields whose schema has a kind/enum and optional custom or special content (e.g. dm_guidance, raw_legacy_value), the editor MUST provide an enum-based selector for kind/options plus an optional custom or special field when the schema allows. SavingThrowInput and MagicResistanceInput follow this pattern; implementing these via a shared `EnumWithSpecial` pattern or helper is RECOMMENDED for UI consistency.
 
 #### Scenario: Saving Throw and MR Editing
 - GIVEN the Spell Editor form
@@ -142,7 +152,14 @@ For fields whose schema has a kind/enum and optional custom or special content (
 - AND when kind is single or multiple, MUST show SingleSave sub-form(s) (save_type, applies_to, on_success, on_failure).
 - WHEN editing Magic Resistance
 - THEN the editor MUST render specific enum-based inputs (not generic strings)
-- AND the `applies_to` enum selector MUST be displayed for ALL kinds (unknown, normal, ignores_mr, partial, special). UI labels (e.g. "Beneficial Effects Only") MUST map to schema enum values (e.g. `beneficial_effects_only`).
+- AND the `applies_to` enum selector MUST be displayed for all kinds EXCEPT `unknown`. When kind is `unknown`, the `applies_to` selector MUST be hidden or disabled as it is not applicable per schema logic.
+- UI labels MUST map to schema enum values as follows:
+  | Schema Value | UI Label |
+  |---|---|
+  | `whole_spell` | "Whole Spell" |
+  | `harmful_effects_only` | "Harmful Effects Only" |
+  | `beneficial_effects_only` | "Beneficial Effects Only" |
+  | `dm` | "DM Discretion" |
 
 #### Scenario: Magic Resistance partial and special
 - GIVEN the Spell Editor form and Magic Resistance is being edited

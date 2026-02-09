@@ -17,7 +17,7 @@ The Spell Editor interface MUST support the creation of strictly typed, structur
 - GIVEN the Spell Editor
 - WHEN the user checks the "Material" component checkbox
 - THEN the editor MUST display a sub-form for material component details
-- AND the sub-form MUST support: name (required), quantity, GP value (optional), is_consumed, and description (optional). Material component sub-form MAY include optional `unit` when the UI exposes it; schema supports optional `unit`.
+- AND the sub-form MUST support: name (required), quantity, GP value (optional), is_consumed, description (optional), and unit (optional). The UI MUST expose the `unit` field.
 - AND quantity is stored as a number and materialized as 1.0 in canonical form; validation MUST enforce quantity >= 1 (or >= 1.0); default display 1.0 keeps hashing consistent.
 - AND users MUST be able to add multiple material components
 - AND the order of material components MUST be preserved (not sorted).

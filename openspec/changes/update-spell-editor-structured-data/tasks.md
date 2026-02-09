@@ -6,6 +6,7 @@
 - [ ] Create `StructuredFieldInput` component (accepts `fieldType`, emits schema-native shape per spell.schema.json):
     - [ ] Props: value, onChange, fieldType (range | duration | casting_time).
     - [ ] Emit shape by fieldType: **range** → RangeSpec (per `#/$defs/RangeSpec`); **duration** → DurationSpec; **casting_time** → flat object (base_value, per_level, level_divisor, unit, text).
+    - [ ] **Modularity**: Implement internally as a set of sub-components or distinct layout blocks for each `fieldType` while sharing the `ScalarInput` foundation.
     - [ ] Render inputs appropriate to fieldType. For **range** (full kind support): distance-based kinds → kind + scalar + unit; kind-only kinds → kind selector only; `special` → kind + raw_legacy_value. For **duration** (full kind support): `instant`/`permanent`/`until_dispelled`/`concentration` → kind only; `time` → kind + unit + duration scalar; `conditional`/`until_triggered`/`planar` → kind + condition text; `usage_limited` → kind + uses scalar; `special` → kind + raw_legacy_value. For casting_time: base_value, per_level, level_divisor, unit.
     - [ ] Use lowercase unit values per canonical serialization spec for serialization (e.g., `"yd"`, `"ft"`, `"round"`); UI may show human-friendly labels (e.g. "Yards") that map to these enums.
     - [ ] Compute `.text` preview automatically based on inputs.
@@ -16,7 +17,8 @@
     - [ ] Handle `SpellDamageSpec` structure (per `#/$defs/SpellDamageSpec` in spell.schema.json).
     - [ ] Enum selector for `kind`: "modeled", "dm_adjudicated", "none".
     - [ ] `modeled`:
-        - [ ] Validated list of `DamagePart`. Each new part MUST satisfy schema required fields: id, damage_type, base, application, save. Use schema-default or UI defaults for application and save when adding a new part (e.g. instant / none or as defined in schema); if the backend/parser supplies defaults when creating a part, the UI MAY defer to those.
+        - [ ] Validated list of `DamagePart`. Each new part MUST satisfy schema required fields: id, damage_type, base, application, save. Use schema-default or UI defaults for application and save when adding a new part (e.g. instant / none or as defined in schema).
+        - [ ] **Stable IDs**: Ensure each new part is assigned a unique, schema-compliant ID upon creation (e.g., `part_<timestamp>_<random>`). UUIDs are too long for the schema pattern `^[a-z][a-z0-9_]{0,31}$`.
         - [ ] Combine mode selector: sum, max, choose_one, sequence (per `#/$defs/SpellDamageSpec` combine_mode enum).
     - [ ] `dm_adjudicated`: Text area for guidance.
 - [ ] Create `AreaForm` component (per `#/$defs/AreaSpec` in spell.schema.json; dimensions use `#/$defs/scalar`):
@@ -36,27 +38,24 @@
         - [ ] region: `region_unit`.
         - [ ] scope: `scope_unit`.
         - [ ] point / special: kind only (special may show raw_legacy_value).
-    - [ ] Support scalar inputs for dimensions (scalar = mode, value, per_level per schema; use helper or sub-fields).
-- [ ] Create `SavingThrowInput` component (per `#/$defs/SavingThrowSpec`; enum selector for kind + optional custom/special field per spell-editor spec pattern):
-    - [ ] Enum selector for `kind`: "none", "single", "multiple", "dm_adjudicated".
-    - [ ] If `single`, show SingleSave sub-form (save_type, applies_to, on_success, on_failure, etc.).
-    - [ ] If `multiple`, show list of SingleSave sub-forms (add/remove).
-    - [ ] If `dm_adjudicated`, show dm_guidance text area.
-- [ ] Create `MagicResistanceInput` component (enum selector for kind + optional custom/special field per spell-editor spec pattern):
-    - [ ] Enum selector for `kind`: "unknown", "normal", "ignores_mr", "partial", "special".
-    - [ ] Enum selector for `applies_to` (shown for ALL kinds; for partial/special, show both applies_to and kind-specific sub-form).
+    - [ ] Support scalar inputs for dimensions (scalar = mode, value, per_level per schema; use helper or sub-fields). Geometric dimensions use `shape_unit`; surface/volume kinds use the scalar plus `unit` per AreaSpec.
+- [ ] Create `SavingThrowInput` and `MagicResistanceInput` components (enum selector for kind + optional custom/special field per spell-editor spec pattern):
+    - [ ] **Pattern**: Use a shared `EnumWithSpecial` UI pattern or component to handle the "kind selection + optional sub-form/text field" requirement for both inputs.
+    - [ ] **MR Logic**: In `MagicResistanceInput`, hide or disable the `applies_to` selector when `kind` is `"unknown"`.
     - [ ] When kind is "partial", show sub-form for `partial`: scope (required), optional part_ids.
     - [ ] When kind is "special", show field for `special_rule` (optional text per schema).
 - [ ] Create `ComponentCheckboxes` component:
+    - [ ] Props: `components` (value), `material_components` (value), `onChange` (emits updated components and/or material_components).
     - [ ] Render checkboxes: Verbal (V), Somatic (S), Material (M).
-    - [ ] Output: `components: { verbal, somatic, material }`; when material is true also manage (or pass to sibling) `material_components` per `#/$defs/MaterialComponentSpec` so SpellEditor state has both.
+    - [ ] Output: emit `components` object on checkbox change; emit `material_components` array on sub-form change. Parent handles merging.
     - [ ] Display text preview: "V, S" or "V, S, M" based on checked boxes.
     - [ ] When Material is checked, show sub-form for `#/$defs/MaterialComponentSpec`:
         - [ ] Material name (text input, required).
-        - [ ] Quantity (number, default: 1.0).
+        - [ ] Quantity (number, default: 1.0). UI Validation: >= 1 (or >= 1.0); schema has no minimum, canonical materializes omitted as 1.0.
         - [ ] GP value (optional number).
         - [ ] Is consumed (checkbox, default: false).
-        - [ ] Description (optional textarea). Optional `unit` when UI exposes it; schema supports optional unit.
+        - [ ] Description (optional textarea).
+        - [ ] Unit (optional text input). UI MUST expose this field to ensure full schema coverage.
     - [ ] Support multiple material components (add/remove buttons).
     - [ ] Preserve material component order (not sorted).
     - [ ] **Confirmation Dialog**: If material components exist and user unchecks "Material", show confirmation dialog before clearing data.

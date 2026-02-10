@@ -579,6 +579,82 @@ mod tests {
     }
 
     #[test]
+    fn test_scaling_rules_normalization() {
+        let mut spec = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            parts: Some(vec![DamagePart {
+                id: "test".to_string(),
+                damage_type: DamageType::Fire,
+                scaling: Some(vec![
+                    ScalingRule {
+                        kind: ScalingKind::AddDicePerStep,
+                        driver: ScalingDriver::CasterLevel,
+                        step: 2,
+                        dice_increment: Some(DiceTerm {
+                            count: -1,
+                            sides: 0,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    ScalingRule {
+                        kind: ScalingKind::SetBaseByLevelBand,
+                        driver: ScalingDriver::CasterLevel,
+                        step: 1,
+                        level_bands: Some(vec![
+                            LevelBand {
+                                min: 10,
+                                max: 20,
+                                base: DicePool {
+                                    terms: vec![DiceTerm {
+                                        count: 2,
+                                        sides: 6,
+                                        ..Default::default()
+                                    }],
+                                    ..Default::default()
+                                },
+                            },
+                            LevelBand {
+                                min: 1,
+                                max: 9,
+                                base: DicePool {
+                                    terms: vec![DiceTerm {
+                                        count: 1,
+                                        sides: 6,
+                                        ..Default::default()
+                                    }],
+                                    ..Default::default()
+                                },
+                            },
+                        ]),
+                        ..Default::default()
+                    },
+                ]),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        spec.normalize();
+
+        let part = &spec.parts.as_ref().unwrap()[0];
+        let scaling = part.scaling.as_ref().unwrap();
+
+        // Sorting: AddDicePerStep (0) vs SetBaseByLevelBand (2)
+        assert_eq!(scaling[0].kind, ScalingKind::AddDicePerStep);
+        assert_eq!(scaling[1].kind, ScalingKind::SetBaseByLevelBand);
+
+        // Clamping in AddDicePerStep
+        let dice_inc = scaling[0].dice_increment.as_ref().unwrap();
+        assert_eq!(dice_inc.count, 0);
+        assert_eq!(dice_inc.sides, 1);
+
+        // Sorting in level_bands
+        let bands = scaling[1].level_bands.as_ref().unwrap();
+        assert_eq!(bands[0].min, 1);
+        assert_eq!(bands[1].min, 10);
+    }
+
+    #[test]
     fn test_all_combine_modes_sort_except_sequence() {
         for (mode, should_sort) in [
             (DamageCombineMode::Sum, true),

@@ -379,6 +379,9 @@ pub async fn import_files(
                         is_cantrip: spell.is_cantrip,
                         schema_version: spell.schema_version,
                         artifacts: None,
+                        canonical_data: None,
+                        content_hash: None,
+                        ..Default::default()
                     };
                     let (canonical, hash, json) = canonicalize_spell_detail(detail.clone())?;
 
@@ -471,6 +474,9 @@ pub async fn import_files(
                         is_cantrip: spell.is_cantrip,
                         schema_version: spell.schema_version,
                         artifacts: None,
+                        canonical_data: None,
+                        content_hash: None,
+                        ..Default::default()
                     });
 
                      let source_path = spell.source_file.clone();
@@ -559,6 +565,9 @@ pub async fn import_files(
                         is_cantrip: spell.is_cantrip,
                         schema_version: spell.schema_version,
                         artifacts: None,
+                        canonical_data: None,
+                        content_hash: None,
+                        ..Default::default()
                     };
                     let (canonical, hash, json) = canonicalize_spell_detail(detail.clone())?;
 
@@ -645,6 +654,9 @@ pub async fn import_files(
                         is_cantrip: spell.is_cantrip,
                         schema_version: spell.schema_version,
                         artifacts: None,
+                        canonical_data: None,
+                        content_hash: None,
+                        ..Default::default()
                     });
 
                      let source_path = spell.source_file.clone();
@@ -839,6 +851,7 @@ pub async fn reparse_artifact(
             license: parsed_spell.license.clone(),
             is_quest_spell: parsed_spell.is_quest_spell,
             is_cantrip: parsed_spell.is_cantrip,
+            ..Default::default()
         };
 
         apply_spell_update_with_conn(&conn, &update_for_diff)?;

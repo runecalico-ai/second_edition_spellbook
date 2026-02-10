@@ -128,6 +128,9 @@ pub fn run_hash_backfill(
                 magic_resistance: row.get(23)?,
                 schema_version: row.get(24)?,
                 artifacts: None,
+                canonical_data: None,
+                content_hash: None,
+                ..Default::default()
             })
         })?
         .filter_map(Result::ok)
@@ -386,6 +389,9 @@ pub fn recompute_all_hashes(
                 magic_resistance: row.get(24)?,
                 schema_version: row.get(25)?,
                 artifacts: None,
+                canonical_data: None,
+                content_hash: None,
+                ..Default::default()
             };
             let hash: Option<String> = row.get(22)?;
             Ok((detail, hash))

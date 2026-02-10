@@ -14,7 +14,12 @@
     "tauri:build": "tauri build",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "format:check": "biome check . --formatter-enabled=true --linter-enabled=false --organize-imports-enabled=false --assists-enabled=false"
+    "format:check": "biome check . --formatter-enabled=true --linter-enabled=false --organize-imports-enabled=false --assists-enabled=false",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "test:storybook": "vitest --project=storybook",
+    "test:storybook:ui": "vitest --project=storybook --ui",
+    "test:storybook:watch": "vitest --project=storybook --watch"
   },
   "dependencies": {
     "@radix-ui/react-slider": "^1.3.6",
@@ -29,16 +34,28 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.2",
+    "@chromatic-com/storybook": "^5.0.1",
     "@playwright/test": "^1.58.0",
+    "@storybook/addon-a11y": "^10.2.7",
+    "@storybook/addon-docs": "^10.2.7",
+    "@storybook/addon-onboarding": "^10.2.7",
+    "@storybook/addon-vitest": "^10.2.7",
+    "@storybook/react": "^10.2.7",
+    "@storybook/react-vite": "^10.2.7",
     "@tauri-apps/cli": "^2.0.0",
     "@types/node": "^20.19.30",
     "@types/react": "^18.2.79",
     "@types/react-dom": "^18.2.25",
     "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/browser-playwright": "^4.0.18",
+    "@vitest/coverage-v8": "^4.0.18",
     "autoprefixer": "^10.4.19",
+    "playwright": "^1.58.2",
     "postcss": "^8.4.38",
+    "storybook": "^10.2.7",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5",
-    "vite": "^5.0.12"
+    "vite": "^5.0.12",
+    "vitest": "^4.0.18"
   }
 }

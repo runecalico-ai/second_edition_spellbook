@@ -9,7 +9,11 @@ The Spell Editor interface MUST support the creation of strictly typed, structur
 - GIVEN the Spell Editor
 - WHEN editing Range, Duration, or Casting Time
 - THEN the user MUST be able to define specific Base Value, Per Level Value, Divisor, and Unit (as applicable per schema shape)
-- AND units MUST use lowercase canonical values per the serialization spec for storage (e.g., `"yd"`, `"ft"`, `"round"`); display labels MAY be human-friendly (e.g. "Yards", "Feet") while serialization uses canonical enums
+- AND units MUST use lowercase canonical values per the serialization spec for storage. Common unit examples:
+  - **Range**: `"yd"` (yards), `"ft"` (feet), `"mi"` (miles)
+  - **Duration**: `"round"` (rounds), `"turn"` (turns), `"hour"` (hours)
+  - **Casting time**: `"segment"` (segments), `"round"` (rounds), `"action"` (actions)
+  Display labels MAY be human-friendly (e.g. "Yards", "Feet", "Rounds") while serialization uses canonical enum values. See `spell.schema.json` for complete unit enum lists.
 - AND the read-only display for such fields MUST show the computed `.text` value (text preview) derived from structured inputs, not a separate free-text field.
 - Area and Damage use specialized forms with kind-specific fields per schema (`#/$defs/AreaSpec`, `#/$defs/SpellDamageSpec`), not a single scalar tuple.
 

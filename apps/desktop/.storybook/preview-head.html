@@ -1,0 +1,48 @@
+<style>
+  /* Dark theme for Storybook canvas to match app theme */
+  .sb-story,
+  [data-is-story="true"],
+  .os-host,
+  .os-padding,
+  .os-viewport {
+    background-color: #1a1a1a !important;
+    color: #e5e5e5 !important;
+  }
+  
+  /* Story container - compact, only as tall as content */
+  .sb-story {
+    padding: 1rem;
+  }
+  
+  /* Ensure story wrappers have dark background but don't force height */
+  [data-is-story="true"] {
+    background-color: #1a1a1a !important;
+    padding: 1rem;
+  }
+  
+  /* Remove any min-height that might cause large empty boxes */
+  .sb-story,
+  [data-is-story="true"],
+  .sb-story > div,
+  [data-is-story="true"] > div {
+    min-height: auto !important;
+    height: auto !important;
+  }
+  
+  /* Ensure select elements have visible text in dark theme */
+  select {
+    color: #e5e5e5 !important;
+    background-color: #171717 !important;
+  }
+  
+  select option {
+    color: #e5e5e5 !important;
+    background-color: #171717 !important;
+  }
+  
+  /* Ensure all text elements are visible */
+  .sb-story *,
+  [data-is-story="true"] * {
+    color: inherit;
+  }
+</style>

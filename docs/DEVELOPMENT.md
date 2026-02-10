@@ -95,6 +95,7 @@ cargo test --lib parsers::components
 ```bash
 cd apps/desktop
 pnpm test                            # Run frontend tests
+pnpm storybook                       # Start Storybook for component development/testing
 ```
 
 **Python (ML Services)**:

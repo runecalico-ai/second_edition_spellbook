@@ -113,6 +113,9 @@ fn fetch_character_bundle(
                 magic_resistance: row.get(23)?,
                 schema_version: row.get(24)?,
                 artifacts: None,
+                canonical_data: None,
+                content_hash: None,
+                ..Default::default()
             };
             let list_type: String = row.get(25)?;
             let notes: Option<String> = row.get(26)?;

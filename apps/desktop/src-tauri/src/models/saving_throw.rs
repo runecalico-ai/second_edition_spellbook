@@ -202,3 +202,50 @@ fn normalize_single_save(save: &mut SingleSave) {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_single_save_id_normalization() {
+        let mut spec = SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            single: Some(SingleSave {
+                id: Some("Test_ID".to_string()),
+                save_type: SaveType::Spell,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        spec.normalize();
+
+        let single = spec.single.as_ref().unwrap();
+        assert_eq!(single.id.as_ref().unwrap(), "test_id");
+    }
+
+    #[test]
+    fn test_multiple_saves_normalization() {
+        let mut spec = SavingThrowSpec {
+            kind: SavingThrowKind::Multiple,
+            multiple: Some(vec![
+                SingleSave {
+                    id: Some("Save_A".to_string()),
+                    save_type: SaveType::Spell,
+                    ..Default::default()
+                },
+                SingleSave {
+                    id: Some("Save_B".to_string()),
+                    save_type: SaveType::BreathWeapon,
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        };
+        spec.normalize();
+
+        let multiple = spec.multiple.as_ref().unwrap();
+        assert_eq!(multiple[0].id.as_ref().unwrap(), "save_a");
+        assert_eq!(multiple[1].id.as_ref().unwrap(), "save_b");
+    }
+}

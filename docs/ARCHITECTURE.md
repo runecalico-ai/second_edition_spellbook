@@ -14,7 +14,7 @@ To ensure spell uniqueness and version tracking, we use a Canonical Spell Hashin
 - **Schema**: `schemas/spell.schema.json` (aligned with the official OpenSpec resource). The schema allows optional `raw_legacy_value` (string) on `casting_time`, RangeSpec, DurationSpec, AreaSpec, and SpellDamageSpec for fallback storage when parsing is inconclusive; see [Canonical Serialization](./architecture/canonical-serialization.md#221-fallback-storage-raw_legacy_value).
 - **Serialization**: RFC 8785 (JCS) with sorted keys and array normalization.
 - **Hashing**: SHA-256 of the canonical JSON string.
-- **Casing Standard**: **All canonical data MUST use `snake_case`.** This distinguishes it from IPC data, which uses `camelCase`.
+- **Casing Standard**: **All canonical data MUST use `snake_case`.** The `canonical_data` column (and any stored canonical JSON) is always snake_case; this distinguishes it from IPC data, which uses `camelCase`. The frontend may read with dual keys (e.g. `per_level` / `perLevel`) for resilience when parsing.
 - **Robust Normalization**: The system uses a unified enum normalization strategy. Mechanical fields (units, kinds, modes) use `#[serde(alias)]` to natively match various input formats (Title Case, SCREAMING_SNAKE_CASE) and convert them to canonical snake_case during deserialization.
 
 > 📄 **See [Canonical Serialization Contract](./architecture/canonical-serialization.md)** for the complete specification including normalization rules, string handling modes, default materialization, and detailed examples.

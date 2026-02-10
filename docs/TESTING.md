@@ -10,6 +10,7 @@ This document provides comprehensive guidelines for testing the Second Edition S
 |-----------|----------|---------|-----------|
 | Backend | `apps/desktop/src-tauri` | `cargo test` | Rust built-in |
 | Frontend | `apps/desktop` | `pnpm test` | Vitest |
+| Frontend (Stories) | `apps/desktop` | `pnpm test:storybook` | Storybook + Vitest |
 | Python | `services/ml` | `pytest` | pytest |
 | E2E | `apps/desktop` | `pnpm e2e` | Playwright |
 
@@ -434,6 +435,51 @@ describe('SpellCard', () => {
   });
 });
 ```
+
+### Storybook Component Testing
+
+Storybook provides visual component testing and documentation for all structured spell editor components. Stories complement unit tests by providing:
+
+- **Visual regression testing**: See components in different states
+- **Accessibility checks**: Automatic a11y validation via `@storybook/addon-a11y`
+- **Interactive documentation**: Living examples of component usage
+- **Isolated development**: Test components without full app context
+
+**Running Storybook:**
+
+```bash
+cd apps/desktop
+pnpm storybook
+```
+
+Stories are located in `src/ui/components/structured/*.stories.tsx`:
+
+- **StructuredFieldInput**: 18 stories (range, duration, casting_time variations)
+- **AreaForm**: 18 stories (all area kinds)
+- **DamageForm**: 7 stories (none, modeled, dm_adjudicated)
+- **SavingThrowInput**: 6 stories (none, single, multiple, dm_adjudicated)
+- **MagicResistanceInput**: 7 stories (all MR kinds)
+- **ComponentCheckboxes**: 8 stories (V/S/M combinations with materials)
+
+**Accessibility Testing:**
+
+The `@storybook/addon-a11y` addon automatically checks all stories for accessibility violations:
+- ARIA labels and roles
+- Keyboard navigation
+- Color contrast
+- Semantic HTML
+
+View results in the Storybook UI under the "Accessibility" tab for each story.
+
+**Building Static Storybook:**
+
+```bash
+pnpm build-storybook
+```
+
+Creates a static build in `storybook-static/` for deployment or sharing.
+
+For detailed Storybook documentation, see [Spell Editor Components Guide](../dev/spell_editor_components.md#storybook-stories).
 
 ### Hook Testing Pattern
 

@@ -776,60 +776,104 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
 
         let parser = SpellParser::new();
 
-        spell.range = detail
-            .range
-            .filter(|s| !s.is_empty())
-            .map(|s| parser.parse_range(&s));
-        spell.casting_time = detail
-            .casting_time
-            .filter(|s| !s.is_empty())
-            .map(|s| parser.parse_casting_time(&s));
-        spell.duration = detail
-            .duration
-            .filter(|s| !s.is_empty())
-            .map(|s| parser.parse_duration(&s));
-        spell.area = detail
-            .area
-            .filter(|s| !s.is_empty())
-            .and_then(|s| parser.parse_area(&s));
+        // Prioritize structured spec objects if provided by frontend
+        spell.range = detail.range_spec.or_else(|| {
+            detail
+                .range
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|s| parser.parse_range(s))
+        });
+
+        spell.casting_time = detail.casting_time_spec.or_else(|| {
+            detail
+                .casting_time
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|s| parser.parse_casting_time(s))
+        });
+
+        spell.duration = detail.duration_spec.or_else(|| {
+            detail
+                .duration
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|s| parser.parse_duration(s))
+        });
+
+        spell.area = detail.area_spec.or_else(|| {
+            detail
+                .area
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .and_then(|s| parser.parse_area(s))
+        });
 
         // Damage parsing
-        if let Some(dmg_str) = &detail.damage {
-            spell.damage = Some(parser.parse_damage(dmg_str));
-        } else {
-            // Fallback: heuristic? (None for now unless we search description)
-            spell.damage = None;
-        }
+        spell.damage = detail.damage_spec.or_else(|| {
+            detail
+                .damage
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|dmg_str| parser.parse_damage(dmg_str))
+        });
 
         // Components parsing
-        if let Some(comp_str) = detail.components.filter(|s| !s.is_empty()) {
+        if let Some(spec) = detail.components_spec {
+            spell.components = Some(spec);
+            // If we have a components string, still check for experience cost
+            if let Some(comp_str) = detail.components.filter(|s| !s.is_empty()) {
+                let xp_spec = parser.parse_experience_cost(&comp_str);
+                if xp_spec.kind != crate::models::experience::ExperienceKind::None {
+                    spell.experience_cost = Some(xp_spec);
+                }
+            }
+        } else if let Some(comp_str) = detail.components.filter(|s| !s.is_empty()) {
             spell.components = Some(parser.parse_components(&comp_str));
-            // Also parse experience cost from components string
             let xp_spec = parser.parse_experience_cost(&comp_str);
             if xp_spec.kind != crate::models::experience::ExperienceKind::None {
                 spell.experience_cost = Some(xp_spec);
             }
         }
 
-        spell.material_components = detail
-            .material_components
-            .filter(|s| !s.is_empty())
-            .map(|s| parser.parse_material_components(&s));
+        spell.material_components = detail.material_components_spec.or_else(|| {
+            detail
+                .material_components
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|s| parser.parse_material_components(s))
+        });
 
         // Saving Throw and Magic Resistance
-        if let Some(st_str) = detail.saving_throw.as_ref().filter(|s| !s.is_empty()) {
-            spell.saving_throw = Some(parser.parse_saving_throw(st_str));
-        }
+        spell.saving_throw = detail.saving_throw_spec.or_else(|| {
+            detail
+                .saving_throw
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|st_str| parser.parse_saving_throw(st_str))
+        });
 
-        if let Some(mr_str) = detail.magic_resistance.as_ref().filter(|s| !s.is_empty()) {
-            spell.magic_resistance = Some(parser.parse_magic_resistance(mr_str));
-        } else if let Some(st_str) = detail.saving_throw.as_ref().filter(|s| !s.is_empty()) {
-            // Heuristic fallback for MR
-            let mr_spec = parser.parse_magic_resistance(st_str);
-            if mr_spec.kind != crate::models::MagicResistanceKind::Unknown {
-                spell.magic_resistance = Some(mr_spec);
-            }
-        }
+        spell.magic_resistance = detail.magic_resistance_spec.or_else(|| {
+            detail
+                .magic_resistance
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|mr_str| parser.parse_magic_resistance(mr_str))
+                .or_else(|| {
+                    detail
+                        .saving_throw
+                        .as_ref()
+                        .filter(|s| !s.is_empty())
+                        .and_then(|st_str| {
+                            let mr_spec = parser.parse_magic_resistance(st_str);
+                            if mr_spec.kind != crate::models::MagicResistanceKind::Unknown {
+                                Some(mr_spec)
+                            } else {
+                                None
+                            }
+                        })
+                })
+        });
 
         spell.reversible = Some(detail.reversible.unwrap_or(0));
 

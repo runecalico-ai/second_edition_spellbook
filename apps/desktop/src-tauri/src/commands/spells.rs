@@ -3,9 +3,11 @@ use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
 use crate::models::{SpellArtifact, SpellCreate, SpellDetail, SpellSummary, SpellUpdate};
 use crate::utils::migration_manager;
+use crate::utils::spell_parser::SpellParser;
 use chrono::Utc;
 use rusqlite::params;
 use rusqlite::{Connection, OptionalExtension};
+use serde_json::Value;
 use std::sync::Arc;
 use tauri::State;
 
@@ -75,10 +77,37 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
             "SELECT id, name, school, sphere, class_list, level, range, components,
                 material_components, casting_time, duration, area, saving_throw, reversible,
                 description, tags, source, edition, author, license, is_quest_spell, is_cantrip,
-                damage, magic_resistance, schema_version
+                damage, magic_resistance, schema_version, canonical_data, content_hash
          FROM spell WHERE id = ?",
             [id],
             |row| {
+                let canonical_data_str: Option<String> = row.get(25)?;
+
+                // Try to parse canonical_data to populate structured specs
+                let mut range_spec = None;
+                let mut components_spec = None;
+                let mut material_components_spec = None;
+                let mut casting_time_spec = None;
+                let mut duration_spec = None;
+                let mut area_spec = None;
+                let mut saving_throw_spec = None;
+                let mut damage_spec = None;
+                let mut magic_resistance_spec = None;
+
+                if let Some(json_str) = &canonical_data_str {
+                    if let Ok(canon) = serde_json::from_str::<CanonicalSpell>(json_str) {
+                        range_spec = canon.range;
+                        components_spec = canon.components;
+                        material_components_spec = canon.material_components;
+                        casting_time_spec = canon.casting_time;
+                        duration_spec = canon.duration;
+                        area_spec = canon.area;
+                        saving_throw_spec = canon.saving_throw;
+                        damage_spec = canon.damage;
+                        magic_resistance_spec = canon.magic_resistance;
+                    }
+                }
+
                 Ok(SpellDetail {
                     id: row.get(0)?,
                     name: row.get(1)?,
@@ -106,6 +135,17 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
                     magic_resistance: row.get(23)?,
                     schema_version: row.get(24)?,
                     artifacts: None,
+                    canonical_data: canonical_data_str,
+                    content_hash: row.get(26)?,
+                    range_spec,
+                    components_spec,
+                    material_components_spec,
+                    casting_time_spec,
+                    duration_spec,
+                    area_spec,
+                    saving_throw_spec,
+                    damage_spec,
+                    magic_resistance_spec,
                 })
             },
         )
@@ -373,6 +413,17 @@ pub fn apply_spell_update_with_conn(
         is_cantrip: spell.is_cantrip,
         schema_version: None, // Will be populated/upgraded by canonicalize_spell_detail
         artifacts: None,
+        canonical_data: None,
+        content_hash: None,
+        range_spec: spell.range_spec.clone(),
+        components_spec: spell.components_spec.clone(),
+        material_components_spec: spell.material_components_spec.clone(),
+        casting_time_spec: spell.casting_time_spec.clone(),
+        duration_spec: spell.duration_spec.clone(),
+        area_spec: spell.area_spec.clone(),
+        saving_throw_spec: spell.saving_throw_spec.clone(),
+        damage_spec: spell.damage_spec.clone(),
+        magic_resistance_spec: spell.magic_resistance_spec.clone(),
     };
     let (canonical, hash, json) = canonicalize_spell_detail(detail)?;
 
@@ -419,6 +470,50 @@ pub fn apply_spell_update_with_conn(
     Ok(spell.id)
 }
 
+/// Recursively convert object keys from snake_case to camelCase for IPC.
+fn value_keys_to_camel_case(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            let keys: Vec<String> = map.keys().cloned().collect();
+            for k in keys {
+                let v = map.remove(&k).unwrap();
+                let mut new_v = v;
+                value_keys_to_camel_case(&mut new_v);
+                let new_key = snake_to_camel(&k);
+                map.insert(new_key, new_v);
+            }
+        }
+        Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                value_keys_to_camel_case(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn snake_to_camel(s: &str) -> String {
+    let mut out = String::new();
+    let mut cap_next = false;
+    for c in s.chars() {
+        if c == '_' {
+            cap_next = true;
+        } else if cap_next {
+            out.extend(c.to_uppercase());
+            cap_next = false;
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn parsed_to_camel_value<T: serde::Serialize>(t: &T) -> Result<Value, AppError> {
+    let mut v = serde_json::to_value(t).map_err(|e| AppError::Unknown(e.to_string()))?;
+    value_keys_to_camel_case(&mut v);
+    Ok(v)
+}
+
 #[tauri::command]
 pub async fn get_spell(
     state: State<'_, Arc<Pool>>,
@@ -433,6 +528,51 @@ pub async fn get_spell(
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn parse_spell_range(legacy: String) -> Result<Value, AppError> {
+    let parser = SpellParser::new();
+    let spec = parser.parse_range(&legacy);
+    parsed_to_camel_value(&spec)
+}
+
+#[tauri::command]
+pub async fn parse_spell_duration(legacy: String) -> Result<Value, AppError> {
+    let parser = SpellParser::new();
+    let spec = parser.parse_duration(&legacy);
+    parsed_to_camel_value(&spec)
+}
+
+#[tauri::command]
+pub async fn parse_spell_casting_time(legacy: String) -> Result<Value, AppError> {
+    let parser = SpellParser::new();
+    let spec = parser.parse_casting_time(&legacy);
+    parsed_to_camel_value(&spec)
+}
+
+#[tauri::command]
+pub async fn parse_spell_area(legacy: String) -> Result<Option<Value>, AppError> {
+    let parser = SpellParser::new();
+    let opt = parser.parse_area(&legacy);
+    match opt {
+        Some(spec) => Ok(Some(parsed_to_camel_value(&spec)?)),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+pub async fn parse_spell_damage(legacy: String) -> Result<Value, AppError> {
+    let parser = SpellParser::new();
+    let spec = parser.parse_damage(&legacy);
+    parsed_to_camel_value(&spec)
+}
+
+#[tauri::command]
+pub async fn parse_spell_components(legacy: String) -> Result<Value, AppError> {
+    let parser = SpellParser::new();
+    let spec = parser.parse_components(&legacy);
+    parsed_to_camel_value(&spec)
 }
 
 #[tauri::command]
@@ -515,6 +655,17 @@ pub async fn create_spell(
             is_cantrip: spell.is_cantrip,
             schema_version: None,
             artifacts: None,
+            canonical_data: None,
+            content_hash: None,
+            range_spec: spell.range_spec.clone(),
+            components_spec: spell.components_spec.clone(),
+            material_components_spec: spell.material_components_spec.clone(),
+            casting_time_spec: spell.casting_time_spec.clone(),
+            duration_spec: spell.duration_spec.clone(),
+            area_spec: spell.area_spec.clone(),
+            saving_throw_spec: spell.saving_throw_spec.clone(),
+            damage_spec: spell.damage_spec.clone(),
+            magic_resistance_spec: spell.magic_resistance_spec.clone(),
         };
         let (canonical, hash, json) = canonicalize_spell_detail(detail)?;
 

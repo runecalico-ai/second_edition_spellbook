@@ -94,9 +94,9 @@ export function ScalarInput({
           } rounded px-2 py-1 text-sm text-neutral-100`}
       />
       {isAboveAdvisoryCap(effectiveValue) && (
-        <span className="text-[10px] text-yellow-500 font-medium">
-          Above {VALIDATION.advisoryCap} advisory cap
-        </span>
+        <p className="text-[10px] text-yellow-500 font-medium" data-testid="scalar-advisory-cap-warning">
+          Value is above the recommended maximum ({VALIDATION.advisoryCap}). You can still save.
+        </p>
       )}
     </div>
   );

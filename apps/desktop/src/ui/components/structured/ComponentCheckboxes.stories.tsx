@@ -22,6 +22,20 @@ export const Empty: Story = {
   },
 };
 
+/** Spell editor variant: only Verbal, Somatic, Material are shown (no Focus, Divine Focus, Experience). */
+export const VsmOnly: Story = {
+  args: {
+    variant: 'vsm',
+    components: {
+      verbal: true,
+      somatic: true,
+      material: false,
+    },
+    materialComponents: [],
+    onChange: fn(),
+  },
+};
+
 export const VerbalOnly: Story = {
   args: {
     components: {

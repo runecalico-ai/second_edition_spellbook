@@ -2,11 +2,15 @@ import { useCallback } from "react";
 import type { SpellComponents, MaterialComponentSpec } from "../../../types/spell";
 import { VALIDATION, clampScalar, parseNumericInput } from "../../../lib/validation";
 
+export type ComponentCheckboxesVariant = "vsm" | "all";
+
 interface ComponentCheckboxesProps {
   components: SpellComponents | null | undefined;
   materialComponents: MaterialComponentSpec[] | null | undefined;
   onChange: (components: SpellComponents, materialComponents: MaterialComponentSpec[]) => void;
   onUncheckMaterialConfirm?: () => Promise<boolean>;
+  /** When "vsm", only Verbal, Somatic, Material are shown; focus/divineFocus/experience stay false. Default "vsm". */
+  variant?: ComponentCheckboxesVariant;
 }
 
 const DEFAULT_COMPONENTS: SpellComponents = {
@@ -23,22 +27,30 @@ export function ComponentCheckboxes({
   materialComponents,
   onChange,
   onUncheckMaterialConfirm,
+  variant = "vsm",
 }: ComponentCheckboxesProps) {
   const comp = components ?? DEFAULT_COMPONENTS;
   const materials = materialComponents ?? [];
+  const isVsm = variant === "vsm";
 
   const updateComponents = useCallback(
     (next: SpellComponents) => {
-      onChange(next, materials);
+      const normalized =
+        isVsm
+          ? { ...next, focus: false, divineFocus: false, experience: false }
+          : next;
+      onChange(normalized, materials);
     },
-    [onChange, materials],
+    [onChange, materials, isVsm],
   );
 
   const updateMaterials = useCallback(
     (next: MaterialComponentSpec[]) => {
-      onChange(comp, next);
+      const components =
+        isVsm ? { ...comp, focus: false, divineFocus: false, experience: false } : comp;
+      onChange(components, next);
     },
-    [onChange, comp],
+    [onChange, comp, isVsm],
   );
 
   const handleMaterialChange = useCallback(
@@ -60,16 +72,13 @@ export function ComponentCheckboxes({
     [comp, materials.length, updateComponents, updateMaterials, onUncheckMaterialConfirm],
   );
 
-  const textPreview = [
-    comp.verbal && "V",
-    comp.somatic && "S",
-    comp.material && "M",
-    comp.focus && "F",
-    comp.divineFocus && "DF",
-    comp.experience && "XP",
-  ]
-    .filter(Boolean)
-    .join(", ") || "—";
+  const textPreview = isVsm
+    ? [comp.verbal && "V", comp.somatic && "S", comp.material && "M"]
+        .filter(Boolean)
+        .join(", ") || "—"
+    : [comp.verbal && "V", comp.somatic && "S", comp.material && "M", comp.focus && "F", comp.divineFocus && "DF", comp.experience && "XP"]
+        .filter(Boolean)
+        .join(", ") || "—";
 
   return (
     <div className="space-y-2" data-testid="component-checkboxes">
@@ -104,36 +113,40 @@ export function ComponentCheckboxes({
           />
           <span className="text-sm">Material (M)</span>
         </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            data-testid="component-checkbox-focus"
-            checked={comp.focus}
-            onChange={(e) => updateComponents({ ...comp, focus: e.target.checked })}
-            className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
-          />
-          <span className="text-sm">Focus (F)</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            data-testid="component-checkbox-divine-focus"
-            checked={comp.divineFocus}
-            onChange={(e) => updateComponents({ ...comp, divineFocus: e.target.checked })}
-            className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
-          />
-          <span className="text-sm">Divine Focus (DF)</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            data-testid="component-checkbox-experience"
-            checked={comp.experience}
-            onChange={(e) => updateComponents({ ...comp, experience: e.target.checked })}
-            className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
-          />
-          <span className="text-sm">Experience (XP)</span>
-        </label>
+        {!isVsm && (
+          <>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                data-testid="component-checkbox-focus"
+                checked={comp.focus}
+                onChange={(e) => updateComponents({ ...comp, focus: e.target.checked })}
+                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+              />
+              <span className="text-sm">Focus (F)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                data-testid="component-checkbox-divine-focus"
+                checked={comp.divineFocus}
+                onChange={(e) => updateComponents({ ...comp, divineFocus: e.target.checked })}
+                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+              />
+              <span className="text-sm">Divine Focus (DF)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                data-testid="component-checkbox-experience"
+                checked={comp.experience}
+                onChange={(e) => updateComponents({ ...comp, experience: e.target.checked })}
+                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+              />
+              <span className="text-sm">Experience (XP)</span>
+            </label>
+          </>
+        )}
       </div>
       <p className="text-sm text-neutral-500 italic" data-testid="component-text-preview">
         {textPreview}
@@ -213,12 +226,12 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
               inputMode="decimal"
               data-testid="material-component-quantity"
               aria-label="Quantity"
-              placeholder="1"
-              value={m.quantity ?? 1}
+              placeholder="1.0"
+              value={m.quantity == null || m.quantity === 1 ? "1.0" : String(m.quantity)}
               onChange={(e) => {
                 const v = parseNumericInput(e.target.value);
                 const clamped = Math.max(VALIDATION.quantityMinDecimal, clampScalar(v));
-                updateMaterial(idx, { quantity: clamped });
+                updateMaterial(idx, { quantity: clamped === 1 ? 1.0 : clamped });
               }}
               className="w-16 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-100"
             />

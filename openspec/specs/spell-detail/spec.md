@@ -1,6 +1,9 @@
-# Capability: Spell Detail Component
+# Spell Detail Specification
 
-## MODIFIED Requirements
+## Purpose
+Defines how the spell detail view (implemented as the Spell Editor when editing an existing spell) displays content hash, structured spell data, and component badges. There is no separate read-only `/spell/:id` detail route.
+
+## Requirements
 
 ### Requirement: Content Hash Display
 The Spell Detail view MUST expose the spell's unique content hash.

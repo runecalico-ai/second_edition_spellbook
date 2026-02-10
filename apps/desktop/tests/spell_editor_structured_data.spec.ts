@@ -217,8 +217,8 @@ test.describe("Spell Editor structured data and hash display", () => {
       await qtyInput.fill("0.5");
       await qtyInput.blur();
       await page.waitForTimeout(100);
-      // Validation clamps to >= 1
-      await expect(qtyInput).toHaveValue("1");
+      // Validation clamps to >= 1; quantity 1 is displayed as 1.0 (hashing consistency)
+      await expect(qtyInput).toHaveValue("1.0");
     });
 
     await test.step("Add second material component", async () => {

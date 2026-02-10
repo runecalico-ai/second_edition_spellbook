@@ -25,6 +25,13 @@ import {
   defaultMagicResistanceSpec,
   type SpellComponents,
 } from "../types/spell";
+import {
+  validateRangeSpec,
+  validateDurationSpec,
+  validateSpellCastingTime,
+  validateAreaSpec,
+  validateSpellDamageSpec,
+} from "../lib/parserValidation";
 import type {
   RangeSpec,
   DurationSpec,
@@ -197,23 +204,6 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
   } as MagicResistanceSpec;
 }
 
-/** Lightweight runtime validation for parser output; on failure treat as parse failure. */
-function isRangeSpec(x: unknown): x is RangeSpec {
-  return !!x && typeof x === "object" && "kind" in x && typeof (x as RangeSpec).kind === "string";
-}
-function isDurationSpec(x: unknown): x is DurationSpec {
-  return !!x && typeof x === "object" && "kind" in x && typeof (x as DurationSpec).kind === "string";
-}
-function isSpellCastingTimeLike(x: unknown): x is SpellCastingTime {
-  return !!x && typeof x === "object" && "unit" in x && typeof (x as SpellCastingTime).unit === "string";
-}
-function isAreaSpec(x: unknown): x is AreaSpec {
-  return !!x && typeof x === "object" && "kind" in x && typeof (x as AreaSpec).kind === "string";
-}
-function isSpellDamageSpec(x: unknown): x is SpellDamageSpec {
-  return !!x && typeof x === "object" && "kind" in x && typeof (x as SpellDamageSpec).kind === "string";
-}
-
 export default function SpellEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -284,6 +274,7 @@ export default function SpellEditor() {
             };
             if (data.canonicalData) {
               try {
+                // canonical_data is always stored in snake_case (see docs/ARCHITECTURE.md).
                 const canonical = JSON.parse(data.canonicalData) as {
                   range?: RangeSpec & { distance?: { per_level?: number }; raw_legacy_value?: string };
                   duration?: DurationSpec & { duration?: { per_level?: number }; raw_legacy_value?: string };
@@ -426,7 +417,7 @@ export default function SpellEditor() {
               if (data.range) {
                 invoke<RangeSpec>("parse_spell_range", { legacy: data.range })
                   .then((parsed) => {
-                    if (!isRangeSpec(parsed)) fallbackRange(data.range);
+                    if (!validateRangeSpec(parsed)) fallbackRange(data.range);
                     else setStructuredRange(parsed);
                   })
                   .catch(() => fallbackRange(data.range));
@@ -438,7 +429,7 @@ export default function SpellEditor() {
               if (data.duration) {
                 invoke<DurationSpec>("parse_spell_duration", { legacy: data.duration })
                   .then((parsed) => {
-                    if (!isDurationSpec(parsed)) fallbackDuration(data.duration);
+                    if (!validateDurationSpec(parsed)) fallbackDuration(data.duration);
                     else setStructuredDuration(parsed);
                   })
                   .catch(() => fallbackDuration(data.duration));
@@ -452,7 +443,7 @@ export default function SpellEditor() {
                   legacy: data.castingTime,
                 })
                   .then((parsed) => {
-                    if (!isSpellCastingTimeLike(parsed)) fallbackCastingTime(data.castingTime);
+                    if (!validateSpellCastingTime(parsed)) fallbackCastingTime(data.castingTime);
                     else setStructuredCastingTime(parsed);
                   })
                   .catch(() => fallbackCastingTime(data.castingTime));
@@ -464,7 +455,7 @@ export default function SpellEditor() {
               if (data.area) {
                 invoke<AreaSpec | null>("parse_spell_area", { legacy: data.area })
                   .then((parsed) => {
-                    if (parsed === null || !isAreaSpec(parsed)) fallbackArea(data.area);
+                    if (parsed === null || !validateAreaSpec(parsed)) fallbackArea(data.area);
                     else setStructuredArea(parsed);
                   })
                   .catch(() => fallbackArea(data.area));
@@ -476,7 +467,7 @@ export default function SpellEditor() {
               if (data.damage) {
                 invoke<SpellDamageSpec>("parse_spell_damage", { legacy: data.damage })
                   .then((parsed) => {
-                    if (!isSpellDamageSpec(parsed)) fallbackDamage(data.damage);
+                    if (!validateSpellDamageSpec(parsed)) fallbackDamage(data.damage);
                     else setStructuredDamage(parsed);
                   })
                   .catch(() => fallbackDamage(data.damage));
@@ -520,7 +511,7 @@ export default function SpellEditor() {
                     });
                     if (data.materialComponents && parsed.material) {
                       setStructuredMaterialComponents([
-                        { name: data.materialComponents, quantity: 1 },
+                        { name: data.materialComponents, quantity: 1.0 },
                       ]);
                     } else {
                       setStructuredMaterialComponents([]);
@@ -705,6 +696,15 @@ export default function SpellEditor() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4 overflow-auto h-full">
+      {hasSpecialFallback && (
+        <div
+          role="alert"
+          className="rounded border border-amber-600/50 bg-amber-600/10 px-3 py-2 text-sm text-amber-200"
+          data-testid="spell-editor-special-fallback-banner"
+        >
+          {specialFallbackMessage}
+        </div>
+      )}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h1>
@@ -790,16 +790,6 @@ export default function SpellEditor() {
       {printStatus && (
         <div className="text-xs text-neutral-400" data-testid="print-status-message">
           {printStatus}
-        </div>
-      )}
-
-      {hasSpecialFallback && (
-        <div
-          role="alert"
-          className="rounded border border-amber-600/50 bg-amber-600/10 px-3 py-2 text-sm text-amber-200"
-          data-testid="spell-editor-special-fallback-banner"
-        >
-          {specialFallbackMessage}
         </div>
       )}
 
@@ -1101,6 +1091,7 @@ export default function SpellEditor() {
                   "Uncheck Material",
                 )
               }
+              variant="vsm"
             />
           </div>
           <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700 p-2 rounded">

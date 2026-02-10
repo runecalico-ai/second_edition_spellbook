@@ -143,8 +143,16 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
   );
 
   const addPart = useCallback(() => {
+    const existingIds = new Set((spec.parts ?? []).map((p) => p.id));
+    let id = generateDamagePartId();
+    for (let i = 0; i < 5 && existingIds.has(id); i++) {
+      id = generateDamagePartId();
+    }
+    if (existingIds.has(id)) {
+      id = `${id.slice(0, 27)}_${Math.random().toString(36).slice(2, 6)}`.slice(0, 32);
+    }
     const part = defaultDamagePart();
-    part.id = generateDamagePartId();
+    part.id = id;
     const parts = [...(spec.parts ?? []), part];
     updateSpec({ kind: "modeled", parts, combineMode: spec.combineMode ?? "sum" });
   }, [spec, updateSpec]);
@@ -182,7 +190,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
           onChange={(e) => {
             const kind = e.target.value as SpellDamageSpec["kind"];
             if (kind === "none") {
-              onChange({ kind: "none" });
+              onChange({ kind: "none", parts: undefined });
             } else if (kind === "dm_adjudicated") {
               onChange({
                 kind: "dm_adjudicated",

@@ -5,6 +5,91 @@ Defines the Spell Editor component: structured field editing (range, duration, c
 
 ## Requirements
 
+### Requirement: Canon-First Default (Details Block)
+
+The Spell Editor MUST present the Details block in a canon-first way: by default the user SHALL see and edit **canon text** (one single-line text input per field), not the full structured schema. Structured controls (StructuredFieldInput, AreaForm, DamageForm, SavingThrowInput, MagicResistanceInput, ComponentCheckboxes) MUST NOT be visible in the default view and MUST be revealed per field only when the user opts in via a per-field expand control (Option B: hybrid single-line + expand/collapse). This applies to the Details block only (Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, Description). All other editor fields (name, level, school, sphere, class list, source, edition, author, license, tags, reversible, quest, cantrip) are unchanged.
+
+#### Scenario: Default view is canon text only
+
+- **GIVEN** the Spell Editor form and the Details section
+- **WHEN** the user views the editor (or has not expanded any detail field)
+- **THEN** the editor MUST show one single-line text input per canon field in this order: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance
+- **AND** the Description MUST remain a textarea as today (after the above fields)
+- **AND** the editor MUST NOT reorder these fields so that layout is consistent and testable
+- **AND** the editor MUST NOT render StructuredFieldInput, AreaForm, DamageForm, SavingThrowInput, MagicResistanceInput, or ComponentCheckboxes in the default (collapsed) view
+- **AND** each single-line input MUST be bound to the corresponding form text field (e.g. form.range, form.duration) so save persists those strings
+
+#### Scenario: Only one detail field expanded at a time
+
+- **GIVEN** the Spell Editor form and at most one detail field is currently expanded
+- **WHEN** the user activates the expand control for a different detail field
+- **THEN** the editor MUST collapse the currently expanded field first (if that field is dirty, serialize its spec to the canon line; otherwise leave the line unchanged), then expand the newly selected field
+- **AND** only one detail field MUST be expanded at any time
+
+#### Scenario: Per-field expand reveals structured form
+
+- **GIVEN** the Spell Editor form and a canon field (e.g. Duration) in collapsed state
+- **WHEN** the user activates the expand control for that field
+- **THEN** the editor MUST reveal the structured component for that field (e.g. StructuredFieldInput for range/duration/casting_time, AreaForm for area, DamageForm for damage, SavingThrowInput, MagicResistanceInput, ComponentCheckboxes plus material list for components)
+- **AND** the editor MUST populate that structured form: if the spell was loaded with `canonical_data` that includes this field, use that structured value; otherwise parse the current text via the corresponding Tauri parser command and show the result (or "special" + raw_legacy_value on parse failure)
+- **AND** the expand control MUST be keyboard and screen-reader friendly (e.g. aria-expanded, focus management)
+
+#### Scenario: On collapse, line updates from spec only when dirty
+
+- **GIVEN** a detail field is expanded and the user has edited the structured form (field is dirty)
+- **WHEN** the user collapses that field
+- **THEN** the editor MUST serialize the current structured value to text using the existing helpers (e.g. durationToText, rangeToText, componentsToText)
+- **AND** MUST update the form text field and the single-line input with that value so the canon line stays in sync with the structured form
+
+#### Scenario: On collapse without edit, canon line unchanged
+
+- **GIVEN** a detail field is expanded and the user has not edited the structured form (field is not dirty; they only expanded to view)
+- **WHEN** the user collapses that field
+- **THEN** the editor MUST NOT overwrite the canon line
+- **AND** the existing text in the single-line input and form text field MUST remain unchanged
+
+#### Scenario: Manual adjustment of structured form is allowed
+
+- **GIVEN** a detail field was expanded and the parser returned "special" (or the user wishes to adjust the structured value)
+- **WHEN** the user edits the structured form (e.g. changes kind, fills in unit and duration, or corrects a parsed value)
+- **THEN** the field is marked dirty
+- **AND** on collapse the editor MUST serialize the current structured value to text and update the canon line so the user's manual fix is persisted
+
+#### Scenario: Components collapsed and expanded
+
+- **GIVEN** the Components detail field
+- **WHEN** the field is collapsed
+- **THEN** the editor MUST show a single line (e.g. "V, S, M" or "V, S, M (ruby dust 50 gp)") bound to form.components (and material display as needed)
+- **WHEN** the user expands Components
+- **THEN** the editor MUST show ComponentCheckboxes and the material component list; on collapse, if the components structured form was edited (dirty), MUST serialize to form.components and form.materialComponents via componentsToText; otherwise MUST NOT overwrite the canon line
+
+#### Scenario: New spell starts collapsed
+
+- **GIVEN** the user is creating a new spell
+- **WHEN** the editor loads
+- **THEN** all detail fields MUST be collapsed with empty or placeholder canon text lines
+- **AND** on first expand of a field, the editor MUST parse the current text (or treat empty string per design: default or "special" with empty raw) and show the structured form
+
+#### Scenario: First expand with empty canon line
+
+- **GIVEN** a canon field (e.g. Duration) whose current text is empty (e.g. new spell or user cleared the line)
+- **WHEN** the user expands that field
+- **THEN** the editor MUST call the corresponding Tauri parser with the empty string
+- **AND** if the parser returns a defined default (a valid spec), the editor MUST show that spec in the structured form
+- **AND** if the parser does not return a valid default, the editor MUST treat the field as "special" with empty `raw_legacy_value` and show the structured form in that state
+
+#### Scenario: Warning when expanded and spec is special
+
+- **GIVEN** a detail field is expanded and the structured value for that field has kind "special" (or parse failed)
+- **THEN** the editor MUST show the existing "could not be fully parsed" hint for that field (inline or in the expanded section)
+- **AND** when that field is collapsed, the editor MUST show a subtle indicator (e.g. icon or tooltip) if the last parse or loaded spec for that field was "special", so the user knows the line is stored but not fully structured for hashing
+
+#### Scenario: Persistence unchanged
+
+- **GIVEN** the user edits only in the canon (collapsed) view and saves
+- **THEN** the editor MUST persist the flat text columns as today
+- **AND** when structured state exists (e.g. user expanded and edited), the editor MUST continue to build and persist canonical_data from current specs on save; persistence shape (flat columns + canonical_data) is unchanged
+
 ### Requirement: Structured Field Editing
 The Spell Editor MUST provide dedicated input components for structured spell data.
 

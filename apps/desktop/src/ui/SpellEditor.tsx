@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useBlocker } from "react-router-dom";
 import { useModal } from "../store/useModal";
 import {
@@ -83,11 +83,17 @@ const DETAIL_FIELD_ORDER: DetailFieldKey[] = [
   "materialComponents",
 ];
 
-// Mirrors SpellDetail struct from backend
-function normalizeDicePool(p: any): DicePool {
+/** Backend dice pool shape (camelCase or snake_case). */
+interface RawDicePool {
+  terms?: Array<{ count?: number; sides?: number; perDieModifier?: number; per_die_modifier?: number }>;
+  flatModifier?: number;
+  flat_modifier?: number;
+}
+
+function normalizeDicePool(p: RawDicePool | null | undefined): DicePool {
   if (!p) return { terms: [{ count: 1, sides: 6 }], flatModifier: 0 };
   return {
-    terms: (p.terms as any[] | undefined)?.map((t) => ({
+    terms: p.terms?.map((t) => ({
       count: t.count,
       sides: t.sides,
       perDieModifier: t.perDieModifier ?? t.per_die_modifier,
@@ -291,7 +297,7 @@ export default function SpellEditor() {
   /** Canon-first: which field is loading (async parse on expand). */
   const [detailLoading, setDetailLoading] = useState<DetailFieldKey | null>(null);
   /** Refs for focus management: expanded panel (focus first focusable on expand); collapse focuses via data-testid query. */
-  const expandedPanelRef = useRef<HTMLDivElement | null>(null);
+  const expandedPanelRef = useRef<HTMLElement | null>(null);
   /** Ref for parse race guard: only clear loading when completed parse matches currently expanded field. */
   const expandedDetailRef = useRef<DetailFieldKey | null>(null);
   /** Track unsaved changes for navigate/close warning. */
@@ -314,7 +320,7 @@ export default function SpellEditor() {
 
   /** Focus management: on expand focus first focusable in panel; on collapse focus the expand button. */
   const prevExpandedDetailRef = useRef<DetailFieldKey | null>(null);
-  const fieldToKebab = (f: DetailFieldKey) => f.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  const fieldToKebab = useCallback((f: DetailFieldKey) => f.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(), []);
   useEffect(() => {
     expandedDetailRef.current = expandedDetailField;
     if (expandedDetailField !== null) {
@@ -343,7 +349,7 @@ export default function SpellEditor() {
         });
       }
     }
-  }, [expandedDetailField]);
+  }, [expandedDetailField, fieldToKebab]);
 
   useEffect(() => {
     if (blocker.state !== "blocked") return;
@@ -363,7 +369,7 @@ export default function SpellEditor() {
         b.reset?.();
       }
     });
-  }, [blocker.state]);
+  }, [blocker.state, modalConfirm]);
 
   useEffect(() => {
     if (!isNew && id) {
@@ -1387,10 +1393,9 @@ export default function SpellEditor() {
                   </div>
                 </div>
                 {isExpanded && (
-                  <div
+                  <section
                     ref={expandedPanelRef}
                     id={`detail-${field}-panel`}
-                    role="region"
                     aria-label={`Structured ${label}`}
                     tabIndex={-1}
                     className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
@@ -1489,7 +1494,7 @@ export default function SpellEditor() {
                         )}
                       </>
                     )}
-                  </div>
+                  </section>
                 )}
               </div>
             );

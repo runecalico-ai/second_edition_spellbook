@@ -94,14 +94,13 @@ function CanonRow({
         </div>
       </div>
       {expanded && (
-        <div
+        <section
           id={`${testIdPrefix}-panel`}
-          role="region"
           aria-label={`Structured ${label}`}
           className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
         >
           {children}
-        </div>
+        </section>
       )}
     </div>
   );

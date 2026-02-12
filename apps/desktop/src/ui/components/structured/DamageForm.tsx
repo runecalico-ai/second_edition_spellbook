@@ -488,7 +488,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 </button>
               </div>
               {part.scaling?.map((rule, sIdx) => (
-                <div key={sIdx} className="flex flex-wrap items-center gap-2 p-1.5 bg-neutral-900/50 rounded border border-neutral-700/30 text-xs">
+                <div key={`${idx}-${sIdx}-${rule.kind}-${rule.driver}-${rule.step}`} className="flex flex-wrap items-center gap-2 p-1.5 bg-neutral-900/50 rounded border border-neutral-700/30 text-xs">
                   <select
                     value={rule.kind}
                     onChange={(e) => {
@@ -540,7 +540,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                         const m = e.target.value.match(/^(\d+)d(\d+)$/i);
                         if (m) {
                           const scaling = [...(part.scaling ?? [])];
-                          scaling[sIdx] = { ...rule, diceIncrement: { count: parseInt(m[1]), sides: parseInt(m[2]) } };
+                          scaling[sIdx] = { ...rule, diceIncrement: { count: Number.parseInt(m[1], 10), sides: Number.parseInt(m[2], 10) } };
                           updatePart(idx, { scaling });
                         }
                       }}

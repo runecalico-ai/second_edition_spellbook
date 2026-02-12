@@ -1,63 +1,63 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useBlocker } from "react-router-dom";
-import { useModal } from "../store/useModal";
+import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
-  StructuredFieldInput,
-  rangeToText,
-  durationToText,
-  castingTimeToText,
-  AreaForm,
-  DamageForm,
-  SavingThrowInput,
-  MagicResistanceInput,
-  ComponentCheckboxes,
-} from "./components/structured";
-import {
-  areaToText,
-  damageToText,
-  savingThrowToText,
-  magicResistanceToText,
-  componentsToText,
-  defaultAreaSpec,
-  defaultSpellDamageSpec,
-  defaultSavingThrowSpec,
-  defaultMagicResistanceSpec,
-  type SpellComponents,
-} from "../types/spell";
-import {
-  validateRangeSpec,
-  validateDurationSpec,
-  validateSpellCastingTime,
   validateAreaSpec,
+  validateDurationSpec,
+  validateRangeSpec,
+  validateSpellCastingTime,
   validateSpellDamageSpec,
 } from "../lib/parserValidation";
+import { useModal } from "../store/useModal";
+import {
+  type SpellComponents,
+  areaToText,
+  componentsToText,
+  damageToText,
+  defaultAreaSpec,
+  defaultMagicResistanceSpec,
+  defaultSavingThrowSpec,
+  defaultSpellDamageSpec,
+  magicResistanceToText,
+  savingThrowToText,
+} from "../types/spell";
 import type {
-  RangeSpec,
-  DurationSpec,
-  SpellCastingTime,
+  ApplicationScope,
   AreaSpec,
-  SpellDamageSpec,
   DamagePart,
-  SavingThrowSpec,
-  SingleSave,
+  DicePool,
+  DiceTerm,
+  DurationSpec,
+  LevelBand,
   MagicResistanceSpec,
   MaterialComponentSpec,
-  SpellDetail,
-  SpellCreate,
-  DicePool,
-  ApplicationScope,
+  RangeSpec,
   SaveKind,
-  SaveType,
   SaveOutcome,
   SaveOutcomeEffect,
+  SaveType,
+  SavingThrowSpec,
   ScalarMode,
-  ScalingKind,
   ScalingDriver,
+  ScalingKind,
   ScalingRule,
-  LevelBand,
-  DiceTerm,
+  SingleSave,
+  SpellCastingTime,
+  SpellCreate,
+  SpellDamageSpec,
+  SpellDetail,
 } from "../types/spell";
+import {
+  AreaForm,
+  ComponentCheckboxes,
+  DamageForm,
+  MagicResistanceInput,
+  SavingThrowInput,
+  StructuredFieldInput,
+  castingTimeToText,
+  durationToText,
+  rangeToText,
+} from "./components/structured";
 
 /** Canon-first detail field keys; only one may be expanded at a time. */
 type DetailFieldKey =
@@ -82,6 +82,18 @@ const DETAIL_FIELD_ORDER: DetailFieldKey[] = [
   "magicResistance",
   "materialComponents",
 ];
+
+const createDefaultDetailDirty = (): Record<DetailFieldKey, boolean> => ({
+  range: false,
+  components: false,
+  duration: false,
+  castingTime: false,
+  area: false,
+  savingThrow: false,
+  damage: false,
+  magicResistance: false,
+  materialComponents: false,
+});
 
 /** Backend dice pool shape (camelCase or snake_case). */
 interface RawDicePool {
@@ -298,17 +310,9 @@ export default function SpellEditor() {
   /** Canon-first: which detail field is expanded (only one at a time). */
   const [expandedDetailField, setExpandedDetailField] = useState<DetailFieldKey | null>(null);
   /** Canon-first: per-field dirty (user edited structured form since expand). */
-  const [detailDirty, setDetailDirty] = useState<Record<DetailFieldKey, boolean>>({
-    range: false,
-    components: false,
-    duration: false,
-    castingTime: false,
-    area: false,
-    savingThrow: false,
-    damage: false,
-    magicResistance: false,
-    materialComponents: false,
-  });
+  const [detailDirty, setDetailDirty] = useState<Record<DetailFieldKey, boolean>>(() =>
+    createDefaultDetailDirty(),
+  );
   /** Canon-first: which field is loading (async parse on expand). */
   const [detailLoading, setDetailLoading] = useState<DetailFieldKey | null>(null);
   /** Refs for focus management: expanded panel (focus first focusable on expand); collapse focuses via data-testid query. */
@@ -335,6 +339,23 @@ export default function SpellEditor() {
 
   /** Focus management: on expand focus first focusable in panel; on collapse focus the expand button. */
   const prevExpandedDetailRef = useRef<DetailFieldKey | null>(null);
+  const resetStructuredLoadState = useCallback(() => {
+    setStructuredRange(null);
+    setStructuredDuration(null);
+    setStructuredCastingTime(null);
+    setStructuredArea(null);
+    setStructuredDamage(null);
+    setStructuredSavingThrow(null);
+    setStructuredMagicResistance(null);
+    setStructuredComponents(null);
+    setStructuredMaterialComponents([]);
+    setExpandedDetailField(null);
+    setDetailLoading(null);
+    setDetailDirty(createDefaultDetailDirty());
+    expandedDetailRef.current = null;
+    prevExpandedDetailRef.current = null;
+  }, []);
+
   const fieldToKebab = useCallback(
     (f: DetailFieldKey) => f.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(),
     [],
@@ -393,9 +414,16 @@ export default function SpellEditor() {
 
   useEffect(() => {
     if (!isNew && id) {
+      let isActive = true;
+      resetStructuredLoadState();
       setLoading(true);
       invoke<SpellDetail>("get_spell", { id: Number.parseInt(id) })
         .then((data) => {
+          if (!isActive) return;
+
+          // Reset all structured/canon-first expansion state before applying loaded spell.
+          resetStructuredLoadState();
+
           if (data) {
             setForm(data);
             const hasSchool = !!data.school?.trim();
@@ -409,16 +437,6 @@ export default function SpellEditor() {
                     ? "DIVINE"
                     : "ARCANE",
             );
-            const fromCanonical = {
-              range: false,
-              duration: false,
-              castingTime: false,
-              area: false,
-              damage: false,
-              savingThrow: false,
-              magicResistance: false,
-              components: false,
-            };
             if (data.canonicalData) {
               try {
                 // canonical_data is always stored in snake_case (see docs/ARCHITECTURE.md).
@@ -461,7 +479,6 @@ export default function SpellEditor() {
                       : undefined,
                     rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
                   });
-                  fromCanonical.range = true;
                 }
                 if (canonical.duration) {
                   const d = canonical.duration;
@@ -479,7 +496,6 @@ export default function SpellEditor() {
                     uses: normalizeScalar(d.uses),
                     rawLegacyValue: d.raw_legacy_value ?? d.rawLegacyValue,
                   });
-                  fromCanonical.duration = true;
                 }
                 if (canonical.casting_time) {
                   const c = canonical.casting_time as SpellCastingTime & {
@@ -496,19 +512,16 @@ export default function SpellEditor() {
                     levelDivisor: c.levelDivisor ?? c.level_divisor ?? 1,
                     rawLegacyValue: c.rawLegacyValue ?? c.raw_legacy_value,
                   });
-                  fromCanonical.castingTime = true;
                 }
                 if (canonical.area) {
                   setStructuredArea(
                     normalizeAreaSpec(canonical.area as unknown as Record<string, unknown>),
                   );
-                  fromCanonical.area = true;
                 }
                 if (canonical.damage) {
                   setStructuredDamage(
                     normalizeDamageSpec(canonical.damage as unknown as Record<string, unknown>),
                   );
-                  fromCanonical.damage = true;
                 }
                 if (canonical.saving_throw) {
                   setStructuredSavingThrow(
@@ -516,7 +529,6 @@ export default function SpellEditor() {
                       canonical.saving_throw as unknown as Record<string, unknown>,
                     ),
                   );
-                  fromCanonical.savingThrow = true;
                 }
                 if (canonical.magic_resistance) {
                   setStructuredMagicResistance(
@@ -524,7 +536,6 @@ export default function SpellEditor() {
                       canonical.magic_resistance as unknown as Record<string, unknown>,
                     ),
                   );
-                  fromCanonical.magicResistance = true;
                 }
                 if (
                   canonical.components ||
@@ -562,7 +573,6 @@ export default function SpellEditor() {
                     };
                   });
                   setStructuredMaterialComponents(mats);
-                  fromCanonical.components = true;
                 }
               } catch {
                 // ignore parse error, fall back to legacy
@@ -574,9 +584,15 @@ export default function SpellEditor() {
             setHasUnsavedState(false);
           }
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (isActive) setLoading(false);
+        });
+
+      return () => {
+        isActive = false;
+      };
     }
-  }, [id, isNew]);
+  }, [id, isNew, resetStructuredLoadState]);
 
   const handleChange = (field: keyof SpellDetail, value: string | number) => {
     unsavedRef.current = true;

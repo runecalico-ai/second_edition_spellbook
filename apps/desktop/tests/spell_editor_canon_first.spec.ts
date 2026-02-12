@@ -355,6 +355,62 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("Loading a second spell resets structured state; expand parses from current canon text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellA = `Canonical Source ${runId}`;
+    const spellB = `Parse On Expand ${runId}`;
+
+    await test.step("Create Spell A with canonical structured range", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellA);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-range-input").fill("30 ft");
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.medium });
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Create Spell B with canon text only", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellB);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-range-input").fill("Touch");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Open Spell A and confirm canonical structured range", async () => {
+      await app.openSpell(spellA);
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("range-base-value")).toHaveValue("30");
+    });
+
+    await test.step("Open Spell B and expand Range parses from Spell B text", async () => {
+      await app.openSpell(spellB);
+      await expect(page.getByTestId("detail-range-input")).toHaveValue("Touch", {
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("range-kind-select")).toHaveValue("touch");
+      await expect(page.getByTestId("range-base-value")).not.toBeVisible();
+    });
+  });
+
   test("Expand field with special, edit structured form to fix, collapse; canon line updates", async ({
     appContext,
   }) => {

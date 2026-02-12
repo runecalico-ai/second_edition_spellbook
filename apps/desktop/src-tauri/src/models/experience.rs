@@ -119,17 +119,20 @@ pub enum RoundingMode {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct PerUnitXp {
+    #[serde(alias = "xp_per_unit")]
     pub xp_per_unit: i32,
+    #[serde(alias = "unit_kind")]
     pub unit_kind: UnitKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "unit_label")]
     pub unit_label: Option<String>,
     #[serde(default = "default_rounding")]
     pub rounding: RoundingMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "min_xp")]
     pub min_xp: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_xp")]
     pub max_xp: Option<i32>,
 }
 
@@ -157,61 +160,75 @@ pub enum VarKind {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct FormulaVar {
     pub name: String,
+    #[serde(alias = "var_kind")]
     pub var_kind: VarKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ExperienceFormula {
     pub expr: String,
     pub vars: Vec<FormulaVar>,
     #[serde(default = "default_rounding")]
     pub rounding: RoundingMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "min_xp")]
     pub min_xp: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_xp")]
     pub max_xp: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct TieredXp {
     pub when: String,
+    #[serde(alias = "amount_xp")]
     pub amount_xp: i32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ExperienceComponentSpec {
     pub kind: ExperienceKind,
     #[serde(default = "default_payer")]
     pub payer: ExperiencePayer,
-    #[serde(default = "default_timing")]
+    #[serde(default = "default_timing", alias = "payment_timing")]
     pub payment_timing: PaymentTiming,
-    #[serde(default = "default_semantics")]
+    #[serde(default = "default_semantics", alias = "payment_semantics")]
     pub payment_semantics: PaymentSemantics,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", alias = "can_reduce_level")]
     pub can_reduce_level: bool,
     #[serde(default = "default_recoverability")]
     pub recoverability: Recoverability,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "amount_xp")]
     pub amount_xp: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "per_unit")]
     pub per_unit: Option<PerUnitXp>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "formula")]
     pub formula: Option<ExperienceFormula>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "tiered")]
     pub tiered: Option<Vec<TieredXp>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "dm_guidance"
+    )]
     pub dm_guidance: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "source_text"
+    )]
     pub source_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,

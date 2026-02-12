@@ -4,11 +4,10 @@ import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal } from "./utils/dialog-handler";
 
-test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
-
-test.slow();
-
 test.describe("Spell Editor structured data and hash display", () => {
+  test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
+  test.slow();
+
   test("SpellDetail hash display: show hash, Copy, Expand when spell has content_hash", async ({
     appContext,
   }) => {
@@ -108,7 +107,9 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-classes-input").fill("Wizard");
     });
 
-    await test.step("Select Distance kind and enter value", async () => {
+    await test.step("Expand Range then select Distance kind and enter value", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(500);
       await page.getByTestId("range-kind-select").selectOption("distance");
       await page.waitForTimeout(100);
       await page.getByTestId("range-base-value").fill("30");
@@ -138,7 +139,9 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-description-textarea").fill("Description.");
     });
 
-    await test.step("Select Time kind and enter value", async () => {
+    await test.step("Expand Duration then select Time kind and enter value", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(500);
       await page.getByTestId("duration-kind-select").selectOption("time");
       await page.waitForTimeout(100);
       await page.getByTestId("duration-base-value").fill("1");
@@ -167,7 +170,9 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-description-textarea").fill("Description.");
     });
 
-    await test.step("Check Verbal and Somatic", async () => {
+    await test.step("Expand Components then check Verbal and Somatic", async () => {
+      await page.getByTestId("detail-components-expand").click();
+      await page.waitForTimeout(500);
       await page.getByTestId("component-checkbox-verbal").check();
       await page.getByTestId("component-checkbox-somatic").check();
       await page.waitForTimeout(100);
@@ -194,12 +199,14 @@ test.describe("Spell Editor structured data and hash display", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    await test.step("Open new spell and enable Material", async () => {
+    await test.step("Open new spell, expand Components, enable Material", async () => {
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
       await page.getByTestId("spell-name-input").fill("Material Test Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
+      await page.getByTestId("detail-components-expand").click();
+      await page.waitForTimeout(500);
       await page.getByTestId("component-checkbox-material").check();
       await page.waitForTimeout(100);
     });

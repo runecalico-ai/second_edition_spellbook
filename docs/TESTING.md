@@ -479,7 +479,7 @@ pnpm build-storybook
 
 Creates a static build in `storybook-static/` for deployment or sharing.
 
-For detailed Storybook documentation, see [Spell Editor Components Guide](../dev/spell_editor_components.md#storybook-stories).
+For detailed Storybook documentation, see [Spell Editor Components Guide](../dev/spell_editor_components.md#storybook-stories). Canon-first Details block stories live under **SpellEditor/CanonFirstDetails** (e.g. Default Collapsed, One Field Expanded, Collapsed With Special Indicator); they use the same `detail-*-input` and `detail-*-expand` test IDs as the app.
 
 ### Hook Testing Pattern
 
@@ -590,6 +590,8 @@ pnpm e2e -- --headed
 # Run specific test file
 pnpm e2e -- tests/search.spec.ts
 ```
+
+**Spell Editor E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand–edit–collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. Both use the same fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and target canon inputs/expand controls via `data-testid` (e.g. `detail-range-input`, `detail-range-expand`). Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
 
 ### Test Structure
 

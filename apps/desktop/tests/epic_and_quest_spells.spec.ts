@@ -4,11 +4,12 @@ import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal, setupDialogHandler } from "./utils/dialog-handler";
 
-test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
+test.describe("Epic and Quest Spells", () => {
+  test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
+  test.slow();
 
-test.slow();
+  test("Epic and Quest Spells E2E", async ({ appContext }) => {
 
-test("Epic and Quest Spells E2E", async ({ appContext }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
 
@@ -96,4 +97,6 @@ test("Epic and Quest Spells E2E", async ({ appContext }) => {
   // Cleanup native dialog handler if it was used (not strictly needed here as we didn't trigger any native deletes)
   const cleanupDialog = setupDialogHandler(page, { acceptDelete: true });
   cleanupDialog();
+  });
 });
+

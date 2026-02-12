@@ -7,10 +7,11 @@ import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 const __dirname = getTestDirname(import.meta.url);
 
-test.slow();
-
 test.describe("Milestone Verification Flow", () => {
+  test.slow();
+
   test("Milestone 1: Basic Spell Management", async ({ appContext }) => {
+
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
@@ -219,14 +220,14 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
     await expect(page.getByTestId("spell-edition-input")).toHaveValue("2e");
     await expect(page.getByTestId("spell-author-input")).toHaveValue("Test Author");
     await expect(page.getByTestId("spell-license-input")).toHaveValue("OGL");
-    await expect(page.getByTestId("spell-range-input")).toHaveValue("10 ft");
-    await expect(page.getByTestId("spell-components-input")).toHaveValue("V,S,M");
+    await expect(page.getByTestId("detail-range-input")).toHaveValue("10 ft");
+    await expect(page.getByTestId("detail-components-input")).toHaveValue("V,S,M");
     await expect(page.getByTestId("chk-reversible")).toBeChecked();
-    await expect(page.getByTestId("spell-duration-input")).toHaveValue("1 turn");
-    await expect(page.getByTestId("spell-casting-time-input")).toHaveValue("1 round");
-    await expect(page.getByTestId("spell-area-input")).toHaveValue("10-ft radius");
-    await expect(page.getByTestId("spell-save-input")).toHaveValue("Negates");
-    await expect(page.getByTestId("spell-material-components-input")).toHaveValue("a crystal lens");
+    await expect(page.getByTestId("detail-duration-input")).toHaveValue("1 turn");
+    await expect(page.getByTestId("detail-casting-time-input")).toHaveValue("1 round");
+    await expect(page.getByTestId("detail-area-input")).toHaveValue("10-ft radius");
+    await expect(page.getByTestId("detail-saving-throw-input")).toHaveValue("Negates");
+    await expect(page.getByTestId("detail-material-components-input")).toHaveValue("a crystal lens");
     await expect(page.getByTestId("spell-tags-input")).toHaveValue("illusion, test");
     await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
       "Imported description text.",
@@ -235,7 +236,7 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
 
   await test.step("Update extended fields and confirm persistence", async () => {
     await page.getByTestId("spell-author-input").fill("Updated Author");
-    await page.getByTestId("spell-range-input").fill("20 ft");
+    await page.getByTestId("detail-range-input").fill("20 ft");
     await page.getByTestId("chk-reversible").uncheck();
     await page.getByTestId("spell-tags-input").fill("updated, tags");
     await page.getByTestId("btn-save-spell").click();
@@ -243,7 +244,7 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
 
     await app.openSpell(importedName);
     await expect(page.getByTestId("spell-author-input")).toHaveValue("Updated Author");
-    await expect(page.getByTestId("spell-range-input")).toHaveValue("20 ft");
+    await expect(page.getByTestId("detail-range-input")).toHaveValue("20 ft");
     await expect(page.getByTestId("chk-reversible")).not.toBeChecked();
     await expect(page.getByTestId("spell-tags-input")).toHaveValue("updated, tags");
   });
@@ -276,7 +277,7 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
     await expect(page.getByTestId("spell-author-input")).toHaveValue("Created Author");
     await expect(page.getByTestId("spell-license-input")).toHaveValue("CC-BY");
     await expect(page.getByTestId("chk-reversible")).toBeChecked();
-    await expect(page.getByTestId("spell-material-components-input")).toHaveValue(
+    await expect(page.getByTestId("detail-material-components-input")).toHaveValue(
       "a drop of water",
     );
     await expect(page.getByTestId("spell-tags-input")).toHaveValue("created, field");

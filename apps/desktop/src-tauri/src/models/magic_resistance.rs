@@ -46,10 +46,11 @@ pub enum MrPartialScope {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct MrPartialSpec {
     pub scope: MrPartialScope,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "part_ids")]
     pub part_ids: Option<Vec<String>>,
 }
 
@@ -69,14 +70,19 @@ impl MrPartialSpec {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct MagicResistanceSpec {
     pub kind: MagicResistanceKind,
-    #[serde(default)]
+    #[serde(default, alias = "applies_to")]
     pub applies_to: MrAppliesTo,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub partial: Option<MrPartialSpec>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "special_rule"
+    )]
     pub special_rule: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,

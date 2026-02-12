@@ -6,6 +6,8 @@ The spell editor uses a set of controlled React components that emit **schema-na
 
 **Location:** `apps/desktop/src/ui/components/structured/`
 
+**Canon-first Details block:** The Spell Editor’s default view for the Details section is **canon-first**: one row per field (Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, and optionally Material Component) with a label, single-line text input, and an expand control. Structured components (`StructuredFieldInput`, `AreaForm`, `DamageForm`, etc.) are **not** rendered until the user expands that field. Data flow: on load, the form is populated with flat text; on expand, the editor uses `canonical_data` for that field if present, otherwise parses via Tauri command; on collapse, the canon line is serialized from the structured value **only when the field is dirty** (user edited the structured form).
+
 **Exports (from `index.ts`):**
 
 - `StructuredFieldInput`, `rangeToText`, `durationToText`, `castingTimeToText`
@@ -476,7 +478,27 @@ function SpellEditor() {
 
 ## E2E and test IDs
 
-Structured components use `data-testid` attributes (kebab-case) for Playwright. See `apps/desktop/src/AGENTS.md` and the change tasks for the full list. Examples: `structured-field-input`, `range-base-value`, `duration-unit`, `area-form-kind`, `damage-form-add-part`, `component-checkbox-material`, `material-component-name`, `spell-editor-special-fallback-banner`.
+Structured components use `data-testid` attributes (kebab-case) for Playwright. See `apps/desktop/src/AGENTS.md` and the change tasks for the full list.
+
+**Canon-first Details block (SpellEditor):** Each canon single-line input and expand control has a stable test ID so E2E and Storybook can target without relying on labels or DOM order.
+
+| Field | Input test ID | Expand test ID |
+|-------|----------------|-----------------|
+| Range | `detail-range-input` | `detail-range-expand` |
+| Components | `detail-components-input` | `detail-components-expand` |
+| Duration | `detail-duration-input` | `detail-duration-expand` |
+| Casting Time | `detail-casting-time-input` | `detail-casting-time-expand` |
+| Area of Effect | `detail-area-input` | `detail-area-expand` |
+| Saving Throw | `detail-saving-throw-input` | `detail-saving-throw-expand` |
+| Damage | `detail-damage-input` | `detail-damage-expand` |
+| Magic Resistance | `detail-magic-resistance-input` | `detail-magic-resistance-expand` |
+| Material Component | `detail-material-components-input` | `detail-material-components-expand` |
+
+When a field is expanded and parsing is in progress, a loading state is shown with test ID `detail-{field}-loading` (field in kebab-case, e.g. `detail-duration-loading`). When the expanded spec is "special" (or another non-canonical kind such as `dm_adjudicated` for Saving Throw), a hint is shown with a **kebab-case** test ID: `detail-range-special-hint`, `detail-duration-special-hint`, `detail-casting-time-special-hint`, `detail-components-special-hint`, `detail-area-special-hint`, `detail-saving-throw-special-hint`, `detail-damage-special-hint`, `detail-magic-resistance-special-hint` (and `detail-material-components-special-hint` when the Material Component row is implemented).
+
+**Material Component row:** The Material Component row shares its structured state with the Components field (ComponentCheckboxes + material list). There is no dedicated Tauri parser for material-only; when expanded, the editor reuses the component parsing logic and initializes the material list from `form.materialComponents`. Serialization on collapse uses `componentsToText` to produce both `form.components` and `form.materialComponents`.
+
+**Structured components (visible when expanded):** Examples: `range-kind-select`, `range-base-value`, `duration-kind-select`, `duration-unit`, `area-form-kind`, `damage-form-add-part`, `component-checkbox-material`, `material-component-name`, `spell-editor-special-fallback-banner`.
 
 ---
 

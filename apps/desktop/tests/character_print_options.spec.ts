@@ -3,7 +3,6 @@ import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
-
 test.describe("Character Print Options Dialog", () => {
   test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 

@@ -1,8 +1,4 @@
-import type {
-  MagicResistanceSpec,
-  MagicResistanceKind,
-  AppliesTo,
-} from "../../../types/spell";
+import type { MagicResistanceSpec, MagicResistanceKind, AppliesTo } from "../../../types/spell";
 import { defaultMagicResistanceSpec } from "../../../types/spell";
 
 const MR_KIND_LABELS: Record<MagicResistanceKind, string> = {

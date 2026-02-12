@@ -19,11 +19,7 @@ import {
   type SpellScalar,
 } from "../types/spell";
 
-const RANGE_KINDS: Set<string> = new Set([
-  ...RANGE_DISTANCE_KINDS,
-  ...RANGE_KIND_ONLY,
-  "special",
-]);
+const RANGE_KINDS: Set<string> = new Set([...RANGE_DISTANCE_KINDS, ...RANGE_KIND_ONLY, "special"]);
 
 const RANGE_UNITS: Set<string> = new Set(["ft", "yd", "mi", "inch"]);
 
@@ -36,18 +32,49 @@ const DURATION_KINDS: Set<string> = new Set([
 ]);
 
 const DURATION_UNITS: Set<string> = new Set([
-  "segment", "round", "turn", "minute", "hour", "day", "week", "month", "year",
+  "segment",
+  "round",
+  "turn",
+  "minute",
+  "hour",
+  "day",
+  "week",
+  "month",
+  "year",
 ]);
 
 const CASTING_TIME_UNITS: Set<string> = new Set([
-  "segment", "round", "turn", "hour", "minute", "action", "bonus_action",
-  "reaction", "special", "instantaneous",
+  "segment",
+  "round",
+  "turn",
+  "hour",
+  "minute",
+  "action",
+  "bonus_action",
+  "reaction",
+  "special",
+  "instantaneous",
 ]);
 
 const AREA_KINDS: Set<string> = new Set([
-  "point", "radius_circle", "radius_sphere", "cone", "line", "rect", "rect_prism",
-  "cylinder", "wall", "cube", "volume", "surface", "tiles", "creatures", "objects",
-  "region", "scope", "special",
+  "point",
+  "radius_circle",
+  "radius_sphere",
+  "cone",
+  "line",
+  "rect",
+  "rect_prism",
+  "cylinder",
+  "wall",
+  "cube",
+  "volume",
+  "surface",
+  "tiles",
+  "creatures",
+  "objects",
+  "region",
+  "scope",
+  "special",
 ]);
 
 const SHAPE_UNITS: Set<string> = new Set(["ft", "yd", "mi", "inch"]);
@@ -55,7 +82,9 @@ const SHAPE_UNITS: Set<string> = new Set(["ft", "yd", "mi", "inch"]);
 const DAMAGE_KINDS: Set<string> = new Set(["none", "modeled", "dm_adjudicated"]);
 
 function hasMode(o: unknown): o is { mode: string } {
-  return !!o && typeof o === "object" && "mode" in o && typeof (o as { mode: unknown }).mode === "string";
+  return (
+    !!o && typeof o === "object" && "mode" in o && typeof (o as { mode: unknown }).mode === "string"
+  );
 }
 
 function isValidScalar(o: unknown): o is SpellScalar {
@@ -72,7 +101,7 @@ function isValidScalar(o: unknown): o is SpellScalar {
 function isValidDicePool(o: unknown): o is DicePool {
   if (!o || typeof o !== "object") return false;
   const p = o as Record<string, unknown>;
-  const terms = (p.terms as unknown[] | undefined);
+  const terms = p.terms as unknown[] | undefined;
   if (!Array.isArray(terms) || terms.length === 0) return false;
   for (const t of terms) {
     if (!t || typeof t !== "object") return false;
@@ -80,7 +109,11 @@ function isValidDicePool(o: unknown): o is DicePool {
     if (typeof term.count !== "number" || typeof term.sides !== "number") return false;
   }
   if (p.flatModifier != null && typeof p.flatModifier !== "number") return false;
-  if (p.flat_modifier != null && typeof (p as { flat_modifier?: number }).flat_modifier !== "number") return false;
+  if (
+    p.flat_modifier != null &&
+    typeof (p as { flat_modifier?: number }).flat_modifier !== "number"
+  )
+    return false;
   return true;
 }
 
@@ -149,11 +182,17 @@ export function validateSpellCastingTime(x: unknown): x is SpellCastingTime {
   if (!unit || !CASTING_TIME_UNITS.has(unit)) return false;
   if (c.text != null && typeof c.text !== "string") return false;
   if (c.baseValue != null && typeof c.baseValue !== "number") return false;
-  if (c.base_value != null && typeof (c as { base_value?: number }).base_value !== "number") return false;
+  if (c.base_value != null && typeof (c as { base_value?: number }).base_value !== "number")
+    return false;
   if (c.perLevel != null && typeof c.perLevel !== "number") return false;
-  if (c.per_level != null && typeof (c as { per_level?: number }).per_level !== "number") return false;
+  if (c.per_level != null && typeof (c as { per_level?: number }).per_level !== "number")
+    return false;
   if (c.levelDivisor != null && typeof c.levelDivisor !== "number") return false;
-  if (c.level_divisor != null && typeof (c as { level_divisor?: number }).level_divisor !== "number") return false;
+  if (
+    c.level_divisor != null &&
+    typeof (c as { level_divisor?: number }).level_divisor !== "number"
+  )
+    return false;
   if (c.rawLegacyValue != null && typeof c.rawLegacyValue !== "string") return false;
   return true;
 }
@@ -222,7 +261,11 @@ function isValidDamagePart(p: unknown): p is DamagePart {
   if (!p || typeof p !== "object") return false;
   const x = p as Record<string, unknown>;
   if (typeof x.id !== "string" || x.id.length === 0 || x.id.length > 32) return false;
-  if (typeof x.damageType !== "string" && typeof (x as { damage_type?: string }).damage_type !== "string") return false;
+  if (
+    typeof x.damageType !== "string" &&
+    typeof (x as { damage_type?: string }).damage_type !== "string"
+  )
+    return false;
   const base = x.base ?? (x as { base?: unknown }).base;
   if (!base || !isValidDicePool(base)) return false;
   return true;
@@ -238,7 +281,7 @@ export function validateSpellDamageSpec(x: unknown): x is SpellDamageSpec {
   if (!kind || !DAMAGE_KINDS.has(kind)) return false;
 
   if (kind === "modeled") {
-    const parts = (d.parts as unknown[] | undefined);
+    const parts = d.parts as unknown[] | undefined;
     if (!Array.isArray(parts) || parts.length === 0) return false;
     for (const part of parts) {
       if (!isValidDamagePart(part)) return false;

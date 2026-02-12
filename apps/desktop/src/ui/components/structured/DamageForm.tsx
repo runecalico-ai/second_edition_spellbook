@@ -207,11 +207,13 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
           }}
           className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
         >
-          {(Object.entries(DAMAGE_KIND_LABELS) as [SpellDamageSpec["kind"], string][]).map(([k, label]) => (
-            <option key={k} value={k}>
-              {label}
-            </option>
-          ))}
+          {(Object.entries(DAMAGE_KIND_LABELS) as [SpellDamageSpec["kind"], string][]).map(
+            ([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ),
+          )}
         </select>
 
         {spec.kind === "modeled" && (
@@ -220,16 +222,16 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               data-testid="damage-form-combine-mode"
               aria-label="Combine mode"
               value={spec.combineMode ?? "sum"}
-              onChange={(e) =>
-                updateSpec({ combineMode: e.target.value as CombineMode })
-              }
+              onChange={(e) => updateSpec({ combineMode: e.target.value as CombineMode })}
               className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
             >
-              {(Object.entries(COMBINE_MODE_LABELS) as [CombineMode, string][]).map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label}
-                </option>
-              ))}
+              {(Object.entries(COMBINE_MODE_LABELS) as [CombineMode, string][]).map(
+                ([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ),
+              )}
             </select>
             <button
               type="button"
@@ -266,16 +268,16 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 data-testid="damage-form-part-type"
                 aria-label="Damage type"
                 value={part.damageType}
-                onChange={(e) =>
-                  updatePart(idx, { damageType: e.target.value as DamageType })
-                }
+                onChange={(e) => updatePart(idx, { damageType: e.target.value as DamageType })}
                 className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
               >
-                {(Object.entries(DAMAGE_TYPE_LABELS) as [DamageType, string][]).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
+                {(Object.entries(DAMAGE_TYPE_LABELS) as [DamageType, string][]).map(
+                  ([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ),
+                )}
               </select>
               <input
                 type="text"
@@ -333,7 +335,9 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 }
                 className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
               >
-                {(Object.entries(MR_INTERACTION_LABELS) as [DamagePart["mrInteraction"], string][]).map(([k, label]) => (
+                {(
+                  Object.entries(MR_INTERACTION_LABELS) as [DamagePart["mrInteraction"], string][]
+                ).map(([k, label]) => (
                   <option key={k} value={k}>
                     {label}
                   </option>
@@ -353,7 +357,9 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               {/* Application Column */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-20">Application:</span>
+                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-20">
+                    Application:
+                  </span>
                   <select
                     data-testid="damage-form-part-application-scope"
                     aria-label="Application scope"
@@ -368,11 +374,13 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     }
                     className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
                   >
-                    {(Object.entries(APPLICATION_SCOPE_LABELS) as [ApplicationScope, string][]).map(([k, label]) => (
-                      <option key={k} value={k}>
-                        {label}
-                      </option>
-                    ))}
+                    {(Object.entries(APPLICATION_SCOPE_LABELS) as [ApplicationScope, string][]).map(
+                      ([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </div>
                 <div className="flex items-center gap-2 ml-20">
@@ -415,7 +423,9 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               {/* Save/Clamping Column */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-12">Save:</span>
+                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-12">
+                    Save:
+                  </span>
                   <select
                     data-testid="damage-form-part-save-kind"
                     aria-label="Save kind"
@@ -430,15 +440,19 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     }
                     className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
                   >
-                    {(Object.entries(SAVE_KIND_LABELS) as [SaveKind, string][]).map(([k, label]) => (
-                      <option key={k} value={k}>
-                        {label}
-                      </option>
-                    ))}
+                    {(Object.entries(SAVE_KIND_LABELS) as [SaveKind, string][]).map(
+                      ([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-12">Clamp:</span>
+                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-12">
+                    Clamp:
+                  </span>
                   <input
                     type="number"
                     data-testid="damage-form-part-clamp-min"
@@ -448,7 +462,10 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     onChange={(e) => {
                       const v = parseNumericInput(e.target.value);
                       updatePart(idx, {
-                        clampTotal: { ...part.clampTotal, minTotal: Number.isNaN(v) ? undefined : v },
+                        clampTotal: {
+                          ...part.clampTotal,
+                          minTotal: Number.isNaN(v) ? undefined : v,
+                        },
                       });
                     }}
                     className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
@@ -462,7 +479,10 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     onChange={(e) => {
                       const v = parseNumericInput(e.target.value);
                       updatePart(idx, {
-                        clampTotal: { ...part.clampTotal, maxTotal: Number.isNaN(v) ? undefined : v },
+                        clampTotal: {
+                          ...part.clampTotal,
+                          maxTotal: Number.isNaN(v) ? undefined : v,
+                        },
                       });
                     }}
                     className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
@@ -474,12 +494,17 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
             {/* Scaling Rules Section */}
             <div className="p-2 bg-neutral-800/20 rounded border border-neutral-800/50 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-neutral-500">Scaling Rules</span>
+                <span className="text-[10px] uppercase font-bold text-neutral-500">
+                  Scaling Rules
+                </span>
                 <button
                   type="button"
                   data-testid="damage-form-part-add-scaling"
                   onClick={() => {
-                    const scaling = [...(part.scaling ?? []), { kind: "add_dice_per_step", driver: "caster_level", step: 1 }];
+                    const scaling = [
+                      ...(part.scaling ?? []),
+                      { kind: "add_dice_per_step", driver: "caster_level", step: 1 },
+                    ];
                     updatePart(idx, { scaling: scaling as ScalingRule[] });
                   }}
                   className="px-2 py-0.5 text-[10px] bg-neutral-700 hover:bg-neutral-600 rounded text-neutral-300"
@@ -488,7 +513,10 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 </button>
               </div>
               {part.scaling?.map((rule, sIdx) => (
-                <div key={`${idx}-${sIdx}-${rule.kind}-${rule.driver}-${rule.step}`} className="flex flex-wrap items-center gap-2 p-1.5 bg-neutral-900/50 rounded border border-neutral-700/30 text-xs">
+                <div
+                  key={`${idx}-${sIdx}-${rule.kind}-${rule.driver}-${rule.step}`}
+                  className="flex flex-wrap items-center gap-2 p-1.5 bg-neutral-900/50 rounded border border-neutral-700/30 text-xs"
+                >
                   <select
                     value={rule.kind}
                     onChange={(e) => {
@@ -499,7 +527,9 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     className="bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
                   >
                     {Object.entries(SCALING_KIND_LABELS).map(([k, label]) => (
-                      <option key={k} value={k}>{label}</option>
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
                     ))}
                   </select>
                   <select
@@ -512,7 +542,9 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     className="bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
                   >
                     {Object.entries(SCALING_DRIVER_LABELS).map(([k, label]) => (
-                      <option key={k} value={k}>{label}</option>
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
                     ))}
                   </select>
                   <div className="flex items-center gap-1">
@@ -535,12 +567,24 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                       type="text"
                       placeholder="e.g. 1d6"
                       className="w-16 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 font-mono"
-                      value={rule.diceIncrement ? `${rule.diceIncrement.count}d${rule.diceIncrement.sides}` : rule.dice_increment ? `${rule.dice_increment.count}d${rule.dice_increment.sides}` : ""}
+                      value={
+                        rule.diceIncrement
+                          ? `${rule.diceIncrement.count}d${rule.diceIncrement.sides}`
+                          : rule.dice_increment
+                            ? `${rule.dice_increment.count}d${rule.dice_increment.sides}`
+                            : ""
+                      }
                       onChange={(e) => {
                         const m = e.target.value.match(/^(\d+)d(\d+)$/i);
                         if (m) {
                           const scaling = [...(part.scaling ?? [])];
-                          scaling[sIdx] = { ...rule, diceIncrement: { count: Number.parseInt(m[1], 10), sides: Number.parseInt(m[2], 10) } };
+                          scaling[sIdx] = {
+                            ...rule,
+                            diceIncrement: {
+                              count: Number.parseInt(m[1], 10),
+                              sides: Number.parseInt(m[2], 10),
+                            },
+                          };
                           updatePart(idx, { scaling });
                         }
                       }}

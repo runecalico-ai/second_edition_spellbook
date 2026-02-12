@@ -35,10 +35,9 @@ export function ComponentCheckboxes({
 
   const updateComponents = useCallback(
     (next: SpellComponents) => {
-      const normalized =
-        isVsm
-          ? { ...next, focus: false, divineFocus: false, experience: false }
-          : next;
+      const normalized = isVsm
+        ? { ...next, focus: false, divineFocus: false, experience: false }
+        : next;
       onChange(normalized, materials);
     },
     [onChange, materials, isVsm],
@@ -46,8 +45,9 @@ export function ComponentCheckboxes({
 
   const updateMaterials = useCallback(
     (next: MaterialComponentSpec[]) => {
-      const components =
-        isVsm ? { ...comp, focus: false, divineFocus: false, experience: false } : comp;
+      const components = isVsm
+        ? { ...comp, focus: false, divineFocus: false, experience: false }
+        : comp;
       onChange(components, next);
     },
     [onChange, comp, isVsm],
@@ -73,10 +73,16 @@ export function ComponentCheckboxes({
   );
 
   const textPreview = isVsm
-    ? [comp.verbal && "V", comp.somatic && "S", comp.material && "M"]
-        .filter(Boolean)
-        .join(", ") || "—"
-    : [comp.verbal && "V", comp.somatic && "S", comp.material && "M", comp.focus && "F", comp.divineFocus && "DF", comp.experience && "XP"]
+    ? [comp.verbal && "V", comp.somatic && "S", comp.material && "M"].filter(Boolean).join(", ") ||
+      "—"
+    : [
+        comp.verbal && "V",
+        comp.somatic && "S",
+        comp.material && "M",
+        comp.focus && "F",
+        comp.divineFocus && "DF",
+        comp.experience && "XP",
+      ]
         .filter(Boolean)
         .join(", ") || "—";
 
@@ -152,12 +158,7 @@ export function ComponentCheckboxes({
         {textPreview}
       </p>
 
-      {comp.material && (
-        <MaterialSubForm
-          materials={materials}
-          onChange={updateMaterials}
-        />
-      )}
+      {comp.material && <MaterialSubForm materials={materials} onChange={updateMaterials} />}
     </div>
   );
 }
@@ -207,7 +208,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
 
       {materials.map((m, idx) => (
         <div
-          key={`material-${idx}-${m.name || 'unnamed'}-${m.quantity || 0}`}
+          key={`material-${idx}-${m.name || "unnamed"}-${m.quantity || 0}`}
           className="grid gap-2 p-2 bg-neutral-900 rounded text-sm"
           data-testid="material-component-row"
         >

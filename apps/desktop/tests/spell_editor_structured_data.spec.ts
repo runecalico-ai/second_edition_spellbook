@@ -125,9 +125,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  test("StructuredFieldInput: duration text preview auto-computes", async ({
-    appContext,
-  }) => {
+  test("StructuredFieldInput: duration text preview auto-computes", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
@@ -156,9 +154,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  test("ComponentCheckboxes: V/S/M state and text preview", async ({
-    appContext,
-  }) => {
+  test("ComponentCheckboxes: V/S/M state and text preview", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 

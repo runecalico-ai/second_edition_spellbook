@@ -1,4 +1,11 @@
-import type { AreaSpec, AreaKind, ShapeUnit, AreaUnit, TileUnit, CountSubject } from "../../../types/spell";
+import type {
+  AreaSpec,
+  AreaKind,
+  ShapeUnit,
+  AreaUnit,
+  TileUnit,
+  CountSubject,
+} from "../../../types/spell";
 import { defaultAreaSpec } from "../../../types/spell";
 import { ScalarInput } from "./ScalarInput";
 
@@ -58,14 +65,35 @@ const COUNT_SUBJECT_OPTIONS: { value: CountSubject; label: string }[] = [
 ];
 
 const REGION_UNITS = [
-  "object", "structure", "building", "bridge", "ship", "fortress",
-  "clearing", "grove", "field", "waterbody", "cavesystem", "valley",
-  "region", "domain", "demiplane", "plane",
+  "object",
+  "structure",
+  "building",
+  "bridge",
+  "ship",
+  "fortress",
+  "clearing",
+  "grove",
+  "field",
+  "waterbody",
+  "cavesystem",
+  "valley",
+  "region",
+  "domain",
+  "demiplane",
+  "plane",
 ];
 
 const SCOPE_UNITS = [
-  "los", "loe", "within_range", "within_spell_range", "within_sight",
-  "within_hearing", "aura", "sanctified_ground", "desecrated_ground", "portfolio_defined",
+  "los",
+  "loe",
+  "within_range",
+  "within_spell_range",
+  "within_sight",
+  "within_hearing",
+  "aura",
+  "sanctified_ground",
+  "desecrated_ground",
+  "portfolio_defined",
 ];
 
 interface AreaFormProps {
@@ -152,7 +180,9 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       </div>
 
       {/* radius_circle / radius_sphere */}
-      {(["radius_circle", "radius_sphere"] as const).includes(spec.kind as "radius_circle" | "radius_sphere") && (
+      {(["radius_circle", "radius_sphere"] as const).includes(
+        spec.kind as "radius_circle" | "radius_sphere",
+      ) && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
             value={spec.radius ?? { mode: "fixed", value: 0 }}
@@ -418,7 +448,9 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
             onChange={(e) => updateSpec({ unit: e.target.value as AreaUnit })}
             className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
           >
-            {AREA_UNIT_OPTIONS.filter((o) => ["ft3", "yd3", "hex", "room", "floor"].includes(o.value)).map((o) => (
+            {AREA_UNIT_OPTIONS.filter((o) =>
+              ["ft3", "yd3", "hex", "room", "floor"].includes(o.value),
+            ).map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>

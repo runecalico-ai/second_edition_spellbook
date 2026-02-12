@@ -1,19 +1,19 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import { StructuredFieldInput } from './StructuredFieldInput';
-import { defaultRangeSpec, defaultDurationSpec, defaultCastingTime } from '../../../types/spell';
-import { fn } from './storybook-utils';
+import type { Meta, StoryObj } from "@storybook/react";
+import { StructuredFieldInput } from "./StructuredFieldInput";
+import { defaultRangeSpec, defaultDurationSpec, defaultCastingTime } from "../../../types/spell";
+import { fn } from "./storybook-utils";
 
 const meta = {
-  title: 'SpellEditor/StructuredFieldInput',
+  title: "SpellEditor/StructuredFieldInput",
   component: StructuredFieldInput,
   parameters: {
-    layout: 'padded',
+    layout: "padded",
   },
-  tags: ['autodocs'],
+  tags: ["autodocs"],
   argTypes: {
     fieldType: {
-      control: 'select',
-      options: ['range', 'duration', 'casting_time'],
+      control: "select",
+      options: ["range", "duration", "casting_time"],
     },
   },
 } satisfies Meta<typeof StructuredFieldInput>;
@@ -23,7 +23,7 @@ type Story = StoryObj<typeof meta>;
 
 export const RangeEmpty: Story = {
   args: {
-    fieldType: 'range',
+    fieldType: "range",
     value: null,
     onChange: fn(),
   },
@@ -31,11 +31,11 @@ export const RangeEmpty: Story = {
 
 export const RangeDistance: Story = {
   args: {
-    fieldType: 'range',
+    fieldType: "range",
     value: {
-      kind: 'distance',
-      distance: { mode: 'fixed', value: 10 },
-      unit: 'ft',
+      kind: "distance",
+      distance: { mode: "fixed", value: 10 },
+      unit: "ft",
     },
     onChange: fn(),
   },
@@ -43,11 +43,11 @@ export const RangeDistance: Story = {
 
 export const RangeDistancePerLevel: Story = {
   args: {
-    fieldType: 'range',
+    fieldType: "range",
     value: {
-      kind: 'distance',
-      distance: { mode: 'per_level', value: 10, perLevel: 5 },
-      unit: 'yd',
+      kind: "distance",
+      distance: { mode: "per_level", value: 10, perLevel: 5 },
+      unit: "yd",
     },
     onChange: fn(),
   },
@@ -55,9 +55,9 @@ export const RangeDistancePerLevel: Story = {
 
 export const RangeTouch: Story = {
   args: {
-    fieldType: 'range',
+    fieldType: "range",
     value: {
-      kind: 'touch',
+      kind: "touch",
     },
     onChange: fn(),
   },
@@ -65,10 +65,10 @@ export const RangeTouch: Story = {
 
 export const RangeSpecial: Story = {
   args: {
-    fieldType: 'range',
+    fieldType: "range",
     value: {
-      kind: 'special',
-      rawLegacyValue: 'Special range description',
+      kind: "special",
+      rawLegacyValue: "Special range description",
     },
     onChange: fn(),
   },
@@ -76,7 +76,7 @@ export const RangeSpecial: Story = {
 
 export const DurationEmpty: Story = {
   args: {
-    fieldType: 'duration',
+    fieldType: "duration",
     value: null,
     onChange: fn(),
   },
@@ -84,9 +84,9 @@ export const DurationEmpty: Story = {
 
 export const DurationInstant: Story = {
   args: {
-    fieldType: 'duration',
+    fieldType: "duration",
     value: {
-      kind: 'instant',
+      kind: "instant",
     },
     onChange: fn(),
   },
@@ -94,11 +94,11 @@ export const DurationInstant: Story = {
 
 export const DurationTime: Story = {
   args: {
-    fieldType: 'duration',
+    fieldType: "duration",
     value: {
-      kind: 'time',
-      unit: 'round',
-      duration: { mode: 'fixed', value: 1 },
+      kind: "time",
+      unit: "round",
+      duration: { mode: "fixed", value: 1 },
     },
     onChange: fn(),
   },
@@ -106,11 +106,11 @@ export const DurationTime: Story = {
 
 export const DurationTimePerLevel: Story = {
   args: {
-    fieldType: 'duration',
+    fieldType: "duration",
     value: {
-      kind: 'time',
-      unit: 'hour',
-      duration: { mode: 'per_level', value: 1, perLevel: 1 },
+      kind: "time",
+      unit: "hour",
+      duration: { mode: "per_level", value: 1, perLevel: 1 },
     },
     onChange: fn(),
   },
@@ -118,9 +118,9 @@ export const DurationTimePerLevel: Story = {
 
 export const DurationConcentration: Story = {
   args: {
-    fieldType: 'duration',
+    fieldType: "duration",
     value: {
-      kind: 'concentration',
+      kind: "concentration",
     },
     onChange: fn(),
   },
@@ -128,10 +128,10 @@ export const DurationConcentration: Story = {
 
 export const DurationConditional: Story = {
   args: {
-    fieldType: 'duration',
+    fieldType: "duration",
     value: {
-      kind: 'conditional',
-      condition: 'Until dispelled or dismissed',
+      kind: "conditional",
+      condition: "Until dispelled or dismissed",
     },
     onChange: fn(),
   },
@@ -139,10 +139,10 @@ export const DurationConditional: Story = {
 
 export const DurationUsageLimited: Story = {
   args: {
-    fieldType: 'duration',
+    fieldType: "duration",
     value: {
-      kind: 'usage_limited',
-      uses: { mode: 'fixed', value: 3 },
+      kind: "usage_limited",
+      uses: { mode: "fixed", value: 3 },
     },
     onChange: fn(),
   },
@@ -150,10 +150,10 @@ export const DurationUsageLimited: Story = {
 
 export const DurationSpecial: Story = {
   args: {
-    fieldType: 'duration',
+    fieldType: "duration",
     value: {
-      kind: 'special',
-      rawLegacyValue: 'Special duration description',
+      kind: "special",
+      rawLegacyValue: "Special duration description",
     },
     onChange: fn(),
   },
@@ -161,7 +161,7 @@ export const DurationSpecial: Story = {
 
 export const CastingTimeEmpty: Story = {
   args: {
-    fieldType: 'casting_time',
+    fieldType: "casting_time",
     value: null,
     onChange: fn(),
   },
@@ -169,12 +169,12 @@ export const CastingTimeEmpty: Story = {
 
 export const CastingTimeSimple: Story = {
   args: {
-    fieldType: 'casting_time',
+    fieldType: "casting_time",
     value: {
       baseValue: 1,
       perLevel: 0,
       levelDivisor: 1,
-      unit: 'segment',
+      unit: "segment",
     },
     onChange: fn(),
   },
@@ -182,12 +182,12 @@ export const CastingTimeSimple: Story = {
 
 export const CastingTimeWithPerLevel: Story = {
   args: {
-    fieldType: 'casting_time',
+    fieldType: "casting_time",
     value: {
       baseValue: 1,
       perLevel: 1,
       levelDivisor: 1,
-      unit: 'round',
+      unit: "round",
     },
     onChange: fn(),
   },
@@ -195,12 +195,12 @@ export const CastingTimeWithPerLevel: Story = {
 
 export const CastingTimeComplex: Story = {
   args: {
-    fieldType: 'casting_time',
+    fieldType: "casting_time",
     value: {
       baseValue: 1,
       perLevel: 2,
       levelDivisor: 3,
-      unit: 'action',
+      unit: "action",
     },
     onChange: fn(),
   },
@@ -208,13 +208,13 @@ export const CastingTimeComplex: Story = {
 
 export const CastingTimeSpecial: Story = {
   args: {
-    fieldType: 'casting_time',
+    fieldType: "casting_time",
     value: {
       baseValue: 1,
       perLevel: 0,
       levelDivisor: 1,
-      unit: 'special',
-      rawLegacyValue: 'Special casting time',
+      unit: "special",
+      rawLegacyValue: "Special casting time",
     },
     onChange: fn(),
   },

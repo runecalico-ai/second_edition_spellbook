@@ -78,7 +78,9 @@ test.describe("Spell Editor canon-first default", () => {
 
     await test.step("Reopen and verify canon text persisted", async () => {
       await app.openSpell(spellName);
-      await expect(page.getByTestId("detail-range-input")).toHaveValue("30 ft", { timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-range-input")).toHaveValue("30 ft", {
+        timeout: TIMEOUTS.short,
+      });
       await expect(page.getByTestId("detail-duration-input")).toHaveValue("1 round/level");
     });
   });
@@ -112,7 +114,9 @@ test.describe("Spell Editor canon-first default", () => {
       await page.getByTestId("range-base-value").fill("30");
       await page.getByTestId("range-unit").selectOption("yd");
       await page.getByTestId("detail-range-expand").click(); // collapse
-      await expect(page.getByTestId("range-kind-select")).not.toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("range-kind-select")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Canon line updated from serialized spec", async () => {
@@ -152,13 +156,23 @@ test.describe("Spell Editor canon-first default", () => {
 
     await test.step("Expand Duration while Range is expanded; Range collapses, Duration expands", async () => {
       await page.getByTestId("detail-duration-expand").click();
-      await expect(page.getByTestId("range-kind-select")).not.toBeVisible({ timeout: TIMEOUTS.short });
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("range-kind-select")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Only Duration structured form visible", async () => {
-      await expect(page.getByTestId("detail-range-expand")).toHaveAttribute("aria-expanded", "false");
-      await expect(page.getByTestId("detail-duration-expand")).toHaveAttribute("aria-expanded", "true");
+      await expect(page.getByTestId("detail-range-expand")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await expect(page.getByTestId("detail-duration-expand")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
     });
   });
 
@@ -183,14 +197,20 @@ test.describe("Spell Editor canon-first default", () => {
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
       await app.openSpell(spellName);
-      await expect(page.getByTestId("detail-duration-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-duration-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Expand Duration, do not edit, collapse", async () => {
       await page.getByTestId("detail-duration-expand").click();
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await page.getByTestId("detail-duration-expand").click(); // collapse without editing
-      await expect(page.getByTestId("duration-kind-select")).not.toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("duration-kind-select")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Canon line unchanged", async () => {
@@ -216,17 +236,23 @@ test.describe("Spell Editor canon-first default", () => {
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
       await app.openSpell(spellName);
-      await expect(page.getByTestId("detail-duration-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-duration-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Expand Duration via click", async () => {
       await page.getByTestId("detail-duration-expand").click();
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Collapse; focus returns to expand button", async () => {
       await page.getByTestId("detail-duration-expand").click();
-      await expect(page.getByTestId("duration-kind-select")).not.toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("duration-kind-select")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       const expandBtn = page.getByTestId("detail-duration-expand");
       await expect(expandBtn).toBeFocused({ timeout: TIMEOUTS.short });
     });
@@ -254,8 +280,12 @@ test.describe("Spell Editor canon-first default", () => {
     await test.step("Expand Duration, loading then structured form appears", async () => {
       await page.getByTestId("detail-duration-expand").click();
       // Wait for loading to finish, then assert structured form
-      await expect(page.getByTestId("detail-duration-loading")).not.toBeVisible({ timeout: TIMEOUTS.medium });
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-duration-loading")).not.toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
   });
 
@@ -345,18 +375,26 @@ test.describe("Spell Editor canon-first default", () => {
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
       await app.openSpell(spellName);
-      await expect(page.getByTestId("detail-duration-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-duration-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Expand Duration and assert special hint/banner", async () => {
       await page.getByTestId("detail-duration-expand").click();
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
       await expect(page.getByTestId("detail-duration-special-hint")).toBeVisible();
       await expect(page.getByTestId("spell-editor-special-fallback-banner")).toBeVisible();
-      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toContainText("could not be fully parsed");
+      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toContainText(
+        "could not be fully parsed",
+      );
       await page.getByTestId("detail-duration-expand").click();
       await expect(page.getByText("(special)")).toBeVisible({ timeout: TIMEOUTS.short });
-      await expect(page.getByTitle("Stored as text; not fully structured for hashing")).toBeVisible();
+      await expect(
+        page.getByTitle("Stored as text; not fully structured for hashing"),
+      ).toBeVisible();
     });
 
     await test.step("Re-expand Duration and edit structured form", async () => {
@@ -406,7 +444,9 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
-  test("Damage and Magic Resistance stay visible and empty when missing", async ({ appContext }) => {
+  test("Damage and Magic Resistance stay visible and empty when missing", async ({
+    appContext,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
@@ -414,7 +454,9 @@ test.describe("Spell Editor canon-first default", () => {
 
     await test.step("New spell shows empty damage/MR lines", async () => {
       await app.navigate("Add Spell");
-      await expect(page.getByTestId("detail-damage-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-damage-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await expect(page.getByTestId("detail-magic-resistance-input")).toBeVisible();
       await expect(page.getByTestId("detail-damage-input")).toHaveValue("");
       await expect(page.getByTestId("detail-magic-resistance-input")).toHaveValue("");
@@ -432,7 +474,9 @@ test.describe("Spell Editor canon-first default", () => {
     });
 
     await test.step("Persisted spell still shows empty damage/MR", async () => {
-      await expect(page.getByTestId("detail-damage-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-damage-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await expect(page.getByTestId("detail-magic-resistance-input")).toBeVisible();
       await expect(page.getByTestId("detail-damage-input")).toHaveValue("");
       await expect(page.getByTestId("detail-magic-resistance-input")).toHaveValue("");
@@ -467,24 +511,35 @@ test.describe("Spell Editor canon-first default", () => {
 
     await test.step("Navigate to Characters and stay on cancel", async () => {
       await page.getByRole("navigation").getByRole("link", { name: "Characters" }).click();
-      await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await handleCustomModal(page, "Cancel");
-      await expect(page.getByRole("heading", { name: "New Spell" })).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByRole("heading", { name: "New Spell" })).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Navigate to Library and stay on cancel", async () => {
       await page.getByRole("navigation").getByRole("link", { name: "Library" }).click();
-      await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await handleCustomModal(page, "Cancel");
-      await expect(page.getByRole("heading", { name: "New Spell" })).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByRole("heading", { name: "New Spell" })).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Click editor Cancel and stay on modal cancel", async () => {
       await page.getByTestId("btn-cancel-edit").click();
-      await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await handleCustomModal(page, "Cancel");
-      await expect(page.getByRole("heading", { name: "New Spell" })).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByRole("heading", { name: "New Spell" })).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
-
   });
 });

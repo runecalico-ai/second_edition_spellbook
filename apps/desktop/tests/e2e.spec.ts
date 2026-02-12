@@ -11,7 +11,6 @@ test.describe("Milestone Verification Flow", () => {
   test.slow();
 
   test("Milestone 1: Basic Spell Management", async ({ appContext }) => {
-
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
@@ -227,7 +226,9 @@ test("Spell editor persists extended fields", async ({ appContext, fileTracker }
     await expect(page.getByTestId("detail-casting-time-input")).toHaveValue("1 round");
     await expect(page.getByTestId("detail-area-input")).toHaveValue("10-ft radius");
     await expect(page.getByTestId("detail-saving-throw-input")).toHaveValue("Negates");
-    await expect(page.getByTestId("detail-material-components-input")).toHaveValue("a crystal lens");
+    await expect(page.getByTestId("detail-material-components-input")).toHaveValue(
+      "a crystal lens",
+    );
     await expect(page.getByTestId("spell-tags-input")).toHaveValue("illusion, test");
     await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
       "Imported description text.",

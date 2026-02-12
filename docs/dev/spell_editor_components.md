@@ -478,7 +478,7 @@ function SpellEditor() {
 
 ## E2E and test IDs
 
-Structured components use `data-testid` attributes (kebab-case) for Playwright. See `apps/desktop/src/AGENTS.md` and the change tasks for the full list.
+All application `data-testid` attributes use **kebab-case** (e.g. `detail-range-input`, `detail-casting-time-expand`, `range-kind-select`). Structured components and the Spell Editor follow this convention for Playwright E2E and Storybook. See `apps/desktop/src/AGENTS.md` (Naming Conventions for `data-testid`) and the change tasks for the full list.
 
 **Canon-first Details block (SpellEditor):** Each canon single-line input and expand control has a stable test ID so E2E and Storybook can target without relying on labels or DOM order.
 

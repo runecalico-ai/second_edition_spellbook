@@ -591,6 +591,8 @@ pnpm e2e -- --headed
 pnpm e2e -- tests/search.spec.ts
 ```
 
+**Test ID convention:** All `data-testid` values in the application use **kebab-case** (e.g. `detail-range-input`, `detail-range-expand`, `save-button`, `spell-name-input`). Use kebab-case when adding new test IDs so E2E and Storybook locators stay consistent. See `apps/desktop/src/AGENTS.md` (Naming Conventions for `data-testid`) and [Spell Editor Components Guide](dev/spell_editor_components.md#e2e-and-test-ids) for the full list.
+
 **Spell Editor E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand–edit–collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. Both use the same fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and target canon inputs/expand controls via `data-testid` (e.g. `detail-range-input`, `detail-range-expand`). Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
 
 ### Test Structure

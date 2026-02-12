@@ -165,7 +165,8 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
               <span className="text-xs text-neutral-500">Save #{idx + 1}</span>
               <button
                 type="button"
-                data-testid="saving-throw-remove-multiple"
+                data-testid={`saving-throw-remove-multiple-${idx}`}
+                aria-label="Remove save"
                 onClick={() => removeMultiple(idx)}
                 className="text-xs text-red-400 hover:bg-neutral-800 rounded px-1"
               >

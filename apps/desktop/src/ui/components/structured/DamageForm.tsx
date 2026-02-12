@@ -516,8 +516,11 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 <div
                   key={`${idx}-${sIdx}-${rule.kind}-${rule.driver}-${rule.step}`}
                   className="flex flex-wrap items-center gap-2 p-1.5 bg-neutral-900/50 rounded border border-neutral-700/30 text-xs"
+                  data-testid="damage-form-part-scaling-rule"
                 >
                   <select
+                    data-testid="damage-form-part-scaling-kind"
+                    aria-label="Scaling kind"
                     value={rule.kind}
                     onChange={(e) => {
                       const scaling = [...(part.scaling ?? [])];
@@ -533,6 +536,8 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     ))}
                   </select>
                   <select
+                    data-testid="damage-form-part-scaling-driver"
+                    aria-label="Scaling driver"
                     value={rule.driver}
                     onChange={(e) => {
                       const scaling = [...(part.scaling ?? [])];
@@ -551,13 +556,15 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     <span className="text-[10px] text-neutral-500">Every</span>
                     <input
                       type="number"
+                      data-testid="damage-form-part-scaling-step"
+                      aria-label="Scaling step"
                       placeholder="Step"
                       className="w-10 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
                       value={rule.step}
                       onChange={(e) => {
                         const v = parseNumericInput(e.target.value);
                         const scaling = [...(part.scaling ?? [])];
-                        scaling[sIdx] = { ...rule, step: Number.isNaN(v) ? 1 : v };
+                        scaling[sIdx] = { ...rule, step: Number.isNaN(v) ? 1 : Math.max(1, v) };
                         updatePart(idx, { scaling });
                       }}
                     />
@@ -565,6 +572,8 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   {rule.kind === "add_dice_per_step" && (
                     <input
                       type="text"
+                      data-testid="damage-form-part-scaling-dice-increment"
+                      aria-label="Dice increment (e.g. 1d6)"
                       placeholder="e.g. 1d6"
                       className="w-16 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 font-mono"
                       value={
@@ -593,6 +602,8 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   {rule.kind === "add_flat_per_step" && (
                     <input
                       type="number"
+                      data-testid="damage-form-part-scaling-flat-increment"
+                      aria-label="Flat increment"
                       placeholder="+1"
                       className="w-12 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
                       value={rule.flatIncrement ?? rule.flat_increment ?? ""}
@@ -606,6 +617,8 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   )}
                   <button
                     type="button"
+                    data-testid="damage-form-part-remove-scaling"
+                    aria-label="Remove scaling rule"
                     onClick={() => {
                       const scaling = part.scaling?.filter((_, i) => i !== sIdx);
                       updatePart(idx, { scaling });

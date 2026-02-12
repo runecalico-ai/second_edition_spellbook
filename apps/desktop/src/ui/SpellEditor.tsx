@@ -1745,6 +1745,7 @@ export default function SpellEditor() {
             <button
               type="button"
               data-testid="btn-reparse-artifact"
+              aria-label="Reparse spell from artifact"
               onClick={async () => {
                 if (!form.artifacts || form.artifacts.length === 0) return;
                 const artifactId = form.artifacts[0].id;

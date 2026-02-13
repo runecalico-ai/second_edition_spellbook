@@ -791,6 +791,94 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("Canonical_data spell save without expansion preserves canon text byte-for-byte", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Canon Preserve No Expand ${runId}`;
+    const canonRange = "30  ft";
+
+    await test.step("Create spell and add canonical_data by structured edit", async () => {
+      await app.navigate("Add Spell");
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("No-expand canonical preservation");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-range-input").fill(canonRange);
+
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("detail-range-input")).toHaveValue(canonRange);
+
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen and save without expanding details", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-range-input")).toHaveValue(canonRange);
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Canon text remains byte-equivalent", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-range-input")).toHaveValue(canonRange);
+    });
+  });
+
+  test("Expand view-only then collapse/save preserves unchanged canon text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Canon Preserve View Only ${runId}`;
+    const canonDuration = "1   round/level";
+
+    await test.step("Create spell with canonical_data available", async () => {
+      await app.navigate("Add Spell");
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("View-only canonical preservation");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-duration-input").fill(canonDuration);
+
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(canonDuration);
+
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen, expand view-only, collapse, then save", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(canonDuration);
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(canonDuration);
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Canon text remains unchanged", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(canonDuration);
+    });
+  });
+
   test("Unsaved beforeunload and multiple navigation paths warn and allow stay", async ({
     appContext,
   }) => {

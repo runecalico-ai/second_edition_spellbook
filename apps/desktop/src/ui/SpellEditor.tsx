@@ -717,7 +717,16 @@ export default function SpellEditor() {
     const tokens = normalized.split(/[^A-Z]+/).filter(Boolean);
     const inferred = emptySpellComponents();
 
-    for (const token of tokens) {
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      const nextToken = tokens[index + 1];
+      const prevToken = tokens[index - 1];
+
+      if (token === "DIVINE" && nextToken === "FOCUS") {
+        inferred.divineFocus = true;
+        continue;
+      }
+
       switch (token) {
         case "V":
         case "VERBAL":
@@ -732,8 +741,12 @@ export default function SpellEditor() {
           inferred.material = true;
           continue;
         case "F":
-        case "FOCUS":
           inferred.focus = true;
+          continue;
+        case "FOCUS":
+          if (prevToken !== "DIVINE") {
+            inferred.focus = true;
+          }
           continue;
         case "DF":
           inferred.divineFocus = true;

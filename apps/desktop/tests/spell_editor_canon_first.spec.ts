@@ -631,6 +631,166 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("Saving Throw and Magic Resistance canon mappings expand to semantic structured kinds", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+
+    const cases = [
+      { label: "none", savingThrow: "None", savingThrowKind: "none", mr: "", mrKind: "unknown" },
+      {
+        label: "negates pattern + yes pattern",
+        savingThrow: "Save negates",
+        savingThrowKind: "single",
+        mr: "MR applies (yes)",
+        mrKind: "normal",
+      },
+      {
+        label: "half pattern + no pattern",
+        savingThrow: "1/2 damage",
+        savingThrowKind: "single",
+        mr: "Does not apply",
+        mrKind: "ignores_mr",
+      },
+      {
+        label: "partial pattern + partial pattern",
+        savingThrow: "Partial effect",
+        savingThrowKind: "single",
+        mr: "Partial",
+        mrKind: "partial",
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const spellName = `Canon Map ${testCase.label} ${runId}`;
+      await test.step(`Create spell: ${testCase.label}`, async () => {
+        await app.navigate("Add Spell");
+        await page.getByTestId("spell-name-input").fill(spellName);
+        await page.getByTestId("spell-level-input").fill("1");
+        await page.getByTestId("spell-description-textarea").fill("Canon mapping validation");
+        await page.getByTestId("spell-classes-input").fill("Wizard");
+        await page.getByLabel("School").fill("Invocation");
+        await page.getByTestId("detail-saving-throw-input").fill(testCase.savingThrow);
+        await page.getByTestId("detail-magic-resistance-input").fill(testCase.mr);
+        await page.getByTestId("btn-save-spell").click();
+        await app.waitForLibrary();
+      });
+
+      await test.step(`Expand and assert structured kinds: ${testCase.label}`, async () => {
+        await app.openSpell(spellName);
+
+        await page.getByTestId("detail-saving-throw-expand").click();
+        await expect(page.getByTestId("saving-throw-kind")).toHaveValue(testCase.savingThrowKind);
+        if (testCase.savingThrowKind === "single") {
+          await expect(page.getByTestId("saving-throw-kind")).not.toHaveValue("dm_adjudicated");
+        }
+
+        await page.getByTestId("detail-magic-resistance-expand").click();
+        await expect(page.getByTestId("magic-resistance-kind")).toHaveValue(testCase.mrKind);
+        if (testCase.mrKind !== "unknown") {
+          await expect(page.getByTestId("magic-resistance-kind")).not.toHaveValue("special");
+        }
+      });
+    }
+  });
+
+  test("View-only expand does not rewrite parseable Saving Throw and Magic Resistance canon text on save", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `View Only Save Map ${runId}`;
+
+    await test.step("Create spell with parseable canon text", async () => {
+      await app.navigate("Add Spell");
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("View-only expansion save check");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-saving-throw-input").fill("Negates");
+      await page.getByTestId("detail-magic-resistance-input").fill("Yes");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen and expand fields without editing", async () => {
+      await app.openSpell(spellName);
+      await page.getByTestId("detail-saving-throw-expand").click();
+      await expect(page.getByTestId("saving-throw-kind")).toHaveValue("single");
+      await page.getByTestId("detail-magic-resistance-expand").click();
+      await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("normal");
+    });
+
+    await test.step("Save and verify canon lines remain unchanged", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-saving-throw-input")).toHaveValue("Negates");
+      await expect(page.getByTestId("detail-magic-resistance-input")).toHaveValue("Yes");
+    });
+  });
+
+  test("Unrelated save preserves previously loaded Saving Throw/MR structured specs", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Preserve Structured Specs ${runId}`;
+
+    await test.step("Create baseline spell", async () => {
+      await app.navigate("Add Spell");
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Baseline for spec preservation");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-saving-throw-input").fill("Negates");
+      await page.getByTestId("detail-magic-resistance-input").fill("Partial");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Add richer structured details and save", async () => {
+      await app.openSpell(spellName);
+
+      await page.getByTestId("detail-saving-throw-expand").click();
+      await expect(page.getByTestId("saving-throw-kind")).toHaveValue("single");
+      await page.getByTestId("saving-throw-single-modifier").fill("2");
+
+      await page.getByTestId("detail-magic-resistance-expand").click();
+      await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
+      await page.getByTestId("magic-resistance-part-ids").fill("part_a, part_b");
+
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Edit unrelated field and save", async () => {
+      await app.openSpell(spellName);
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Baseline for spec preservation (updated description)");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen and verify structured details persisted", async () => {
+      await app.openSpell(spellName);
+      await page.getByTestId("detail-saving-throw-expand").click();
+      await expect(page.getByTestId("saving-throw-kind")).toHaveValue("single");
+      await expect(page.getByTestId("saving-throw-single-modifier")).toHaveValue("2");
+
+      await page.getByTestId("detail-magic-resistance-expand").click();
+      await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
+      await expect(page.getByTestId("magic-resistance-part-ids")).toHaveValue("part_a, part_b");
+    });
+  });
+
   test("Unsaved beforeunload and multiple navigation paths warn and allow stay", async ({
     appContext,
   }) => {

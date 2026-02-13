@@ -15,8 +15,6 @@ import {
   componentsToText,
   damageToText,
   defaultAreaSpec,
-  defaultMagicResistanceSpec,
-  defaultSavingThrowSpec,
   defaultSpellDamageSpec,
   magicResistanceToText,
   savingThrowToText,
@@ -265,6 +263,84 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
   } as MagicResistanceSpec;
 }
 
+function normalizeLegacyText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[()\[\],.;:]+/g, " ")
+    .replace(/[\s_-]+/g, " ")
+    .trim();
+}
+
+function hasTokenPattern(text: string, pattern: RegExp): boolean {
+  return pattern.test(text);
+}
+
+function mapLegacySavingThrow(legacy: string): SavingThrowSpec {
+  const normalized = normalizeLegacyText(legacy);
+  if (!normalized || hasTokenPattern(normalized, /^(none|no|n\/a|na|nil|—|-)$|\bno save\b/)) {
+    return { kind: "none" };
+  }
+
+  if (hasTokenPattern(normalized, /\bnegat(?:e|es|ed|ing)?\b/)) {
+    return {
+      kind: "single",
+      single: {
+        saveType: "spell",
+        onSuccess: { result: "no_effect" },
+        onFailure: { result: "full_effect" },
+      },
+    };
+  }
+
+  if (hasTokenPattern(normalized, /\bhalf\b|\b1\s*\/\s*2\b/)) {
+    return {
+      kind: "single",
+      single: {
+        saveType: "spell",
+        onSuccess: { result: "reduced_effect" },
+        onFailure: { result: "full_effect" },
+      },
+    };
+  }
+
+  if (hasTokenPattern(normalized, /\bpartial\b/)) {
+    return {
+      kind: "single",
+      single: {
+        saveType: "spell",
+        onSuccess: { result: "partial_non_damage_only" },
+        onFailure: { result: "full_effect" },
+      },
+    };
+  }
+
+  return { kind: "dm_adjudicated", dmGuidance: legacy };
+}
+
+function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {
+  const normalized = normalizeLegacyText(legacy);
+  if (!normalized) return { kind: "unknown" };
+
+  if (hasTokenPattern(normalized, /\byes\b|\bapplies\b|\ballowed\b/)) {
+    return { kind: "normal", appliesTo: "whole_spell" };
+  }
+
+  if (hasTokenPattern(normalized, /\bno\b|\bdoes not apply\b|\bbypassed\b|\bignore[sd]?\b/)) {
+    return { kind: "ignores_mr", appliesTo: "whole_spell" };
+  }
+
+  if (hasTokenPattern(normalized, /\bpartial\b/)) {
+    return {
+      kind: "partial",
+      appliesTo: "whole_spell",
+      partial: { scope: "damage_only" },
+    };
+  }
+
+  return { kind: "special", appliesTo: "whole_spell", specialRule: legacy };
+}
+
 export default function SpellEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -304,6 +380,8 @@ export default function SpellEditor() {
     MaterialComponentSpec[]
   >([]);
   const [hasLoadedMaterialComponentsSpec, setHasLoadedMaterialComponentsSpec] = useState(false);
+  const [hasLoadedSavingThrowSpec, setHasLoadedSavingThrowSpec] = useState(false);
+  const [hasLoadedMagicResistanceSpec, setHasLoadedMagicResistanceSpec] = useState(false);
   const [hasExpandedComponentsEdit, setHasExpandedComponentsEdit] = useState(false);
   const [hashExpanded, setHashExpanded] = useState(false);
   type Tradition = "ARCANE" | "DIVINE" | "BOTH";
@@ -352,6 +430,8 @@ export default function SpellEditor() {
     setStructuredComponents(null);
     setStructuredMaterialComponents([]);
     setHasLoadedMaterialComponentsSpec(false);
+    setHasLoadedSavingThrowSpec(false);
+    setHasLoadedMagicResistanceSpec(false);
     setHasExpandedComponentsEdit(false);
     setExpandedDetailField(null);
     setDetailLoading(null);
@@ -539,6 +619,7 @@ export default function SpellEditor() {
                       canonical.saving_throw as unknown as Record<string, unknown>,
                     ),
                   );
+                  setHasLoadedSavingThrowSpec(true);
                 }
                 if (canonical.magic_resistance) {
                   setStructuredMagicResistance(
@@ -546,6 +627,7 @@ export default function SpellEditor() {
                       canonical.magic_resistance as unknown as Record<string, unknown>,
                     ),
                   );
+                  setHasLoadedMagicResistanceSpec(true);
                 }
                 if (
                   canonical.components ||
@@ -627,12 +709,14 @@ export default function SpellEditor() {
           break;
         case "savingThrow":
           setStructuredSavingThrow(null);
+          setHasLoadedSavingThrowSpec(false);
           break;
         case "damage":
           setStructuredDamage(null);
           break;
         case "magicResistance":
           setStructuredMagicResistance(null);
+          setHasLoadedMagicResistanceSpec(false);
           break;
         case "components":
         case "materialComponents":
@@ -900,14 +984,10 @@ export default function SpellEditor() {
           break;
         }
         case "savingThrow":
-          setStructuredSavingThrow(
-            legacy ? { kind: "dm_adjudicated", dmGuidance: legacy } : defaultSavingThrowSpec(),
-          );
+          setStructuredSavingThrow(mapLegacySavingThrow(legacy));
           break;
         case "magicResistance":
-          setStructuredMagicResistance(
-            legacy ? { kind: "special", specialRule: legacy } : defaultMagicResistanceSpec(),
-          );
+          setStructuredMagicResistance(mapLegacyMagicResistance(legacy));
           break;
         case "components":
         case "materialComponents":
@@ -963,14 +1043,10 @@ export default function SpellEditor() {
           );
           break;
         case "savingThrow":
-          setStructuredSavingThrow(
-            leg ? { kind: "dm_adjudicated", dmGuidance: leg } : defaultSavingThrowSpec(),
-          );
+          setStructuredSavingThrow(mapLegacySavingThrow(leg));
           break;
         case "magicResistance":
-          setStructuredMagicResistance(
-            leg ? { kind: "special", specialRule: leg } : defaultMagicResistanceSpec(),
-          );
+          setStructuredMagicResistance(mapLegacyMagicResistance(leg));
           break;
         case "components":
         case "materialComponents":
@@ -1145,6 +1221,17 @@ export default function SpellEditor() {
         }
       }
 
+      const useStructuredSavingThrowText =
+        detailDirty.savingThrow || !(form.savingThrow ?? "").trim();
+      const useStructuredMagicResistanceText =
+        detailDirty.magicResistance || !(form.magicResistance ?? "").trim();
+      const shouldSendSavingThrowSpec =
+        structuredSavingThrow !== null &&
+        (hasLoadedSavingThrowSpec || useStructuredSavingThrowText);
+      const shouldSendMagicResistanceSpec =
+        structuredMagicResistance !== null &&
+        (hasLoadedMagicResistanceSpec || useStructuredMagicResistanceText);
+
       const spellData: SpellDetail = {
         ...form,
         ...formOverrides,
@@ -1165,14 +1252,16 @@ export default function SpellEditor() {
         damageSpec: structuredDamage ?? undefined,
         savingThrow:
           formOverrides.savingThrow ??
-          (structuredSavingThrow ? savingThrowToText(structuredSavingThrow) : form.savingThrow),
-        savingThrowSpec: structuredSavingThrow ?? undefined,
+          (structuredSavingThrow && useStructuredSavingThrowText
+            ? savingThrowToText(structuredSavingThrow)
+            : form.savingThrow),
+        savingThrowSpec: shouldSendSavingThrowSpec ? structuredSavingThrow : undefined,
         magicResistance:
           formOverrides.magicResistance ??
-          (structuredMagicResistance
+          (structuredMagicResistance && useStructuredMagicResistanceText
             ? magicResistanceToText(structuredMagicResistance)
             : form.magicResistance),
-        magicResistanceSpec: structuredMagicResistance ?? undefined,
+        magicResistanceSpec: shouldSendMagicResistanceSpec ? structuredMagicResistance : undefined,
         components: formOverrides.components ?? (compStr || form.components),
         materialComponents: formOverrides.materialComponents ?? (matStr || form.materialComponents),
       };

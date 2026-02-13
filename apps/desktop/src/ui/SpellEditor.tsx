@@ -380,6 +380,8 @@ export default function SpellEditor() {
     MaterialComponentSpec[]
   >([]);
   const [hasLoadedMaterialComponentsSpec, setHasLoadedMaterialComponentsSpec] = useState(false);
+  const [hasLoadedSavingThrowSpec, setHasLoadedSavingThrowSpec] = useState(false);
+  const [hasLoadedMagicResistanceSpec, setHasLoadedMagicResistanceSpec] = useState(false);
   const [hasExpandedComponentsEdit, setHasExpandedComponentsEdit] = useState(false);
   const [hashExpanded, setHashExpanded] = useState(false);
   type Tradition = "ARCANE" | "DIVINE" | "BOTH";
@@ -428,6 +430,8 @@ export default function SpellEditor() {
     setStructuredComponents(null);
     setStructuredMaterialComponents([]);
     setHasLoadedMaterialComponentsSpec(false);
+    setHasLoadedSavingThrowSpec(false);
+    setHasLoadedMagicResistanceSpec(false);
     setHasExpandedComponentsEdit(false);
     setExpandedDetailField(null);
     setDetailLoading(null);
@@ -615,6 +619,7 @@ export default function SpellEditor() {
                       canonical.saving_throw as unknown as Record<string, unknown>,
                     ),
                   );
+                  setHasLoadedSavingThrowSpec(true);
                 }
                 if (canonical.magic_resistance) {
                   setStructuredMagicResistance(
@@ -622,6 +627,7 @@ export default function SpellEditor() {
                       canonical.magic_resistance as unknown as Record<string, unknown>,
                     ),
                   );
+                  setHasLoadedMagicResistanceSpec(true);
                 }
                 if (
                   canonical.components ||
@@ -703,12 +709,14 @@ export default function SpellEditor() {
           break;
         case "savingThrow":
           setStructuredSavingThrow(null);
+          setHasLoadedSavingThrowSpec(false);
           break;
         case "damage":
           setStructuredDamage(null);
           break;
         case "magicResistance":
           setStructuredMagicResistance(null);
+          setHasLoadedMagicResistanceSpec(false);
           break;
         case "components":
         case "materialComponents":
@@ -1137,9 +1145,11 @@ export default function SpellEditor() {
       const useStructuredMagicResistanceText =
         detailDirty.magicResistance || !(form.magicResistance ?? "").trim();
       const shouldSendSavingThrowSpec =
-        structuredSavingThrow !== null && useStructuredSavingThrowText;
+        structuredSavingThrow !== null &&
+        (hasLoadedSavingThrowSpec || useStructuredSavingThrowText);
       const shouldSendMagicResistanceSpec =
-        structuredMagicResistance !== null && useStructuredMagicResistanceText;
+        structuredMagicResistance !== null &&
+        (hasLoadedMagicResistanceSpec || useStructuredMagicResistanceText);
 
       const spellData: SpellDetail = {
         ...form,

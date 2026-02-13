@@ -689,6 +689,63 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("Unrelated save preserves previously loaded Saving Throw/MR structured specs", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Preserve Structured Specs ${runId}`;
+
+    await test.step("Create baseline spell", async () => {
+      await app.navigate("Add Spell");
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Baseline for spec preservation");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-saving-throw-input").fill("Negates");
+      await page.getByTestId("detail-magic-resistance-input").fill("Partial");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Add richer structured details and save", async () => {
+      await app.openSpell(spellName);
+
+      await page.getByTestId("detail-saving-throw-expand").click();
+      await expect(page.getByTestId("saving-throw-kind")).toHaveValue("single");
+      await page.getByTestId("saving-throw-single-modifier").fill("2");
+
+      await page.getByTestId("detail-magic-resistance-expand").click();
+      await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
+      await page.getByTestId("magic-resistance-part-ids").fill("part_a, part_b");
+
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Edit unrelated field and save", async () => {
+      await app.openSpell(spellName);
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Baseline for spec preservation (updated description)");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen and verify structured details persisted", async () => {
+      await app.openSpell(spellName);
+      await page.getByTestId("detail-saving-throw-expand").click();
+      await expect(page.getByTestId("saving-throw-kind")).toHaveValue("single");
+      await expect(page.getByTestId("saving-throw-single-modifier")).toHaveValue("2");
+
+      await page.getByTestId("detail-magic-resistance-expand").click();
+      await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
+      await expect(page.getByTestId("magic-resistance-part-ids")).toHaveValue("part_a, part_b");
+    });
+  });
+
   test("Unsaved beforeunload and multiple navigation paths warn and allow stay", async ({
     appContext,
   }) => {

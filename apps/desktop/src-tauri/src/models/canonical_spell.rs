@@ -1513,6 +1513,44 @@ mod tests {
     }
 
     #[test]
+    fn test_from_spell_detail_components_fallback_when_specs_omitted() {
+        use crate::models::spell::SpellDetail;
+
+        let detail = SpellDetail {
+            id: Some(1),
+            name: "Fallback Components".into(),
+            school: Some("Evocation".into()),
+            sphere: None,
+            class_list: Some("Wizard".into()),
+            level: 2,
+            components: Some("V, S, M".into()),
+            material_components: Some("ruby dust (worth 100 gp, consumed)".into()),
+            components_spec: None,
+            material_components_spec: None,
+            description: "Fallback parse behavior.".into(),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            ..Default::default()
+        };
+
+        let canon = CanonicalSpell::try_from(detail).unwrap();
+        let components = canon
+            .components
+            .expect("components should be parsed from legacy text");
+        assert!(components.verbal);
+        assert!(components.somatic);
+        assert!(components.material);
+
+        let materials = canon
+            .material_components
+            .expect("material components should be parsed from legacy text");
+        assert_eq!(materials.len(), 1);
+        assert_eq!(materials[0].name, "ruby dust");
+        assert_eq!(materials[0].gp_value, Some(100.0));
+        assert_eq!(materials[0].is_consumed, Some(true));
+    }
+
+    #[test]
     fn test_from_spell_detail_inference() {
         use crate::models::spell::SpellDetail;
 

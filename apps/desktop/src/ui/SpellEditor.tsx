@@ -638,6 +638,8 @@ export default function SpellEditor() {
         case "materialComponents":
           setStructuredComponents(null);
           setStructuredMaterialComponents([]);
+          setHasLoadedMaterialComponentsSpec(false);
+          setHasExpandedComponentsEdit(false);
           break;
       }
     }

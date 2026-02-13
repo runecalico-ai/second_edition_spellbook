@@ -125,7 +125,9 @@ test.describe("Spell Editor canon-first default", () => {
       });
       await expect(page.getByTestId("component-checkbox-somatic")).toBeChecked();
       await expect(page.getByTestId("component-checkbox-material")).toBeChecked();
-      await expect(page.getByTestId("material-component-name").first()).toHaveValue(materialsText);
+      await expect(page.getByTestId("material-component-name").first()).toHaveValue("ruby dust");
+      await expect(page.getByTestId("material-component-gp-value").first()).toHaveValue("100");
+      await expect(page.getByTestId("material-component-consumed").first()).toBeChecked();
       await expect(page.getByTestId("component-text-preview")).toContainText("V, S, M");
     });
   });

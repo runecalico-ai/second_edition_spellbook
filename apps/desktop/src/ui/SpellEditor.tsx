@@ -656,14 +656,7 @@ export default function SpellEditor() {
         break;
       case "components":
       case "materialComponents": {
-        const comp = structuredComponents ?? {
-          verbal: false,
-          somatic: false,
-          material: false,
-          focus: false,
-          divineFocus: false,
-          experience: false,
-        };
+        const comp = structuredComponents ?? emptySpellComponents();
         const { components: cs, materialComponents: ms } = componentsToText(
           comp,
           structuredMaterialComponents,
@@ -705,6 +698,77 @@ export default function SpellEditor() {
         }
         break;
     }
+  };
+
+  const emptySpellComponents = (): SpellComponents => ({
+    verbal: false,
+    somatic: false,
+    material: false,
+    focus: false,
+    divineFocus: false,
+    experience: false,
+  });
+
+  const inferSpellComponentsFromLegacy = (
+    componentsLegacy: string,
+    hasMaterialText: boolean,
+  ): SpellComponents => {
+    const normalized = componentsLegacy.toUpperCase();
+    const tokens = normalized.split(/[^A-Z]+/).filter(Boolean);
+    const inferred = emptySpellComponents();
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      const nextToken = tokens[index + 1];
+      const prevToken = tokens[index - 1];
+
+      if (token === "DIVINE" && nextToken === "FOCUS") {
+        inferred.divineFocus = true;
+        continue;
+      }
+
+      switch (token) {
+        case "V":
+        case "VERBAL":
+          inferred.verbal = true;
+          continue;
+        case "S":
+        case "SOMATIC":
+          inferred.somatic = true;
+          continue;
+        case "M":
+        case "MATERIAL":
+          inferred.material = true;
+          continue;
+        case "F":
+          inferred.focus = true;
+          continue;
+        case "FOCUS":
+          if (prevToken !== "DIVINE") {
+            inferred.focus = true;
+          }
+          continue;
+        case "DF":
+          inferred.divineFocus = true;
+          continue;
+        case "XP":
+        case "EXP":
+        case "EXPERIENCE":
+          inferred.experience = true;
+          continue;
+      }
+
+      // Support compact shorthand like "VS", "VSM", or "SMF".
+      if (/^[VSMF]+$/.test(token)) {
+        if (token.includes("V")) inferred.verbal = true;
+        if (token.includes("S")) inferred.somatic = true;
+        if (token.includes("M")) inferred.material = true;
+        if (token.includes("F")) inferred.focus = true;
+      }
+    }
+
+    inferred.material = inferred.material || hasMaterialText;
+    return inferred;
   };
 
   /** Collapse current expanded field; if dirty, serialize to canon line. */
@@ -847,26 +911,30 @@ export default function SpellEditor() {
           break;
         case "components":
         case "materialComponents":
-          if (legacy || (field === "materialComponents" && form.materialComponents)) {
-            const compLegacy = field === "components" ? legacy : (form.components ?? "");
-            const parsed = await invoke<SpellComponents>("parse_spell_components", {
-              legacy: compLegacy,
-            });
+          {
+            const compLegacy = form.components ?? "";
+            const hasComponentText = !!compLegacy.trim();
             const hasMaterialText = !!form.materialComponents?.trim();
-            setStructuredComponents({
-              verbal: parsed.verbal ?? false,
-              somatic: parsed.somatic ?? false,
-              material: (parsed.material ?? false) || hasMaterialText,
-              focus: parsed.focus ?? false,
-              divineFocus: parsed.divineFocus ?? false,
-              experience: parsed.experience ?? false,
-            });
-            setStructuredMaterialComponents(
-              form.materialComponents ? [{ name: form.materialComponents, quantity: 1.0 }] : [],
-            );
-          } else {
-            setStructuredComponents(null);
-            setStructuredMaterialComponents([]);
+
+            if (hasComponentText || hasMaterialText) {
+              const parsed = await invoke<SpellComponents>("parse_spell_components", {
+                legacy: compLegacy,
+              });
+              setStructuredComponents({
+                verbal: parsed.verbal ?? false,
+                somatic: parsed.somatic ?? false,
+                material: (parsed.material ?? false) || hasMaterialText,
+                focus: parsed.focus ?? false,
+                divineFocus: parsed.divineFocus ?? false,
+                experience: parsed.experience ?? false,
+              });
+              setStructuredMaterialComponents(
+                form.materialComponents ? [{ name: form.materialComponents, quantity: 1.0 }] : [],
+              );
+            } else {
+              setStructuredComponents(null);
+              setStructuredMaterialComponents([]);
+            }
           }
           break;
       }
@@ -906,8 +974,21 @@ export default function SpellEditor() {
           break;
         case "components":
         case "materialComponents":
-          setStructuredComponents(null);
-          setStructuredMaterialComponents([]);
+          {
+            const hasComponentText = !!form.components?.trim();
+            const hasMaterialText = !!form.materialComponents?.trim();
+            if (hasComponentText || hasMaterialText) {
+              setStructuredComponents(
+                inferSpellComponentsFromLegacy(form.components ?? "", hasMaterialText),
+              );
+              setStructuredMaterialComponents(
+                form.materialComponents ? [{ name: form.materialComponents, quantity: 1.0 }] : [],
+              );
+            } else {
+              setStructuredComponents(null);
+              setStructuredMaterialComponents([]);
+            }
+          }
           break;
       }
     } finally {

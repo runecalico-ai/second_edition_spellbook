@@ -132,6 +132,51 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("Material row expansion parses components canon text when material text is empty", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Material Expand Parses Components ${runId}`;
+
+    await test.step("Create spell with V/S components and empty material text", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Material row expand parsing check.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-components-input").fill("V, S");
+      await page.getByTestId("detail-material-components-input").fill("");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Expand Material Components row and verify checkbox state parses from components line", async () => {
+      await app.openSpell(spellName);
+      await page.getByTestId("detail-material-components-expand").click();
+      await expect(page.getByTestId("component-checkbox-verbal")).toBeChecked({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("component-checkbox-somatic")).toBeChecked();
+      await expect(page.getByTestId("component-checkbox-material")).not.toBeChecked();
+      await page.getByTestId("detail-material-components-expand").click();
+      await expect(page.getByTestId("detail-components-input")).toHaveValue("V, S");
+    });
+
+    await test.step("Save after material row collapse and verify canon line behavior is preserved", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-components-input")).toHaveValue("V, S");
+      await expect(page.getByTestId("detail-material-components-input")).toHaveValue("");
+    });
+  });
+
   test("Expand field, edit structured form, collapse; single line updates from spec", async ({
     appContext,
   }) => {

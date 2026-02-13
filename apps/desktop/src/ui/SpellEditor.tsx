@@ -303,6 +303,8 @@ export default function SpellEditor() {
   const [structuredMaterialComponents, setStructuredMaterialComponents] = useState<
     MaterialComponentSpec[]
   >([]);
+  const [hasLoadedMaterialComponentsSpec, setHasLoadedMaterialComponentsSpec] = useState(false);
+  const [hasExpandedComponentsEdit, setHasExpandedComponentsEdit] = useState(false);
   const [hashExpanded, setHashExpanded] = useState(false);
   type Tradition = "ARCANE" | "DIVINE" | "BOTH";
   const [tradition, setTradition] = useState<Tradition>("ARCANE");
@@ -349,6 +351,8 @@ export default function SpellEditor() {
     setStructuredMagicResistance(null);
     setStructuredComponents(null);
     setStructuredMaterialComponents([]);
+    setHasLoadedMaterialComponentsSpec(false);
+    setHasExpandedComponentsEdit(false);
     setExpandedDetailField(null);
     setDetailLoading(null);
     setDetailDirty(createDefaultDetailDirty());
@@ -440,7 +444,8 @@ export default function SpellEditor() {
             if (data.canonicalData) {
               try {
                 // canonical_data is always stored in snake_case (see docs/ARCHITECTURE.md).
-                const canonical = JSON.parse(data.canonicalData) as {
+                const canonicalRaw = JSON.parse(data.canonicalData) as Record<string, unknown>;
+                const canonical = canonicalRaw as {
                   range?: RangeSpec & {
                     distance?: { per_level?: number };
                     raw_legacy_value?: string;
@@ -464,6 +469,11 @@ export default function SpellEditor() {
                   };
                   material_components?: MaterialComponentSpec[];
                 };
+                const canonicalHasMaterialComponentsSpec = Object.prototype.hasOwnProperty.call(
+                  canonicalRaw,
+                  "material_components",
+                );
+                setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
                 if (canonical.range) {
                   const r = canonical.range;
                   setStructuredRange({
@@ -628,6 +638,8 @@ export default function SpellEditor() {
         case "materialComponents":
           setStructuredComponents(null);
           setStructuredMaterialComponents([]);
+          setHasLoadedMaterialComponentsSpec(false);
+          setHasExpandedComponentsEdit(false);
           break;
       }
     }
@@ -908,6 +920,9 @@ export default function SpellEditor() {
     unsavedRef.current = true;
     setHasUnsavedState(true);
     setDetailDirty((prev) => ({ ...prev, [field]: true }));
+    if (field === "components" || field === "materialComponents") {
+      setHasExpandedComponentsEdit(true);
+    }
   };
 
   const isNameInvalid = !form.name.trim();
@@ -1078,10 +1093,24 @@ export default function SpellEditor() {
             : form.magicResistance),
         magicResistanceSpec: structuredMagicResistance ?? undefined,
         components: formOverrides.components ?? (compStr || form.components),
-        componentsSpec: comp,
         materialComponents: formOverrides.materialComponents ?? (matStr || form.materialComponents),
-        materialComponentsSpec: structuredMaterialComponents ?? [],
       };
+
+      const componentsEditedInExpandedMode =
+        detailDirty.components || detailDirty.materialComponents || hasExpandedComponentsEdit;
+      const shouldSendComponentsSpec =
+        structuredComponents !== null || componentsEditedInExpandedMode;
+      const shouldSendMaterialComponentsSpec =
+        hasLoadedMaterialComponentsSpec ||
+        structuredMaterialComponents.length > 0 ||
+        componentsEditedInExpandedMode;
+
+      if (shouldSendComponentsSpec) {
+        spellData.componentsSpec = comp;
+      }
+      if (shouldSendMaterialComponentsSpec) {
+        spellData.materialComponentsSpec = structuredMaterialComponents;
+      }
 
       if (isNew) {
         const { id, ...createData } = spellData; // eslint-disable-line @typescript-eslint/no-unused-vars

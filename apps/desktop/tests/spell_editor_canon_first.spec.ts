@@ -85,6 +85,53 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("Components text-only save without expansion preserves canonical structured interpretation", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Components Text Only ${runId}`;
+    const componentsText = "V, S, M";
+    const materialsText = "ruby dust (worth 100 gp, consumed)";
+
+    await test.step("Create spell using collapsed canon text fields only", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Components text only save path.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-components-input").fill(componentsText);
+      await page.getByTestId("detail-material-components-input").fill(materialsText);
+
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen and verify canon text persisted", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-components-input")).toHaveValue(componentsText, {
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("detail-material-components-input")).toHaveValue(materialsText);
+    });
+
+    await test.step("Expand components and verify parser-backed structured interpretation", async () => {
+      await page.getByTestId("detail-components-expand").click();
+      await expect(page.getByTestId("component-checkbox-verbal")).toBeChecked({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("component-checkbox-somatic")).toBeChecked();
+      await expect(page.getByTestId("component-checkbox-material")).toBeChecked();
+      await expect(page.getByTestId("material-component-name").first()).toHaveValue("ruby dust");
+      await expect(page.getByTestId("material-component-gp-value").first()).toHaveValue("100");
+      await expect(page.getByTestId("material-component-consumed").first()).toBeChecked();
+      await expect(page.getByTestId("component-text-preview")).toContainText("V, S, M");
+    });
+  });
+
   test("Expand field, edit structured form, collapse; single line updates from spec", async ({
     appContext,
   }) => {

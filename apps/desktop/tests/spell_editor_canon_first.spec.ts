@@ -242,12 +242,18 @@ test.describe("Spell Editor canon-first default", () => {
     });
 
     await test.step("Expand Range", async () => {
-      await page.getByTestId("detail-range-expand").click();
+      const rangeExpand = page.getByTestId("detail-range-expand");
+      await rangeExpand.click();
+      await expect(rangeExpand).toHaveAttribute("aria-controls", "detail-range-panel");
+      await expect(page.locator("#detail-range-panel")).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
     });
 
     await test.step("Expand Duration while Range is expanded; Range collapses, Duration expands", async () => {
-      await page.getByTestId("detail-duration-expand").click();
+      const durationExpand = page.getByTestId("detail-duration-expand");
+      await durationExpand.click();
+      await expect(durationExpand).toHaveAttribute("aria-controls", "detail-duration-panel");
+      await expect(page.locator("#detail-duration-panel")).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(page.getByTestId("range-kind-select")).not.toBeVisible({
         timeout: TIMEOUTS.short,
       });
@@ -265,6 +271,7 @@ test.describe("Spell Editor canon-first default", () => {
         "aria-expanded",
         "true",
       );
+      await expect(page.locator("#detail-range-panel")).toHaveCount(0);
     });
   });
 
@@ -681,13 +688,29 @@ test.describe("Spell Editor canon-first default", () => {
       await test.step(`Expand and assert structured kinds: ${testCase.label}`, async () => {
         await app.openSpell(spellName);
 
-        await page.getByTestId("detail-saving-throw-expand").click();
+        const savingThrowExpand = page.getByTestId("detail-saving-throw-expand");
+        await savingThrowExpand.click();
+        await expect(savingThrowExpand).toHaveAttribute(
+          "aria-controls",
+          "detail-saving-throw-panel",
+        );
+        await expect(page.locator("#detail-saving-throw-panel")).toBeVisible({
+          timeout: TIMEOUTS.short,
+        });
         await expect(page.getByTestId("saving-throw-kind")).toHaveValue(testCase.savingThrowKind);
         if (testCase.savingThrowKind === "single") {
           await expect(page.getByTestId("saving-throw-kind")).not.toHaveValue("dm_adjudicated");
         }
 
-        await page.getByTestId("detail-magic-resistance-expand").click();
+        const magicResistanceExpand = page.getByTestId("detail-magic-resistance-expand");
+        await magicResistanceExpand.click();
+        await expect(magicResistanceExpand).toHaveAttribute(
+          "aria-controls",
+          "detail-magic-resistance-panel",
+        );
+        await expect(page.locator("#detail-magic-resistance-panel")).toBeVisible({
+          timeout: TIMEOUTS.short,
+        });
         await expect(page.getByTestId("magic-resistance-kind")).toHaveValue(testCase.mrKind);
         if (testCase.mrKind !== "unknown") {
           await expect(page.getByTestId("magic-resistance-kind")).not.toHaveValue("special");
@@ -719,9 +742,16 @@ test.describe("Spell Editor canon-first default", () => {
 
     await test.step("Reopen and expand fields without editing", async () => {
       await app.openSpell(spellName);
-      await page.getByTestId("detail-saving-throw-expand").click();
+      const savingThrowExpand = page.getByTestId("detail-saving-throw-expand");
+      await savingThrowExpand.click();
+      await expect(savingThrowExpand).toHaveAttribute("aria-controls", "detail-saving-throw-panel");
       await expect(page.getByTestId("saving-throw-kind")).toHaveValue("single");
-      await page.getByTestId("detail-magic-resistance-expand").click();
+      const magicResistanceExpand = page.getByTestId("detail-magic-resistance-expand");
+      await magicResistanceExpand.click();
+      await expect(magicResistanceExpand).toHaveAttribute(
+        "aria-controls",
+        "detail-magic-resistance-panel",
+      );
       await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("normal");
     });
 

@@ -896,20 +896,6 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
                 .as_ref()
                 .filter(|s| !s.is_empty())
                 .map(|mr_str| parser.parse_magic_resistance(mr_str))
-                .or_else(|| {
-                    detail
-                        .saving_throw
-                        .as_ref()
-                        .filter(|s| !s.is_empty())
-                        .and_then(|st_str| {
-                            let mr_spec = parser.parse_magic_resistance(st_str);
-                            if mr_spec.kind != crate::models::MagicResistanceKind::Unknown {
-                                Some(mr_spec)
-                            } else {
-                                None
-                            }
-                        })
-                })
         });
 
         spell.reversible = Some(detail.reversible.unwrap_or(0));

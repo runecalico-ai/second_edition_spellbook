@@ -389,7 +389,7 @@ export default function SpellEditor() {
 
   /** Canon-first: which detail field is expanded (only one at a time). */
   const [expandedDetailField, setExpandedDetailField] = useState<DetailFieldKey | null>(null);
-  /** Canon-first: per-field dirty (user edited structured form since expand). */
+  /** Canon-first: per-field dirty since last canonical text edit. */
   const [detailDirty, setDetailDirty] = useState<Record<DetailFieldKey, boolean>>(() =>
     createDefaultDetailDirty(),
   );
@@ -861,7 +861,6 @@ export default function SpellEditor() {
     if (detailDirty[expandedDetailField]) {
       serializeDetailField(expandedDetailField);
     }
-    setDetailDirty((prev) => ({ ...prev, [expandedDetailField]: false }));
     setExpandedDetailField(null);
   };
 
@@ -921,7 +920,6 @@ export default function SpellEditor() {
 
     if (hasStructured()) {
       setDetailLoading(null);
-      setDetailDirty((prev) => ({ ...prev, [field]: false }));
       return;
     }
 
@@ -1069,7 +1067,6 @@ export default function SpellEditor() {
       }
     } finally {
       if (expandedDetailRef.current === field) setDetailLoading(null);
-      setDetailDirty((prev) => ({ ...prev, [field]: false }));
     }
   };
 
@@ -1150,53 +1147,46 @@ export default function SpellEditor() {
       }
       setLoading(true);
 
-      // Canon-first: apply serialized values for expanded+dirty field(s) into payload (setState is async)
+      // Canon-first: apply serialized values only for structured fields edited since last canon edit.
       const formOverrides: Partial<SpellDetail> = {};
-      if (expandedDetailField && detailDirty[expandedDetailField]) {
-        switch (expandedDetailField) {
-          case "range":
-            if (structuredRange) formOverrides.range = rangeToText(structuredRange);
-            break;
-          case "components":
-          case "materialComponents": {
-            const comp = structuredComponents ?? {
-              verbal: false,
-              somatic: false,
-              material: false,
-              focus: false,
-              divineFocus: false,
-              experience: false,
-            };
-            const { components: cs, materialComponents: ms } = componentsToText(
-              comp,
-              structuredMaterialComponents,
-            );
-            formOverrides.components = cs;
-            formOverrides.materialComponents = ms;
-            break;
-          }
-          case "duration":
-            if (structuredDuration) formOverrides.duration = durationToText(structuredDuration);
-            break;
-          case "castingTime":
-            if (structuredCastingTime)
-              formOverrides.castingTime = castingTimeToText(structuredCastingTime);
-            break;
-          case "area":
-            if (structuredArea) formOverrides.area = areaToText(structuredArea);
-            break;
-          case "savingThrow":
-            if (structuredSavingThrow)
-              formOverrides.savingThrow = savingThrowToText(structuredSavingThrow);
-            break;
-          case "damage":
-            if (structuredDamage) formOverrides.damage = damageToText(structuredDamage);
-            break;
-          case "magicResistance":
-            if (structuredMagicResistance)
-              formOverrides.magicResistance = magicResistanceToText(structuredMagicResistance);
-            break;
-        }
+      if (detailDirty.range && structuredRange) {
+        formOverrides.range = rangeToText(structuredRange);
+      }
+      if (detailDirty.duration && structuredDuration) {
+        formOverrides.duration = durationToText(structuredDuration);
+      }
+      if (detailDirty.castingTime && structuredCastingTime) {
+        formOverrides.castingTime = castingTimeToText(structuredCastingTime);
+      }
+      if (detailDirty.area && structuredArea) {
+        formOverrides.area = areaToText(structuredArea);
+      }
+      if (detailDirty.damage && structuredDamage) {
+        formOverrides.damage = damageToText(structuredDamage);
+      }
+      if (detailDirty.savingThrow && structuredSavingThrow) {
+        formOverrides.savingThrow = savingThrowToText(structuredSavingThrow);
+      }
+      if (detailDirty.magicResistance && structuredMagicResistance) {
+        formOverrides.magicResistance = magicResistanceToText(structuredMagicResistance);
+      }
+      if ((detailDirty.components || detailDirty.materialComponents) && structuredComponents) {
+        const { components: cs, materialComponents: ms } = componentsToText(
+          structuredComponents,
+          structuredMaterialComponents,
+        );
+        formOverrides.components = cs;
+        formOverrides.materialComponents = ms;
+      } else if (
+        (detailDirty.components || detailDirty.materialComponents) &&
+        !structuredComponents
+      ) {
+        const { components: cs, materialComponents: ms } = componentsToText(
+          emptySpellComponents(),
+          structuredMaterialComponents,
+        );
+        formOverrides.components = cs;
+        formOverrides.materialComponents = ms;
       }
 
       const comp = structuredComponents ?? {
@@ -1207,63 +1197,34 @@ export default function SpellEditor() {
         divineFocus: false,
         experience: false,
       };
-      const { components: compStrBase, materialComponents: matStr } = componentsToText(
-        comp,
-        structuredMaterialComponents,
-      );
-
-      // Preserve experience cost from original string if present but not in structured text
-      let compStr = compStrBase;
-      if (comp.experience && form.components && !compStr.toLowerCase().includes("xp")) {
-        const xpMatch = form.components.match(/(\d+\s*(?:xp|gp|exp|gold))/i);
-        if (xpMatch) {
-          compStr = `${compStr}, ${xpMatch[0]}`;
-        }
-      }
-
-      const useStructuredSavingThrowText =
-        detailDirty.savingThrow || !(form.savingThrow ?? "").trim();
-      const useStructuredMagicResistanceText =
-        detailDirty.magicResistance || !(form.magicResistance ?? "").trim();
       const shouldSendSavingThrowSpec =
         structuredSavingThrow !== null &&
-        (hasLoadedSavingThrowSpec || useStructuredSavingThrowText);
+        (hasLoadedSavingThrowSpec || detailDirty.savingThrow || !(form.savingThrow ?? "").trim());
       const shouldSendMagicResistanceSpec =
         structuredMagicResistance !== null &&
-        (hasLoadedMagicResistanceSpec || useStructuredMagicResistanceText);
+        (hasLoadedMagicResistanceSpec ||
+          detailDirty.magicResistance ||
+          !(form.magicResistance ?? "").trim());
 
       const spellData: SpellDetail = {
         ...form,
         ...formOverrides,
-        range: formOverrides.range ?? (structuredRange ? rangeToText(structuredRange) : form.range),
+        range: formOverrides.range ?? form.range,
         rangeSpec: structuredRange ?? undefined,
-        duration:
-          formOverrides.duration ??
-          (structuredDuration ? durationToText(structuredDuration) : form.duration),
+        duration: formOverrides.duration ?? form.duration,
         durationSpec: structuredDuration ?? undefined,
-        castingTime:
-          formOverrides.castingTime ??
-          (structuredCastingTime ? castingTimeToText(structuredCastingTime) : form.castingTime),
+        castingTime: formOverrides.castingTime ?? form.castingTime,
         castingTimeSpec: structuredCastingTime ?? undefined,
-        area: formOverrides.area ?? (structuredArea ? areaToText(structuredArea) : form.area),
+        area: formOverrides.area ?? form.area,
         areaSpec: structuredArea ?? undefined,
-        damage:
-          formOverrides.damage ?? (structuredDamage ? damageToText(structuredDamage) : form.damage),
+        damage: formOverrides.damage ?? form.damage,
         damageSpec: structuredDamage ?? undefined,
-        savingThrow:
-          formOverrides.savingThrow ??
-          (structuredSavingThrow && useStructuredSavingThrowText
-            ? savingThrowToText(structuredSavingThrow)
-            : form.savingThrow),
+        savingThrow: formOverrides.savingThrow ?? form.savingThrow,
         savingThrowSpec: shouldSendSavingThrowSpec ? structuredSavingThrow : undefined,
-        magicResistance:
-          formOverrides.magicResistance ??
-          (structuredMagicResistance && useStructuredMagicResistanceText
-            ? magicResistanceToText(structuredMagicResistance)
-            : form.magicResistance),
+        magicResistance: formOverrides.magicResistance ?? form.magicResistance,
         magicResistanceSpec: shouldSendMagicResistanceSpec ? structuredMagicResistance : undefined,
-        components: formOverrides.components ?? (compStr || form.components),
-        materialComponents: formOverrides.materialComponents ?? (matStr || form.materialComponents),
+        components: formOverrides.components ?? form.components,
+        materialComponents: formOverrides.materialComponents ?? form.materialComponents,
       };
 
       const componentsEditedInExpandedMode =

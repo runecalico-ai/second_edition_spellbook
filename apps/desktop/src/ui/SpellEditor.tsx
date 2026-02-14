@@ -1746,7 +1746,7 @@ export default function SpellEditor() {
                       type="button"
                       data-testid={`detail-${kebabField}-expand`}
                       aria-expanded={isExpanded}
-                      aria-controls={panelId}
+                      aria-controls={isExpanded ? panelId : undefined}
                       onClick={() =>
                         isExpanded ? collapseExpandedField() : expandDetailField(field)
                       }

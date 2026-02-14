@@ -54,6 +54,25 @@ test.describe("Spell Editor canon-first default", () => {
       await expect(page.getByTestId("range-kind-select")).not.toBeVisible();
       await expect(page.getByTestId("duration-kind-select")).not.toBeVisible();
     });
+
+    await test.step("Collapsed expand controls omit aria-controls when panels are unmounted", async () => {
+      await expect(page.getByTestId("detail-range-expand")).not.toHaveAttribute(
+        "aria-controls",
+        /.+/,
+      );
+      await expect(page.getByTestId("detail-duration-expand")).not.toHaveAttribute(
+        "aria-controls",
+        /.+/,
+      );
+      await expect(page.getByTestId("detail-saving-throw-expand")).not.toHaveAttribute(
+        "aria-controls",
+        /.+/,
+      );
+      await expect(page.getByTestId("detail-magic-resistance-expand")).not.toHaveAttribute(
+        "aria-controls",
+        /.+/,
+      );
+    });
   });
 
   test("Edit spell in canon view only, save; assert saved text", async ({ appContext }) => {

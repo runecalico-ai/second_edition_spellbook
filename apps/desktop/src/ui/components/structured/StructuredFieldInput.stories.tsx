@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { defaultCastingTime, defaultDurationSpec, defaultRangeSpec } from "../../../types/spell";
 import { StructuredFieldInput } from "./StructuredFieldInput";
-import { defaultRangeSpec, defaultDurationSpec, defaultCastingTime } from "../../../types/spell";
 import { fn } from "./storybook-utils";
 
 const meta = {

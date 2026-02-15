@@ -5,17 +5,17 @@
  */
 
 import {
+  type AreaSpec,
+  DURATION_CONDITION_KINDS,
+  DURATION_KIND_ONLY,
+  type DamagePart,
+  type DicePool,
+  type DurationSpec,
   RANGE_DISTANCE_KINDS,
   RANGE_KIND_ONLY,
   type RangeSpec,
-  type DurationSpec,
-  DURATION_KIND_ONLY,
-  DURATION_CONDITION_KINDS,
   type SpellCastingTime,
-  type AreaSpec,
   type SpellDamageSpec,
-  type DamagePart,
-  type DicePool,
   type SpellScalar,
 } from "../types/spell";
 

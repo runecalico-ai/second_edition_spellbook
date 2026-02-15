@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { SavingThrowInput } from "./SavingThrowInput";
 import { defaultSavingThrowSpec } from "../../../types/spell";
+import { SavingThrowInput } from "./SavingThrowInput";
 import { fn } from "./storybook-utils";
 
 const meta = {

@@ -1,10 +1,10 @@
 import type {
-  AreaSpec,
   AreaKind,
-  ShapeUnit,
+  AreaSpec,
   AreaUnit,
-  TileUnit,
   CountSubject,
+  ShapeUnit,
+  TileUnit,
 } from "../../../types/spell";
 import { defaultAreaSpec } from "../../../types/spell";
 import { ScalarInput } from "./ScalarInput";

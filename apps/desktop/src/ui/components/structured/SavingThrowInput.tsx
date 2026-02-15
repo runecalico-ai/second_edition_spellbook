@@ -1,13 +1,13 @@
+import { parseNumericInput } from "../../../lib/validation";
 import type {
-  SavingThrowSpec,
-  SavingThrowKind,
-  SingleSave,
-  SaveType,
   SaveOutcome,
   SaveOutcomeEffect,
+  SaveType,
+  SavingThrowKind,
+  SavingThrowSpec,
+  SingleSave,
 } from "../../../types/spell";
 import { defaultSavingThrowSpec } from "../../../types/spell";
-import { parseNumericInput } from "../../../lib/validation";
 
 const SAVING_THROW_KIND_LABELS: Record<SavingThrowKind, string> = {
   none: "None",

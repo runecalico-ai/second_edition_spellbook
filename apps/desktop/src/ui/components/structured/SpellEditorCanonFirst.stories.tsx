@@ -1,28 +1,28 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import {
-  StructuredFieldInput,
-  AreaForm,
-  DamageForm,
-  SavingThrowInput,
-  MagicResistanceInput,
-  ComponentCheckboxes,
-} from "./index";
-import { fn } from "./storybook-utils";
-import {
   defaultAreaSpec,
-  defaultSpellDamageSpec,
-  defaultSavingThrowSpec,
   defaultMagicResistanceSpec,
+  defaultSavingThrowSpec,
+  defaultSpellDamageSpec,
 } from "../../../types/spell";
 import type {
   AreaSpec,
-  SpellDamageSpec,
-  SavingThrowSpec,
   MagicResistanceSpec,
-  SpellComponents,
   MaterialComponentSpec,
+  SavingThrowSpec,
+  SpellComponents,
+  SpellDamageSpec,
 } from "../../../types/spell";
+import {
+  AreaForm,
+  ComponentCheckboxes,
+  DamageForm,
+  MagicResistanceInput,
+  SavingThrowInput,
+  StructuredFieldInput,
+} from "./index";
+import { fn } from "./storybook-utils";
 
 /**
  * Canon-first Details block: default view is single-line text inputs with per-field expand.

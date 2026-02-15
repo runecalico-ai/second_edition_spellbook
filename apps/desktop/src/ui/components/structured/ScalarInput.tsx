@@ -1,10 +1,10 @@
-import type { SpellScalar } from "../../../types/spell";
 import {
-  clampScalar,
-  parseNumericInput,
-  isAboveAdvisoryCap,
   VALIDATION,
+  clampScalar,
+  isAboveAdvisoryCap,
+  parseNumericInput,
 } from "../../../lib/validation";
+import type { SpellScalar } from "../../../types/spell";
 
 interface ScalarInputProps {
   value: SpellScalar;

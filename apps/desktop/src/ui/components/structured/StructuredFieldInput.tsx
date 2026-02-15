@@ -1,22 +1,22 @@
 import { useMemo } from "react";
+import { clampScalar, parseNumericInput } from "../../../lib/validation";
 import type { DurationSpec, RangeSpec, SpellCastingTime, SpellScalar } from "../../../types/spell";
 import {
   CASTING_TIME_UNIT_LABELS,
-  defaultCastingTime,
-  defaultDurationSpec,
-  defaultRangeSpec,
+  type CastingTimeUnit,
   DURATION_CONDITION_KINDS,
   DURATION_KIND_ONLY,
   DURATION_UNIT_LABELS,
+  type DurationKind,
+  type DurationUnit,
   RANGE_DISTANCE_KINDS,
   RANGE_KIND_ONLY,
   RANGE_UNIT_LABELS,
-  type CastingTimeUnit,
-  type DurationKind,
-  type DurationUnit,
   type RangeUnit,
+  defaultCastingTime,
+  defaultDurationSpec,
+  defaultRangeSpec,
 } from "../../../types/spell";
-import { clampScalar, parseNumericInput } from "../../../lib/validation";
 import { ScalarInput } from "./ScalarInput";
 
 export type StructuredFieldType = "range" | "duration" | "casting_time";

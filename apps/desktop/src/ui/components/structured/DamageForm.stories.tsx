@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { DamageForm } from "./DamageForm";
 import { defaultSpellDamageSpec, generateDamagePartId } from "../../../types/spell";
+import { DamageForm } from "./DamageForm";
 import { fn } from "./storybook-utils";
 
 const meta = {

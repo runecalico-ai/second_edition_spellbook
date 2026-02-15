@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { MagicResistanceInput } from "./MagicResistanceInput";
 import { defaultMagicResistanceSpec } from "../../../types/spell";
+import { MagicResistanceInput } from "./MagicResistanceInput";
 import { fn } from "./storybook-utils";
 
 const meta = {

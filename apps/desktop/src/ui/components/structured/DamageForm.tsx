@@ -1,27 +1,27 @@
 import { useCallback } from "react";
+import { VALIDATION, parseNumericInput } from "../../../lib/validation";
 import type {
-  SpellDamageSpec,
-  SpellDamageKind,
+  ApplicationScope,
+  ApplicationSpec,
+  ClampSpec,
   CombineMode,
   DamagePart,
   DamageType,
-  ApplicationScope,
-  ApplicationSpec,
-  SaveKind,
-  SaveSpec,
   DicePool,
   DiceTerm,
-  ScalingKind,
+  SaveKind,
+  SaveSpec,
   ScalingDriver,
+  ScalingKind,
   ScalingRule,
-  ClampSpec,
+  SpellDamageKind,
+  SpellDamageSpec,
 } from "../../../types/spell";
 import {
   defaultDamagePart,
   defaultSpellDamageSpec,
   generateDamagePartId,
 } from "../../../types/spell";
-import { parseNumericInput, VALIDATION } from "../../../lib/validation";
 
 const DAMAGE_KIND_LABELS: Record<SpellDamageKind, string> = {
   none: "None",

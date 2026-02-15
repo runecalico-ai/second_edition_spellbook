@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { AreaForm } from "./AreaForm";
 import { defaultAreaSpec } from "../../../types/spell";
+import { AreaForm } from "./AreaForm";
 import { fn } from "./storybook-utils";
 
 const meta = {

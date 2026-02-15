@@ -1,4 +1,4 @@
-import * as path from "path";
+import * as path from "node:path";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
@@ -58,7 +58,6 @@ test.describe("Spell Editor Bug Reproduction", () => {
       await app.page.screenshot({ path: "tests/screenshots/after_expansion_click.png" });
       console.log("Screenshot after expansion click saved.");
 
-
       // Verify parsing: V, S, M checked
       await expect(page.getByTestId("component-checkbox-verbal")).toBeChecked();
       await expect(page.getByTestId("component-checkbox-somatic")).toBeChecked();
@@ -72,11 +71,14 @@ test.describe("Spell Editor Bug Reproduction", () => {
       try {
         await expect(page.getByTestId("material-component-row")).toHaveCount(1, { timeout: 10000 });
       } catch (e) {
-        const debugData = await page.evaluate(() => ({
-          ipc: (window as any).__IPC_DEBUG__,
-          lastExpand: (window as any).__LAST_EXPAND_CALL,
-          form: (window as any).__DEBUG_FORM,
-        }));
+        const debugData = await page.evaluate(() => {
+          const win = window as unknown as Record<string, unknown>;
+          return {
+            ipc: win.__IPC_DEBUG__,
+            lastExpand: win.__LAST_EXPAND_CALL,
+            form: win.__DEBUG_FORM,
+          };
+        });
         console.log("WINDOW DEBUG DATA:", JSON.stringify(debugData, null, 2));
         await page.screenshot({ path: "tests/failure_materials.png" });
         throw e;
@@ -100,7 +102,9 @@ test.describe("Spell Editor Bug Reproduction", () => {
       expect(componentsValue).not.toContain("ruby dust");
       expect(componentsValue).toContain("V, S, M, F");
 
-      const materialsValue = await page.getByTestId("detail-material-components-input").inputValue();
+      const materialsValue = await page
+        .getByTestId("detail-material-components-input")
+        .inputValue();
       console.log("Collapsed Material Components Text:", materialsValue);
       expect(materialsValue).toContain("ruby dust");
     });

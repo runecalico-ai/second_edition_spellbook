@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import type { SpellComponents, MaterialComponentSpec } from "../../../types/spell";
 import { VALIDATION, clampScalar, parseNumericInput } from "../../../lib/validation";
+import type { MaterialComponentSpec, SpellComponents } from "../../../types/spell";
 
 export type ComponentCheckboxesVariant = "vsm" | "all";
 

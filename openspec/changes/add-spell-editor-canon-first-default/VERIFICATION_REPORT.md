@@ -94,12 +94,10 @@
 
 ### SUGGESTION
 
-1. **Panel ID vs kebab convention**  
-   Expand panel `id` is `detail-${field}-panel` with `field` from `DETAIL_FIELD_ORDER` (camelCase, e.g. `castingTime`, `savingThrow`). Test IDs use kebab (`detail-casting-time-expand`, etc.). For consistency with the documented test ID style, consider using the same kebab transform for the panel id (e.g. `detail-${kebabField}-panel`) so `aria-controls` and panel id match the kebab pattern.  
-   **Recommendation:** In `SpellEditor.tsx`, use `id={\`detail-${kebabField}-panel\`}` (and same for `aria-controls`) so panel IDs are kebab-case. Optional cleanup.
+- None.
 
 ---
 
 ## Final assessment
 
-All checks passed. No critical or warning issues. One optional suggestion for panel ID naming. **Ready for archive.**
+All checks passed. No critical, warning, or suggestion issues. **Ready for archive.**

@@ -1732,6 +1732,7 @@ export default function SpellEditor() {
                         ? "Material Component"
                         : field.charAt(0).toUpperCase() + field.slice(1);
             const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+            const panelId = `detail-${kebabField}-panel`;
             const inputId = `detail-${field}-input`;
             const expandId = `detail-${field}-expand`;
             const value = form[field] ?? "";
@@ -1769,7 +1770,7 @@ export default function SpellEditor() {
                       type="button"
                       data-testid={`detail-${kebabField}-expand`}
                       aria-expanded={isExpanded}
-                      aria-controls={isExpanded ? `detail-${field}-panel` : undefined}
+                      aria-controls={isExpanded ? panelId : undefined}
                       onClick={() =>
                         isExpanded ? collapseExpandedField() : expandDetailField(field)
                       }
@@ -1790,7 +1791,7 @@ export default function SpellEditor() {
                 {isExpanded && (
                   <section
                     ref={expandedPanelRef}
-                    id={`detail-${field}-panel`}
+                    id={panelId}
                     aria-label={`Structured ${label}`}
                     tabIndex={-1}
                     className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"

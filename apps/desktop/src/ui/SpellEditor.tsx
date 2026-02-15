@@ -180,24 +180,24 @@ function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
       base: normalizeDicePool(x.base),
       application: app
         ? {
-            scope: app.scope as ApplicationScope,
-            ticks: app.ticks as number,
-            tickDriver: (app.tickDriver ?? app.tick_driver) as string,
-          }
+          scope: app.scope as ApplicationScope,
+          ticks: app.ticks as number,
+          tickDriver: (app.tickDriver ?? app.tick_driver) as string,
+        }
         : undefined,
       save: sav
         ? {
-            kind: sav.kind as SaveKind,
-            partial: sav.partial as { numerator: number; denominator: number },
-          }
+          kind: sav.kind as SaveKind,
+          partial: sav.partial as { numerator: number; denominator: number },
+        }
         : undefined,
       mrInteraction: (x.mrInteraction ?? x.mr_interaction) as DamagePart["mrInteraction"],
       scaling,
       clampTotal: clamp
         ? {
-            minTotal: (clamp.minTotal ?? clamp.min_total) as number,
-            maxTotal: (clamp.maxTotal ?? clamp.max_total) as number,
-          }
+          minTotal: (clamp.minTotal ?? clamp.min_total) as number,
+          maxTotal: (clamp.maxTotal ?? clamp.max_total) as number,
+        }
         : undefined,
       notes: x.notes as string,
     } as DamagePart;
@@ -253,10 +253,10 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
     appliesTo: (m.appliesTo ?? m.applies_to) as MagicResistanceSpec["appliesTo"],
     partial: m.partial
       ? {
-          scope: (m.partial as Record<string, unknown>).scope as string,
-          partIds: ((m.partial as Record<string, unknown>).partIds ??
-            (m.partial as Record<string, unknown>).part_ids) as string[],
-        }
+        scope: (m.partial as Record<string, unknown>).scope as string,
+        partIds: ((m.partial as Record<string, unknown>).partIds ??
+          (m.partial as Record<string, unknown>).part_ids) as string[],
+      }
       : undefined,
     specialRule: (m.specialRule ?? m.special_rule) as string,
     notes: m.notes as string,
@@ -399,6 +399,8 @@ export default function SpellEditor() {
   const expandedPanelRef = useRef<HTMLElement | null>(null);
   /** Ref for parse race guard: only clear loading when completed parse matches currently expanded field. */
   const expandedDetailRef = useRef<DetailFieldKey | null>(null);
+  /** Ref for async parse race guard: increment on every expand request; only apply result if matches. */
+  const expandRequestId = useRef(0);
   /** Track unsaved changes for navigate/close warning. */
   const unsavedRef = useRef(false);
   const [hasUnsavedState, setHasUnsavedState] = useState(false);
@@ -562,10 +564,10 @@ export default function SpellEditor() {
                     unit: r.unit,
                     distance: r.distance
                       ? {
-                          mode: r.distance.mode ?? "fixed",
-                          value: r.distance.value,
-                          perLevel: r.distance.per_level ?? r.distance.perLevel,
-                        }
+                        mode: r.distance.mode ?? "fixed",
+                        value: r.distance.value,
+                        perLevel: r.distance.per_level ?? r.distance.perLevel,
+                      }
                       : undefined,
                     rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
                   });
@@ -577,10 +579,10 @@ export default function SpellEditor() {
                     unit: d.unit,
                     duration: d.duration
                       ? {
-                          mode: d.duration.mode ?? "fixed",
-                          value: d.duration.value,
-                          perLevel: d.duration.per_level ?? d.duration.perLevel,
-                        }
+                        mode: d.duration.mode ?? "fixed",
+                        value: d.duration.value,
+                        perLevel: d.duration.per_level ?? d.duration.perLevel,
+                      }
                       : undefined,
                     condition: d.condition,
                     uses: normalizeScalar(d.uses),
@@ -636,21 +638,21 @@ export default function SpellEditor() {
                   const hasMaterialData = (canonical.material_components?.length ?? 0) > 0;
                   const comp = canonical.components
                     ? {
-                        verbal: canonical.components.verbal ?? false,
-                        somatic: canonical.components.somatic ?? false,
-                        material: (canonical.components.material ?? false) || hasMaterialData,
-                        focus: canonical.components.focus ?? false,
-                        divineFocus: canonical.components.divine_focus ?? false,
-                        experience: canonical.components.experience ?? false,
-                      }
+                      verbal: canonical.components.verbal ?? false,
+                      somatic: canonical.components.somatic ?? false,
+                      material: (canonical.components.material ?? false) || hasMaterialData,
+                      focus: canonical.components.focus ?? false,
+                      divineFocus: canonical.components.divine_focus ?? false,
+                      experience: canonical.components.experience ?? false,
+                    }
                     : {
-                        verbal: false,
-                        somatic: false,
-                        material: true,
-                        focus: false,
-                        divineFocus: false,
-                        experience: false,
-                      };
+                      verbal: false,
+                      somatic: false,
+                      material: true,
+                      focus: false,
+                      divineFocus: false,
+                      experience: false,
+                    };
                   setStructuredComponents(comp);
                   const rawMats = (canonical.material_components ?? []) as unknown[];
                   const mats: MaterialComponentSpec[] = rawMats.map((m) => {
@@ -693,6 +695,8 @@ export default function SpellEditor() {
 
     // If canon line is edited directly, structured spec is stale.
     if (DETAIL_FIELD_ORDER.includes(field as DetailFieldKey)) {
+      // Invalide any pending async parse results for this field.
+      expandRequestId.current += 1;
       setDetailDirty((prev) => ({ ...prev, [field]: false }));
       switch (field) {
         case "range":
@@ -872,27 +876,31 @@ export default function SpellEditor() {
     setExpandedDetailField(field);
     expandedDetailRef.current = field;
 
+    // Increment request ID to ignore stale async results
+    expandRequestId.current += 1;
+    const requestId = expandRequestId.current;
+
     const getLegacy = (): string => {
+      let stateVal = "";
       switch (field) {
-        case "range":
-          return form.range ?? "";
-        case "components":
-          return form.components ?? "";
-        case "duration":
-          return form.duration ?? "";
-        case "castingTime":
-          return form.castingTime ?? "";
-        case "area":
-          return form.area ?? "";
-        case "savingThrow":
-          return form.savingThrow ?? "";
-        case "damage":
-          return form.damage ?? "";
-        case "magicResistance":
-          return form.magicResistance ?? "";
-        case "materialComponents":
-          return form.materialComponents ?? "";
+        case "range": stateVal = form.range ?? ""; break;
+        case "components": stateVal = form.components ?? ""; break;
+        case "duration": stateVal = form.duration ?? ""; break;
+        case "castingTime": stateVal = form.castingTime ?? ""; break;
+        case "area": stateVal = form.area ?? ""; break;
+        case "savingThrow": stateVal = form.savingThrow ?? ""; break;
+        case "damage": stateVal = form.damage ?? ""; break;
+        case "magicResistance": stateVal = form.magicResistance ?? ""; break;
+        case "materialComponents": stateVal = form.materialComponents ?? ""; break;
       }
+      if (stateVal) return stateVal;
+
+      // Fallback for E2E/race conditions: read from DOM if state is still lagging
+      const domInput = document.getElementById(`detail-${field}-input`) as HTMLInputElement | null;
+      if (domInput?.value) {
+        return domInput.value;
+      }
+      return "";
     };
 
     const hasStructured = (): boolean => {
@@ -930,6 +938,7 @@ export default function SpellEditor() {
       switch (field) {
         case "range": {
           const parsed = await invoke<RangeSpec>("parse_spell_range", { legacy });
+          if (requestId !== expandRequestId.current) return;
           if (!validateRangeSpec(parsed)) {
             setStructuredRange(legacy ? { kind: "special", rawLegacyValue: legacy } : null);
           } else {
@@ -939,6 +948,7 @@ export default function SpellEditor() {
         }
         case "duration": {
           const parsed = await invoke<DurationSpec>("parse_spell_duration", { legacy });
+          if (requestId !== expandRequestId.current) return;
           if (!validateDurationSpec(parsed)) {
             setStructuredDuration(legacy ? { kind: "special", rawLegacyValue: legacy } : null);
           } else {
@@ -948,6 +958,7 @@ export default function SpellEditor() {
         }
         case "castingTime": {
           const parsed = await invoke<SpellCastingTime>("parse_spell_casting_time", { legacy });
+          if (requestId !== expandRequestId.current) return;
           if (!validateSpellCastingTime(parsed)) {
             setStructuredCastingTime(
               legacy ? { text: legacy, unit: "special", rawLegacyValue: legacy } : null,
@@ -959,6 +970,7 @@ export default function SpellEditor() {
         }
         case "area": {
           const parsed = await invoke<AreaSpec | null>("parse_spell_area", { legacy });
+          if (requestId !== expandRequestId.current) return;
           if (parsed === null || !validateAreaSpec(parsed)) {
             setStructuredArea(
               legacy ? ({ kind: "special", rawLegacyValue: legacy } as AreaSpec) : null,
@@ -970,6 +982,7 @@ export default function SpellEditor() {
         }
         case "damage": {
           const parsed = await invoke<SpellDamageSpec>("parse_spell_damage", { legacy });
+          if (requestId !== expandRequestId.current) return;
           if (!validateSpellDamageSpec(parsed)) {
             setStructuredDamage(
               legacy
@@ -982,41 +995,54 @@ export default function SpellEditor() {
           break;
         }
         case "savingThrow":
+          if (requestId !== expandRequestId.current) return;
           setStructuredSavingThrow(mapLegacySavingThrow(legacy));
           break;
         case "magicResistance":
+          if (requestId !== expandRequestId.current) return;
           setStructuredMagicResistance(mapLegacyMagicResistance(legacy));
           break;
         case "components":
         case "materialComponents":
           {
-            const compLegacy = form.components ?? "";
-            const hasComponentText = !!compLegacy.trim();
-            const hasMaterialText = !!form.materialComponents?.trim();
+            const compLegacy = form.components?.trim();
+            const matLegacy = form.materialComponents?.trim();
+            const hasComponentText = !!compLegacy;
+            const hasMaterialText = !!matLegacy;
 
             if (hasComponentText || hasMaterialText) {
-              const parsed = await invoke<SpellComponents>("parse_spell_components", {
-                legacy: compLegacy,
+              setDetailLoading(field);
+              const combined = await invoke<{
+                components: SpellComponents;
+                materials: MaterialComponentSpec[];
+              }>("parse_spell_components_with_migration", {
+                legacyComponents: compLegacy,
+                legacyMaterials: hasMaterialText ? matLegacy : null,
               });
-              setStructuredComponents({
-                verbal: parsed.verbal ?? false,
-                somatic: parsed.somatic ?? false,
-                material: (parsed.material ?? false) || hasMaterialText,
-                focus: parsed.focus ?? false,
-                divineFocus: parsed.divineFocus ?? false,
-                experience: parsed.experience ?? false,
-              });
-              setStructuredMaterialComponents(
-                form.materialComponents ? [{ name: form.materialComponents, quantity: 1.0 }] : [],
-              );
+
+              if (requestId !== expandRequestId.current) return;
+
+              // Destructure non-flattened response
+              const { materials, components } = combined;
+
+              setStructuredComponents(components);
+
+              if (!hasMaterialText && hasComponentText && materials.length > 0) {
+                // Extracted! Mark dirty locally.
+                setDetailDirty((prev) => ({ ...prev, materialComponents: true }));
+              }
+              setStructuredMaterialComponents(materials);
             } else {
+              if (requestId !== expandRequestId.current) return;
               setStructuredComponents(null);
               setStructuredMaterialComponents([]);
             }
           }
           break;
       }
-    } catch {
+    } catch (err) {
+      console.error(`[expandDetailField] error field: ${field}, err:`, err);
+      if (requestId !== expandRequestId.current) return;
       const leg = getLegacy();
       switch (field) {
         case "range":
@@ -1449,9 +1475,8 @@ export default function SpellEditor() {
           <input
             id="spell-name"
             data-testid="spell-name-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isNameInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${isNameInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
             placeholder="Spell Name"
             value={form.name}
             onChange={(e) => handleChange("name", e.target.value)}
@@ -1470,9 +1495,8 @@ export default function SpellEditor() {
           <input
             id="spell-level"
             data-testid="spell-level-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isLevelInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${isLevelInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
             type="number"
             value={form.level}
             onChange={(e) => {
@@ -1900,9 +1924,8 @@ export default function SpellEditor() {
         <textarea
           id="spell-description"
           data-testid="spell-description-textarea"
-          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
-            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
-          }`}
+          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
           required

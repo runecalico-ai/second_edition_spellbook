@@ -859,15 +859,15 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
         if let Some(spec) = detail.components_spec {
             spell.components = Some(spec);
             // If we have a components string, still check for experience cost
-            if let Some(comp_str) = detail.components.filter(|s| !s.is_empty()) {
-                let xp_spec = parser.parse_experience_cost(&comp_str);
+            if let Some(comp_str) = detail.components.as_ref().filter(|s| !s.is_empty()) {
+                let xp_spec = parser.parse_experience_cost(comp_str);
                 if xp_spec.kind != crate::models::experience::ExperienceKind::None {
                     spell.experience_cost = Some(xp_spec);
                 }
             }
-        } else if let Some(comp_str) = detail.components.filter(|s| !s.is_empty()) {
-            spell.components = Some(parser.parse_components(&comp_str));
-            let xp_spec = parser.parse_experience_cost(&comp_str);
+        } else if let Some(comp_str) = detail.components.as_ref().filter(|s| !s.is_empty()) {
+            spell.components = Some(parser.parse_components(comp_str));
+            let xp_spec = parser.parse_experience_cost(comp_str);
             if xp_spec.kind != crate::models::experience::ExperienceKind::None {
                 spell.experience_cost = Some(xp_spec);
             }
@@ -880,6 +880,16 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
                 .filter(|s| !s.is_empty())
                 .map(|s| parser.parse_material_components(s))
         });
+
+        // Fallback: If still no materials, try extracting from the components line
+        if spell.material_components.is_none() {
+            if let Some(comp_str) = detail.components.as_ref().filter(|s| !s.is_empty()) {
+                let extracted = parser.extract_materials_from_components_line(comp_str);
+                if !extracted.is_empty() {
+                    spell.material_components = Some(extracted);
+                }
+            }
+        }
 
         // Saving Throw and Magic Resistance
         spell.saving_throw = detail.saving_throw_spec.or_else(|| {

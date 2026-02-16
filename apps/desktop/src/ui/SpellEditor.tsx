@@ -898,6 +898,13 @@ export default function SpellEditor() {
     let overrides: DetailTextOverrides = {};
     if (detailDirty[expandedDetailField]) {
       overrides = serializeDetailField(expandedDetailField);
+      setDetailDirty((prev) => {
+        const next = { ...prev, [expandedDetailField]: false };
+        if (expandedDetailField === "components") next.materialComponents = false;
+        else if (expandedDetailField === "materialComponents" && prev.components)
+          next.components = false;
+        return next;
+      });
     }
     setExpandedDetailField(null);
     return overrides;

@@ -792,6 +792,66 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("Expand, edit structured form, collapse then view-only expand/collapse leaves canon unchanged", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Dirty Reset ${runId}`;
+
+    await test.step("Create spell with duration, open", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Dirty reset lifecycle.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Alteration");
+      await page.getByTestId("detail-duration-input").fill("1 turn");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-duration-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Expand Duration, edit structured form, collapse", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.getByTestId("duration-base-value").fill("1");
+      await page.getByTestId("duration-unit").selectOption("round");
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("duration-kind-select")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    const expectedAfterFirstCollapse = "1 round";
+    await test.step("Canon line shows serialized value after first collapse", async () => {
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(expectedAfterFirstCollapse);
+    });
+
+    await test.step("Expand again (view-only), collapse", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("duration-kind-select")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Canon line unchanged after view-only collapse (dirty was reset)", async () => {
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(expectedAfterFirstCollapse);
+    });
+  });
+
   test("Collapse returns focus to expand button (a11y / keyboard)", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);

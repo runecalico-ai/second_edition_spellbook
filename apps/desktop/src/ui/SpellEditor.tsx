@@ -93,6 +93,8 @@ const createDefaultDetailDirty = (): Record<DetailFieldKey, boolean> => ({
   materialComponents: false,
 });
 
+type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
+
 /** Backend dice pool shape (camelCase or snake_case). */
 interface RawDicePool {
   terms?: Array<{
@@ -695,8 +697,14 @@ export default function SpellEditor() {
 
     // If canon line is edited directly, structured spec is stale.
     if (DETAIL_FIELD_ORDER.includes(field as DetailFieldKey)) {
+      const detailField = field as DetailFieldKey;
       // Invalide any pending async parse results for this field.
       expandRequestId.current += 1;
+      if (expandedDetailField === detailField) {
+        setExpandedDetailField(null);
+        expandedDetailRef.current = null;
+        setDetailLoading(null);
+      }
       setDetailDirty((prev) => ({ ...prev, [field]: false }));
       switch (field) {
         case "range":
@@ -734,11 +742,14 @@ export default function SpellEditor() {
   };
 
   /** Serialize current structured value for a detail field to form text (for collapse/save). */
-  const serializeDetailField = (field: DetailFieldKey) => {
+  const serializeDetailField = (field: DetailFieldKey): DetailTextOverrides => {
+    const overrides: DetailTextOverrides = {};
+
     switch (field) {
       case "range":
         if (structuredRange) {
           const text = rangeToText(structuredRange);
+          overrides.range = text;
           setForm((prev) => ({ ...prev, range: text }));
         }
         break;
@@ -749,43 +760,64 @@ export default function SpellEditor() {
           comp,
           structuredMaterialComponents,
         );
-        setForm((prev) => ({ ...prev, components: cs, materialComponents: ms }));
+        if (field === "materialComponents" && !detailDirty.components) {
+          overrides.materialComponents = ms;
+          setForm((prev) => ({ ...prev, materialComponents: ms }));
+        } else {
+          overrides.components = cs;
+          overrides.materialComponents = ms;
+          setForm((prev) => ({ ...prev, components: cs, materialComponents: ms }));
+        }
         break;
       }
       case "duration":
         if (structuredDuration) {
-          setForm((prev) => ({ ...prev, duration: durationToText(structuredDuration) }));
+          const text = durationToText(structuredDuration);
+          overrides.duration = text;
+          setForm((prev) => ({ ...prev, duration: text }));
         }
         break;
       case "castingTime":
         if (structuredCastingTime) {
-          setForm((prev) => ({ ...prev, castingTime: castingTimeToText(structuredCastingTime) }));
+          const text = castingTimeToText(structuredCastingTime);
+          overrides.castingTime = text;
+          setForm((prev) => ({ ...prev, castingTime: text }));
         }
         break;
       case "area":
         if (structuredArea) {
-          setForm((prev) => ({ ...prev, area: areaToText(structuredArea) }));
+          const text = areaToText(structuredArea);
+          overrides.area = text;
+          setForm((prev) => ({ ...prev, area: text }));
         }
         break;
       case "savingThrow":
         if (structuredSavingThrow) {
-          setForm((prev) => ({ ...prev, savingThrow: savingThrowToText(structuredSavingThrow) }));
+          const text = savingThrowToText(structuredSavingThrow);
+          overrides.savingThrow = text;
+          setForm((prev) => ({ ...prev, savingThrow: text }));
         }
         break;
       case "damage":
         if (structuredDamage) {
-          setForm((prev) => ({ ...prev, damage: damageToText(structuredDamage) }));
+          const text = damageToText(structuredDamage);
+          overrides.damage = text;
+          setForm((prev) => ({ ...prev, damage: text }));
         }
         break;
       case "magicResistance":
         if (structuredMagicResistance) {
+          const text = magicResistanceToText(structuredMagicResistance);
+          overrides.magicResistance = text;
           setForm((prev) => ({
             ...prev,
-            magicResistance: magicResistanceToText(structuredMagicResistance),
+            magicResistance: text,
           }));
         }
         break;
     }
+
+    return overrides;
   };
 
   const emptySpellComponents = (): SpellComponents => ({
@@ -860,18 +892,21 @@ export default function SpellEditor() {
   };
 
   /** Collapse current expanded field; if dirty, serialize to canon line. */
-  const collapseExpandedField = () => {
-    if (expandedDetailField === null) return;
+  const collapseExpandedField = (): DetailTextOverrides => {
+    if (expandedDetailField === null) return {};
+
+    let overrides: DetailTextOverrides = {};
     if (detailDirty[expandedDetailField]) {
-      serializeDetailField(expandedDetailField);
+      overrides = serializeDetailField(expandedDetailField);
     }
     setExpandedDetailField(null);
+    return overrides;
   };
 
   /** Expand a detail field; collapse current first. Populate from canonical_data or parse on first open. */
   const expandDetailField = async (field: DetailFieldKey) => {
     if (expandedDetailField === field) return;
-    collapseExpandedField();
+    const serializedOverrides = collapseExpandedField();
 
     setExpandedDetailField(field);
     expandedDetailRef.current = field;
@@ -881,6 +916,10 @@ export default function SpellEditor() {
     const requestId = expandRequestId.current;
 
     const getLegacy = (): string => {
+      if (Object.prototype.hasOwnProperty.call(serializedOverrides, field)) {
+        return serializedOverrides[field] ?? "";
+      }
+
       let stateVal = "";
       switch (field) {
         case "range":
@@ -1023,8 +1062,16 @@ export default function SpellEditor() {
         case "components":
         case "materialComponents":
           {
-            const compLegacy = form.components?.trim();
-            const matLegacy = form.materialComponents?.trim();
+            const compLegacy = (
+              Object.prototype.hasOwnProperty.call(serializedOverrides, "components")
+                ? serializedOverrides.components
+                : form.components
+            )?.trim();
+            const matLegacy = (
+              Object.prototype.hasOwnProperty.call(serializedOverrides, "materialComponents")
+                ? serializedOverrides.materialComponents
+                : form.materialComponents
+            )?.trim();
             const hasComponentText = !!compLegacy;
             const hasMaterialText = !!matLegacy;
 
@@ -1093,14 +1140,26 @@ export default function SpellEditor() {
         case "components":
         case "materialComponents":
           {
-            const hasComponentText = !!form.components?.trim();
-            const hasMaterialText = !!form.materialComponents?.trim();
+            const componentsLegacy = Object.prototype.hasOwnProperty.call(
+              serializedOverrides,
+              "components",
+            )
+              ? (serializedOverrides.components ?? "")
+              : (form.components ?? "");
+            const materialComponentsLegacy = Object.prototype.hasOwnProperty.call(
+              serializedOverrides,
+              "materialComponents",
+            )
+              ? (serializedOverrides.materialComponents ?? "")
+              : (form.materialComponents ?? "");
+            const hasComponentText = !!componentsLegacy.trim();
+            const hasMaterialText = !!materialComponentsLegacy.trim();
             if (hasComponentText || hasMaterialText) {
               setStructuredComponents(
-                inferSpellComponentsFromLegacy(form.components ?? "", hasMaterialText),
+                inferSpellComponentsFromLegacy(componentsLegacy, hasMaterialText),
               );
               setStructuredMaterialComponents(
-                form.materialComponents ? [{ name: form.materialComponents, quantity: 1.0 }] : [],
+                materialComponentsLegacy ? [{ name: materialComponentsLegacy, quantity: 1.0 }] : [],
               );
             } else {
               setStructuredComponents(null);
@@ -1214,23 +1273,36 @@ export default function SpellEditor() {
       if (detailDirty.magicResistance && structuredMagicResistance) {
         formOverrides.magicResistance = magicResistanceToText(structuredMagicResistance);
       }
-      if ((detailDirty.components || detailDirty.materialComponents) && structuredComponents) {
+      const componentsDirty = detailDirty.components;
+      const materialComponentsDirty = detailDirty.materialComponents;
+      const anyComponentsFieldDirty = componentsDirty || materialComponentsDirty;
+
+      if (anyComponentsFieldDirty && structuredComponents) {
         const { components: cs, materialComponents: ms } = componentsToText(
           structuredComponents,
           structuredMaterialComponents,
         );
-        formOverrides.components = cs;
-        formOverrides.materialComponents = ms;
-      } else if (
-        (detailDirty.components || detailDirty.materialComponents) &&
-        !structuredComponents
-      ) {
+        if (componentsDirty) {
+          formOverrides.components = cs;
+          formOverrides.materialComponents = ms;
+        } else {
+          formOverrides.materialComponents = ms;
+        }
+      } else if (anyComponentsFieldDirty && !structuredComponents) {
         const { components: cs, materialComponents: ms } = componentsToText(
           emptySpellComponents(),
           structuredMaterialComponents,
         );
-        formOverrides.components = cs;
-        formOverrides.materialComponents = ms;
+        if (componentsDirty) {
+          formOverrides.components = cs;
+          formOverrides.materialComponents = ms;
+        } else {
+          formOverrides.materialComponents = ms;
+        }
+      }
+
+      if (Object.keys(formOverrides).length > 0) {
+        setForm((prev) => ({ ...prev, ...formOverrides }));
       }
 
       const comp = structuredComponents ?? {

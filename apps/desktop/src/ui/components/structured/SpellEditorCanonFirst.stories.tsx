@@ -40,7 +40,11 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** One canon row: label, single-line input, expand control. */
+/**
+ * Simplified illustrative row used only by Storybook canon-first stories.
+ * Real production behavior lives in SpellEditor.tsx and includes additional
+ * logic such as focus management, dirty tracking, and loading/async parser state.
+ */
 function CanonRow({
   label,
   testIdPrefix,
@@ -204,6 +208,29 @@ export const CollapsedWithSpecialIndicator: Story = {
           onExpandToggle={() => {}}
           isSpecial
         />
+      </div>
+    );
+  },
+};
+
+/** Expanded field in loading state: matches production canon-first loading indicator. */
+export const LoadingState: Story = {
+  render: function LoadingStateStory() {
+    return (
+      <div className="space-y-3 text-sm max-w-md">
+        <span className="block text-sm text-neutral-400">Details</span>
+        <CanonRow
+          label="Range"
+          testIdPrefix="detail-range"
+          value="30 ft"
+          onValueChange={() => {}}
+          expanded
+          onExpandToggle={() => {}}
+        >
+          <div className="text-sm text-neutral-500" data-testid="detail-range-loading">
+            Loading…
+          </div>
+        </CanonRow>
       </div>
     );
   },

@@ -30,6 +30,15 @@ pnpm tauri:dev
 > **Do not launch the `.exe` directly** from the `src-tauri/target/debug` folder; it will show a blank screen unless the Vite server is already running and reachable.
 > For a standalone executable, you must use `pnpm tauri:build` to bundle the frontend assets into the binary.
 
+Backend runtime logging (Tauri/Rust) uses structured `tracing` logs. For local verbosity while developing, set `RUST_LOG` before starting Tauri:
+
+```powershell
+$env:RUST_LOG="info,spellbook_desktop=debug"
+pnpm tauri:dev
+```
+
+Runtime logging is initialized in `apps/desktop/src-tauri/src/lib.rs` and `apps/desktop/src-tauri/src/main.rs`.
+
 If you want to run just the web UI for quick iteration:
 ```bash
 pnpm dev

@@ -236,6 +236,356 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("Casting Time expand/edit/collapse updates canon line and persists after save", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Casting Time Round Trip ${runId}`;
+
+    await test.step("Create spell and open", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Casting time round-trip.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-casting-time-input").fill("1 round");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-casting-time-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Expand Casting Time, edit structured form, collapse", async () => {
+      await page.getByTestId("detail-casting-time-expand").click();
+      await expect(page.getByTestId("casting-time-base-value")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("casting-time-base-value").fill("2");
+      await page.getByTestId("casting-time-per-level").fill("1");
+      await page.getByTestId("casting-time-level-divisor").fill("3");
+      await page.getByTestId("casting-time-unit").selectOption("round");
+      await page.getByTestId("detail-casting-time-expand").click();
+      await expect(page.getByTestId("casting-time-base-value")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Canon line updates from structured serialization", async () => {
+      await expect(page.getByTestId("detail-casting-time-input")).toHaveValue(
+        "2 + 1/3/level round",
+      );
+    });
+
+    await test.step("Save and reopen; persisted value remains", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-casting-time-input")).toHaveValue(
+        "2 + 1/3/level round",
+      );
+    });
+  });
+
+  test("Area expand/edit/collapse updates canon line and persists after save", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Area Round Trip ${runId}`;
+
+    await test.step("Create spell and open", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Area round-trip.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-area-input").fill("Point");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-area-input")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Expand Area, edit structured form, collapse", async () => {
+      await page.getByTestId("detail-area-expand").click();
+      await expect(page.getByTestId("area-form-kind")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("area-form-kind").selectOption("radius_sphere");
+      await page.getByTestId("area-form-radius-value").fill("20");
+      await page.getByTestId("area-form-shape-unit").selectOption("ft");
+      await page.getByTestId("detail-area-expand").click();
+      await expect(page.getByTestId("area-form-kind")).not.toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Canon line updates from structured serialization", async () => {
+      await expect(page.getByTestId("detail-area-input")).toHaveValue("20-ft radius (sphere)");
+    });
+
+    await test.step("Save and reopen; persisted value remains", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-area-input")).toHaveValue("20-ft radius (sphere)");
+    });
+  });
+
+  test("Damage expand/edit/collapse updates canon line and persists after save", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Damage Round Trip ${runId}`;
+
+    await test.step("Create spell and open", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Damage round-trip.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-damage-input").fill("");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-damage-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Expand Damage, edit structured form, collapse", async () => {
+      await page.getByTestId("detail-damage-expand").click();
+      await expect(page.getByTestId("damage-form-kind")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("damage-form-kind").selectOption("modeled");
+      await page.getByTestId("damage-form-part-formula").first().fill("2d8");
+      await page.getByTestId("detail-damage-expand").click();
+      await expect(page.getByTestId("damage-form-kind")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Canon line updates from structured serialization", async () => {
+      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire (half save)");
+    });
+
+    await test.step("Save and reopen; persisted value remains", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire (half save)");
+    });
+  });
+
+  test("Range save while expanded and dirty persists structured serialization", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Range Save Expanded Dirty ${runId}`;
+
+    await test.step("Create spell and open", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Range save while expanded.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-range-input").fill("10 feet");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-range-input")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Expand Range, edit structured form, save without collapsing", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("range-base-value").fill("45");
+      await page.getByTestId("range-unit").selectOption("yd");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen and verify canon line reflects structured edit", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-range-input")).toHaveValue("45 yd", {
+        timeout: TIMEOUTS.short,
+      });
+    });
+  });
+
+  test("Failed save after structured range edit keeps canon text synchronized and stays on editor", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Failed Save Structured Sync ${runId}`;
+
+    await test.step("Create spell and open editor for update path", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Failed save structured sync test.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-range-input").fill("10 ft");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-range-input")).toHaveValue("10 ft", {
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Expand range, make structured edit, and set deterministic backend-rejected payload", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("range-base-value").fill("60");
+      await page.getByTestId("range-unit").selectOption("ft");
+
+      await page.getByTestId("spell-level-input").fill("10");
+      await page.getByTestId("spell-classes-input").fill("Cleric");
+      await expect(page.getByTestId("range-base-value")).toHaveValue("60");
+    });
+
+    await test.step("Save shows error modal, canon remains synchronized, and editor stays open", async () => {
+      await page.getByTestId("btn-save-spell").click();
+
+      const saveErrorDialog = page.getByRole("dialog");
+      await expect(saveErrorDialog).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(saveErrorDialog.getByRole("heading", { name: "Save Error" })).toBeVisible();
+      await expect(saveErrorDialog).toContainText("Failed to save");
+      await expect(saveErrorDialog).toContainText("Arcane casters (Wizard/Mage)");
+      await handleCustomModal(page, "OK");
+
+      await expect(page.getByRole("heading", { name: "Edit Spell" })).toBeVisible();
+      await expect(page).toHaveURL(/\/edit\/\d+/, { timeout: TIMEOUTS.short });
+      await expect(page.getByRole("heading", { name: "Library" })).not.toBeVisible();
+      await expect(page.getByTestId("detail-range-input")).toHaveValue("60 ft", {
+        timeout: TIMEOUTS.medium,
+      });
+    });
+  });
+
+  test("Rapid expand toggling race guard leaves only Duration expanded", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Rapid Expand Toggle ${runId}`;
+
+    await test.step("Create spell and open", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Rapid expand race guard.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-range-input").fill("30 ft");
+      await page.getByTestId("detail-duration-input").fill("1 round");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-range-expand")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("detail-duration-expand")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Rapidly toggle Range then Duration expansion", async () => {
+      await page.evaluate(() => {
+        const rangeExpand = document.querySelector('[data-testid="detail-range-expand"]');
+        const durationExpand = document.querySelector('[data-testid="detail-duration-expand"]');
+        rangeExpand?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        durationExpand?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+    });
+
+    await test.step("Duration remains expanded and Range is collapsed", async () => {
+      await expect(page.getByTestId("detail-duration-expand")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      await expect(page.getByTestId("detail-range-expand")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("range-kind-select")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+  });
+
+  test("Duration parser fallback special is preserved across expand/collapse/save", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Duration Fallback Preserve ${runId}`;
+    const fallbackDuration = "duration?? totally_unparseable_value";
+
+    await test.step("Create spell with deterministic unparseable duration text", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Special fallback preservation behavior.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Alteration");
+      await page.getByTestId("detail-duration-input").fill(fallbackDuration);
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Expand Duration and assert special/fallback indicators", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(fallbackDuration, {
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("detail-duration-special-hint")).toBeVisible();
+      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toBeVisible();
+    });
+
+    await test.step("Collapse, save, and verify fallback text/indicator persisted", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByText("(special)")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(fallbackDuration, {
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByText("(special)")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+  });
+
   test("Only one detail field expanded at a time: expanding B while A is open collapses A and expands B", async ({
     appContext,
   }) => {
@@ -291,6 +641,112 @@ test.describe("Spell Editor canon-first default", () => {
         "true",
       );
       await expect(page.locator("#detail-range-panel")).toHaveCount(0);
+    });
+  });
+
+  test("Editing canon detail input while expanded collapses same field panel and preserves text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Canon Edit Collapses Expanded ${runId}`;
+    const editedRangeText = "40 yards";
+
+    await test.step("Create and open spell", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Range collapse regression test.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-range-input").fill("30 ft");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-range-input")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Expand Range structured panel", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-range-expand")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      await expect(page.locator("#detail-range-panel")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Type into detail-range-input while expanded", async () => {
+      await page.getByTestId("detail-range-input").fill(editedRangeText);
+    });
+
+    await test.step("Range panel collapses and canon input retains typed text", async () => {
+      await expect(page.getByTestId("detail-range-expand")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await expect(page.locator("#detail-range-panel")).toHaveCount(0);
+      await expect(page.getByTestId("detail-range-input")).toHaveValue(editedRangeText);
+    });
+  });
+
+  test("Material-only structured edit updates material canon text without overwriting components canon text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Material Only Edit Preserves Components ${runId}`;
+    const componentsText = "V, S, M";
+    const initialMaterialText = "powdered silver";
+    const editedMaterialName = "powdered ruby";
+
+    await test.step("Create and open spell with components and material canon text", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Material-only structured edit should not overwrite components text.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-components-input").fill(componentsText);
+      await page.getByTestId("detail-material-components-input").fill(initialMaterialText);
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-components-input")).toHaveValue(componentsText, {
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("detail-material-components-input")).toHaveValue(
+        initialMaterialText,
+      );
+    });
+
+    await test.step("Expand material row only, edit structured material, then collapse", async () => {
+      await page.getByTestId("detail-material-components-expand").click();
+      await expect(page.getByTestId("material-component-name").first()).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("material-component-name").first().fill(editedMaterialName);
+      await page.getByTestId("detail-material-components-expand").click();
+      await expect(page.getByTestId("detail-material-components-expand")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    });
+
+    await test.step("Components canon text remains unchanged while material canon text is updated", async () => {
+      await expect(page.getByTestId("detail-components-input")).toHaveValue(componentsText);
+      await expect(page.getByTestId("detail-material-components-input")).not.toHaveValue(
+        initialMaterialText,
+      );
+      await expect(page.getByTestId("detail-material-components-input")).toHaveValue(
+        new RegExp(editedMaterialName, "i"),
+      );
     });
   });
 

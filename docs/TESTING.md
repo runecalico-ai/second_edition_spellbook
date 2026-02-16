@@ -34,7 +34,7 @@ cargo test canonical_spell
 cargo test parsers::duration
 cargo test migration_manager
 
-# Show println! output during tests
+# Show captured test output during tests
 cargo test -- --nocapture
 
 # Run tests matching a pattern
@@ -43,6 +43,21 @@ cargo test test_parse_duration
 # Run a single specific test
 cargo test test_issue_2_duration_parsing_value_zero -- --exact
 ```
+
+To increase backend runtime log verbosity during tests, set `RUST_LOG` before running commands:
+
+```powershell
+# PowerShell
+$env:RUST_LOG="info,spellbook_desktop=debug"
+cargo test -- --nocapture
+```
+
+```bash
+# bash/zsh
+RUST_LOG=info,spellbook_desktop=debug cargo test -- --nocapture
+```
+
+`-- --nocapture` shows test output; backend runtime and command diagnostics should use `tracing::{info, warn, error, debug}` rather than `println!`/`eprintln!`.
 
 ### Parser Testing
 

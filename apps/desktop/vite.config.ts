@@ -4,18 +4,32 @@ import { storybookTest } from "@storybook/addon-vitest/vitest-plugin";
 /// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
+import type { UserConfig as ViteUserConfig } from "vite";
+import type { InlineConfig } from "vitest/node";
 const dirname =
   typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
-export default defineConfig({
+const config = {
   plugins: [react()],
   server: {
     host: "127.0.0.1",
   },
   test: {
+    reporters: ["verbose", "junit"],
+    outputFile: {
+      junit: "./test-results/storybook-junit.xml",
+    },
     projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          environment: "node",
+          include: ["src/**/*.test.{ts,tsx}"],
+        },
+      },
       {
         extends: true,
         plugins: [
@@ -42,13 +56,10 @@ export default defineConfig({
           bail: 0,
           // Increase timeout for complex stories
           testTimeout: 30000,
-          // Better error reporting
-          reporter: ["verbose", "junit"],
-          outputFile: {
-            junit: "./test-results/storybook-junit.xml",
-          },
         },
       },
     ],
   },
-});
+} satisfies ViteUserConfig & { test: InlineConfig };
+
+export default defineConfig(config as unknown as Parameters<typeof defineConfig>[0]);

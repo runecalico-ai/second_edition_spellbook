@@ -604,32 +604,9 @@ pub fn parse_spell_components_with_migration(
     legacy_components: String,
     legacy_materials: Option<String>,
 ) -> Result<Value, AppError> {
-    eprintln!(
-        "[parse_spell_components_with_migration] legacy_components: '{}'",
-        legacy_components
-    );
-    eprintln!(
-        "[parse_spell_components_with_migration] legacy_materials: {:?}",
-        legacy_materials
-    );
-
     let parser = SpellParser::new();
-    let _ = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("C:\\Users\\vitki\\OneDrive\\GitHub\\runecalico-ai\\second_edition_spellbook\\apps\\desktop\\tests\\backend.log")
-        .map(|mut f| {
-            use std::io::Write;
-            writeln!(f, "[{}] components: '{}', materials: '{:?}'",
-                chrono::Local::now().format("%H:%M:%S"),
-                legacy_components, legacy_materials).ok();
-        });
 
     let components = parser.parse_components(&legacy_components);
-    eprintln!(
-        "[parse_spell_components_with_migration] parsed components.material: {}",
-        components.material
-    );
 
     let materials = if let Some(mat_text) = legacy_materials.filter(|s| !s.trim().is_empty()) {
         parser.parse_material_components(&mat_text)

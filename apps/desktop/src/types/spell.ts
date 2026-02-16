@@ -586,7 +586,7 @@ export function areaToText(spec: AreaSpec): string {
 
 /** Format saving throw spec for display/storage. */
 export function savingThrowToText(spec: SavingThrowSpec): string {
-  if (spec.kind === "none") return "";
+  if (spec.kind === "none") return "None";
   if (spec.kind === "dm_adjudicated") return spec.dmGuidance ?? "DM adjudicated";
   if (spec.kind === "single" && spec.single) {
     const s = spec.single;
@@ -606,7 +606,7 @@ export function savingThrowToText(spec: SavingThrowSpec): string {
 
 /** Format magic resistance spec for display/storage. */
 export function magicResistanceToText(spec: MagicResistanceSpec): string {
-  if (spec.kind === "unknown") return "";
+  if (spec.kind === "unknown") return "N/A";
   if (spec.kind === "special") return spec.specialRule ?? "Special";
   if (spec.kind === "normal") return "Yes";
   if (spec.kind === "ignores_mr") return "No";

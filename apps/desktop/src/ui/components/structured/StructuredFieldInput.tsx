@@ -207,6 +207,7 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
               if (RANGE_DISTANCE_KINDS.includes(kind as (typeof RANGE_DISTANCE_KINDS)[number])) {
                 next.unit = spec.unit ?? "ft";
                 next.distance = spec.distance ?? { mode: "fixed", value: 0 };
+                next.rawLegacyValue = undefined;
               } else if (kind !== "special") {
                 next.unit = undefined;
                 next.distance = undefined;
@@ -300,12 +301,15 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
               if (kind === "time") {
                 next.unit = spec.unit ?? "round";
                 next.duration = spec.duration ?? { mode: "fixed", value: 1 };
+                next.rawLegacyValue = undefined;
               } else if (kind === "usage_limited") {
                 next.uses = spec.uses ?? { mode: "fixed", value: 1 };
+                next.rawLegacyValue = undefined;
               } else if (
                 DURATION_CONDITION_KINDS.includes(kind as (typeof DURATION_CONDITION_KINDS)[number])
               ) {
                 next.condition = spec.condition ?? "";
+                next.rawLegacyValue = undefined;
               } else if (kind !== "special") {
                 next.unit = undefined;
                 next.duration = undefined;
@@ -464,7 +468,10 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
           data-testid="casting-time-unit"
           aria-label="Casting time unit"
           value={ct.unit}
-          onChange={(e) => updateCt({ unit: e.target.value as CastingTimeUnit })}
+          onChange={(e) => {
+            const unit = e.target.value as CastingTimeUnit;
+            updateCt(unit === "special" ? { unit } : { unit, rawLegacyValue: undefined });
+          }}
           className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
         >
           {(Object.entries(CASTING_TIME_UNIT_LABELS) as [CastingTimeUnit, string][]).map(

@@ -66,6 +66,15 @@ To maintain consistency across the stack, we use distinct casing standards for d
 *   This ensures alignment with the canonical schema (`src-tauri/schemas/spell.schema.json`) and external resource standards.
 *   Do not use `camelCase` for fields that contribute to the `content_hash`.
 
+### 4. Backend Logging (Rust/Tauri)
+*   Use structured logging via `tracing::{info, warn, error, debug}` in backend runtime and command paths.
+*   Prefer `tracing` macros over `println!`/`eprintln!` for runtime diagnostics.
+*   Logging is initialized in `apps/desktop/src-tauri/src/lib.rs` and `apps/desktop/src-tauri/src/main.rs` using `tracing-subscriber` with `EnvFilter::try_from_default_env()` and a default `info` filter.
+*   Set `RUST_LOG` locally to increase verbosity when needed:
+    *   PowerShell: `$env:RUST_LOG="info,spellbook_desktop=debug"`
+    *   bash/zsh: `RUST_LOG=info,spellbook_desktop=debug`
+*   Scope note: migration/report CLI workflows may still write to `migration.log` and/or stdout/stderr.
+
 ---
 
 ## Testing
@@ -78,7 +87,7 @@ cd apps/desktop/src-tauri
 cargo test                           # Run all tests
 cargo test --lib                     # Run library tests only
 cargo test canonical_spell           # Run specific module tests
-cargo test -- --nocapture            # Show println! output
+cargo test -- --nocapture            # Show captured test output (including tracing when enabled)
 ```
 
 **Parser Tests**:

@@ -28,6 +28,8 @@ hex = "0.4.3"
 tauri-plugin-fs = "2.4.5"
 jsonschema = "0.17"
 unicode-normalization = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

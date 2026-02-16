@@ -65,19 +65,21 @@ pub enum DamageType {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct DiceTerm {
     pub count: i32,
     pub sides: i32,
-    #[serde(default)]
+    #[serde(default, alias = "per_die_modifier")]
     pub per_die_modifier: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct DicePool {
     pub terms: Vec<DiceTerm>,
-    #[serde(default)]
+    #[serde(default, alias = "flat_modifier")]
     pub flat_modifier: i32,
 }
 
@@ -120,19 +122,32 @@ pub struct LevelBand {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ScalingRule {
     pub kind: ScalingKind,
     pub driver: ScalingDriver,
     #[serde(default = "default_step")]
     pub step: i32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_steps")]
     pub max_steps: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "dice_increment"
+    )]
     pub dice_increment: Option<DiceTerm>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "flat_increment"
+    )]
     pub flat_increment: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "level_bands"
+    )]
     pub level_bands: Option<Vec<LevelBand>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
@@ -143,11 +158,12 @@ fn default_step() -> i32 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ClampSpec {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "min_total")]
     pub min_total: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_total")]
     pub max_total: Option<i32>,
 }
 
@@ -192,12 +208,13 @@ pub enum TickDriver {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ApplicationSpec {
     pub scope: ApplicationScope,
     #[serde(default = "default_step")]
     pub ticks: i32,
-    #[serde(default = "default_tick_driver")]
+    #[serde(default = "default_tick_driver", alias = "tick_driver")]
     pub tick_driver: TickDriver,
 }
 
@@ -232,6 +249,7 @@ pub enum DamageSaveKind {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct DamageSavePartial {
     pub numerator: i32,
@@ -248,6 +266,7 @@ impl Default for DamageSavePartial {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct DamageSaveSpec {
     pub kind: DamageSaveKind,
@@ -270,20 +289,26 @@ pub enum MrInteraction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct DamagePart {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    #[serde(alias = "damage_type")]
     pub damage_type: DamageType,
     pub base: DicePool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "scaling")]
     pub scaling: Option<Vec<ScalingRule>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "clamp_total"
+    )]
     pub clamp_total: Option<ClampSpec>,
     pub application: ApplicationSpec,
     pub save: DamageSaveSpec,
-    #[serde(default = "default_mr_interaction")]
+    #[serde(default = "default_mr_interaction", alias = "mr_interaction")]
     pub mr_interaction: MrInteraction,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
@@ -294,19 +319,28 @@ fn default_mr_interaction() -> MrInteraction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SpellDamageSpec {
     pub kind: DamageKind,
-    #[serde(default)]
+    #[serde(default, alias = "combine_mode")]
     pub combine_mode: DamageCombineMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "parts")]
     pub parts: Option<Vec<DamagePart>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "dm_guidance"
+    )]
     pub dm_guidance: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     /// When parsing fails or kind is DmAdjudicated, the original legacy string is stored here.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "raw_legacy_value"
+    )]
     pub raw_legacy_value: Option<String>,
 }
 

@@ -35,6 +35,8 @@ Fields to expose as canon text (labels + single-line or short text). The UI MUST
 -   **Magic Resistance** (always shown; empty when no value, as a visual aid)
 -   **Description** (existing textarea)
 
+The implementation MAY expose **Material Component** as a separate canon row (single-line input + expand control); when implemented, the same collapse/expand and dirty serialization rules apply as for other detail fields (e.g. Components). The optional row, when present, appears after the eight standard rows and before Description.
+
 The rest of the editor (name, level, school, sphere, class list, source, edition, author, license, tags, reversible, quest, cantrip) is unchanged and out of scope for canon-first UX; canon-first applies only to this details block.
 
 Data flow remains: these strings are stored in the flat columns; backend (and optional background job) can parse them to fill `canonical_data` for hashing/search. The editor does not require the user to touch structured form for normal editing.

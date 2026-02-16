@@ -4,6 +4,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::{error, info, warn};
 
 pub type Pool = r2d2::Pool<SqliteConnectionManager>;
 
@@ -81,7 +82,7 @@ fn install_sqlite_vec_if_needed(
 
 fn try_load_sqlite_vec(conn: &Connection, data_dir: &Path) {
     if unsafe { conn.load_extension_enable() }.is_err() {
-        eprintln!("sqlite-vec: unable to enable SQLite extension loading.");
+        warn!("sqlite-vec: unable to enable SQLite extension loading");
         return;
     }
 
@@ -92,25 +93,18 @@ fn try_load_sqlite_vec(conn: &Connection, data_dir: &Path) {
         }
         match unsafe { conn.load_extension(&candidate, None) } {
             Ok(()) => {
-                eprintln!("sqlite-vec: loaded extension from {}", candidate.display());
+                info!(path = %candidate.display(), "sqlite-vec: loaded extension");
                 loaded = true;
                 break;
             }
             Err(err) => {
-                eprintln!(
-                    "sqlite-vec: failed to load extension from {}: {}",
-                    candidate.display(),
-                    err
-                );
+                warn!(path = %candidate.display(), error = %err, "sqlite-vec: failed to load extension");
             }
         }
     }
 
     if !loaded {
-        eprintln!(
-            "sqlite-vec: extension not loaded. Ensure vec0 is bundled into {}.",
-            data_dir.display()
-        );
+        warn!(data_dir = %data_dir.display(), "sqlite-vec: extension not loaded; ensure vec0 is bundled");
     }
 
     let _ = conn.load_extension_disable();
@@ -129,7 +123,7 @@ pub fn init_db(resource_dir: Option<&Path>, run_backfill: bool) -> Result<Pool, 
         super::migrations::load_migrations(&conn)?;
         if run_backfill {
             if let Err(e) = crate::utils::migration_manager::run_hash_backfill(&conn, &data_dir) {
-                eprintln!("Hash backfill failed: {}", e);
+                error!(error = %e, "Hash backfill failed");
             }
         }
     }

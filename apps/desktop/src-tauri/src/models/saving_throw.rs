@@ -115,16 +115,18 @@ pub struct SaveOutcomeEffect {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SingleSave {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[serde(alias = "save_type")]
     pub save_type: SaveType,
-    #[serde(default)]
+    #[serde(default, alias = "save_vs")]
     pub save_vs: SaveVs,
     #[serde(default)]
     pub modifier: i32,
-    #[serde(default)]
+    #[serde(default, alias = "applies_to")]
     pub applies_to: SaveAppliesTo,
     #[serde(default)]
     pub timing: SaveTiming,
@@ -133,6 +135,7 @@ pub struct SingleSave {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SavingThrowSpec {
     pub kind: SavingThrowKind,
@@ -140,7 +143,11 @@ pub struct SavingThrowSpec {
     pub single: Option<SingleSave>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multiple: Option<Vec<SingleSave>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "dm_guidance"
+    )]
     pub dm_guidance: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,

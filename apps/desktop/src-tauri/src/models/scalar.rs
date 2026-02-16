@@ -23,20 +23,21 @@ pub enum ScalarRounding {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SpellScalar {
     pub mode: ScalarMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "per_level")]
     pub per_level: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "min_level")]
     pub min_level: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_level")]
     pub max_level: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "cap_value")]
     pub cap_value: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "cap_level")]
     pub cap_level: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rounding: Option<ScalarRounding>,

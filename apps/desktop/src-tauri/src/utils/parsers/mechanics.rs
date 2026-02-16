@@ -229,9 +229,10 @@ impl MechanicsParser {
 
     pub fn parse_magic_resistance(&self, input: &str) -> MagicResistanceSpec {
         let input_clean = input.trim();
-        if input_clean.is_empty() || input_clean == "0" {
+        if input_clean.is_empty() || input_clean == "0" || input_clean.eq_ignore_ascii_case("None")
+        {
             return MagicResistanceSpec {
-                kind: MagicResistanceKind::IgnoresMr,
+                kind: MagicResistanceKind::Unknown,
                 ..Default::default()
             };
         }
@@ -243,7 +244,8 @@ impl MechanicsParser {
 
         if lower.contains("special") || lower.contains("standard") {
             kind = MagicResistanceKind::Special;
-        } else if lower.contains("none") || lower == "0" || lower == "no" {
+        } else if lower == "no" || lower == "n/a" || lower.contains("not ") || lower.contains("no ")
+        {
             kind = MagicResistanceKind::IgnoresMr;
         } else if lower.contains("partial") || lower.contains("applies only to") {
             kind = MagicResistanceKind::Partial;
@@ -639,12 +641,24 @@ mod tests {
         let mr1 = parser.parse_magic_resistance("Yes");
         assert_eq!(mr1.kind, MagicResistanceKind::Normal); // Default if not special/none
 
-        // None
+        // "None" = unknown/unspecified (not the same as "No"/"ignores MR")
         let mr2 = parser.parse_magic_resistance("None");
-        assert_eq!(mr2.kind, MagicResistanceKind::IgnoresMr);
+        assert_eq!(mr2.kind, MagicResistanceKind::Unknown);
 
         // Special
         let mr3 = parser.parse_magic_resistance("Special");
         assert_eq!(mr3.kind, MagicResistanceKind::Special);
+
+        // "No" = explicitly ignores MR
+        let mr4 = parser.parse_magic_resistance("No");
+        assert_eq!(mr4.kind, MagicResistanceKind::IgnoresMr);
+
+        // Empty string = unknown
+        let mr5 = parser.parse_magic_resistance("");
+        assert_eq!(mr5.kind, MagicResistanceKind::Unknown);
+
+        // "0" = unknown (not "ignores MR")
+        let mr6 = parser.parse_magic_resistance("0");
+        assert_eq!(mr6.kind, MagicResistanceKind::Unknown);
     }
 }

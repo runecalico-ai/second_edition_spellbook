@@ -1,6 +1,6 @@
-import { test, expect } from "./fixtures/test-fixtures";
-import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
+import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 test.describe("Character Search & Filtering", () => {
   test("should filter characters by name, type, race, class, and level", async ({ appContext }) => {

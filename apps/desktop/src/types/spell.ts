@@ -72,14 +72,13 @@ export type SpellUpdate = SpellDetail & {
   id: number;
 };
 
-export type SpellCreate = Omit<SpellDetail, "id" | "artifacts" | "contentHash" | "canonicalData" | "schemaVersion">;
+export type SpellCreate = Omit<
+  SpellDetail,
+  "id" | "artifacts" | "contentHash" | "canonicalData" | "schemaVersion"
+>;
 
 /** Range kinds that include distance + unit */
-export const RANGE_DISTANCE_KINDS = [
-  "distance",
-  "distance_los",
-  "distance_loe",
-] as const;
+export const RANGE_DISTANCE_KINDS = ["distance", "distance_los", "distance_loe"] as const;
 /** Range kinds that are kind-only (no distance/unit) */
 export const RANGE_KIND_ONLY = [
   "personal",
@@ -123,11 +122,7 @@ export const DURATION_KIND_ONLY = [
   "until_dispelled",
   "concentration",
 ] as const;
-export const DURATION_CONDITION_KINDS = [
-  "conditional",
-  "until_triggered",
-  "planar",
-] as const;
+export const DURATION_CONDITION_KINDS = ["conditional", "until_triggered", "planar"] as const;
 
 export type DurationKind =
   | (typeof DURATION_KIND_ONLY)[number]
@@ -271,13 +266,7 @@ export type AreaUnit =
   | "room"
   | "floor";
 export type TileUnit = "hex" | "room" | "floor" | "square";
-export type CountSubject =
-  | "creature"
-  | "undead"
-  | "ally"
-  | "enemy"
-  | "object"
-  | "structure";
+export type CountSubject = "creature" | "undead" | "ally" | "enemy" | "object" | "structure";
 
 export interface AreaSpec {
   kind: AreaKind;
@@ -356,7 +345,13 @@ export interface SaveSpec {
 }
 
 export type ScalingKind = "add_dice_per_step" | "add_flat_per_step" | "set_base_by_level_band";
-export type ScalingDriver = "caster_level" | "spell_level" | "target_hd" | "target_level" | "choice" | "other";
+export type ScalingDriver =
+  | "caster_level"
+  | "spell_level"
+  | "target_hd"
+  | "target_level"
+  | "choice"
+  | "other";
 
 export interface LevelBand {
   min: number;
@@ -423,7 +418,13 @@ export type SaveType =
   | "breath_weapon"
   | "spell"
   | "special";
-export type SaveOutcome = "no_effect" | "reduced_effect" | "full_effect" | "partial_damage_only" | "partial_non_damage_only" | "special";
+export type SaveOutcome =
+  | "no_effect"
+  | "reduced_effect"
+  | "full_effect"
+  | "partial_damage_only"
+  | "partial_non_damage_only"
+  | "special";
 
 export interface SaveOutcomeEffect {
   result: SaveOutcome;
@@ -534,7 +535,8 @@ export function formatDicePool(pool: DicePool): string {
 /** Format damage spec for display/storage. */
 export function damageToText(spec: SpellDamageSpec): string {
   if (spec.kind === "none") return "";
-  if (spec.kind === "dm_adjudicated") return spec.dmGuidance ?? spec.rawLegacyValue ?? "DM adjudicated";
+  if (spec.kind === "dm_adjudicated")
+    return spec.dmGuidance ?? spec.rawLegacyValue ?? "DM adjudicated";
   if (spec.kind === "modeled" && spec.parts?.length) {
     return spec.parts
       .map((p) => {
@@ -555,19 +557,28 @@ export function areaToText(spec: AreaSpec): string {
   const unit = spec.shapeUnit ?? spec.unit ?? "ft";
   if (["radius_circle", "radius_sphere"].includes(spec.kind)) {
     const r = spec.radius;
-    const v = r?.mode === "per_level" ? r.perLevel ?? r.per_level : r?.value ?? 0;
+    const v = r?.mode === "per_level" ? (r.perLevel ?? r.per_level) : (r?.value ?? 0);
     return `${v}-${unit} ${spec.kind === "radius_sphere" ? "radius (sphere)" : "radius"}`;
   }
   if (spec.kind === "cone" && spec.length) {
-    const v = spec.length.mode === "per_level" ? spec.length.perLevel ?? spec.length.per_level : spec.length.value ?? 0;
+    const v =
+      spec.length.mode === "per_level"
+        ? (spec.length.perLevel ?? spec.length.per_level)
+        : (spec.length.value ?? 0);
     return `Cone ${v} ${unit}`;
   }
   if (spec.kind === "line" && spec.length) {
-    const v = spec.length.mode === "per_level" ? spec.length.perLevel ?? spec.length.per_level : spec.length.value ?? 0;
+    const v =
+      spec.length.mode === "per_level"
+        ? (spec.length.perLevel ?? spec.length.per_level)
+        : (spec.length.value ?? 0);
     return `Line ${v} ${unit}`;
   }
   if (spec.kind === "cube" && spec.edge) {
-    const v = spec.edge.mode === "per_level" ? spec.edge.perLevel ?? spec.edge.per_level : spec.edge.value ?? 0;
+    const v =
+      spec.edge.mode === "per_level"
+        ? (spec.edge.perLevel ?? spec.edge.per_level)
+        : (spec.edge.value ?? 0);
     return `${v}-${unit} cube`;
   }
   return spec.kind.replace(/_/g, " ");
@@ -575,7 +586,7 @@ export function areaToText(spec: AreaSpec): string {
 
 /** Format saving throw spec for display/storage. */
 export function savingThrowToText(spec: SavingThrowSpec): string {
-  if (spec.kind === "none") return "";
+  if (spec.kind === "none") return "None";
   if (spec.kind === "dm_adjudicated") return spec.dmGuidance ?? "DM adjudicated";
   if (spec.kind === "single" && spec.single) {
     const s = spec.single;
@@ -584,7 +595,10 @@ export function savingThrowToText(spec: SavingThrowSpec): string {
   }
   if (spec.kind === "multiple" && spec.multiple?.length) {
     return spec.multiple
-      .map((s) => `${s.saveType.replace(/_/g, " ")} (${(s.onFailure?.result ?? "full_effect").replace(/_/g, " ")} on fail)`)
+      .map(
+        (s) =>
+          `${s.saveType.replace(/_/g, " ")} (${(s.onFailure?.result ?? "full_effect").replace(/_/g, " ")} on fail)`,
+      )
       .join("; ");
   }
   return "";
@@ -592,7 +606,7 @@ export function savingThrowToText(spec: SavingThrowSpec): string {
 
 /** Format magic resistance spec for display/storage. */
 export function magicResistanceToText(spec: MagicResistanceSpec): string {
-  if (spec.kind === "unknown") return "";
+  if (spec.kind === "unknown") return "N/A";
   if (spec.kind === "special") return spec.specialRule ?? "Special";
   if (spec.kind === "normal") return "Yes";
   if (spec.kind === "ignores_mr") return "No";

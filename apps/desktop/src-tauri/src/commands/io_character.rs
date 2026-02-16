@@ -16,7 +16,6 @@ fn fetch_character_bundle(
     conn: &rusqlite::Connection,
     character_id: i64,
 ) -> Result<CharacterBundle, AppError> {
-    eprintln!("APP DB: Fetching character bundle for id {}", character_id);
     // 1. Get Character
     let mut stmt = conn.prepare("SELECT id, name, type, race, alignment, com_enabled, notes, created_at, updated_at FROM \"character\" WHERE id=?")?;
     let character = stmt.query_row(params![character_id], |row| {
@@ -161,7 +160,6 @@ pub async fn export_character_bundle(
     state: State<'_, Arc<Pool>>,
     character_id: i64,
 ) -> Result<CharacterBundle, AppError> {
-    eprintln!("APP CMD: export_character_bundle id={}", character_id);
     let pool = state.inner().clone();
     let bundle_res = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
@@ -170,11 +168,6 @@ pub async fn export_character_bundle(
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))?;
     let bundle = bundle_res?;
-
-    eprintln!(
-        "APP CMD: export_character_bundle SUCCESS for {}",
-        bundle.name
-    );
     Ok(bundle)
 }
 
@@ -183,7 +176,6 @@ pub async fn export_character_markdown_zip(
     state: State<'_, Arc<Pool>>,
     character_id: i64,
 ) -> Result<Vec<u8>, AppError> {
-    eprintln!("APP CMD: export_character_markdown_zip id={}", character_id);
     let pool = state.inner().clone();
 
     // 1. Fetch data
@@ -194,8 +186,6 @@ pub async fn export_character_markdown_zip(
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))?;
     let bundle = bundle_res?;
-
-    eprintln!("APP CMD: bundle fetched for ZIP, starting generation...");
 
     // 2. Create ZIP in memory
     let zip_res = tokio::task::spawn_blocking(move || {
@@ -248,11 +238,6 @@ pub async fn export_character_markdown_zip(
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))?;
     let zip_data = zip_res?;
-
-    eprintln!(
-        "APP CMD: export_character_markdown_zip SUCCESS, bytes={}",
-        zip_data.len()
-    );
     Ok(zip_data)
 }
 
@@ -273,7 +258,6 @@ fn import_character_bundle_logic(
     bundle: CharacterBundle,
     options: ImportOptions,
 ) -> Result<i64, AppError> {
-    eprintln!("APP DB: Importing bundle logic for {}", bundle.name);
     // 1. Check/Insert Character
     let existing_id: Option<i64> = tx
         .query_row(
@@ -396,7 +380,6 @@ pub async fn import_character_bundle(
     bundle: CharacterBundle,
     options: ImportOptions,
 ) -> Result<i64, AppError> {
-    eprintln!("APP CMD: import_character_bundle {}", bundle.name);
     let pool = state.inner().clone();
     let import_res = tokio::task::spawn_blocking(move || {
         // Compute hash of the bundle
@@ -425,10 +408,6 @@ pub async fn import_character_bundle(
 
 #[tauri::command]
 pub async fn preview_character_markdown_zip(bytes: Vec<u8>) -> Result<CharacterBundle, AppError> {
-    eprintln!(
-        "APP CMD: preview_character_markdown_zip bytes={}",
-        bytes.len()
-    );
     let preview_res = tokio::task::spawn_blocking(move || {
         use std::io::Read;
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
@@ -457,10 +436,6 @@ pub async fn import_character_markdown_zip(
     bytes: Vec<u8>,
     options: ImportOptions,
 ) -> Result<i64, AppError> {
-    eprintln!(
-        "APP CMD: import_character_markdown_zip bytes={}",
-        bytes.len()
-    );
     let bundle = preview_character_markdown_zip(bytes.clone()).await?;
 
     let pool = state.inner().clone();

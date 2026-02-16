@@ -209,12 +209,13 @@ pub enum TileUnit {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct AreaSpec {
     pub kind: AreaKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit: Option<AreaUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "shape_unit")]
     pub shape_unit: Option<AreaShapeUnit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radius: Option<SpellScalar>,
@@ -230,30 +231,46 @@ pub struct AreaSpec {
     pub thickness: Option<SpellScalar>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edge: Option<SpellScalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "angle_deg")]
     pub angle_deg: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "surface_area"
+    )]
     pub surface_area: Option<SpellScalar>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub volume: Option<SpellScalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "tile_unit")]
     pub tile_unit: Option<TileUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "tile_count")]
     pub tile_count: Option<SpellScalar>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub count: Option<SpellScalar>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "count_subject"
+    )]
     pub count_subject: Option<CountSubject>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "region_unit"
+    )]
     pub region_unit: Option<RegionUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "scope_unit")]
     pub scope_unit: Option<ScopeUnit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "moves_with")]
     pub moves_with: Option<MovesWith>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     /// When parsing fails or falls back to Special, the original legacy string is stored here.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "raw_legacy_value"
+    )]
     pub raw_legacy_value: Option<String>,
 }
 

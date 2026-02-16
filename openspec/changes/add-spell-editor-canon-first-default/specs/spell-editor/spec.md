@@ -17,6 +17,8 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **GIVEN** the Spell Editor form and the Details section
 - **WHEN** the user views the editor (or has not expanded any detail field)
 - **THEN** the editor MUST show one single-line text input per canon field in this order: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance
+- **AND** the Details block MAY include an optional ninth row **Material Component** (single-line input + expand control) after the eight standard fields and before Description; when present, field order is: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, and optionally Material Component, then Description
+- **AND** when the optional Material Component row is implemented: the single-line input MUST be bound to material component text (e.g. form.materialComponents); when expanded, the editor MUST show ComponentCheckboxes and the material list (same collapse/expand and dirty serialization rules as for other detail fields)
 - **AND** the Description MUST remain a textarea as today (after the above fields)
 - **AND** the editor MUST NOT reorder these fields so that layout is consistent and testable
 - **AND** the editor MUST NOT render StructuredFieldInput, AreaForm, DamageForm, SavingThrowInput, MagicResistanceInput, or ComponentCheckboxes in the default (collapsed) view
@@ -45,8 +47,8 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **GIVEN** the Spell Editor form and a canon field (e.g. Duration) in collapsed state
 - **WHEN** the user activates the expand control for that field
 - **THEN** the editor MUST reveal the structured component for that field (e.g. StructuredFieldInput for range/duration/casting_time, AreaForm for area, DamageForm for damage, SavingThrowInput, MagicResistanceInput, ComponentCheckboxes plus material list for components)
-- **AND** the editor MUST populate that structured form: if the spell was loaded with `canonical_data` that includes this field, use that structured value; otherwise parse the current text via the corresponding Tauri parser command and show the result (or "special" + raw_legacy_value on parse failure or if the command rejects/throws; per main spell-editor spec, handle defensively)
-- **AND** when the editor must parse via a Tauri command (no `canonical_data` for this field), parser commands are async—the editor MUST show a loading state (e.g. spinner, disabled inputs, or skeleton) in the expanded area until the structured form is populated; only then MAY the user edit. When the form is populated from `canonical_data` (synchronous), no loading state is required.
+- **AND** the editor MUST populate that structured form: if the spell was loaded with `canonical_data` that includes this field, use that structured value; otherwise, for fields with Tauri parser commands (`range`, `duration`, `casting_time`, `area`, `damage`, and optionally `components`), parse the current text via the corresponding parser command and show the result (or "special" + raw_legacy_value on parse failure or if the command rejects/throws; per main spell-editor spec, handle defensively). For `savingThrow` and `magicResistance`, no corresponding parser command exists; the editor MUST apply the existing fallback mapping from legacy text to structured state.
+- **AND** when the editor must parse via a Tauri command (no `canonical_data` for a field with a parser command), parser commands are async—the editor MUST show a loading state (e.g. spinner, disabled inputs, or skeleton) in the expanded area until the structured form is populated; only then MAY the user edit. When the form is populated from `canonical_data` (synchronous), no loading state is required. For fallback-only fields (`savingThrow`, `magicResistance`), no async parser loading state is required.
 - **AND** the expand control MUST be keyboard and screen-reader friendly (e.g. aria-expanded, focus management)
 
 #### Scenario: On collapse, line updates from spec only when dirty
@@ -89,7 +91,7 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 
 - **GIVEN** a canon field (e.g. Duration) whose current text is empty (e.g. new spell or user cleared the line)
 - **WHEN** the user expands that field
-- **THEN** the editor MUST call the corresponding Tauri parser with the empty string
+- **THEN** for fields with a Tauri parser command (`range`, `duration`, `casting_time`, `area`, `damage`, and optionally `components`), the editor MUST call the corresponding parser with the empty string; for fallback-only fields (`savingThrow`, `magicResistance`), the editor MUST apply the default structured state (e.g. `defaultSavingThrowSpec()`, `defaultMagicResistanceSpec()`)
 - **AND** if the parser returns a defined default (a valid spec), the editor MUST show that spec in the structured form
 - **AND** if the parser does not return a valid default, the editor MUST treat the field as "special" with empty `raw_legacy_value` and show the structured form in that state
 
@@ -98,6 +100,7 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **GIVEN** a detail field is expanded and the structured value for that field has kind "special" (or parse failed)
 - **THEN** the editor MUST show the existing "could not be fully parsed" hint for that field (inline or in the expanded section)
 - **AND** when that field is collapsed, the editor MUST show a subtle indicator (e.g. icon or tooltip) if the last parse or loaded spec for that field was "special", so the user knows the line is stored but not fully structured for hashing
+- **AND** the "special" indicator MAY also be shown for other non-canonical kinds (e.g. `dm_adjudicated` for Saving Throw or Damage) where the value is stored but not fully structured for hashing
 
 ---
 
@@ -138,6 +141,7 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **GIVEN** the canon-first Details block is rendered
 - **THEN** each canon single-line input MUST have a stable `data-testid` (e.g. `detail-range-input`, `detail-duration-input`, and equivalents for Components, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance)
 - **AND** each per-field expand control MUST have a stable `data-testid` (e.g. `detail-range-expand`, `detail-duration-expand`, and equivalents for the same fields)
+- **AND** when the optional ninth row (Material Component) is implemented, it MUST use `detail-material-components-input` and `detail-material-components-expand`
 - **SO THAT** E2E tests and Storybook can target elements without relying on labels or DOM order. The exact IDs are listed in Documentation Updates (developer doc).
 
 ---

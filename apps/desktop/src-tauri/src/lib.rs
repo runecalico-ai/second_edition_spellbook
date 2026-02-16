@@ -10,8 +10,18 @@ use db::init_db;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
+use tracing_subscriber::{fmt, EnvFilter};
+
+fn init_logging() {
+    let _ = fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .try_init();
+}
 
 pub fn run() {
+    init_logging();
     tauri::Builder::default()
         .setup(|app| {
             let resource_dir_override = std::env::var("SPELLBOOK_SQLITE_VEC_RESOURCE_DIR").ok();
@@ -35,6 +45,9 @@ pub fn run() {
             parse_spell_area,
             parse_spell_damage,
             parse_spell_components,
+            parse_spell_components_with_migration,
+            parse_spell_material_components,
+            extract_materials_from_components_line,
             list_spells,
             create_spell,
             update_spell,

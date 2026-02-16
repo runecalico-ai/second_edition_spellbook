@@ -1,17 +1,16 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
-#[serde(rename_all = "snake_case")]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MaterialComponentSpec {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quantity: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "gp_value")]
     pub gp_value: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "is_consumed")]
     pub is_consumed: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,

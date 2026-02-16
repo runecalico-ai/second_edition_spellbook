@@ -1,12 +1,23 @@
 use spellbook_desktop::db::{app_data_dir, init_db};
 use spellbook_desktop::utils::migration_manager;
 use std::env;
+use tracing::{error, info};
+use tracing_subscriber::{fmt, EnvFilter};
+
+fn init_logging() {
+    let _ = fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .try_init();
+}
 
 fn main() {
+    init_logging();
     let args: Vec<String> = env::args().collect();
 
     if args.contains(&"--check-integrity".to_string()) {
-        println!("Initializing DB for integrity check...");
+        info!("Initializing DB for integrity check");
         let pool = init_db(None, false).expect("Failed to init DB");
         let conn = pool.get().expect("Failed to get connection");
         migration_manager::check_integrity(&conn).expect("Integrity check failed");
@@ -14,7 +25,7 @@ fn main() {
     }
 
     if args.contains(&"--detect-collisions".to_string()) {
-        println!("Initializing DB for collision detection...");
+        info!("Initializing DB for collision detection");
         let pool = init_db(None, false).expect("Failed to init DB");
         let conn = pool.get().expect("Failed to get connection");
         migration_manager::detect_collisions(&conn).expect("Collision detection failed");
@@ -22,7 +33,7 @@ fn main() {
     }
 
     if args.contains(&"--recompute-hashes".to_string()) {
-        println!("Initializing DB for hash re-computation...");
+        info!("Initializing DB for hash re-computation");
         let pool = init_db(None, false).expect("Failed to init DB");
         let conn = pool.get().expect("Failed to get connection");
         let data_dir = app_data_dir().expect("Failed to get data dir");
@@ -41,15 +52,15 @@ fn main() {
     if args.contains(&"--list-backups".to_string()) {
         let data_dir = app_data_dir().expect("Failed to get data dir");
         let backups = migration_manager::list_backups(&data_dir).expect("Failed to list backups");
-        println!("Available Backups:");
+        info!("Available Backups");
         for backup in backups {
-            println!(" - {:?}", backup.file_name().unwrap_or_default());
+            info!(file = ?backup.file_name().unwrap_or_default(), "backup");
         }
         return;
     }
 
     if args.contains(&"--rollback-migration".to_string()) {
-        println!("Rolling back to latest backup...");
+        info!("Rolling back to latest backup");
         let pool = init_db(None, false).expect("Failed to init DB");
         let mut conn = pool.get().expect("Failed to get connection");
         let data_dir = app_data_dir().expect("Failed to get data dir");
@@ -59,14 +70,14 @@ fn main() {
 
     if let Some(pos) = args.iter().position(|x| x == "--restore-backup") {
         if let Some(file_path) = args.get(pos + 1) {
-            println!("Restoring backup: {}...", file_path);
+            info!(file_path, "Restoring backup");
             let pool = init_db(None, false).expect("Failed to init DB");
             let mut conn = pool.get().expect("Failed to get connection");
             let path = std::path::PathBuf::from(file_path);
             migration_manager::restore_backup(&mut conn, &path).expect("Restore failed");
             return;
         } else {
-            eprintln!("Error: --restore-backup requires a file path argument.");
+            error!("--restore-backup requires a file path argument");
             return;
         }
     }

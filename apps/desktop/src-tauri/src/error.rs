@@ -1,5 +1,6 @@
 use serde::Serialize;
 use thiserror::Error;
+use tracing::error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -40,9 +41,7 @@ impl Serialize for AppError {
     where
         S: serde::Serializer,
     {
-        // Log the full error internally if we had tracing setup
-        // tracing::error!("Error: {:?}", self);
-        eprintln!("Error: {:?}", self);
+        error!(error = ?self, "AppError");
         // Return sanitized message to frontend
         serializer.serialize_str(&self.to_string())
     }

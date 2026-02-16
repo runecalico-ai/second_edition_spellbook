@@ -237,19 +237,27 @@ impl ComponentsParser {
             // Extract GP value
             if let Some(caps) = gp_regex.captures(&p) {
                 gp_value = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
-                // Remove the entire parenthetical block containing gp (not just the gp substring)
-                // Handles "(100 gp)", "(worth 1000 gp)", "(worth 1000 gp, consumed)", etc.
-                name = paren_with_gp_regex.replace_all(&name, "").to_string();
+                // Remove the entire parenthetical block containing gp, OR just the gp match if not in parens
+                if paren_with_gp_regex.is_match(&name) {
+                    name = paren_with_gp_regex.replace_all(&name, "").to_string();
+                } else {
+                    name = gp_regex.replace_all(&name, "").to_string();
+                }
             }
 
-            // Detect if consumed
+            // Detect and remove if consumed
             if consumed_regex.is_match(&p) {
                 is_consumed = true;
+                // Only remove if it wasn't already stripped by the paren removal
+                if consumed_regex.is_match(&name) {
+                    name = consumed_regex.replace_all(&name, "").to_string();
+                }
             }
 
             // Clean up the name: trim and remove any remaining empty parentheses
             name = name.trim().to_string();
             name = empty_parens_regex.replace_all(&name, "").to_string();
+            name = name.replace(" worth ", " "); // Final cleanup of lingering "worth" if any
             name = name.trim().to_string();
 
             results.push(MaterialComponentSpec {
@@ -263,6 +271,26 @@ impl ComponentsParser {
         }
 
         results
+    }
+
+    pub fn extract_materials_from_components_line(
+        &self,
+        input: &str,
+    ) -> Vec<MaterialComponentSpec> {
+        let mut all_materials = Vec::new();
+        // Regex to find "M (...)" or "Material (...)"
+        // Captures exactly what is inside the parentheses
+        // Look for M or Material preceded by start of string, space, or comma
+        let m_regex = Regex::new(r"(?i)(?:^|[\s,])(?:M|Material)\s*\(([^)]+)\)").unwrap();
+
+        for caps in m_regex.captures_iter(input) {
+            if let Some(content) = caps.get(1) {
+                let material_specs = self.parse_material_components(content.as_str());
+                all_materials.extend(material_specs);
+            }
+        }
+
+        all_materials
     }
 }
 
@@ -485,5 +513,44 @@ mod tests {
         let res4 = parser.parse_components("df");
         assert!(res4.divine_focus);
         assert!(!res4.verbal);
+    }
+
+    #[test]
+    fn test_extract_materials_from_components_line() {
+        let parser = ComponentsParser::new();
+
+        // Standard case
+        let mats = parser.extract_materials_from_components_line("V, S, M (ruby dust)");
+        assert_eq!(mats.len(), 1);
+        assert_eq!(mats[0].name, "ruby dust");
+
+        // Multiple matches (rare but possible style)
+        let mats2 = parser.extract_materials_from_components_line("M (sulfur), S, M (bat guano)");
+        assert_eq!(mats2.len(), 2);
+        assert_eq!(mats2[0].name, "sulfur");
+        assert_eq!(mats2[1].name, "bat guano");
+
+        // "Material" keyword
+        let mats3 = parser.extract_materials_from_components_line("V, Material (gold)");
+        assert_eq!(mats3.len(), 1);
+        assert_eq!(mats3[0].name, "gold");
+
+        // E2E test string
+        let mats4 =
+            parser.extract_materials_from_components_line("V, S, M (ruby dust worth 100gp)");
+        assert_eq!(mats4.len(), 1);
+        assert_eq!(mats4[0].name, "ruby dust");
+        assert_eq!(mats4[0].gp_value, Some(100.0));
+
+        // No match
+        let mats5 = parser.extract_materials_from_components_line("V, S, M");
+        assert_eq!(mats5.len(), 0);
+
+        // E2E reproduction case
+        let mats7 =
+            parser.extract_materials_from_components_line("V, S, M (ruby dust worth 100gp)");
+        assert_eq!(mats7.len(), 1);
+        assert_eq!(mats7[0].name, "ruby dust");
+        assert_eq!(mats7[0].gp_value, Some(100.0));
     }
 }

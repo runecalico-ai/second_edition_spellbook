@@ -1,6 +1,13 @@
-import type { SavingThrowSpec, SavingThrowKind, SingleSave, SaveType, SaveOutcome, SaveOutcomeEffect } from "../../../types/spell";
-import { defaultSavingThrowSpec } from "../../../types/spell";
 import { parseNumericInput } from "../../../lib/validation";
+import type {
+  SaveOutcome,
+  SaveOutcomeEffect,
+  SaveType,
+  SavingThrowKind,
+  SavingThrowSpec,
+  SingleSave,
+} from "../../../types/spell";
+import { defaultSavingThrowSpec } from "../../../types/spell";
 
 const SAVING_THROW_KIND_LABELS: Record<SavingThrowKind, string> = {
   none: "None",
@@ -119,11 +126,13 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
           }}
           className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
         >
-          {(Object.entries(SAVING_THROW_KIND_LABELS) as [SavingThrowKind, string][]).map(([k, label]) => (
-            <option key={k} value={k}>
-              {label}
-            </option>
-          ))}
+          {(Object.entries(SAVING_THROW_KIND_LABELS) as [SavingThrowKind, string][]).map(
+            ([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ),
+          )}
         </select>
       </div>
 
@@ -148,12 +157,16 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
 
       {spec.kind === "multiple" &&
         spec.multiple?.map((s, idx) => (
-          <div key={`save-${idx}-${s.saveType}-${s.appliesTo}`} className="p-2 bg-neutral-900/50 rounded border border-neutral-800 space-y-2">
+          <div
+            key={`save-${idx}-${s.saveType}-${s.appliesTo}`}
+            className="p-2 bg-neutral-900/50 rounded border border-neutral-800 space-y-2"
+          >
             <div className="flex justify-between items-center">
               <span className="text-xs text-neutral-500">Save #{idx + 1}</span>
               <button
                 type="button"
-                data-testid="saving-throw-remove-multiple"
+                data-testid={`saving-throw-remove-multiple-${idx}`}
+                aria-label="Remove save"
                 onClick={() => removeMultiple(idx)}
                 className="text-xs text-red-400 hover:bg-neutral-800 rounded px-1"
               >
@@ -298,11 +311,13 @@ function SingleSaveForm({
               }
               className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
             >
-              {(Object.entries(SAVE_OUTCOME_LABELS) as [SaveOutcome, string][]).map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label}
-                </option>
-              ))}
+              {(Object.entries(SAVE_OUTCOME_LABELS) as [SaveOutcome, string][]).map(
+                ([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ),
+              )}
             </select>
           </div>
           <textarea
@@ -310,7 +325,9 @@ function SingleSaveForm({
             aria-label="Success notes"
             placeholder="Notes on success..."
             value={save.onSuccess?.notes ?? ""}
-            onChange={(e) => onChange({ onSuccess: { ...save.onSuccess, notes: e.target.value || undefined } })}
+            onChange={(e) =>
+              onChange({ onSuccess: { ...save.onSuccess, notes: e.target.value || undefined } })
+            }
             className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
           />
         </div>
@@ -329,11 +346,13 @@ function SingleSaveForm({
               }
               className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
             >
-              {(Object.entries(SAVE_OUTCOME_LABELS) as [SaveOutcome, string][]).map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label}
-                </option>
-              ))}
+              {(Object.entries(SAVE_OUTCOME_LABELS) as [SaveOutcome, string][]).map(
+                ([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ),
+              )}
             </select>
           </div>
           <textarea
@@ -341,11 +360,13 @@ function SingleSaveForm({
             aria-label="Failure notes"
             placeholder="Notes on failure..."
             value={save.onFailure?.notes ?? ""}
-            onChange={(e) => onChange({ onFailure: { ...save.onFailure, notes: e.target.value || undefined } })}
+            onChange={(e) =>
+              onChange({ onFailure: { ...save.onFailure, notes: e.target.value || undefined } })
+            }
             className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
           />
         </div>
       </div>
-    </div >
+    </div>
   );
 }

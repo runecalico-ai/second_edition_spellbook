@@ -66,7 +66,8 @@ pub enum DurationUnit {
     Year,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct DurationSpec {
     pub kind: DurationKind,
@@ -87,7 +88,7 @@ pub struct DurationSpec {
     pub notes: Option<String>,
 
     /// When parsing fails or falls back to Special, the original legacy string is stored here.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "raw_legacy_value")]
     pub raw_legacy_value: Option<String>,
 }
 

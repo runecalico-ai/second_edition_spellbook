@@ -1,15 +1,15 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import { MagicResistanceInput } from './MagicResistanceInput';
-import { defaultMagicResistanceSpec } from '../../../types/spell';
-import { fn } from './storybook-utils';
+import type { Meta, StoryObj } from "@storybook/react";
+import { defaultMagicResistanceSpec } from "../../../types/spell";
+import { MagicResistanceInput } from "./MagicResistanceInput";
+import { fn } from "./storybook-utils";
 
 const meta = {
-  title: 'SpellEditor/MagicResistanceInput',
+  title: "SpellEditor/MagicResistanceInput",
   component: MagicResistanceInput,
   parameters: {
-    layout: 'padded',
+    layout: "padded",
   },
-  tags: ['autodocs'],
+  tags: ["autodocs"],
 } satisfies Meta<typeof MagicResistanceInput>;
 
 export default meta;
@@ -25,7 +25,7 @@ export const Empty: Story = {
 export const Unknown: Story = {
   args: {
     value: {
-      kind: 'unknown',
+      kind: "unknown",
     },
     onChange: fn(),
   },
@@ -34,8 +34,8 @@ export const Unknown: Story = {
 export const Normal: Story = {
   args: {
     value: {
-      kind: 'normal',
-      appliesTo: 'whole_spell',
+      kind: "normal",
+      appliesTo: "whole_spell",
     },
     onChange: fn(),
   },
@@ -44,8 +44,8 @@ export const Normal: Story = {
 export const IgnoresMR: Story = {
   args: {
     value: {
-      kind: 'ignores_mr',
-      appliesTo: 'whole_spell',
+      kind: "ignores_mr",
+      appliesTo: "whole_spell",
     },
     onChange: fn(),
   },
@@ -54,10 +54,10 @@ export const IgnoresMR: Story = {
 export const Partial: Story = {
   args: {
     value: {
-      kind: 'partial',
-      appliesTo: 'harmful_effects_only',
+      kind: "partial",
+      appliesTo: "harmful_effects_only",
       partial: {
-        scope: 'damage_only',
+        scope: "damage_only",
       },
     },
     onChange: fn(),
@@ -67,11 +67,11 @@ export const Partial: Story = {
 export const PartialWithPartIds: Story = {
   args: {
     value: {
-      kind: 'partial',
-      appliesTo: 'whole_spell',
+      kind: "partial",
+      appliesTo: "whole_spell",
       partial: {
-        scope: 'by_part_id',
-        partIds: ['part_1', 'part_2'],
+        scope: "by_part_id",
+        partIds: ["part_1", "part_2"],
       },
     },
     onChange: fn(),
@@ -81,9 +81,9 @@ export const PartialWithPartIds: Story = {
 export const Special: Story = {
   args: {
     value: {
-      kind: 'special',
-      appliesTo: 'dm',
-      specialRule: 'MR applies only to the initial damage, not ongoing effects.',
+      kind: "special",
+      appliesTo: "dm",
+      specialRule: "MR applies only to the initial damage, not ongoing effects.",
     },
     onChange: fn(),
   },

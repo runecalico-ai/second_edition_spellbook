@@ -1,35 +1,27 @@
 import { useMemo } from "react";
-import type {
-  DurationSpec,
-  RangeSpec,
-  SpellCastingTime,
-  SpellScalar,
-} from "../../../types/spell";
+import { clampScalar, parseNumericInput } from "../../../lib/validation";
+import type { DurationSpec, RangeSpec, SpellCastingTime, SpellScalar } from "../../../types/spell";
 import {
   CASTING_TIME_UNIT_LABELS,
-  defaultCastingTime,
-  defaultDurationSpec,
-  defaultRangeSpec,
+  type CastingTimeUnit,
   DURATION_CONDITION_KINDS,
   DURATION_KIND_ONLY,
   DURATION_UNIT_LABELS,
+  type DurationKind,
+  type DurationUnit,
   RANGE_DISTANCE_KINDS,
   RANGE_KIND_ONLY,
   RANGE_UNIT_LABELS,
-  type CastingTimeUnit,
-  type DurationKind,
-  type DurationUnit,
   type RangeUnit,
+  defaultCastingTime,
+  defaultDurationSpec,
+  defaultRangeSpec,
 } from "../../../types/spell";
-import { clampScalar, parseNumericInput } from "../../../lib/validation";
 import { ScalarInput } from "./ScalarInput";
 
 export type StructuredFieldType = "range" | "duration" | "casting_time";
 
-export type StructuredFieldValue =
-  | RangeSpec
-  | DurationSpec
-  | SpellCastingTime;
+export type StructuredFieldValue = RangeSpec | DurationSpec | SpellCastingTime;
 
 interface StructuredFieldInputProps {
   fieldType: "range" | "duration" | "casting_time";
@@ -42,9 +34,7 @@ export function rangeToText(spec: RangeSpec): string {
   if (spec.rawLegacyValue) return spec.rawLegacyValue;
   if (spec.kind === "special") return spec.rawLegacyValue ?? "Special";
   if (
-    RANGE_DISTANCE_KINDS.includes(
-      spec.kind as (typeof RANGE_DISTANCE_KINDS)[number],
-    ) &&
+    RANGE_DISTANCE_KINDS.includes(spec.kind as (typeof RANGE_DISTANCE_KINDS)[number]) &&
     spec.distance &&
     spec.unit
   ) {
@@ -168,16 +158,10 @@ const ALL_DURATION_KINDS: { value: DurationKind; label: string }[] = [
   { value: "special", label: "Special" },
 ];
 
-export function StructuredFieldInput({
-  fieldType,
-  value,
-  onChange,
-}: StructuredFieldInputProps) {
+export function StructuredFieldInput({ fieldType, value, onChange }: StructuredFieldInputProps) {
   const rangeSpec = (value as RangeSpec | null | undefined) ?? defaultRangeSpec();
-  const durationSpec =
-    (value as DurationSpec | null | undefined) ?? defaultDurationSpec();
-  const castingTimeSpec =
-    (value as SpellCastingTime | null | undefined) ?? defaultCastingTime();
+  const durationSpec = (value as DurationSpec | null | undefined) ?? defaultDurationSpec();
+  const castingTimeSpec = (value as SpellCastingTime | null | undefined) ?? defaultCastingTime();
 
   const rangeTextPreview = useMemo(
     () => (fieldType === "range" ? rangeToText(rangeSpec) : ""),
@@ -188,8 +172,7 @@ export function StructuredFieldInput({
     [fieldType, durationSpec],
   );
   const castingTimeTextPreview = useMemo(
-    () =>
-      fieldType === "casting_time" ? castingTimeToText(castingTimeSpec) : "",
+    () => (fieldType === "casting_time" ? castingTimeToText(castingTimeSpec) : ""),
     [fieldType, castingTimeSpec],
   );
 
@@ -221,13 +204,10 @@ export function StructuredFieldInput({
             onChange={(e) => {
               const kind = e.target.value as RangeSpec["kind"];
               const next: RangeSpec = { ...spec, kind };
-              if (
-                RANGE_DISTANCE_KINDS.includes(
-                  kind as (typeof RANGE_DISTANCE_KINDS)[number],
-                )
-              ) {
+              if (RANGE_DISTANCE_KINDS.includes(kind as (typeof RANGE_DISTANCE_KINDS)[number])) {
                 next.unit = spec.unit ?? "ft";
                 next.distance = spec.distance ?? { mode: "fixed", value: 0 };
+                next.rawLegacyValue = undefined;
               } else if (kind !== "special") {
                 next.unit = undefined;
                 next.distance = undefined;
@@ -256,18 +236,14 @@ export function StructuredFieldInput({
                 data-testid="range-unit"
                 aria-label="Range unit"
                 value={spec.unit ?? "ft"}
-                onChange={(e) =>
-                  onChange({ ...spec, unit: e.target.value as RangeUnit })
-                }
+                onChange={(e) => onChange({ ...spec, unit: e.target.value as RangeUnit })}
                 className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
               >
-                {(Object.entries(RANGE_UNIT_LABELS) as [RangeUnit, string][]).map(
-                  ([u, label]) => (
-                    <option key={u} value={u}>
-                      {label}
-                    </option>
-                  ),
-                )}
+                {(Object.entries(RANGE_UNIT_LABELS) as [RangeUnit, string][]).map(([u, label]) => (
+                  <option key={u} value={u}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </>
           )}
@@ -296,10 +272,7 @@ export function StructuredFieldInput({
           onChange={(e) => onChange({ ...spec, notes: e.target.value || undefined })}
           className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100 placeholder:text-neutral-600"
         />
-        <p
-          className="text-sm text-neutral-500 italic"
-          data-testid="range-text-preview"
-        >
+        <p className="text-sm text-neutral-500 italic" data-testid="range-text-preview">
           {rangeTextPreview || "—"}
         </p>
       </div>
@@ -309,10 +282,9 @@ export function StructuredFieldInput({
   if (fieldType === "duration") {
     const spec = durationSpec;
     const isTime = spec.kind === "time";
-    const isCondition =
-      DURATION_CONDITION_KINDS.includes(
-        spec.kind as (typeof DURATION_CONDITION_KINDS)[number],
-      );
+    const isCondition = DURATION_CONDITION_KINDS.includes(
+      spec.kind as (typeof DURATION_CONDITION_KINDS)[number],
+    );
     const isUsageLimited = spec.kind === "usage_limited";
     const isSpecial = spec.kind === "special";
 
@@ -329,10 +301,15 @@ export function StructuredFieldInput({
               if (kind === "time") {
                 next.unit = spec.unit ?? "round";
                 next.duration = spec.duration ?? { mode: "fixed", value: 1 };
+                next.rawLegacyValue = undefined;
               } else if (kind === "usage_limited") {
                 next.uses = spec.uses ?? { mode: "fixed", value: 1 };
-              } else if (DURATION_CONDITION_KINDS.includes(kind as (typeof DURATION_CONDITION_KINDS)[number])) {
+                next.rawLegacyValue = undefined;
+              } else if (
+                DURATION_CONDITION_KINDS.includes(kind as (typeof DURATION_CONDITION_KINDS)[number])
+              ) {
                 next.condition = spec.condition ?? "";
+                next.rawLegacyValue = undefined;
               } else if (kind !== "special") {
                 next.unit = undefined;
                 next.duration = undefined;
@@ -388,9 +365,7 @@ export function StructuredFieldInput({
               aria-label="Condition"
               placeholder="Condition text"
               value={spec.condition ?? ""}
-              onChange={(e) =>
-                onChange({ ...spec, condition: e.target.value || undefined })
-              }
+              onChange={(e) => onChange({ ...spec, condition: e.target.value || undefined })}
               className="flex-1 min-w-[140px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
             />
           )}
@@ -428,10 +403,7 @@ export function StructuredFieldInput({
           onChange={(e) => onChange({ ...spec, notes: e.target.value || undefined })}
           className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100 placeholder:text-neutral-600"
         />
-        <p
-          className="text-sm text-neutral-500 italic"
-          data-testid="duration-text-preview"
-        >
+        <p className="text-sm text-neutral-500 italic" data-testid="duration-text-preview">
           {durationTextPreview || "—"}
         </p>
       </div>
@@ -496,9 +468,10 @@ export function StructuredFieldInput({
           data-testid="casting-time-unit"
           aria-label="Casting time unit"
           value={ct.unit}
-          onChange={(e) =>
-            updateCt({ unit: e.target.value as CastingTimeUnit })
-          }
+          onChange={(e) => {
+            const unit = e.target.value as CastingTimeUnit;
+            updateCt(unit === "special" ? { unit } : { unit, rawLegacyValue: undefined });
+          }}
           className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
         >
           {(Object.entries(CASTING_TIME_UNIT_LABELS) as [CastingTimeUnit, string][]).map(
@@ -516,17 +489,12 @@ export function StructuredFieldInput({
             aria-label="Raw legacy value"
             placeholder="Original text"
             value={ct.rawLegacyValue ?? ""}
-            onChange={(e) =>
-              updateCt({ rawLegacyValue: e.target.value || undefined })
-            }
+            onChange={(e) => updateCt({ rawLegacyValue: e.target.value || undefined })}
             className="flex-1 min-w-[120px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm"
           />
         )}
       </div>
-      <p
-        className="text-sm text-neutral-500 italic"
-        data-testid="casting-time-text-preview"
-      >
+      <p className="text-sm text-neutral-500 italic" data-testid="casting-time-text-preview">
         {castingTimeTextPreview || "—"}
       </p>
     </div>

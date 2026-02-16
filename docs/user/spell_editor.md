@@ -4,7 +4,21 @@
 
 The Spell Editor lets you create and edit spells with **structured data**: range, duration, casting time, area, damage, saving throw, magic resistance, and components. Values are stored in a consistent format and a **content hash** is computed for each spell.
 
-## Structured Fields
+## Default View (Canon-First)
+
+By default the editor shows **canon text** for the Details block: one single-line text input per field (Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance) in that order. The Details block may also include an optional **Material Component** row (single-line input + expand control) after the eight standard fields; when present, it uses the same expand/collapse and dirty serialization behavior as the other fields. **Components** and **Material Component** are shown as **separate canon lines** when both exist: Components displays the spell components (e.g. "V, S, M") and Material Component displays the material description (e.g. "ruby dust 50 gp"). **Damage** and **Magic Resistance** are always shown; when the spell has no value, the input is empty so you can see the field exists and fill it. Below or next to each line there is an **Expand** control. No structured controls (kind selectors, scalar inputs, area/damage forms, etc.) are visible until you expand a field.
+
+- **Expanding** a field reveals the full structured form. The editor fills it from saved structured data if present, otherwise it parses the current canon line. Parsing can take a moment (you may see “Loading…”).
+- **Collapsing** updates the canon line **only if you edited** the structured form; if you only expanded to view, the canon line is left unchanged.
+- **Saving** is always explicit (click **Save Spell**). If you have unsaved changes (edited canon lines and/or an expanded field you edited) and you navigate away or close the editor, a warning asks you to confirm; there is no auto-save or auto-serialize on leave.
+
+### “Special” Indicator
+
+When a field could not be fully parsed (or was stored as “special”), the structured form shows a “could not be fully parsed; original text preserved” hint when expanded. When the field is **collapsed**, a subtle **(special)** indicator appears next to the expand control so you know the line is stored but not fully structured for hashing.
+
+## Structured Fields (Expanded)
+
+When you **expand** a detail field, the following structured controls appear.
 
 ### Range, Duration, and Casting Time
 
@@ -53,9 +67,9 @@ If you uncheck Material while material components are present, a confirmation di
 
 ## Legacy String vs Structured Data
 
-- **Structured data**: What you enter in the editor (kind, value, unit, etc.) is stored in a canonical form. The **text preview** is computed from that.
-- **Legacy strings**: Spells imported or created before structured data may have plain text in range, duration, etc. When you open such a spell, the app tries to **parse** that text into structured fields. If parsing cannot fully interpret a field, it falls back to **"special"** and keeps the original text in **Original text** / `raw_legacy_value`.
-- A **warning banner** at the top of the form lists any fields that fell back to special (e.g. "Range and Duration could not be fully parsed; original text preserved"). You can still edit and save; the original text is preserved where applicable.
+- **Canon text**: The default view shows one line per detail field. What you type there is stored as flat text. When you **expand** a field, the app uses saved structured data for that field if present, otherwise it **parses** the current line.
+- **Structured data**: What you enter in the **expanded** form (kind, value, unit, etc.) is stored in a canonical form. When you collapse (or save), the canon line is updated from the structured value **only if you edited** the structured form.
+- **Legacy / unparseable**: If parsing cannot fully interpret a line, the field falls back to **"special"** and keeps the original text. You can still edit in the structured form to fix it; on collapse the canon line is updated with the serialized value. When collapsed, a **(special)** indicator shows that the line is stored but not fully structured for hashing.
 
 ## Content Hash
 

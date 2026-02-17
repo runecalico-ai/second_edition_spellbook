@@ -760,14 +760,9 @@ export default function SpellEditor() {
           comp,
           structuredMaterialComponents,
         );
-        if (field === "materialComponents" && !detailDirty.components) {
-          overrides.materialComponents = ms;
-          setForm((prev) => ({ ...prev, materialComponents: ms }));
-        } else {
-          overrides.components = cs;
-          overrides.materialComponents = ms;
-          setForm((prev) => ({ ...prev, components: cs, materialComponents: ms }));
-        }
+        overrides.components = cs;
+        overrides.materialComponents = ms;
+        setForm((prev) => ({ ...prev, components: cs, materialComponents: ms }));
         break;
       }
       case "duration":
@@ -1289,23 +1284,15 @@ export default function SpellEditor() {
           structuredComponents,
           structuredMaterialComponents,
         );
-        if (componentsDirty) {
-          formOverrides.components = cs;
-          formOverrides.materialComponents = ms;
-        } else {
-          formOverrides.materialComponents = ms;
-        }
+        formOverrides.components = cs;
+        formOverrides.materialComponents = ms;
       } else if (anyComponentsFieldDirty && !structuredComponents) {
         const { components: cs, materialComponents: ms } = componentsToText(
           emptySpellComponents(),
           structuredMaterialComponents,
         );
-        if (componentsDirty) {
-          formOverrides.components = cs;
-          formOverrides.materialComponents = ms;
-        } else {
-          formOverrides.materialComponents = ms;
-        }
+        formOverrides.components = cs;
+        formOverrides.materialComponents = ms;
       }
 
       if (Object.keys(formOverrides).length > 0) {
@@ -1921,7 +1908,8 @@ export default function SpellEditor() {
                             onChange={(comp, mats) => {
                               setStructuredComponents(comp);
                               setStructuredMaterialComponents(mats);
-                              setDetailDirtyFor(field);
+                              setDetailDirtyFor("components");
+                              setDetailDirtyFor("materialComponents");
                             }}
                             onUncheckMaterialConfirm={() =>
                               modalConfirm("Clear all material component data?", "Uncheck Material")

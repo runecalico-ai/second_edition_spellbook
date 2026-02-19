@@ -993,6 +993,59 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("First expand on empty canon lines shows structured fallback state for parser-backed fields", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+
+    await test.step("Open new spell with empty detail lines", async () => {
+      await app.navigate("Add Spell");
+      await page.getByTestId("spell-name-input").fill(`Empty Expand Fallback ${runId}`);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Empty first-expand fallback.");
+      await expect(page.getByTestId("detail-range-input")).toHaveValue("");
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue("");
+      await expect(page.getByTestId("detail-area-input")).toHaveValue("");
+    });
+
+    await test.step("Expand Range and verify fallback structured state is visible", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("detail-range-loading")).not.toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-range-special-hint")).toBeVisible();
+      await page.getByTestId("detail-range-expand").click();
+      await expect(
+        page.locator('span[title="Stored as text; not fully structured for hashing"]'),
+      ).toHaveCount(1);
+    });
+
+    await test.step("Expand Duration and verify fallback structured state is visible", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("detail-duration-loading")).not.toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-duration-special-hint")).toBeVisible();
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(
+        page.locator('span[title="Stored as text; not fully structured for hashing"]'),
+      ).toHaveCount(2);
+    });
+
+    await test.step("Expand Area and verify fallback structured state is visible", async () => {
+      await page.getByTestId("detail-area-expand").click();
+      await expect(page.getByTestId("detail-area-loading")).not.toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByTestId("area-form-kind")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("detail-area-special-hint")).toBeVisible();
+    });
+  });
+
   test("Loading a second spell resets structured state; expand parses from current canon text", async ({
     appContext,
   }) => {

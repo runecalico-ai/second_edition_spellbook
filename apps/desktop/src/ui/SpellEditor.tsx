@@ -62,6 +62,7 @@ import {
   clearDetailDirtyForFormOverrides,
   createDefaultDetailDirty,
 } from "./detailDirty";
+import { decideCanonicalField } from "./canonicalFieldDecision";
 
 type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
 
@@ -235,6 +236,44 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
   } as MagicResistanceSpec;
 }
 
+function validateSavingThrowSpecShape(value: unknown): value is SavingThrowSpec {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const kind = value.kind;
+  return kind === "none" || kind === "single" || kind === "multiple" || kind === "dm_adjudicated";
+}
+
+function validateMagicResistanceSpecShape(value: unknown): value is MagicResistanceSpec {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const kind = value.kind;
+  return (
+    kind === "unknown" ||
+    kind === "normal" ||
+    kind === "ignores_mr" ||
+    kind === "partial" ||
+    kind === "special"
+  );
+}
+
+function toSpecialRangeSpec(rawLegacyValue: string): RangeSpec {
+  return { kind: "special", rawLegacyValue };
+}
+
+function toSpecialDurationSpec(rawLegacyValue: string): DurationSpec {
+  return { kind: "special", rawLegacyValue };
+}
+
+function toSpecialCastingTimeSpec(rawLegacyValue: string): SpellCastingTime {
+  return { text: rawLegacyValue, unit: "special", rawLegacyValue };
+}
+
+function toSpecialAreaSpec(rawLegacyValue: string): AreaSpec {
+  return { kind: "special", rawLegacyValue } as AreaSpec;
+}
+
+function toFallbackDamageSpec(rawLegacyValue: string): SpellDamageSpec {
+  return { kind: "dm_adjudicated", rawLegacyValue, dmGuidance: rawLegacyValue };
+}
+
 function normalizeLegacyText(value: string): string {
   return value
     .trim()
@@ -365,6 +404,7 @@ export default function SpellEditor() {
   const [detailDirty, setDetailDirty] = useState<Record<DetailFieldKey, boolean>>(() =>
     createDefaultDetailDirty(),
   );
+  const [suppressExpandParse, setSuppressExpandParse] = useState<Partial<Record<DetailFieldKey, boolean>>>({});
   /** Canon-first: which field is loading (async parse on expand). */
   const [detailLoading, setDetailLoading] = useState<DetailFieldKey | null>(null);
   /** Refs for focus management: expanded panel (focus first focusable on expand); collapse focuses via data-testid query. */
@@ -410,6 +450,7 @@ export default function SpellEditor() {
     setExpandedDetailField(null);
     setDetailLoading(null);
     setDetailDirty(createDefaultDetailDirty());
+    setSuppressExpandParse({});
     expandedDetailRef.current = null;
     prevExpandedDetailRef.current = null;
   }, []);
@@ -528,81 +569,153 @@ export default function SpellEditor() {
                   "material_components",
                 );
                 setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
-                if (canonical.range) {
-                  const r = canonical.range;
-                  setStructuredRange({
-                    kind: r.kind,
-                    text: r.text,
-                    unit: r.unit,
-                    distance: r.distance
-                      ? {
-                          mode: r.distance.mode ?? "fixed",
-                          value: r.distance.value,
-                          perLevel: r.distance.per_level ?? r.distance.perLevel,
-                        }
-                      : undefined,
-                    rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
-                  });
+                const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
+
+                const rangeDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "range",
+                  (rawValue): RangeSpec => {
+                    const r = rawValue as RangeSpec & {
+                      distance?: { per_level?: number };
+                      raw_legacy_value?: string;
+                    };
+                    return {
+                      kind: r.kind,
+                      text: r.text,
+                      unit: r.unit,
+                      distance: r.distance
+                        ? {
+                            mode: r.distance.mode ?? "fixed",
+                            value: r.distance.value,
+                            perLevel: r.distance.per_level ?? r.distance.perLevel,
+                          }
+                        : undefined,
+                      rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
+                    };
+                  },
+                  validateRangeSpec,
+                );
+                if (rangeDecision.structuredValue) {
+                  setStructuredRange(rangeDecision.structuredValue);
                 }
-                if (canonical.duration) {
-                  const d = canonical.duration;
-                  setStructuredDuration({
-                    kind: d.kind,
-                    unit: d.unit,
-                    duration: d.duration
-                      ? {
-                          mode: d.duration.mode ?? "fixed",
-                          value: d.duration.value,
-                          perLevel: d.duration.per_level ?? d.duration.perLevel,
-                        }
-                      : undefined,
-                    condition: d.condition,
-                    uses: normalizeScalar(d.uses),
-                    rawLegacyValue: d.raw_legacy_value ?? d.rawLegacyValue,
-                  });
+                if (rangeDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.range = true;
                 }
-                if (canonical.casting_time) {
-                  const c = canonical.casting_time as SpellCastingTime & {
-                    base_value?: number;
-                    per_level?: number;
-                    level_divisor?: number;
-                    raw_legacy_value?: string;
-                  };
-                  setStructuredCastingTime({
-                    text: c.text ?? "",
-                    unit: c.unit,
-                    baseValue: c.baseValue ?? c.base_value,
-                    perLevel: c.perLevel ?? c.per_level ?? 0,
-                    levelDivisor: c.levelDivisor ?? c.level_divisor ?? 1,
-                    rawLegacyValue: c.rawLegacyValue ?? c.raw_legacy_value,
-                  });
+
+                const durationDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "duration",
+                  (rawValue): DurationSpec => {
+                    const d = rawValue as DurationSpec & {
+                      duration?: { per_level?: number };
+                      raw_legacy_value?: string;
+                    };
+                    return {
+                      kind: d.kind,
+                      unit: d.unit,
+                      duration: d.duration
+                        ? {
+                            mode: d.duration.mode ?? "fixed",
+                            value: d.duration.value,
+                            perLevel: d.duration.per_level ?? d.duration.perLevel,
+                          }
+                        : undefined,
+                      condition: d.condition,
+                      uses: normalizeScalar(d.uses),
+                      rawLegacyValue: d.raw_legacy_value ?? d.rawLegacyValue,
+                    };
+                  },
+                  validateDurationSpec,
+                );
+                if (durationDecision.structuredValue) {
+                  setStructuredDuration(durationDecision.structuredValue);
                 }
-                if (canonical.area) {
-                  setStructuredArea(
-                    normalizeAreaSpec(canonical.area as unknown as Record<string, unknown>),
-                  );
+                if (durationDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.duration = true;
                 }
-                if (canonical.damage) {
-                  setStructuredDamage(
-                    normalizeDamageSpec(canonical.damage as unknown as Record<string, unknown>),
-                  );
+
+                const castingTimeDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "casting_time",
+                  (rawValue): SpellCastingTime => {
+                    const c = rawValue as SpellCastingTime & {
+                      base_value?: number;
+                      per_level?: number;
+                      level_divisor?: number;
+                      raw_legacy_value?: string;
+                    };
+                    return {
+                      text: c.text ?? "",
+                      unit: c.unit,
+                      baseValue: c.baseValue ?? c.base_value,
+                      perLevel: c.perLevel ?? c.per_level ?? 0,
+                      levelDivisor: c.levelDivisor ?? c.level_divisor ?? 1,
+                      rawLegacyValue: c.rawLegacyValue ?? c.raw_legacy_value,
+                    };
+                  },
+                  validateSpellCastingTime,
+                );
+                if (castingTimeDecision.structuredValue) {
+                  setStructuredCastingTime(castingTimeDecision.structuredValue);
                 }
-                if (canonical.saving_throw) {
-                  setStructuredSavingThrow(
-                    normalizeSavingThrowSpec(
-                      canonical.saving_throw as unknown as Record<string, unknown>,
-                    ),
-                  );
+                if (castingTimeDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.castingTime = true;
+                }
+
+                const areaDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "area",
+                  normalizeAreaSpec,
+                  validateAreaSpec,
+                );
+                if (areaDecision.structuredValue) {
+                  setStructuredArea(areaDecision.structuredValue);
+                }
+                if (areaDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.area = true;
+                }
+
+                const damageDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "damage",
+                  normalizeDamageSpec,
+                  validateSpellDamageSpec,
+                );
+                if (damageDecision.structuredValue) {
+                  setStructuredDamage(damageDecision.structuredValue);
+                }
+                if (damageDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.damage = true;
+                }
+
+                const savingThrowDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "saving_throw",
+                  normalizeSavingThrowSpec,
+                  validateSavingThrowSpecShape,
+                );
+                if (savingThrowDecision.suppressExpandParse) {
                   setHasLoadedSavingThrowSpec(true);
+                  nextSuppressExpandParse.savingThrow = true;
                 }
-                if (canonical.magic_resistance) {
-                  setStructuredMagicResistance(
-                    normalizeMagicResistanceSpec(
-                      canonical.magic_resistance as unknown as Record<string, unknown>,
-                    ),
-                  );
+                if (savingThrowDecision.structuredValue) {
+                  setStructuredSavingThrow(savingThrowDecision.structuredValue);
+                }
+
+                const magicResistanceDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "magic_resistance",
+                  normalizeMagicResistanceSpec,
+                  validateMagicResistanceSpecShape,
+                );
+                if (magicResistanceDecision.suppressExpandParse) {
                   setHasLoadedMagicResistanceSpec(true);
+                  nextSuppressExpandParse.magicResistance = true;
                 }
+                if (magicResistanceDecision.structuredValue) {
+                  setStructuredMagicResistance(magicResistanceDecision.structuredValue);
+                }
+
                 if (
                   canonical.components ||
                   (canonical.material_components && canonical.material_components.length > 0)
@@ -640,6 +753,7 @@ export default function SpellEditor() {
                   });
                   setStructuredMaterialComponents(mats);
                 }
+                setSuppressExpandParse(nextSuppressExpandParse);
               } catch {
                 // ignore parse error, fall back to legacy
               }
@@ -668,6 +782,19 @@ export default function SpellEditor() {
     // If canon line is edited directly, structured spec is stale.
     if (DETAIL_FIELD_ORDER.includes(field as DetailFieldKey)) {
       const detailField = field as DetailFieldKey;
+      setSuppressExpandParse((prev) => {
+        if (detailField === "components" || detailField === "materialComponents") {
+          return {
+            ...prev,
+            components: false,
+            materialComponents: false,
+          };
+        }
+        return {
+          ...prev,
+          [detailField]: false,
+        };
+      });
       // Invalide any pending async parse results for this field.
       expandRequestId.current += 1;
       if (expandedDetailField === detailField) {
@@ -933,6 +1060,7 @@ export default function SpellEditor() {
     };
 
     const hasStructured = (): boolean => {
+      if (suppressExpandParse[field]) return true;
       switch (field) {
         case "range":
           return structuredRange != null;
@@ -969,7 +1097,7 @@ export default function SpellEditor() {
           const parsed = await invoke<RangeSpec>("parse_spell_range", { legacy });
           if (requestId !== expandRequestId.current) return;
           if (!validateRangeSpec(parsed)) {
-            setStructuredRange(legacy ? { kind: "special", rawLegacyValue: legacy } : null);
+            setStructuredRange(toSpecialRangeSpec(legacy));
           } else {
             setStructuredRange(parsed);
           }
@@ -979,7 +1107,7 @@ export default function SpellEditor() {
           const parsed = await invoke<DurationSpec>("parse_spell_duration", { legacy });
           if (requestId !== expandRequestId.current) return;
           if (!validateDurationSpec(parsed)) {
-            setStructuredDuration(legacy ? { kind: "special", rawLegacyValue: legacy } : null);
+            setStructuredDuration(toSpecialDurationSpec(legacy));
           } else {
             setStructuredDuration(parsed);
           }
@@ -989,9 +1117,7 @@ export default function SpellEditor() {
           const parsed = await invoke<SpellCastingTime>("parse_spell_casting_time", { legacy });
           if (requestId !== expandRequestId.current) return;
           if (!validateSpellCastingTime(parsed)) {
-            setStructuredCastingTime(
-              legacy ? { text: legacy, unit: "special", rawLegacyValue: legacy } : null,
-            );
+            setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
           } else {
             setStructuredCastingTime(parsed);
           }
@@ -1001,9 +1127,7 @@ export default function SpellEditor() {
           const parsed = await invoke<AreaSpec | null>("parse_spell_area", { legacy });
           if (requestId !== expandRequestId.current) return;
           if (parsed === null || !validateAreaSpec(parsed)) {
-            setStructuredArea(
-              legacy ? ({ kind: "special", rawLegacyValue: legacy } as AreaSpec) : null,
-            );
+            setStructuredArea(toSpecialAreaSpec(legacy));
           } else {
             setStructuredArea(parsed);
           }
@@ -1013,11 +1137,7 @@ export default function SpellEditor() {
           const parsed = await invoke<SpellDamageSpec>("parse_spell_damage", { legacy });
           if (requestId !== expandRequestId.current) return;
           if (!validateSpellDamageSpec(parsed)) {
-            setStructuredDamage(
-              legacy
-                ? { kind: "dm_adjudicated", rawLegacyValue: legacy, dmGuidance: legacy }
-                : defaultSpellDamageSpec(),
-            );
+            setStructuredDamage(toFallbackDamageSpec(legacy));
           } else {
             setStructuredDamage(parsed);
           }
@@ -1083,25 +1203,19 @@ export default function SpellEditor() {
       const leg = getLegacy();
       switch (field) {
         case "range":
-          setStructuredRange(leg ? { kind: "special", rawLegacyValue: leg } : null);
+          setStructuredRange(toSpecialRangeSpec(leg));
           break;
         case "duration":
-          setStructuredDuration(leg ? { kind: "special", rawLegacyValue: leg } : null);
+          setStructuredDuration(toSpecialDurationSpec(leg));
           break;
         case "castingTime":
-          setStructuredCastingTime(
-            leg ? { text: leg, unit: "special", rawLegacyValue: leg } : null,
-          );
+          setStructuredCastingTime(toSpecialCastingTimeSpec(leg));
           break;
         case "area":
-          setStructuredArea(leg ? ({ kind: "special", rawLegacyValue: leg } as AreaSpec) : null);
+          setStructuredArea(toSpecialAreaSpec(leg));
           break;
         case "damage":
-          setStructuredDamage(
-            leg
-              ? { kind: "dm_adjudicated", rawLegacyValue: leg, dmGuidance: leg }
-              : defaultSpellDamageSpec(),
-          );
+          setStructuredDamage(toFallbackDamageSpec(leg));
           break;
         case "savingThrow":
           setStructuredSavingThrow(mapLegacySavingThrow(leg));
@@ -1204,7 +1318,7 @@ export default function SpellEditor() {
   const specialFallbackFields = [
     structuredRange?.kind === "special" && "Range",
     structuredDuration?.kind === "special" && "Duration",
-    structuredCastingTime?.rawLegacyValue && "Casting time",
+    structuredCastingTime?.unit === "special" && "Casting time",
     structuredArea?.kind === "special" && "Area",
     structuredDamage?.rawLegacyValue && "Damage",
   ].filter(Boolean) as string[];
@@ -1279,11 +1393,36 @@ export default function SpellEditor() {
         divineFocus: false,
         experience: false,
       };
+      const validRangeSpec =
+        structuredRange !== null && validateRangeSpec(structuredRange) ? structuredRange : undefined;
+      const validDurationSpec =
+        structuredDuration !== null && validateDurationSpec(structuredDuration)
+          ? structuredDuration
+          : undefined;
+      const validCastingTimeSpec =
+        structuredCastingTime !== null && validateSpellCastingTime(structuredCastingTime)
+          ? structuredCastingTime
+          : undefined;
+      const validAreaSpec =
+        structuredArea !== null && validateAreaSpec(structuredArea) ? structuredArea : undefined;
+      const validDamageSpec =
+        structuredDamage !== null && validateSpellDamageSpec(structuredDamage)
+          ? structuredDamage
+          : undefined;
+      const validSavingThrowSpec =
+        structuredSavingThrow !== null && validateSavingThrowSpecShape(structuredSavingThrow)
+          ? structuredSavingThrow
+          : undefined;
+      const validMagicResistanceSpec =
+        structuredMagicResistance !== null &&
+        validateMagicResistanceSpecShape(structuredMagicResistance)
+          ? structuredMagicResistance
+          : undefined;
       const shouldSendSavingThrowSpec =
-        structuredSavingThrow !== null &&
+        validSavingThrowSpec !== undefined &&
         (hasLoadedSavingThrowSpec || detailDirty.savingThrow || !(form.savingThrow ?? "").trim());
       const shouldSendMagicResistanceSpec =
-        structuredMagicResistance !== null &&
+        validMagicResistanceSpec !== undefined &&
         (hasLoadedMagicResistanceSpec ||
           detailDirty.magicResistance ||
           !(form.magicResistance ?? "").trim());
@@ -1292,19 +1431,19 @@ export default function SpellEditor() {
         ...form,
         ...formOverrides,
         range: formOverrides.range ?? form.range,
-        rangeSpec: structuredRange ?? undefined,
+        rangeSpec: validRangeSpec,
         duration: formOverrides.duration ?? form.duration,
-        durationSpec: structuredDuration ?? undefined,
+        durationSpec: validDurationSpec,
         castingTime: formOverrides.castingTime ?? form.castingTime,
-        castingTimeSpec: structuredCastingTime ?? undefined,
+        castingTimeSpec: validCastingTimeSpec,
         area: formOverrides.area ?? form.area,
-        areaSpec: structuredArea ?? undefined,
+        areaSpec: validAreaSpec,
         damage: formOverrides.damage ?? form.damage,
-        damageSpec: structuredDamage ?? undefined,
+        damageSpec: validDamageSpec,
         savingThrow: formOverrides.savingThrow ?? form.savingThrow,
-        savingThrowSpec: shouldSendSavingThrowSpec ? structuredSavingThrow : undefined,
+        savingThrowSpec: shouldSendSavingThrowSpec ? validSavingThrowSpec : undefined,
         magicResistance: formOverrides.magicResistance ?? form.magicResistance,
-        magicResistanceSpec: shouldSendMagicResistanceSpec ? structuredMagicResistance : undefined,
+        magicResistanceSpec: shouldSendMagicResistanceSpec ? validMagicResistanceSpec : undefined,
         components: formOverrides.components ?? form.components,
         materialComponents: formOverrides.materialComponents ?? form.materialComponents,
       };

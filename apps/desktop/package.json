@@ -17,6 +17,7 @@
     "format:check": "biome check . --formatter-enabled=true --linter-enabled=false --organize-imports-enabled=false --assists-enabled=false",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
+    "test:unit": "vitest run --project=unit",
     "test:storybook": "vitest run --project=storybook",
     "test:storybook:ui": "vitest run --project=storybook --ui",
     "test:storybook:watch": "vitest run --project=storybook --watch"

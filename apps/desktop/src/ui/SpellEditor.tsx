@@ -56,42 +56,12 @@ import {
   durationToText,
   rangeToText,
 } from "./components/structured";
-
-/** Canon-first detail field keys; only one may be expanded at a time. */
-type DetailFieldKey =
-  | "range"
-  | "components"
-  | "duration"
-  | "castingTime"
-  | "area"
-  | "savingThrow"
-  | "damage"
-  | "magicResistance"
-  | "materialComponents";
-
-const DETAIL_FIELD_ORDER: DetailFieldKey[] = [
-  "range",
-  "components",
-  "duration",
-  "castingTime",
-  "area",
-  "savingThrow",
-  "damage",
-  "magicResistance",
-  "materialComponents",
-];
-
-const createDefaultDetailDirty = (): Record<DetailFieldKey, boolean> => ({
-  range: false,
-  components: false,
-  duration: false,
-  castingTime: false,
-  area: false,
-  savingThrow: false,
-  damage: false,
-  magicResistance: false,
-  materialComponents: false,
-});
+import {
+  DETAIL_FIELD_ORDER,
+  type DetailFieldKey,
+  clearDetailDirtyForFormOverrides,
+  createDefaultDetailDirty,
+} from "./detailDirty";
 
 type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
 
@@ -1297,6 +1267,8 @@ export default function SpellEditor() {
 
       if (Object.keys(formOverrides).length > 0) {
         setForm((prev) => ({ ...prev, ...formOverrides }));
+        // Clear dirty for fields we just serialized (spec: SHOULD so view-only collapse does not re-serialize if user stays on editor after save).
+        setDetailDirty((prev) => clearDetailDirtyForFormOverrides(prev, formOverrides));
       }
 
       const comp = structuredComponents ?? {

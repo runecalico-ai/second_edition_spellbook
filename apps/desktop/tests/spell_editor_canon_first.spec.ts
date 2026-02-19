@@ -833,7 +833,9 @@ test.describe("Spell Editor canon-first default", () => {
 
     const expectedAfterFirstCollapse = "1 round";
     await test.step("Canon line shows serialized value after first collapse", async () => {
-      await expect(page.getByTestId("detail-duration-input")).toHaveValue(expectedAfterFirstCollapse);
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(
+        expectedAfterFirstCollapse,
+      );
     });
 
     await test.step("Expand again (view-only), collapse", async () => {
@@ -848,7 +850,9 @@ test.describe("Spell Editor canon-first default", () => {
     });
 
     await test.step("Canon line unchanged after view-only collapse (dirty was reset)", async () => {
-      await expect(page.getByTestId("detail-duration-input")).toHaveValue(expectedAfterFirstCollapse);
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(
+        expectedAfterFirstCollapse,
+      );
     });
   });
 

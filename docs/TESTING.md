@@ -9,7 +9,7 @@ This document provides comprehensive guidelines for testing the Second Edition S
 | Component | Location | Command | Framework |
 |-----------|----------|---------|-----------|
 | Backend | `apps/desktop/src-tauri` | `cargo test` | Rust built-in |
-| Frontend | `apps/desktop` | `pnpm test` | Vitest |
+| Frontend | `apps/desktop` | `pnpm test:unit` | Vitest |
 | Frontend (Stories) | `apps/desktop` | `pnpm test:storybook` | Storybook + Vitest |
 | Python | `services/ml` | `pytest` | pytest |
 | E2E | `apps/desktop` | `pnpm e2e` | Playwright |

@@ -17,7 +17,7 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **GIVEN** the Spell Editor form and the Details section
 - **WHEN** the user views the editor (or has not expanded any detail field)
 - **THEN** the editor MUST show one single-line text input per canon field in this order: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance
-- **AND** the Details block MAY include an optional ninth row **Material Component** (single-line input + expand control) after the eight standard fields and before Description; when present, field order is: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, and optionally Material Component, then Description
+- **AND** the Details block MAY include an optional ninth row **Material Component** (single-line input + expand control) after the eight standard fields and before Tags; when present, field order is: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, and optionally Material Component, then Tags.
 - **AND** when the optional Material Component row is implemented: the single-line input MUST be bound to material component text (e.g. form.materialComponents); when expanded, the editor MUST show ComponentCheckboxes and the material list (same collapse/expand and dirty serialization rules as for other detail fields)
 - **AND** the Description MUST remain a textarea as today (after the above fields)
 - **AND** the editor MUST NOT reorder these fields so that layout is consistent and testable
@@ -34,6 +34,10 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 ---
 
 #### Expand/collapse and sync
+
+A detail field is **dirty** when the user has edited its structured form since the last time that field was committed: i.e. since the last collapse that serialized that field, since the last direct edit to that field's canon line, or since load. A field is not dirty when the user has only expanded to view (view-only).
+
+The editor MUST clear the dirty flag for a detail field when (a) the user collapses that field and the editor serializes it to the canon line, (b) the user edits that field's canon line directly, or (c) the spell is loaded. The editor SHOULD clear the dirty flag for each field that was serialized into the persistence payload when the user saves, so that view-only expand → collapse does not re-serialize if the user remains on the editor after save.
 
 #### Scenario: Only one detail field expanded at a time
 
@@ -111,7 +115,7 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **GIVEN** the user edits only in the canon (collapsed) view and saves
 - **THEN** the editor MUST persist the flat text columns as today
 - **AND** when structured state exists (e.g. user expanded and edited), the editor MUST continue to build and persist canonical_data from current specs on save; persistence shape (flat columns + canonical_data) is unchanged
-- **AND** on explicit Save, if any detail field is currently expanded and dirty, the editor MUST serialize that field to the canon line before building the persistence payload so flat text and canonical_data stay in sync
+- **AND** on explicit Save, if any detail field is currently expanded and dirty, the editor MUST serialize that field to the canon line before building the persistence payload so flat text and canonical_data stay in sync. After applying those serialized values to the form for the persistence payload, the editor SHOULD clear the dirty flag for those fields (so that a subsequent view-only collapse does not overwrite the canon line)
 
 #### Scenario: Validation applies when saving from canon view
 

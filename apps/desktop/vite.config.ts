@@ -10,12 +10,15 @@ import type { InlineConfig } from "vitest/node";
 const dirname =
   typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
-// More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
+
+
+// https://vitejs.dev/config/
 const config = {
   plugins: [react()],
   server: {
     host: "127.0.0.1",
   },
+  // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
   test: {
     reporters: ["verbose", "junit"],
     outputFile: {

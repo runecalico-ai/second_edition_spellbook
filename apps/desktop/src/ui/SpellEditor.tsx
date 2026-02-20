@@ -802,7 +802,16 @@ export default function SpellEditor() {
         expandedDetailRef.current = null;
         setDetailLoading(null);
       }
-      setDetailDirty((prev) => ({ ...prev, [field]: false }));
+      setDetailDirty((prev) => {
+        if (field === "components" || field === "materialComponents") {
+          return {
+            ...prev,
+            components: false,
+            materialComponents: false,
+          };
+        }
+        return { ...prev, [field]: false };
+      });
       switch (field) {
         case "range":
           setStructuredRange(null);
@@ -1184,10 +1193,6 @@ export default function SpellEditor() {
 
               setStructuredComponents(components);
 
-              if (!hasMaterialText && hasComponentText && materials.length > 0) {
-                // Extracted! Mark dirty locally.
-                setDetailDirty((prev) => ({ ...prev, materialComponents: true }));
-              }
               setStructuredMaterialComponents(materials);
             } else {
               if (requestId !== expandRequestId.current) return;

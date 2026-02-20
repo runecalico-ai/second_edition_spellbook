@@ -114,8 +114,14 @@ function CanonRow({
 export const DefaultCollapsed: Story = {
   render: function DefaultCollapsedStory() {
     const [range, setRange] = useState("Touch");
+    const [components, setComponents] = useState("V, S, M");
     const [duration, setDuration] = useState("1 round/level");
+    const [castingTime, setCastingTime] = useState("1 segment");
     const [area, setArea] = useState("Special");
+    const [savingThrow, setSavingThrow] = useState("Neg.");
+    const [damage, setDamage] = useState("1d6");
+    const [magicResistance, setMagicResistance] = useState("No");
+    const [materialComponent, setMaterialComponent] = useState("ruby dust");
     return (
       <div className="space-y-3 text-sm max-w-md">
         <span className="block text-sm text-neutral-400">Details</span>
@@ -128,6 +134,14 @@ export const DefaultCollapsed: Story = {
           onExpandToggle={() => {}}
         />
         <CanonRow
+          label="Components"
+          testIdPrefix="detail-components"
+          value={components}
+          onValueChange={setComponents}
+          expanded={false}
+          onExpandToggle={() => {}}
+        />
+        <CanonRow
           label="Duration"
           testIdPrefix="detail-duration"
           value={duration}
@@ -136,10 +150,50 @@ export const DefaultCollapsed: Story = {
           onExpandToggle={() => {}}
         />
         <CanonRow
+          label="Casting Time"
+          testIdPrefix="detail-casting-time"
+          value={castingTime}
+          onValueChange={setCastingTime}
+          expanded={false}
+          onExpandToggle={() => {}}
+        />
+        <CanonRow
           label="Area of Effect"
           testIdPrefix="detail-area"
           value={area}
           onValueChange={setArea}
+          expanded={false}
+          onExpandToggle={() => {}}
+        />
+        <CanonRow
+          label="Saving Throw"
+          testIdPrefix="detail-saving-throw"
+          value={savingThrow}
+          onValueChange={setSavingThrow}
+          expanded={false}
+          onExpandToggle={() => {}}
+        />
+        <CanonRow
+          label="Damage"
+          testIdPrefix="detail-damage"
+          value={damage}
+          onValueChange={setDamage}
+          expanded={false}
+          onExpandToggle={() => {}}
+        />
+        <CanonRow
+          label="Magic Resistance"
+          testIdPrefix="detail-magic-resistance"
+          value={magicResistance}
+          onValueChange={setMagicResistance}
+          expanded={false}
+          onExpandToggle={() => {}}
+        />
+        <CanonRow
+          label="Material Component"
+          testIdPrefix="detail-material-components"
+          value={materialComponent}
+          onValueChange={setMaterialComponent}
           expanded={false}
           onExpandToggle={() => {}}
         />

@@ -196,6 +196,112 @@ test.describe("Spell Editor canon-first default", () => {
     });
   });
 
+  test("View-only material expand/collapse does not auto-fill material canon line from inline components text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Material View Only No Rewrite ${runId}`;
+    const componentsWithInlineMaterial = "V, S, M (ruby dust worth 100gp)";
+
+    await test.step("Create spell with inline material in components text and empty material line", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("View-only material expand should not rewrite canon line.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-components-input").fill(componentsWithInlineMaterial);
+      await page.getByTestId("detail-material-components-input").fill("");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-material-components-input")).toHaveValue("");
+    });
+
+    await test.step("Expand and collapse material row without edits", async () => {
+      await page.getByTestId("detail-material-components-expand").click();
+      await expect(page.getByTestId("material-component-name").first()).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("detail-material-components-expand").click();
+      await expect(page.getByTestId("detail-material-components-expand")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+    });
+
+    await test.step("Canon lines remain unchanged after view-only collapse and save", async () => {
+      await expect(page.getByTestId("detail-components-input")).toHaveValue(
+        componentsWithInlineMaterial,
+      );
+      await expect(page.getByTestId("detail-material-components-input")).toHaveValue("");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-components-input")).toHaveValue(
+        componentsWithInlineMaterial,
+      );
+      await expect(page.getByTestId("detail-material-components-input")).toHaveValue("");
+    });
+  });
+
+  test("Direct canon edit clears pending components/material structured dirty state", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Components Dirty Reset ${runId}`;
+    const initialComponents = "V, S, M";
+    const initialMaterial = "powdered silver";
+    const structuredEditedMaterial = "powdered ruby";
+    const canonEditedComponents = "V, S";
+
+    await test.step("Create spell with both components and material canon lines", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Direct canon edit should clear pending structured dirty state.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByLabel("School").fill("Invocation");
+      await page.getByTestId("detail-components-input").fill(initialComponents);
+      await page.getByTestId("detail-material-components-input").fill(initialMaterial);
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.openSpell(spellName);
+    });
+
+    await test.step("Make structured material edit, then directly edit components canon line", async () => {
+      await page.getByTestId("detail-material-components-expand").click();
+      await expect(page.getByTestId("material-component-name").first()).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("material-component-name").first().fill(structuredEditedMaterial);
+      await page.getByTestId("detail-components-input").fill(canonEditedComponents);
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Saved canon lines reflect direct canon edit and not pending structured state", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("detail-components-input")).toHaveValue(canonEditedComponents);
+      await expect(page.getByTestId("detail-material-components-input")).toHaveValue(
+        initialMaterial,
+      );
+      await expect(page.getByTestId("detail-material-components-input")).not.toHaveValue(
+        new RegExp(structuredEditedMaterial, "i"),
+      );
+    });
+  });
+
   test("Expand field, edit structured form, collapse; single line updates from spec", async ({
     appContext,
   }) => {

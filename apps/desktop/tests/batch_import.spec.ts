@@ -8,9 +8,9 @@ import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 const __dirname = getTestDirname(import.meta.url);
 
-test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
-
-test.describe("Batch Import Performance Tests", () => {
+test.describe("Batch Import Wizard", () => {
+  test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
+  test.slow();
   test("imports 50 markdown files successfully", async ({ appContext, fileTracker }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);

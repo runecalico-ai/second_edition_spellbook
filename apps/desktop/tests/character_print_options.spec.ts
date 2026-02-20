@@ -3,9 +3,9 @@ import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
-test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
-
 test.describe("Character Print Options Dialog", () => {
+  test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
+
   test("should show print dialog for character sheet with format options", async ({
     appContext,
   }) => {

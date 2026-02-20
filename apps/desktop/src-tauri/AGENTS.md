@@ -127,6 +127,13 @@ The application includes a robust parsing engine for converting legacy AD&D 2e s
 - **Architecture**: Domain-specific parsers (Range, Area, Duration, etc.) orchestrated by a `SpellParser` facade.
 - **Usage**: Use `SpellParser::new()` to access parsing methods. Avoid writing ad-hoc regexes in commands; use the centralized parsers.
 
+### Logging
+- **Runtime and commands**: Use structured logging via `tracing::{info, warn, error, debug}`.
+- **Avoid**: `println!`/`eprintln!` in backend runtime and command paths.
+- **Initialization**: Logging is initialized in both `src/lib.rs` and `src/main.rs` with `tracing-subscriber` + `EnvFilter::try_from_default_env()`, defaulting to `info` when `RUST_LOG` is not set.
+- **Local debugging**: Set `RUST_LOG=info,spellbook_desktop=debug` (or equivalent shell syntax) to increase verbosity.
+- **Scope note**: Migration/report CLI workflows may still emit stdout/stderr and append to `migration.log` for operator-facing output.
+
 ## Database
 
 - **Engine**: SQLite with `rusqlite` and `r2d2_sqlite` pooling

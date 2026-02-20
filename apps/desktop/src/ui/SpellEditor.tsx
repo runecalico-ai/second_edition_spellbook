@@ -1,69 +1,87 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useModal } from "../store/useModal";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
-  StructuredFieldInput,
-  rangeToText,
-  durationToText,
-  castingTimeToText,
-  AreaForm,
-  DamageForm,
-  SavingThrowInput,
-  MagicResistanceInput,
-  ComponentCheckboxes,
-} from "./components/structured";
-import {
-  areaToText,
-  damageToText,
-  savingThrowToText,
-  magicResistanceToText,
-  componentsToText,
-  defaultAreaSpec,
-  defaultSpellDamageSpec,
-  defaultSavingThrowSpec,
-  defaultMagicResistanceSpec,
-  type SpellComponents,
-} from "../types/spell";
-import {
-  validateRangeSpec,
-  validateDurationSpec,
-  validateSpellCastingTime,
   validateAreaSpec,
+  validateDurationSpec,
+  validateRangeSpec,
+  validateSpellCastingTime,
   validateSpellDamageSpec,
 } from "../lib/parserValidation";
+import { useModal } from "../store/useModal";
+import {
+  type SpellComponents,
+  areaToText,
+  componentsToText,
+  damageToText,
+  defaultAreaSpec,
+  defaultSpellDamageSpec,
+  magicResistanceToText,
+  savingThrowToText,
+} from "../types/spell";
 import type {
-  RangeSpec,
-  DurationSpec,
-  SpellCastingTime,
+  ApplicationScope,
   AreaSpec,
-  SpellDamageSpec,
   DamagePart,
-  SavingThrowSpec,
-  SingleSave,
+  DicePool,
+  DiceTerm,
+  DurationSpec,
+  LevelBand,
   MagicResistanceSpec,
   MaterialComponentSpec,
-  SpellDetail,
-  SpellCreate,
-  DicePool,
-  ApplicationScope,
+  RangeSpec,
   SaveKind,
-  SaveType,
   SaveOutcome,
   SaveOutcomeEffect,
+  SaveType,
+  SavingThrowSpec,
   ScalarMode,
-  ScalingKind,
   ScalingDriver,
+  ScalingKind,
   ScalingRule,
-  LevelBand,
-  DiceTerm,
+  SingleSave,
+  SpellCastingTime,
+  SpellCreate,
+  SpellDamageSpec,
+  SpellDetail,
 } from "../types/spell";
+import {
+  AreaForm,
+  ComponentCheckboxes,
+  DamageForm,
+  MagicResistanceInput,
+  SavingThrowInput,
+  StructuredFieldInput,
+  castingTimeToText,
+  durationToText,
+  rangeToText,
+} from "./components/structured";
+import {
+  DETAIL_FIELD_ORDER,
+  type DetailFieldKey,
+  clearDetailDirtyForFormOverrides,
+  createDefaultDetailDirty,
+} from "./detailDirty";
+import { decideCanonicalField } from "./canonicalFieldDecision";
 
-// Mirrors SpellDetail struct from backend
-function normalizeDicePool(p: any): DicePool {
+type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
+
+/** Backend dice pool shape (camelCase or snake_case). */
+interface RawDicePool {
+  terms?: Array<{
+    count?: number;
+    sides?: number;
+    perDieModifier?: number;
+    per_die_modifier?: number;
+  }>;
+  flatModifier?: number;
+  flat_modifier?: number;
+}
+
+function normalizeDicePool(p: RawDicePool | null | undefined): DicePool {
   if (!p) return { terms: [{ count: 1, sides: 6 }], flatModifier: 0 };
   return {
-    terms: (p.terms as any[] | undefined)?.map((t) => ({
+    terms: p.terms?.map((t) => ({
       count: t.count,
       sides: t.sides,
       perDieModifier: t.perDieModifier ?? t.per_die_modifier,
@@ -72,7 +90,9 @@ function normalizeDicePool(p: any): DicePool {
   };
 }
 
-function normalizeScalar(o: unknown): { mode: ScalarMode; value?: number; perLevel?: number } | undefined {
+function normalizeScalar(
+  o: unknown,
+): { mode: ScalarMode; value?: number; perLevel?: number } | undefined {
   if (!o || typeof o !== "object") return undefined;
   const s = o as Record<string, unknown>;
   const mode = s.mode as ScalarMode | undefined;
@@ -108,16 +128,17 @@ function normalizeAreaSpec(a: Record<string, unknown>): AreaSpec {
 function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
   const parts = (d.parts as unknown[] | undefined)?.map((p) => {
     const x = p as Record<string, unknown>;
-    const app = (x.application ?? x.application) as Record<string, unknown> | undefined;
-    const sav = (x.save ?? x.save) as Record<string, unknown> | undefined;
-    const scaling = ((x.scaling ?? x.scaling) as unknown[] | undefined)?.map((s) => {
+    const app = x.application as Record<string, unknown> | undefined;
+    const sav = x.save as Record<string, unknown> | undefined;
+    const scaling = (x.scaling as unknown[] | undefined)?.map((s) => {
       const rs = s as Record<string, unknown>;
       return {
         kind: rs.kind as ScalingKind,
         driver: rs.driver as ScalingDriver,
         step: rs.step as number,
         maxSteps: (rs.maxSteps ?? rs.max_steps) as number,
-        diceIncrement: normalizeDicePool({ terms: [rs.diceIncrement ?? rs.dice_increment] }).terms[0],
+        diceIncrement: normalizeDicePool({ terms: [rs.diceIncrement ?? rs.dice_increment] })
+          .terms[0],
         flatIncrement: (rs.flatIncrement ?? rs.flat_increment) as number,
         levelBands: (rs.levelBands ?? rs.level_bands) as LevelBand[] | undefined,
         notes: rs.notes as string,
@@ -130,21 +151,27 @@ function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
       label: x.label as string,
       damageType: (x.damageType ?? x.damage_type) as string,
       base: normalizeDicePool(x.base),
-      application: app ? {
-        scope: app.scope as ApplicationScope,
-        ticks: app.ticks as number,
-        tickDriver: (app.tickDriver ?? app.tick_driver) as string,
-      } : undefined,
-      save: sav ? {
-        kind: sav.kind as SaveKind,
-        partial: sav.partial as { numerator: number; denominator: number },
-      } : undefined,
+      application: app
+        ? {
+            scope: app.scope as ApplicationScope,
+            ticks: app.ticks as number,
+            tickDriver: (app.tickDriver ?? app.tick_driver) as string,
+          }
+        : undefined,
+      save: sav
+        ? {
+            kind: sav.kind as SaveKind,
+            partial: sav.partial as { numerator: number; denominator: number },
+          }
+        : undefined,
       mrInteraction: (x.mrInteraction ?? x.mr_interaction) as DamagePart["mrInteraction"],
       scaling,
-      clampTotal: clamp ? {
-        minTotal: (clamp.minTotal ?? clamp.min_total) as number,
-        maxTotal: (clamp.maxTotal ?? clamp.max_total) as number,
-      } : undefined,
+      clampTotal: clamp
+        ? {
+            minTotal: (clamp.minTotal ?? clamp.min_total) as number,
+            maxTotal: (clamp.maxTotal ?? clamp.max_total) as number,
+          }
+        : undefined,
       notes: x.notes as string,
     } as DamagePart;
   });
@@ -185,7 +212,9 @@ function normalizeSavingThrowSpec(s: Record<string, unknown>): SavingThrowSpec {
   return {
     kind: (s.kind as SavingThrowSpec["kind"]) ?? "none",
     single: normalizeSingleSave(s.single),
-    multiple: (s.multiple as unknown[] | undefined)?.map(normalizeSingleSave).filter(Boolean) as SingleSave[],
+    multiple: (s.multiple as unknown[] | undefined)
+      ?.map(normalizeSingleSave)
+      .filter(Boolean) as SingleSave[],
     dmGuidance: (s.dmGuidance ?? s.dm_guidance) as string,
     notes: s.notes as string,
   } as SavingThrowSpec;
@@ -195,13 +224,132 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
   return {
     kind: (m.kind as MagicResistanceSpec["kind"]) ?? "unknown",
     appliesTo: (m.appliesTo ?? m.applies_to) as MagicResistanceSpec["appliesTo"],
-    partial: m.partial ? {
-      scope: (m.partial as Record<string, unknown>).scope as string,
-      partIds: ((m.partial as Record<string, unknown>).partIds ?? (m.partial as Record<string, unknown>).part_ids) as string[],
-    } : undefined,
+    partial: m.partial
+      ? {
+          scope: (m.partial as Record<string, unknown>).scope as string,
+          partIds: ((m.partial as Record<string, unknown>).partIds ??
+            (m.partial as Record<string, unknown>).part_ids) as string[],
+        }
+      : undefined,
     specialRule: (m.specialRule ?? m.special_rule) as string,
     notes: m.notes as string,
   } as MagicResistanceSpec;
+}
+
+function validateSavingThrowSpecShape(value: unknown): value is SavingThrowSpec {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const kind = value.kind;
+  return kind === "none" || kind === "single" || kind === "multiple" || kind === "dm_adjudicated";
+}
+
+function validateMagicResistanceSpecShape(value: unknown): value is MagicResistanceSpec {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const kind = value.kind;
+  return (
+    kind === "unknown" ||
+    kind === "normal" ||
+    kind === "ignores_mr" ||
+    kind === "partial" ||
+    kind === "special"
+  );
+}
+
+function toSpecialRangeSpec(rawLegacyValue: string): RangeSpec {
+  return { kind: "special", rawLegacyValue };
+}
+
+function toSpecialDurationSpec(rawLegacyValue: string): DurationSpec {
+  return { kind: "special", rawLegacyValue };
+}
+
+function toSpecialCastingTimeSpec(rawLegacyValue: string): SpellCastingTime {
+  return { text: rawLegacyValue, unit: "special", rawLegacyValue };
+}
+
+function toSpecialAreaSpec(rawLegacyValue: string): AreaSpec {
+  return { kind: "special", rawLegacyValue } as AreaSpec;
+}
+
+function toFallbackDamageSpec(rawLegacyValue: string): SpellDamageSpec {
+  return { kind: "dm_adjudicated", rawLegacyValue, dmGuidance: rawLegacyValue };
+}
+
+function normalizeLegacyText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[()\[\],.;:]+/g, " ")
+    .replace(/[\s_-]+/g, " ")
+    .trim();
+}
+
+function hasTokenPattern(text: string, pattern: RegExp): boolean {
+  return pattern.test(text);
+}
+
+function mapLegacySavingThrow(legacy: string): SavingThrowSpec {
+  const normalized = normalizeLegacyText(legacy);
+  if (!normalized || hasTokenPattern(normalized, /^(none|no|n\/a|na|nil|—|-)$|\bno save\b/)) {
+    return { kind: "none" };
+  }
+
+  if (hasTokenPattern(normalized, /\bnegat(?:e|es|ed|ing)?\b/)) {
+    return {
+      kind: "single",
+      single: {
+        saveType: "spell",
+        onSuccess: { result: "no_effect" },
+        onFailure: { result: "full_effect" },
+      },
+    };
+  }
+
+  if (hasTokenPattern(normalized, /\bhalf\b|\b1\s*\/\s*2\b/)) {
+    return {
+      kind: "single",
+      single: {
+        saveType: "spell",
+        onSuccess: { result: "reduced_effect" },
+        onFailure: { result: "full_effect" },
+      },
+    };
+  }
+
+  if (hasTokenPattern(normalized, /\bpartial\b/)) {
+    return {
+      kind: "single",
+      single: {
+        saveType: "spell",
+        onSuccess: { result: "partial_non_damage_only" },
+        onFailure: { result: "full_effect" },
+      },
+    };
+  }
+
+  return { kind: "dm_adjudicated", dmGuidance: legacy };
+}
+
+function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {
+  const normalized = normalizeLegacyText(legacy);
+  if (!normalized) return { kind: "unknown" };
+
+  if (hasTokenPattern(normalized, /\byes\b|\bapplies\b|\ballowed\b/)) {
+    return { kind: "normal", appliesTo: "whole_spell" };
+  }
+
+  if (hasTokenPattern(normalized, /\bno\b|\bdoes not apply\b|\bbypassed\b|\bignore[sd]?\b/)) {
+    return { kind: "ignores_mr", appliesTo: "whole_spell" };
+  }
+
+  if (hasTokenPattern(normalized, /\bpartial\b/)) {
+    return {
+      kind: "partial",
+      appliesTo: "whole_spell",
+      partial: { scope: "damage_only" },
+    };
+  }
+
+  return { kind: "special", appliesTo: "whole_spell", specialRule: legacy };
 }
 
 export default function SpellEditor() {
@@ -231,53 +379,178 @@ export default function SpellEditor() {
   const [printStatus, setPrintStatus] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
   const [structuredRange, setStructuredRange] = useState<RangeSpec | null>(null);
-  const [structuredDuration, setStructuredDuration] =
-    useState<DurationSpec | null>(null);
-  const [structuredCastingTime, setStructuredCastingTime] =
-    useState<SpellCastingTime | null>(null);
+  const [structuredDuration, setStructuredDuration] = useState<DurationSpec | null>(null);
+  const [structuredCastingTime, setStructuredCastingTime] = useState<SpellCastingTime | null>(null);
   const [structuredArea, setStructuredArea] = useState<AreaSpec | null>(null);
-  const [structuredDamage, setStructuredDamage] =
-    useState<SpellDamageSpec | null>(null);
-  const [structuredSavingThrow, setStructuredSavingThrow] =
-    useState<SavingThrowSpec | null>(null);
+  const [structuredDamage, setStructuredDamage] = useState<SpellDamageSpec | null>(null);
+  const [structuredSavingThrow, setStructuredSavingThrow] = useState<SavingThrowSpec | null>(null);
   const [structuredMagicResistance, setStructuredMagicResistance] =
     useState<MagicResistanceSpec | null>(null);
-  const [structuredComponents, setStructuredComponents] =
-    useState<SpellComponents | null>(null);
-  const [structuredMaterialComponents, setStructuredMaterialComponents] =
-    useState<MaterialComponentSpec[]>([]);
+  const [structuredComponents, setStructuredComponents] = useState<SpellComponents | null>(null);
+  const [structuredMaterialComponents, setStructuredMaterialComponents] = useState<
+    MaterialComponentSpec[]
+  >([]);
+  const [hasLoadedMaterialComponentsSpec, setHasLoadedMaterialComponentsSpec] = useState(false);
+  const [hasLoadedSavingThrowSpec, setHasLoadedSavingThrowSpec] = useState(false);
+  const [hasLoadedMagicResistanceSpec, setHasLoadedMagicResistanceSpec] = useState(false);
+  const [hasExpandedComponentsEdit, setHasExpandedComponentsEdit] = useState(false);
   const [hashExpanded, setHashExpanded] = useState(false);
   type Tradition = "ARCANE" | "DIVINE" | "BOTH";
   const [tradition, setTradition] = useState<Tradition>("ARCANE");
 
+  /** Canon-first: which detail field is expanded (only one at a time). */
+  const [expandedDetailField, setExpandedDetailField] = useState<DetailFieldKey | null>(null);
+  /** Canon-first: per-field dirty since last canonical text edit. */
+  const [detailDirty, setDetailDirty] = useState<Record<DetailFieldKey, boolean>>(() =>
+    createDefaultDetailDirty(),
+  );
+  const [suppressExpandParse, setSuppressExpandParse] = useState<
+    Partial<Record<DetailFieldKey, boolean>>
+  >({});
+  /** Canon-first: which field is loading (async parse on expand). */
+  const [detailLoading, setDetailLoading] = useState<DetailFieldKey | null>(null);
+  /** Refs for focus management: expanded panel (focus first focusable on expand); collapse focuses via data-testid query. */
+  const expandedPanelRef = useRef<HTMLElement | null>(null);
+  /** Ref for parse race guard: only clear loading when completed parse matches currently expanded field. */
+  const expandedDetailRef = useRef<DetailFieldKey | null>(null);
+  /** Ref for async parse race guard: increment on every expand request; only apply result if matches. */
+  const expandRequestId = useRef(0);
+  /** Track unsaved changes for navigate/close warning. */
+  const unsavedRef = useRef(false);
+  const [hasUnsavedState, setHasUnsavedState] = useState(false);
+
   const isNew = id === "new";
 
   useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (unsavedRef.current) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  const blocker = useBlocker(hasUnsavedState);
+  const blockerRef = useRef(blocker);
+  blockerRef.current = blocker;
+
+  /** Focus management: on expand focus first focusable in panel; on collapse focus the expand button. */
+  const prevExpandedDetailRef = useRef<DetailFieldKey | null>(null);
+  const resetStructuredLoadState = useCallback(() => {
+    setStructuredRange(null);
+    setStructuredDuration(null);
+    setStructuredCastingTime(null);
+    setStructuredArea(null);
+    setStructuredDamage(null);
+    setStructuredSavingThrow(null);
+    setStructuredMagicResistance(null);
+    setStructuredComponents(null);
+    setStructuredMaterialComponents([]);
+    setHasLoadedMaterialComponentsSpec(false);
+    setHasLoadedSavingThrowSpec(false);
+    setHasLoadedMagicResistanceSpec(false);
+    setHasExpandedComponentsEdit(false);
+    setExpandedDetailField(null);
+    setDetailLoading(null);
+    setDetailDirty(createDefaultDetailDirty());
+    setSuppressExpandParse({});
+    expandedDetailRef.current = null;
+    prevExpandedDetailRef.current = null;
+  }, []);
+
+  const fieldToKebab = useCallback(
+    (f: DetailFieldKey) => f.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(),
+    [],
+  );
+  useEffect(() => {
+    expandedDetailRef.current = expandedDetailField;
+    if (expandedDetailField !== null) {
+      prevExpandedDetailRef.current = expandedDetailField;
+      requestAnimationFrame(() => {
+        const panel = expandedPanelRef.current;
+        if (panel) {
+          const focusable = panel.querySelector<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          );
+          if (focusable) focusable.focus();
+          else {
+            panel.tabIndex = -1;
+            panel.focus();
+          }
+        }
+      });
+    } else {
+      const justCollapsed = prevExpandedDetailRef.current;
+      if (justCollapsed !== null) {
+        prevExpandedDetailRef.current = null;
+        requestAnimationFrame(() => {
+          const kebab = fieldToKebab(justCollapsed);
+          const btn = document.querySelector<HTMLButtonElement>(
+            `[data-testid="detail-${kebab}-expand"]`,
+          );
+          btn?.focus();
+        });
+      }
+    }
+  }, [expandedDetailField, fieldToKebab]);
+
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    const b = blockerRef.current;
+    // Save (or similar) already cleared the ref before navigate; don't prompt.
+    if (!unsavedRef.current) {
+      setHasUnsavedState(false);
+      b.proceed?.();
+      return;
+    }
+    modalConfirm("You have unsaved changes. Leave and discard?", "Unsaved changes").then((ok) => {
+      if (ok) {
+        unsavedRef.current = false;
+        setHasUnsavedState(false);
+        b.proceed?.();
+      } else {
+        b.reset?.();
+      }
+    });
+  }, [blocker.state, modalConfirm]);
+
+  useEffect(() => {
     if (!isNew && id) {
+      let isActive = true;
+      resetStructuredLoadState();
       setLoading(true);
       invoke<SpellDetail>("get_spell", { id: Number.parseInt(id) })
         .then((data) => {
+          if (!isActive) return;
+
+          // Reset all structured/canon-first expansion state before applying loaded spell.
+          resetStructuredLoadState();
+
           if (data) {
             setForm(data);
             const hasSchool = !!data.school?.trim();
             const hasSphere = !!data.sphere?.trim();
-            setTradition(hasSchool && hasSphere ? "BOTH" : hasSchool ? "ARCANE" : hasSphere ? "DIVINE" : "ARCANE");
-            const fromCanonical = {
-              range: false,
-              duration: false,
-              castingTime: false,
-              area: false,
-              damage: false,
-              savingThrow: false,
-              magicResistance: false,
-              components: false,
-            };
+            setTradition(
+              hasSchool && hasSphere
+                ? "BOTH"
+                : hasSchool
+                  ? "ARCANE"
+                  : hasSphere
+                    ? "DIVINE"
+                    : "ARCANE",
+            );
             if (data.canonicalData) {
               try {
                 // canonical_data is always stored in snake_case (see docs/ARCHITECTURE.md).
-                const canonical = JSON.parse(data.canonicalData) as {
-                  range?: RangeSpec & { distance?: { per_level?: number }; raw_legacy_value?: string };
-                  duration?: DurationSpec & { duration?: { per_level?: number }; raw_legacy_value?: string };
+                const canonicalRaw = JSON.parse(data.canonicalData) as Record<string, unknown>;
+                const canonical = canonicalRaw as {
+                  range?: RangeSpec & {
+                    distance?: { per_level?: number };
+                    raw_legacy_value?: string;
+                  };
+                  duration?: DurationSpec & {
+                    duration?: { per_level?: number };
+                    raw_legacy_value?: string;
+                  };
                   casting_time?: SpellCastingTime & { raw_legacy_value?: string };
                   area?: AreaSpec & { raw_legacy_value?: string };
                   damage?: SpellDamageSpec & { raw_legacy_value?: string; dm_guidance?: string };
@@ -293,85 +566,180 @@ export default function SpellEditor() {
                   };
                   material_components?: MaterialComponentSpec[];
                 };
-                if (canonical.range) {
-                  const r = canonical.range;
-                  setStructuredRange({
-                    kind: r.kind,
-                    text: r.text,
-                    unit: r.unit,
-                    distance: r.distance
-                      ? {
-                        mode: r.distance.mode ?? "fixed",
-                        value: r.distance.value,
-                        perLevel: r.distance.per_level ?? r.distance.perLevel,
-                      }
-                      : undefined,
-                    rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
-                  });
-                  fromCanonical.range = true;
+                const canonicalHasMaterialComponentsSpec = Object.prototype.hasOwnProperty.call(
+                  canonicalRaw,
+                  "material_components",
+                );
+                setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
+                const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
+
+                const rangeDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "range",
+                  (rawValue): RangeSpec => {
+                    const r = rawValue as RangeSpec & {
+                      distance?: { per_level?: number };
+                      raw_legacy_value?: string;
+                    };
+                    return {
+                      kind: r.kind,
+                      text: r.text,
+                      unit: r.unit,
+                      distance: r.distance
+                        ? {
+                            mode: r.distance.mode ?? "fixed",
+                            value: r.distance.value,
+                            perLevel: r.distance.per_level ?? r.distance.perLevel,
+                          }
+                        : undefined,
+                      rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
+                    };
+                  },
+                  validateRangeSpec,
+                );
+                if (rangeDecision.structuredValue) {
+                  setStructuredRange(rangeDecision.structuredValue);
                 }
-                if (canonical.duration) {
-                  const d = canonical.duration;
-                  setStructuredDuration({
-                    kind: d.kind,
-                    unit: d.unit,
-                    duration: d.duration
-                      ? {
-                        mode: d.duration.mode ?? "fixed",
-                        value: d.duration.value,
-                        perLevel: d.duration.per_level ?? d.duration.perLevel,
-                      }
-                      : undefined,
-                    condition: d.condition,
-                    uses: normalizeScalar(d.uses),
-                    rawLegacyValue: d.raw_legacy_value ?? d.rawLegacyValue,
-                  });
-                  fromCanonical.duration = true;
+                if (rangeDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.range = true;
                 }
-                if (canonical.casting_time) {
-                  const c = canonical.casting_time as SpellCastingTime & {
-                    base_value?: number;
-                    per_level?: number;
-                    level_divisor?: number;
-                    raw_legacy_value?: string;
-                  };
-                  setStructuredCastingTime({
-                    text: c.text ?? "",
-                    unit: c.unit,
-                    baseValue: c.baseValue ?? c.base_value,
-                    perLevel: c.perLevel ?? c.per_level ?? 0,
-                    levelDivisor: c.levelDivisor ?? c.level_divisor ?? 1,
-                    rawLegacyValue: c.rawLegacyValue ?? c.raw_legacy_value,
-                  });
-                  fromCanonical.castingTime = true;
+
+                const durationDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "duration",
+                  (rawValue): DurationSpec => {
+                    const d = rawValue as DurationSpec & {
+                      duration?: { per_level?: number };
+                      raw_legacy_value?: string;
+                    };
+                    return {
+                      kind: d.kind,
+                      unit: d.unit,
+                      duration: d.duration
+                        ? {
+                            mode: d.duration.mode ?? "fixed",
+                            value: d.duration.value,
+                            perLevel: d.duration.per_level ?? d.duration.perLevel,
+                          }
+                        : undefined,
+                      condition: d.condition,
+                      uses: normalizeScalar(d.uses),
+                      rawLegacyValue: d.raw_legacy_value ?? d.rawLegacyValue,
+                    };
+                  },
+                  validateDurationSpec,
+                );
+                if (durationDecision.structuredValue) {
+                  setStructuredDuration(durationDecision.structuredValue);
                 }
-                if (canonical.area) {
-                  setStructuredArea(normalizeAreaSpec(canonical.area as unknown as Record<string, unknown>));
-                  fromCanonical.area = true;
+                if (durationDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.duration = true;
                 }
-                if (canonical.damage) {
-                  setStructuredDamage(normalizeDamageSpec(canonical.damage as unknown as Record<string, unknown>));
-                  fromCanonical.damage = true;
+
+                const castingTimeDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "casting_time",
+                  (rawValue): SpellCastingTime => {
+                    const c = rawValue as SpellCastingTime & {
+                      base_value?: number;
+                      per_level?: number;
+                      level_divisor?: number;
+                      raw_legacy_value?: string;
+                    };
+                    return {
+                      text: c.text ?? "",
+                      unit: c.unit,
+                      baseValue: c.baseValue ?? c.base_value,
+                      perLevel: c.perLevel ?? c.per_level ?? 0,
+                      levelDivisor: c.levelDivisor ?? c.level_divisor ?? 1,
+                      rawLegacyValue: c.rawLegacyValue ?? c.raw_legacy_value,
+                    };
+                  },
+                  validateSpellCastingTime,
+                );
+                if (castingTimeDecision.structuredValue) {
+                  setStructuredCastingTime(castingTimeDecision.structuredValue);
                 }
-                if (canonical.saving_throw) {
-                  setStructuredSavingThrow(normalizeSavingThrowSpec(canonical.saving_throw as unknown as Record<string, unknown>));
-                  fromCanonical.savingThrow = true;
+                if (castingTimeDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.castingTime = true;
                 }
-                if (canonical.magic_resistance) {
-                  setStructuredMagicResistance(normalizeMagicResistanceSpec(canonical.magic_resistance as unknown as Record<string, unknown>));
-                  fromCanonical.magicResistance = true;
+
+                const areaDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "area",
+                  normalizeAreaSpec,
+                  validateAreaSpec,
+                );
+                if (areaDecision.structuredValue) {
+                  setStructuredArea(areaDecision.structuredValue);
                 }
-                if (canonical.components || (canonical.material_components && canonical.material_components.length > 0)) {
+                if (areaDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.area = true;
+                }
+
+                const damageDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "damage",
+                  normalizeDamageSpec,
+                  validateSpellDamageSpec,
+                );
+                if (damageDecision.structuredValue) {
+                  setStructuredDamage(damageDecision.structuredValue);
+                }
+                if (damageDecision.suppressExpandParse) {
+                  nextSuppressExpandParse.damage = true;
+                }
+
+                const savingThrowDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "saving_throw",
+                  normalizeSavingThrowSpec,
+                  validateSavingThrowSpecShape,
+                );
+                if (savingThrowDecision.suppressExpandParse) {
+                  setHasLoadedSavingThrowSpec(true);
+                  nextSuppressExpandParse.savingThrow = true;
+                }
+                if (savingThrowDecision.structuredValue) {
+                  setStructuredSavingThrow(savingThrowDecision.structuredValue);
+                }
+
+                const magicResistanceDecision = decideCanonicalField(
+                  canonicalRaw,
+                  "magic_resistance",
+                  normalizeMagicResistanceSpec,
+                  validateMagicResistanceSpecShape,
+                );
+                if (magicResistanceDecision.suppressExpandParse) {
+                  setHasLoadedMagicResistanceSpec(true);
+                  nextSuppressExpandParse.magicResistance = true;
+                }
+                if (magicResistanceDecision.structuredValue) {
+                  setStructuredMagicResistance(magicResistanceDecision.structuredValue);
+                }
+
+                if (
+                  canonical.components ||
+                  (canonical.material_components && canonical.material_components.length > 0)
+                ) {
+                  const hasMaterialData = (canonical.material_components?.length ?? 0) > 0;
                   const comp = canonical.components
                     ? {
-                      verbal: canonical.components.verbal ?? false,
-                      somatic: canonical.components.somatic ?? false,
-                      material: canonical.components.material ?? false,
-                      focus: canonical.components.focus ?? false,
-                      divineFocus: canonical.components.divine_focus ?? false,
-                      experience: canonical.components.experience ?? false,
-                    }
-                    : { verbal: false, somatic: false, material: true, focus: false, divineFocus: false, experience: false };
+                        verbal: canonical.components.verbal ?? false,
+                        somatic: canonical.components.somatic ?? false,
+                        material: (canonical.components.material ?? false) || hasMaterialData,
+                        focus: canonical.components.focus ?? false,
+                        divineFocus: canonical.components.divine_focus ?? false,
+                        experience: canonical.components.experience ?? false,
+                      }
+                    : {
+                        verbal: false,
+                        somatic: false,
+                        material: true,
+                        focus: false,
+                        divineFocus: false,
+                        experience: false,
+                      };
                   setStructuredComponents(comp);
                   const rawMats = (canonical.material_components ?? []) as unknown[];
                   const mats: MaterialComponentSpec[] = rawMats.map((m) => {
@@ -386,154 +754,524 @@ export default function SpellEditor() {
                     };
                   });
                   setStructuredMaterialComponents(mats);
-                  fromCanonical.components = true;
                 }
+                setSuppressExpandParse(nextSuppressExpandParse);
               } catch {
                 // ignore parse error, fall back to legacy
               }
             }
-            const fallbackRange = (legacy: string | null) => {
-              if (legacy) setStructuredRange({ kind: "special", rawLegacyValue: legacy });
-              else setStructuredRange(null);
-            };
-            const fallbackDuration = (legacy: string | null) => {
-              if (legacy) setStructuredDuration({ kind: "special", rawLegacyValue: legacy });
-              else setStructuredDuration(null);
-            };
-            const fallbackCastingTime = (legacy: string | null) => {
-              if (legacy) setStructuredCastingTime({ text: legacy, unit: "special", rawLegacyValue: legacy });
-              else setStructuredCastingTime(null);
-            };
-            const fallbackArea = (legacy: string | null) => {
-              if (legacy) setStructuredArea({ kind: "special", rawLegacyValue: legacy });
-              else setStructuredArea(null);
-            };
-            const fallbackDamage = (legacy: string | null) => {
-              if (legacy) setStructuredDamage({ kind: "dm_adjudicated", rawLegacyValue: legacy, dmGuidance: legacy });
-              else setStructuredDamage(defaultSpellDamageSpec());
-            };
-
-            if (!fromCanonical.range) {
-              if (data.range) {
-                invoke<RangeSpec>("parse_spell_range", { legacy: data.range })
-                  .then((parsed) => {
-                    if (!validateRangeSpec(parsed)) fallbackRange(data.range);
-                    else setStructuredRange(parsed);
-                  })
-                  .catch(() => fallbackRange(data.range));
-              } else {
-                setStructuredRange(null);
-              }
-            }
-            if (!fromCanonical.duration) {
-              if (data.duration) {
-                invoke<DurationSpec>("parse_spell_duration", { legacy: data.duration })
-                  .then((parsed) => {
-                    if (!validateDurationSpec(parsed)) fallbackDuration(data.duration);
-                    else setStructuredDuration(parsed);
-                  })
-                  .catch(() => fallbackDuration(data.duration));
-              } else {
-                setStructuredDuration(null);
-              }
-            }
-            if (!fromCanonical.castingTime) {
-              if (data.castingTime) {
-                invoke<SpellCastingTime>("parse_spell_casting_time", {
-                  legacy: data.castingTime,
-                })
-                  .then((parsed) => {
-                    if (!validateSpellCastingTime(parsed)) fallbackCastingTime(data.castingTime);
-                    else setStructuredCastingTime(parsed);
-                  })
-                  .catch(() => fallbackCastingTime(data.castingTime));
-              } else {
-                setStructuredCastingTime(null);
-              }
-            }
-            if (!fromCanonical.area) {
-              if (data.area) {
-                invoke<AreaSpec | null>("parse_spell_area", { legacy: data.area })
-                  .then((parsed) => {
-                    if (parsed === null || !validateAreaSpec(parsed)) fallbackArea(data.area);
-                    else setStructuredArea(parsed);
-                  })
-                  .catch(() => fallbackArea(data.area));
-              } else {
-                setStructuredArea(null);
-              }
-            }
-            if (!fromCanonical.damage) {
-              if (data.damage) {
-                invoke<SpellDamageSpec>("parse_spell_damage", { legacy: data.damage })
-                  .then((parsed) => {
-                    if (!validateSpellDamageSpec(parsed)) fallbackDamage(data.damage);
-                    else setStructuredDamage(parsed);
-                  })
-                  .catch(() => fallbackDamage(data.damage));
-              } else {
-                setStructuredDamage(defaultSpellDamageSpec());
-              }
-            }
-            if (!fromCanonical.savingThrow) {
-              if (data.savingThrow) {
-                setStructuredSavingThrow({
-                  kind: "dm_adjudicated",
-                  dmGuidance: data.savingThrow,
-                });
-              } else {
-                setStructuredSavingThrow(defaultSavingThrowSpec());
-              }
-            }
-            if (!fromCanonical.magicResistance) {
-              if (data.magicResistance) {
-                setStructuredMagicResistance({
-                  kind: "special",
-                  specialRule: data.magicResistance,
-                });
-              } else {
-                setStructuredMagicResistance(defaultMagicResistanceSpec());
-              }
-            }
-            if (!fromCanonical.components) {
-              if (data.components) {
-                invoke<SpellComponents>("parse_spell_components", {
-                  legacy: data.components,
-                })
-                  .then((parsed) => {
-                    setStructuredComponents({
-                      verbal: parsed.verbal ?? false,
-                      somatic: parsed.somatic ?? false,
-                      material: parsed.material ?? false,
-                      focus: parsed.focus ?? false,
-                      divineFocus: parsed.divineFocus ?? false,
-                      experience: parsed.experience ?? false,
-                    });
-                    if (data.materialComponents && parsed.material) {
-                      setStructuredMaterialComponents([
-                        { name: data.materialComponents, quantity: 1.0 },
-                      ]);
-                    } else {
-                      setStructuredMaterialComponents([]);
-                    }
-                  })
-                  .catch(() => {
-                    setStructuredComponents(null);
-                    setStructuredMaterialComponents([]);
-                  });
-              } else {
-                setStructuredComponents(null);
-                setStructuredMaterialComponents([]);
-              }
-            }
+            // Canon-first: do not parse on load for fields missing from canonical_data;
+            // parse on first expand instead.
+            unsavedRef.current = false;
+            setHasUnsavedState(false);
           }
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (isActive) setLoading(false);
+        });
+
+      return () => {
+        isActive = false;
+      };
     }
-  }, [id, isNew]);
+  }, [id, isNew, resetStructuredLoadState]);
 
   const handleChange = (field: keyof SpellDetail, value: string | number) => {
+    unsavedRef.current = true;
+    setHasUnsavedState(true);
     setForm((prev) => ({ ...prev, [field]: value }));
+
+    // If canon line is edited directly, structured spec is stale.
+    if (DETAIL_FIELD_ORDER.includes(field as DetailFieldKey)) {
+      const detailField = field as DetailFieldKey;
+      setSuppressExpandParse((prev) => {
+        if (detailField === "components" || detailField === "materialComponents") {
+          return {
+            ...prev,
+            components: false,
+            materialComponents: false,
+          };
+        }
+        return {
+          ...prev,
+          [detailField]: false,
+        };
+      });
+      // Invalide any pending async parse results for this field.
+      expandRequestId.current += 1;
+      if (expandedDetailField === detailField) {
+        setExpandedDetailField(null);
+        expandedDetailRef.current = null;
+        setDetailLoading(null);
+      }
+      setDetailDirty((prev) => {
+        if (field === "components" || field === "materialComponents") {
+          return {
+            ...prev,
+            components: false,
+            materialComponents: false,
+          };
+        }
+        return { ...prev, [field]: false };
+      });
+      switch (field) {
+        case "range":
+          setStructuredRange(null);
+          break;
+        case "duration":
+          setStructuredDuration(null);
+          break;
+        case "castingTime":
+          setStructuredCastingTime(null);
+          break;
+        case "area":
+          setStructuredArea(null);
+          break;
+        case "savingThrow":
+          setStructuredSavingThrow(null);
+          setHasLoadedSavingThrowSpec(false);
+          break;
+        case "damage":
+          setStructuredDamage(null);
+          break;
+        case "magicResistance":
+          setStructuredMagicResistance(null);
+          setHasLoadedMagicResistanceSpec(false);
+          break;
+        case "components":
+        case "materialComponents":
+          setStructuredComponents(null);
+          setStructuredMaterialComponents([]);
+          setHasLoadedMaterialComponentsSpec(false);
+          setHasExpandedComponentsEdit(false);
+          break;
+      }
+    }
+  };
+
+  /** Serialize current structured value for a detail field to form text (for collapse/save). */
+  const serializeDetailField = (field: DetailFieldKey): DetailTextOverrides => {
+    const overrides: DetailTextOverrides = {};
+
+    switch (field) {
+      case "range":
+        if (structuredRange) {
+          const text = rangeToText(structuredRange);
+          overrides.range = text;
+          setForm((prev) => ({ ...prev, range: text }));
+        }
+        break;
+      case "components":
+      case "materialComponents": {
+        const comp = structuredComponents ?? emptySpellComponents();
+        const { components: cs, materialComponents: ms } = componentsToText(
+          comp,
+          structuredMaterialComponents,
+        );
+        overrides.components = cs;
+        overrides.materialComponents = ms;
+        setForm((prev) => ({ ...prev, components: cs, materialComponents: ms }));
+        break;
+      }
+      case "duration":
+        if (structuredDuration) {
+          const text = durationToText(structuredDuration);
+          overrides.duration = text;
+          setForm((prev) => ({ ...prev, duration: text }));
+        }
+        break;
+      case "castingTime":
+        if (structuredCastingTime) {
+          const text = castingTimeToText(structuredCastingTime);
+          overrides.castingTime = text;
+          setForm((prev) => ({ ...prev, castingTime: text }));
+        }
+        break;
+      case "area":
+        if (structuredArea) {
+          const text = areaToText(structuredArea);
+          overrides.area = text;
+          setForm((prev) => ({ ...prev, area: text }));
+        }
+        break;
+      case "savingThrow":
+        if (structuredSavingThrow) {
+          const text = savingThrowToText(structuredSavingThrow);
+          overrides.savingThrow = text;
+          setForm((prev) => ({ ...prev, savingThrow: text }));
+        }
+        break;
+      case "damage":
+        if (structuredDamage) {
+          const text = damageToText(structuredDamage);
+          overrides.damage = text;
+          setForm((prev) => ({ ...prev, damage: text }));
+        }
+        break;
+      case "magicResistance":
+        if (structuredMagicResistance) {
+          const text = magicResistanceToText(structuredMagicResistance);
+          overrides.magicResistance = text;
+          setForm((prev) => ({
+            ...prev,
+            magicResistance: text,
+          }));
+        }
+        break;
+    }
+
+    return overrides;
+  };
+
+  const emptySpellComponents = (): SpellComponents => ({
+    verbal: false,
+    somatic: false,
+    material: false,
+    focus: false,
+    divineFocus: false,
+    experience: false,
+  });
+
+  const inferSpellComponentsFromLegacy = (
+    componentsLegacy: string,
+    hasMaterialText: boolean,
+  ): SpellComponents => {
+    const normalized = componentsLegacy.toUpperCase();
+    const tokens = normalized.split(/[^A-Z]+/).filter(Boolean);
+    const inferred = emptySpellComponents();
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      const nextToken = tokens[index + 1];
+      const prevToken = tokens[index - 1];
+
+      if (token === "DIVINE" && nextToken === "FOCUS") {
+        inferred.divineFocus = true;
+        continue;
+      }
+
+      switch (token) {
+        case "V":
+        case "VERBAL":
+          inferred.verbal = true;
+          continue;
+        case "S":
+        case "SOMATIC":
+          inferred.somatic = true;
+          continue;
+        case "M":
+        case "MATERIAL":
+          inferred.material = true;
+          continue;
+        case "F":
+          inferred.focus = true;
+          continue;
+        case "FOCUS":
+          if (prevToken !== "DIVINE") {
+            inferred.focus = true;
+          }
+          continue;
+        case "DF":
+          inferred.divineFocus = true;
+          continue;
+        case "XP":
+        case "EXP":
+        case "EXPERIENCE":
+          inferred.experience = true;
+          continue;
+      }
+
+      // Support compact shorthand like "VS", "VSM", or "SMF".
+      if (/^[VSMF]+$/.test(token)) {
+        if (token.includes("V")) inferred.verbal = true;
+        if (token.includes("S")) inferred.somatic = true;
+        if (token.includes("M")) inferred.material = true;
+        if (token.includes("F")) inferred.focus = true;
+      }
+    }
+
+    inferred.material = inferred.material || hasMaterialText;
+    return inferred;
+  };
+
+  /** Collapse current expanded field; if dirty, serialize to canon line. */
+  const collapseExpandedField = (): DetailTextOverrides => {
+    if (expandedDetailField === null) return {};
+
+    let overrides: DetailTextOverrides = {};
+    if (detailDirty[expandedDetailField]) {
+      overrides = serializeDetailField(expandedDetailField);
+      setDetailDirty((prev) => {
+        const next = { ...prev, [expandedDetailField]: false };
+        if (expandedDetailField === "components") next.materialComponents = false;
+        else if (expandedDetailField === "materialComponents" && prev.components)
+          next.components = false;
+        return next;
+      });
+    }
+    setExpandedDetailField(null);
+    return overrides;
+  };
+
+  /** Expand a detail field; collapse current first. Populate from canonical_data or parse on first open. */
+  const expandDetailField = async (field: DetailFieldKey) => {
+    if (expandedDetailField === field) return;
+    const serializedOverrides = collapseExpandedField();
+
+    setExpandedDetailField(field);
+    expandedDetailRef.current = field;
+
+    // Increment request ID to ignore stale async results
+    expandRequestId.current += 1;
+    const requestId = expandRequestId.current;
+
+    const getLegacy = (): string => {
+      if (Object.prototype.hasOwnProperty.call(serializedOverrides, field)) {
+        return serializedOverrides[field] ?? "";
+      }
+
+      let stateVal = "";
+      switch (field) {
+        case "range":
+          stateVal = form.range ?? "";
+          break;
+        case "components":
+          stateVal = form.components ?? "";
+          break;
+        case "duration":
+          stateVal = form.duration ?? "";
+          break;
+        case "castingTime":
+          stateVal = form.castingTime ?? "";
+          break;
+        case "area":
+          stateVal = form.area ?? "";
+          break;
+        case "savingThrow":
+          stateVal = form.savingThrow ?? "";
+          break;
+        case "damage":
+          stateVal = form.damage ?? "";
+          break;
+        case "magicResistance":
+          stateVal = form.magicResistance ?? "";
+          break;
+        case "materialComponents":
+          stateVal = form.materialComponents ?? "";
+          break;
+      }
+      if (stateVal) return stateVal;
+
+      // Fallback for E2E/race conditions: read from DOM if state is still lagging
+      const domInput = document.getElementById(`detail-${field}-input`) as HTMLInputElement | null;
+      if (domInput?.value) {
+        return domInput.value;
+      }
+      return "";
+    };
+
+    const hasStructured = (): boolean => {
+      if (suppressExpandParse[field]) return true;
+      switch (field) {
+        case "range":
+          return structuredRange != null;
+        case "components":
+          return structuredComponents != null;
+        case "duration":
+          return structuredDuration != null;
+        case "castingTime":
+          return structuredCastingTime != null;
+        case "area":
+          return structuredArea != null;
+        case "savingThrow":
+          return structuredSavingThrow != null;
+        case "damage":
+          return structuredDamage != null;
+        case "magicResistance":
+          return structuredMagicResistance != null;
+        case "materialComponents":
+          return structuredComponents != null;
+      }
+    };
+
+    if (hasStructured()) {
+      setDetailLoading(null);
+      return;
+    }
+
+    setDetailLoading(field);
+    const legacy = getLegacy();
+
+    try {
+      switch (field) {
+        case "range": {
+          const parsed = await invoke<RangeSpec>("parse_spell_range", { legacy });
+          if (requestId !== expandRequestId.current) return;
+          if (!validateRangeSpec(parsed)) {
+            setStructuredRange(toSpecialRangeSpec(legacy));
+          } else {
+            setStructuredRange(parsed);
+          }
+          break;
+        }
+        case "duration": {
+          const parsed = await invoke<DurationSpec>("parse_spell_duration", { legacy });
+          if (requestId !== expandRequestId.current) return;
+          if (!validateDurationSpec(parsed)) {
+            setStructuredDuration(toSpecialDurationSpec(legacy));
+          } else {
+            setStructuredDuration(parsed);
+          }
+          break;
+        }
+        case "castingTime": {
+          const parsed = await invoke<SpellCastingTime>("parse_spell_casting_time", { legacy });
+          if (requestId !== expandRequestId.current) return;
+          if (!validateSpellCastingTime(parsed)) {
+            setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+          } else {
+            setStructuredCastingTime(parsed);
+          }
+          break;
+        }
+        case "area": {
+          const parsed = await invoke<AreaSpec | null>("parse_spell_area", { legacy });
+          if (requestId !== expandRequestId.current) return;
+          if (parsed === null || !validateAreaSpec(parsed)) {
+            setStructuredArea(toSpecialAreaSpec(legacy));
+          } else {
+            setStructuredArea(parsed);
+          }
+          break;
+        }
+        case "damage": {
+          const parsed = await invoke<SpellDamageSpec>("parse_spell_damage", { legacy });
+          if (requestId !== expandRequestId.current) return;
+          if (!validateSpellDamageSpec(parsed)) {
+            setStructuredDamage(toFallbackDamageSpec(legacy));
+          } else {
+            setStructuredDamage(parsed);
+          }
+          break;
+        }
+        case "savingThrow":
+          if (requestId !== expandRequestId.current) return;
+          setStructuredSavingThrow(mapLegacySavingThrow(legacy));
+          break;
+        case "magicResistance":
+          if (requestId !== expandRequestId.current) return;
+          setStructuredMagicResistance(mapLegacyMagicResistance(legacy));
+          break;
+        case "components":
+        case "materialComponents":
+          {
+            const compLegacy = (
+              Object.prototype.hasOwnProperty.call(serializedOverrides, "components")
+                ? serializedOverrides.components
+                : form.components
+            )?.trim();
+            const matLegacy = (
+              Object.prototype.hasOwnProperty.call(serializedOverrides, "materialComponents")
+                ? serializedOverrides.materialComponents
+                : form.materialComponents
+            )?.trim();
+            const hasComponentText = !!compLegacy;
+            const hasMaterialText = !!matLegacy;
+
+            if (hasComponentText || hasMaterialText) {
+              const combined = await invoke<{
+                components: SpellComponents;
+                materials: MaterialComponentSpec[];
+              }>("parse_spell_components_with_migration", {
+                legacyComponents: compLegacy,
+                legacyMaterials: hasMaterialText ? matLegacy : null,
+              });
+
+              if (requestId !== expandRequestId.current) return;
+
+              // Destructure non-flattened response
+              const { materials, components } = combined;
+
+              setStructuredComponents(components);
+
+              setStructuredMaterialComponents(materials);
+            } else {
+              if (requestId !== expandRequestId.current) return;
+              setStructuredComponents(null);
+              setStructuredMaterialComponents([]);
+            }
+          }
+          break;
+      }
+    } catch (err) {
+      console.error(`[expandDetailField] error field: ${field}, err:`, err);
+      if (requestId !== expandRequestId.current) return;
+      const leg = getLegacy();
+      switch (field) {
+        case "range":
+          setStructuredRange(toSpecialRangeSpec(leg));
+          break;
+        case "duration":
+          setStructuredDuration(toSpecialDurationSpec(leg));
+          break;
+        case "castingTime":
+          setStructuredCastingTime(toSpecialCastingTimeSpec(leg));
+          break;
+        case "area":
+          setStructuredArea(toSpecialAreaSpec(leg));
+          break;
+        case "damage":
+          setStructuredDamage(toFallbackDamageSpec(leg));
+          break;
+        case "savingThrow":
+          setStructuredSavingThrow(mapLegacySavingThrow(leg));
+          break;
+        case "magicResistance":
+          setStructuredMagicResistance(mapLegacyMagicResistance(leg));
+          break;
+        case "components":
+        case "materialComponents":
+          {
+            const componentsLegacy = Object.prototype.hasOwnProperty.call(
+              serializedOverrides,
+              "components",
+            )
+              ? (serializedOverrides.components ?? "")
+              : (form.components ?? "");
+            const materialComponentsLegacy = Object.prototype.hasOwnProperty.call(
+              serializedOverrides,
+              "materialComponents",
+            )
+              ? (serializedOverrides.materialComponents ?? "")
+              : (form.materialComponents ?? "");
+            const hasComponentText = !!componentsLegacy.trim();
+            const hasMaterialText = !!materialComponentsLegacy.trim();
+            if (hasComponentText || hasMaterialText) {
+              setStructuredComponents(
+                inferSpellComponentsFromLegacy(componentsLegacy, hasMaterialText),
+              );
+              setStructuredMaterialComponents(
+                materialComponentsLegacy ? [{ name: materialComponentsLegacy, quantity: 1.0 }] : [],
+              );
+            } else {
+              setStructuredComponents(null);
+              setStructuredMaterialComponents([]);
+            }
+          }
+          break;
+      }
+    } finally {
+      if (expandedDetailRef.current === field) setDetailLoading(null);
+    }
+  };
+
+  const setDetailDirtyFor = (field: DetailFieldKey) => {
+    unsavedRef.current = true;
+    setHasUnsavedState(true);
+    setDetailDirty((prev) => ({ ...prev, [field]: true }));
+    if (field === "components" || field === "materialComponents") {
+      setHasExpandedComponentsEdit(true);
+    }
   };
 
   const isNameInvalid = !form.name.trim();
@@ -586,7 +1324,7 @@ export default function SpellEditor() {
   const specialFallbackFields = [
     structuredRange?.kind === "special" && "Range",
     structuredDuration?.kind === "special" && "Duration",
-    structuredCastingTime?.rawLegacyValue && "Casting time",
+    structuredCastingTime?.unit === "special" && "Casting time",
     structuredArea?.kind === "special" && "Area",
     structuredDamage?.rawLegacyValue && "Damage",
   ].filter(Boolean) as string[];
@@ -604,47 +1342,135 @@ export default function SpellEditor() {
       }
       setLoading(true);
 
-      const comp = structuredComponents ?? {
-        verbal: false, somatic: false, material: false,
-        focus: false, divineFocus: false, experience: false
-      };
-      const { components: compStrBase, materialComponents: matStr } = componentsToText(
-        comp,
-        structuredMaterialComponents,
-      );
-
-      // Preserve experience cost from original string if present but not in structured text
-      let compStr = compStrBase;
-      if (comp.experience && form.components && !compStr.toLowerCase().includes("xp")) {
-        const xpMatch = form.components.match(/(\d+\s*(?:xp|gp|exp|gold))/i);
-        if (xpMatch) {
-          compStr = `${compStr}, ${xpMatch[0]}`;
-        }
+      // Canon-first: apply serialized values only for structured fields edited since last canon edit.
+      const formOverrides: Partial<SpellDetail> = {};
+      if (detailDirty.range && structuredRange) {
+        formOverrides.range = rangeToText(structuredRange);
       }
+      if (detailDirty.duration && structuredDuration) {
+        formOverrides.duration = durationToText(structuredDuration);
+      }
+      if (detailDirty.castingTime && structuredCastingTime) {
+        formOverrides.castingTime = castingTimeToText(structuredCastingTime);
+      }
+      if (detailDirty.area && structuredArea) {
+        formOverrides.area = areaToText(structuredArea);
+      }
+      if (detailDirty.damage && structuredDamage) {
+        formOverrides.damage = damageToText(structuredDamage);
+      }
+      if (detailDirty.savingThrow && structuredSavingThrow) {
+        formOverrides.savingThrow = savingThrowToText(structuredSavingThrow);
+      }
+      if (detailDirty.magicResistance && structuredMagicResistance) {
+        formOverrides.magicResistance = magicResistanceToText(structuredMagicResistance);
+      }
+      const componentsDirty = detailDirty.components;
+      const materialComponentsDirty = detailDirty.materialComponents;
+      const anyComponentsFieldDirty = componentsDirty || materialComponentsDirty;
+
+      if (anyComponentsFieldDirty && structuredComponents) {
+        const { components: cs, materialComponents: ms } = componentsToText(
+          structuredComponents,
+          structuredMaterialComponents,
+        );
+        formOverrides.components = cs;
+        formOverrides.materialComponents = ms;
+      } else if (anyComponentsFieldDirty && !structuredComponents) {
+        const { components: cs, materialComponents: ms } = componentsToText(
+          emptySpellComponents(),
+          structuredMaterialComponents,
+        );
+        formOverrides.components = cs;
+        formOverrides.materialComponents = ms;
+      }
+
+      if (Object.keys(formOverrides).length > 0) {
+        setForm((prev) => ({ ...prev, ...formOverrides }));
+        // Clear dirty for fields we just serialized (spec: SHOULD so view-only collapse does not re-serialize if user stays on editor after save).
+        setDetailDirty((prev) => clearDetailDirtyForFormOverrides(prev, formOverrides));
+      }
+
+      const comp = structuredComponents ?? {
+        verbal: false,
+        somatic: false,
+        material: false,
+        focus: false,
+        divineFocus: false,
+        experience: false,
+      };
+      const validRangeSpec =
+        structuredRange !== null && validateRangeSpec(structuredRange)
+          ? structuredRange
+          : undefined;
+      const validDurationSpec =
+        structuredDuration !== null && validateDurationSpec(structuredDuration)
+          ? structuredDuration
+          : undefined;
+      const validCastingTimeSpec =
+        structuredCastingTime !== null && validateSpellCastingTime(structuredCastingTime)
+          ? structuredCastingTime
+          : undefined;
+      const validAreaSpec =
+        structuredArea !== null && validateAreaSpec(structuredArea) ? structuredArea : undefined;
+      const validDamageSpec =
+        structuredDamage !== null && validateSpellDamageSpec(structuredDamage)
+          ? structuredDamage
+          : undefined;
+      const validSavingThrowSpec =
+        structuredSavingThrow !== null && validateSavingThrowSpecShape(structuredSavingThrow)
+          ? structuredSavingThrow
+          : undefined;
+      const validMagicResistanceSpec =
+        structuredMagicResistance !== null &&
+        validateMagicResistanceSpecShape(structuredMagicResistance)
+          ? structuredMagicResistance
+          : undefined;
+      const shouldSendSavingThrowSpec =
+        validSavingThrowSpec !== undefined &&
+        (hasLoadedSavingThrowSpec || detailDirty.savingThrow || !(form.savingThrow ?? "").trim());
+      const shouldSendMagicResistanceSpec =
+        validMagicResistanceSpec !== undefined &&
+        (hasLoadedMagicResistanceSpec ||
+          detailDirty.magicResistance ||
+          !(form.magicResistance ?? "").trim());
 
       const spellData: SpellDetail = {
         ...form,
-        range: structuredRange ? rangeToText(structuredRange) : form.range,
-        rangeSpec: structuredRange ?? undefined,
-        duration: structuredDuration ? durationToText(structuredDuration) : form.duration,
-        durationSpec: structuredDuration ?? undefined,
-        castingTime: structuredCastingTime ? castingTimeToText(structuredCastingTime) : form.castingTime,
-        castingTimeSpec: structuredCastingTime ?? undefined,
-        area: structuredArea ? areaToText(structuredArea) : form.area,
-        areaSpec: structuredArea ?? undefined,
-        damage: structuredDamage ? damageToText(structuredDamage) : form.damage,
-        damageSpec: structuredDamage ?? undefined,
-        savingThrow: structuredSavingThrow ? savingThrowToText(structuredSavingThrow) : form.savingThrow,
-        savingThrowSpec: structuredSavingThrow ?? undefined,
-        magicResistance: structuredMagicResistance
-          ? magicResistanceToText(structuredMagicResistance)
-          : form.magicResistance,
-        magicResistanceSpec: structuredMagicResistance ?? undefined,
-        components: compStr || form.components,
-        componentsSpec: comp,
-        materialComponents: matStr || form.materialComponents,
-        materialComponentsSpec: structuredMaterialComponents,
+        ...formOverrides,
+        range: formOverrides.range ?? form.range,
+        rangeSpec: validRangeSpec,
+        duration: formOverrides.duration ?? form.duration,
+        durationSpec: validDurationSpec,
+        castingTime: formOverrides.castingTime ?? form.castingTime,
+        castingTimeSpec: validCastingTimeSpec,
+        area: formOverrides.area ?? form.area,
+        areaSpec: validAreaSpec,
+        damage: formOverrides.damage ?? form.damage,
+        damageSpec: validDamageSpec,
+        savingThrow: formOverrides.savingThrow ?? form.savingThrow,
+        savingThrowSpec: shouldSendSavingThrowSpec ? validSavingThrowSpec : undefined,
+        magicResistance: formOverrides.magicResistance ?? form.magicResistance,
+        magicResistanceSpec: shouldSendMagicResistanceSpec ? validMagicResistanceSpec : undefined,
+        components: formOverrides.components ?? form.components,
+        materialComponents: formOverrides.materialComponents ?? form.materialComponents,
       };
+
+      const componentsEditedInExpandedMode =
+        detailDirty.components || detailDirty.materialComponents || hasExpandedComponentsEdit;
+      const shouldSendComponentsSpec =
+        structuredComponents !== null || componentsEditedInExpandedMode;
+      const shouldSendMaterialComponentsSpec =
+        hasLoadedMaterialComponentsSpec ||
+        structuredMaterialComponents.length > 0 ||
+        componentsEditedInExpandedMode;
+
+      if (shouldSendComponentsSpec) {
+        spellData.componentsSpec = comp;
+      }
+      if (shouldSendMaterialComponentsSpec) {
+        spellData.materialComponentsSpec = structuredMaterialComponents;
+      }
 
       if (isNew) {
         const { id, ...createData } = spellData; // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -653,6 +1479,8 @@ export default function SpellEditor() {
         const { artifacts, ...updateData } = spellData; // eslint-disable-line @typescript-eslint/no-unused-vars
         await invoke("update_spell", { spell: updateData });
       }
+      unsavedRef.current = false;
+      setHasUnsavedState(false);
       navigate("/");
     } catch (e) {
       await modalAlert(`Failed to save: ${e}`, "Save Error", "error");
@@ -742,6 +1570,7 @@ export default function SpellEditor() {
               <button
                 type="button"
                 data-testid="btn-print-compact"
+                aria-label="Print compact version"
                 onClick={() => printSpell("compact")}
                 className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
               >
@@ -750,6 +1579,7 @@ export default function SpellEditor() {
               <button
                 type="button"
                 data-testid="btn-print-stat-block"
+                aria-label="Print stat-block version"
                 onClick={() => printSpell("stat-block")}
                 className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
               >
@@ -771,7 +1601,18 @@ export default function SpellEditor() {
           <button
             type="button"
             data-testid="btn-cancel-edit"
-            onClick={() => navigate("/")}
+            onClick={async () => {
+              if (hasUnsavedState) {
+                const ok = await modalConfirm(
+                  "You have unsaved changes. Leave and discard?",
+                  "Unsaved changes",
+                );
+                if (!ok) return;
+                setHasUnsavedState(false);
+                unsavedRef.current = false;
+              }
+              navigate("/");
+            }}
             className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded"
           >
             Cancel
@@ -837,8 +1678,9 @@ export default function SpellEditor() {
           <input
             id="spell-name"
             data-testid="spell-name-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${isNameInvalid ? "border-red-500" : "border-neutral-700"
-              }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${
+              isNameInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
             placeholder="Spell Name"
             value={form.name}
             onChange={(e) => handleChange("name", e.target.value)}
@@ -857,8 +1699,9 @@ export default function SpellEditor() {
           <input
             id="spell-level"
             data-testid="spell-level-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${isLevelInvalid ? "border-red-500" : "border-neutral-700"
-              }`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${
+              isLevelInvalid ? "border-red-500" : "border-neutral-700"
+            }`}
             type="number"
             value={form.level}
             onChange={(e) => {
@@ -958,7 +1801,10 @@ export default function SpellEditor() {
             </p>
           )}
           {isArcaneMissingSchool && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane-tradition">
+            <p
+              className="text-xs text-red-400 mt-1"
+              data-testid="error-school-required-arcane-tradition"
+            >
               School is required for Arcane tradition.
             </p>
           )}
@@ -985,7 +1831,10 @@ export default function SpellEditor() {
             </p>
           )}
           {isDivineMissingSphere && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine-tradition">
+            <p
+              className="text-xs text-red-400 mt-1"
+              data-testid="error-sphere-required-divine-tradition"
+            >
               Sphere is required for Divine tradition.
             </p>
           )}
@@ -1056,121 +1905,208 @@ export default function SpellEditor() {
             onChange={(e) => handleChange("license", e.target.value)}
           />
         </div>
+        <div className="flex items-center gap-2">
+          <input
+            id="spell-reversible"
+            data-testid="chk-reversible"
+            type="checkbox"
+            className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+            checked={Boolean(form.reversible)}
+            onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
+          />
+          <label htmlFor="spell-reversible" className="text-sm text-neutral-400">
+            Reversible
+          </label>
+        </div>
       </div>
 
       <div>
         <span className="block text-sm text-neutral-400">Details</span>
-        <div className="grid grid-cols-3 gap-2 text-sm">
-          <div className="col-span-1 flex flex-col">
-            <span className="text-xs text-neutral-500 mb-0.5">Range</span>
-            <StructuredFieldInput
-              fieldType="range"
-              value={structuredRange ?? undefined}
-              onChange={(spec) => {
-                const r = spec as RangeSpec;
-                setStructuredRange(r);
-                handleChange("range", rangeToText(r));
-              }}
-            />
-          </div>
-          <div className="col-span-1 flex flex-col">
-            <span className="text-xs text-neutral-500 mb-0.5">Components</span>
-            <ComponentCheckboxes
-              components={structuredComponents}
-              materialComponents={structuredMaterialComponents}
-              onChange={(comp, mats) => {
-                setStructuredComponents(comp);
-                setStructuredMaterialComponents(mats);
-                const { components: cs, materialComponents: ms } = componentsToText(comp, mats);
-                handleChange("components", cs);
-                handleChange("materialComponents", ms);
-              }}
-              onUncheckMaterialConfirm={() =>
-                modalConfirm(
-                  "Clear all material component data?",
-                  "Uncheck Material",
-                )
-              }
-              variant="vsm"
-            />
-          </div>
-          <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700 p-2 rounded">
-            <input
-              id="spell-reversible"
-              data-testid="chk-reversible"
-              type="checkbox"
-              className="h-4 w-4"
-              checked={Boolean(form.reversible)}
-              onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
-            />
-            <label htmlFor="spell-reversible" className="text-xs text-neutral-400">
-              Reversible
-            </label>
-          </div>
-          <div className="col-span-1 flex flex-col">
-            <span className="text-xs text-neutral-500 mb-0.5">Duration</span>
-            <StructuredFieldInput
-              fieldType="duration"
-              value={structuredDuration ?? undefined}
-              onChange={(spec) => {
-                const d = spec as DurationSpec;
-                setStructuredDuration(d);
-                handleChange("duration", durationToText(d));
-              }}
-            />
-          </div>
-          <div className="col-span-1 flex flex-col">
-            <span className="text-xs text-neutral-500 mb-0.5">Casting Time</span>
-            <StructuredFieldInput
-              fieldType="casting_time"
-              value={structuredCastingTime ?? undefined}
-              onChange={(spec) => {
-                const c = spec as SpellCastingTime;
-                setStructuredCastingTime(c);
-                handleChange("castingTime", castingTimeToText(c));
-              }}
-            />
-          </div>
-          <div className="col-span-1 flex flex-col">
-            <span className="text-xs text-neutral-500 mb-0.5">Area</span>
-            <AreaForm
-              value={structuredArea ?? undefined}
-              onChange={(spec) => {
-                setStructuredArea(spec);
-                handleChange("area", areaToText(spec));
-              }}
-            />
-          </div>
-          <div className="col-span-1 flex flex-col">
-            <span className="text-xs text-neutral-500 mb-0.5">Saving Throw</span>
-            <SavingThrowInput
-              value={structuredSavingThrow ?? undefined}
-              onChange={(spec) => {
-                setStructuredSavingThrow(spec);
-                handleChange("savingThrow", savingThrowToText(spec));
-              }}
-            />
-          </div>
-          <div className="col-span-1 flex flex-col">
-            <span className="text-xs text-neutral-500 mb-0.5">Damage</span>
-            <DamageForm
-              value={structuredDamage ?? undefined}
-              onChange={(spec) => {
-                setStructuredDamage(spec);
-                handleChange("damage", damageToText(spec));
-              }}
-            />
-          </div>
-          <div className="col-span-1 flex flex-col">
-            <span className="text-xs text-neutral-500 mb-0.5">Magic Resistance</span>
-            <MagicResistanceInput
-              value={structuredMagicResistance ?? undefined}
-              onChange={(spec) => {
-                setStructuredMagicResistance(spec);
-                handleChange("magicResistance", magicResistanceToText(spec));
-              }}
-            />
-          </div>
+        <div className="space-y-3 text-sm">
+          {DETAIL_FIELD_ORDER.map((field) => {
+            const label =
+              field === "area"
+                ? "Area of Effect"
+                : field === "castingTime"
+                  ? "Casting Time"
+                  : field === "savingThrow"
+                    ? "Saving Throw"
+                    : field === "magicResistance"
+                      ? "Magic Resistance"
+                      : field === "materialComponents"
+                        ? "Material Component"
+                        : field.charAt(0).toUpperCase() + field.slice(1);
+            const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+            const panelId = `detail-${kebabField}-panel`;
+            const inputId = `detail-${field}-input`;
+            const expandId = `detail-${field}-expand`;
+            const value = form[field] ?? "";
+            const isExpanded = expandedDetailField === field;
+            const isLoading = detailLoading === field;
+            const isSpecial =
+              (field === "range" && structuredRange?.kind === "special") ||
+              (field === "duration" && structuredDuration?.kind === "special") ||
+              (field === "castingTime" &&
+                (structuredCastingTime?.unit === "special" ||
+                  !!structuredCastingTime?.rawLegacyValue)) ||
+              (field === "area" && structuredArea?.kind === "special") ||
+              (field === "damage" && !!structuredDamage?.rawLegacyValue) ||
+              (field === "savingThrow" && structuredSavingThrow?.kind === "dm_adjudicated") ||
+              (field === "magicResistance" && structuredMagicResistance?.kind === "special") ||
+              (field === "materialComponents" && false); // Reserved: no "special" kind for material row today; shares component state
+
+            return (
+              <div key={field} className="flex flex-col gap-1">
+                <label htmlFor={inputId} className="text-xs text-neutral-500">
+                  {label}
+                </label>
+                <div className="flex flex-col gap-1">
+                  <input
+                    id={inputId}
+                    data-testid={`detail-${kebabField}-input`}
+                    type="text"
+                    aria-label={label}
+                    className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+                    value={String(value)}
+                    onChange={(e) => handleChange(field, e.target.value)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid={`detail-${kebabField}-expand`}
+                      aria-expanded={isExpanded}
+                      aria-controls={isExpanded ? panelId : undefined}
+                      onClick={() =>
+                        isExpanded ? collapseExpandedField() : expandDetailField(field)
+                      }
+                      className="text-xs text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                    >
+                      {isExpanded ? "Collapse" : "Expand"}
+                    </button>
+                    {isSpecial && !isExpanded && (
+                      <span
+                        className="text-xs text-amber-500"
+                        title="Stored as text; not fully structured for hashing"
+                      >
+                        (special)
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {isExpanded && (
+                  <section
+                    ref={expandedPanelRef}
+                    id={panelId}
+                    aria-label={`Structured ${label}`}
+                    tabIndex={-1}
+                    className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
+                  >
+                    {isLoading ? (
+                      <div
+                        className="text-sm text-neutral-500"
+                        data-testid={`detail-${kebabField}-loading`}
+                      >
+                        Loading…
+                      </div>
+                    ) : (
+                      <>
+                        {field === "range" && (
+                          <StructuredFieldInput
+                            fieldType="range"
+                            value={structuredRange ?? undefined}
+                            onChange={(spec) => {
+                              setStructuredRange(spec as RangeSpec);
+                              setDetailDirtyFor("range");
+                            }}
+                          />
+                        )}
+                        {(field === "components" || field === "materialComponents") && (
+                          <ComponentCheckboxes
+                            components={structuredComponents}
+                            materialComponents={structuredMaterialComponents}
+                            onChange={(comp, mats) => {
+                              setStructuredComponents(comp);
+                              setStructuredMaterialComponents(mats);
+                              setDetailDirtyFor("components");
+                              setDetailDirtyFor("materialComponents");
+                            }}
+                            onUncheckMaterialConfirm={() =>
+                              modalConfirm("Clear all material component data?", "Uncheck Material")
+                            }
+                            variant="vsm"
+                          />
+                        )}
+                        {field === "duration" && (
+                          <StructuredFieldInput
+                            fieldType="duration"
+                            value={structuredDuration ?? undefined}
+                            onChange={(spec) => {
+                              setStructuredDuration(spec as DurationSpec);
+                              setDetailDirtyFor("duration");
+                            }}
+                          />
+                        )}
+                        {field === "castingTime" && (
+                          <StructuredFieldInput
+                            fieldType="casting_time"
+                            value={structuredCastingTime ?? undefined}
+                            onChange={(spec) => {
+                              setStructuredCastingTime(spec as SpellCastingTime);
+                              setDetailDirtyFor("castingTime");
+                            }}
+                          />
+                        )}
+                        {field === "area" && (
+                          <AreaForm
+                            value={structuredArea ?? undefined}
+                            onChange={(spec) => {
+                              setStructuredArea(spec);
+                              setDetailDirtyFor("area");
+                            }}
+                          />
+                        )}
+                        {field === "savingThrow" && (
+                          <SavingThrowInput
+                            value={structuredSavingThrow ?? undefined}
+                            onChange={(spec) => {
+                              setStructuredSavingThrow(spec);
+                              setDetailDirtyFor("savingThrow");
+                            }}
+                          />
+                        )}
+                        {field === "damage" && (
+                          <DamageForm
+                            value={structuredDamage ?? undefined}
+                            onChange={(spec) => {
+                              setStructuredDamage(spec);
+                              setDetailDirtyFor("damage");
+                            }}
+                          />
+                        )}
+                        {field === "magicResistance" && (
+                          <MagicResistanceInput
+                            value={structuredMagicResistance ?? undefined}
+                            onChange={(spec) => {
+                              setStructuredMagicResistance(spec);
+                              setDetailDirtyFor("magicResistance");
+                            }}
+                          />
+                        )}
+                        {isSpecial && (
+                          <p
+                            className="mt-2 text-xs text-amber-500"
+                            data-testid={`detail-${kebabField}-special-hint`}
+                          >
+                            Could not be fully parsed; original text preserved.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </section>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1195,8 +2131,9 @@ export default function SpellEditor() {
         <textarea
           id="spell-description"
           data-testid="spell-description-textarea"
-          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
+          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
+            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
+          }`}
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
           required
@@ -1215,6 +2152,7 @@ export default function SpellEditor() {
             <button
               type="button"
               data-testid="btn-reparse-artifact"
+              aria-label="Reparse spell from artifact"
               onClick={async () => {
                 if (!form.artifacts || form.artifacts.length === 0) return;
                 const artifactId = form.artifacts[0].id;

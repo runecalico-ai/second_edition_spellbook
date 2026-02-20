@@ -1,5 +1,5 @@
-import { useState } from "react";
 import clsx from "classnames";
+import { useState } from "react";
 
 export type PrintFormat = "html" | "md";
 export type PrintLayout = "compact" | "full";

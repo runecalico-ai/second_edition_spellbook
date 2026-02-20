@@ -2,6 +2,17 @@
 
 This guide provides solutions for common issues encountered during the migration to the Second Edition Spellbook structured data format.
 
+## Backend Runtime Logging (Tauri/Rust)
+
+For backend runtime and command debugging, the app uses structured logging via `tracing` (not ad-hoc `println!`/`eprintln!`).
+
+- Logging is initialized in `apps/desktop/src-tauri/src/lib.rs` and `apps/desktop/src-tauri/src/main.rs`.
+- `tracing-subscriber` reads `RUST_LOG` via env filter and defaults to `info` when unset.
+- Use `RUST_LOG` locally for focused debugging:
+   - PowerShell: `$env:RUST_LOG="info,spellbook_desktop=debug"`
+   - bash/zsh: `RUST_LOG=info,spellbook_desktop=debug`
+- Scope note: migration/recovery/report CLI workflows intentionally keep writing to `migration.log` and/or stdout/stderr for operator-facing output.
+
 ## Common Issues
 
 ### 1. "Migration Failed" or Application Crash on Start

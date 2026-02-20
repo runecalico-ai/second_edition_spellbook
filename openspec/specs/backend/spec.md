@@ -139,10 +139,11 @@ A spell's identity MUST be defined by the SHA-256 hash of its canonical JSON rep
 ### Requirement: Tradition-Specific Integrity
 The backend MUST enforce strict logical dependencies between traditions and metadata fields.
 
-#### Scenario: "BOTH" Tradition Validation
-- GIVEN a spell with `tradition = "BOTH"`
-- WHEN validated
-- THEN both `school` AND `sphere` MUST be non-null and valid.
+#### Scenario: School and Sphere Co-presence Rejection
+- GIVEN a spell record with both `school` and `sphere` set (co-present)
+- WHEN the backend attempts to infer tradition and construct a `CanonicalSpell`
+- THEN the backend MUST return an error
+- AND the error message MUST identify the spell name and state that school and sphere are mutually exclusive.
 
 #### Scenario: Prohibited Field Omission for Canonical Output
 - GIVEN an Arcane spell (with or without `sphere` set in source data)

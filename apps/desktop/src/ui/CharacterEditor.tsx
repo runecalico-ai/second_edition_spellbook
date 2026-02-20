@@ -2,13 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useModal } from "../store/useModal";
-import PrintOptionsDialog, { type PrintOptions } from "./components/PrintOptionsDialog";
 import type {
   Character,
   CharacterAbilities,
   CharacterClass,
   CharacterSpellbookEntry,
 } from "../types/character";
+import PrintOptionsDialog, { type PrintOptions } from "./components/PrintOptionsDialog";
 
 const SPHERES = [
   "All",

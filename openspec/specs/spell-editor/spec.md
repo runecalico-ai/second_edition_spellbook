@@ -7,17 +7,26 @@ Defines the Spell Editor component: structured field editing (range, duration, c
 
 ### Requirement: Canon-First Default (Details Block)
 
-The Spell Editor MUST present the Details block in a canon-first way: by default the user SHALL see and edit **canon text** (one single-line text input per field), not the full structured schema. Structured controls (StructuredFieldInput, AreaForm, DamageForm, SavingThrowInput, MagicResistanceInput, ComponentCheckboxes) MUST NOT be visible in the default view and MUST be revealed per field only when the user opts in via a per-field expand control (Option B: hybrid single-line + expand/collapse). This applies to the Details block only (Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, Description). All other editor fields (name, level, school, sphere, class list, source, edition, author, license, tags, reversible, quest, cantrip) are unchanged.
+The Spell Editor MUST present the Details block in a canon-first way: by default the user SHALL see and edit **canon text** (one single-line text input per field), not the full structured schema. Structured controls (StructuredFieldInput, AreaForm, DamageForm, SavingThrowInput, MagicResistanceInput, ComponentCheckboxes) MUST NOT be visible in the default view and MUST be revealed per field only when the user opts in via a per-field expand control (Option B: hybrid single-line + expand/collapse). Each expand control MUST be placed below or adjacent to its single-line input so the relationship is clear to users and implementers. First-open rule: when the user expands a field, if the spell was loaded with `canonical_data` that includes this field, use that structured value; otherwise parse the current text via the corresponding Tauri parser command where one exists (`range`, `duration`, `casting_time`, `area`, `damage`, and optionally `components`); `savingThrow` and `magicResistance` use fallback mapping because no parser commands exist for those fields. This applies to the Details block only (Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, Description). All other editor fields (name, level, school, sphere, class list, source, edition, author, license, tags, reversible, quest, cantrip) are unchanged.
 
 #### Scenario: Default view is canon text only
 
 - **GIVEN** the Spell Editor form and the Details section
 - **WHEN** the user views the editor (or has not expanded any detail field)
 - **THEN** the editor MUST show one single-line text input per canon field in this order: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance
+- **AND** the Details block MAY include an optional ninth row **Material Component** (single-line input + expand control) after the eight standard fields and before Tags; when present, field order is: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, and optionally Material Component, then Tags
+- **AND** when the optional Material Component row is implemented: the single-line input MUST be bound to material component text (e.g. form.materialComponents); when expanded, the editor MUST show ComponentCheckboxes and the material list (same collapse/expand and dirty serialization rules as for other detail fields)
 - **AND** the Description MUST remain a textarea as today (after the above fields)
 - **AND** the editor MUST NOT reorder these fields so that layout is consistent and testable
 - **AND** the editor MUST NOT render StructuredFieldInput, AreaForm, DamageForm, SavingThrowInput, MagicResistanceInput, or ComponentCheckboxes in the default (collapsed) view
 - **AND** each single-line input MUST be bound to the corresponding form text field (e.g. form.range, form.duration) so save persists those strings
+- **AND** Damage and Magic Resistance MUST always be shown in the same order; when there is no value, the single-line input MUST be shown empty as a visual aid so the user sees the field exists and can fill it
+
+#### Scenario: Damage and Magic Resistance always visible when empty
+
+- **GIVEN** the canon-first Details block
+- **THEN** Damage and Magic Resistance MUST always be shown in the fixed field order (after Saving Throw, before Description)
+- **AND** when the spell has no value for Damage or Magic Resistance, the corresponding single-line input MUST be shown empty (not hidden), so the user has a clear visual indication that the field exists and can be filled
 
 #### Scenario: Only one detail field expanded at a time
 
@@ -26,13 +35,18 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **THEN** the editor MUST collapse the currently expanded field first (if that field is dirty, serialize its spec to the canon line; otherwise leave the line unchanged), then expand the newly selected field
 - **AND** only one detail field MUST be expanded at any time
 
+A detail field is **dirty** when the user has edited its structured form since the last time that field was committed: i.e. since the last collapse that serialized that field, since the last direct edit to that field's canon line, or since load. A field is not dirty when the user has only expanded to view (view-only).
+
+The editor MUST clear the dirty flag for a detail field when (a) the user collapses that field and the editor serializes it to the canon line, (b) the user edits that field's canon line directly, or (c) the spell is loaded. The editor SHOULD clear the dirty flag for each field that was serialized into the persistence payload when the user saves, so that view-only expand → collapse does not re-serialize if the user remains on the editor after save.
+
 #### Scenario: Per-field expand reveals structured form
 
 - **GIVEN** the Spell Editor form and a canon field (e.g. Duration) in collapsed state
 - **WHEN** the user activates the expand control for that field
 - **THEN** the editor MUST reveal the structured component for that field (e.g. StructuredFieldInput for range/duration/casting_time, AreaForm for area, DamageForm for damage, SavingThrowInput, MagicResistanceInput, ComponentCheckboxes plus material list for components)
-- **AND** the editor MUST populate that structured form: if the spell was loaded with `canonical_data` that includes this field, use that structured value; otherwise parse the current text via the corresponding Tauri parser command and show the result (or "special" + raw_legacy_value on parse failure)
-- **AND** the expand control MUST be keyboard and screen-reader friendly (e.g. aria-expanded, focus management)
+- **AND** the editor MUST populate that structured form: if the spell was loaded with `canonical_data` that includes this field, use that structured value; otherwise, for fields with Tauri parser commands (`range`, `duration`, `casting_time`, `area`, `damage`, and optionally `components`), parse the current text via the corresponding Tauri parser command and show the result (or "special" + raw_legacy_value on parse failure or if the command rejects/throws; per main spell-editor spec, handle defensively). For `savingThrow` and `magicResistance`, no corresponding parser command exists; the editor MUST apply the existing fallback mapping from legacy text to structured state.
+- **AND** when the editor must parse via a Tauri command (no `canonical_data` for a field with a parser command), parser commands are async—the editor MUST show a loading state (e.g. spinner, disabled inputs, or skeleton) in the expanded area until the structured form is populated; only then MAY the user edit. When the form is populated from `canonical_data` (synchronous), no loading state is required. For fallback-only fields (`savingThrow`, `magicResistance`), no async parser loading state is required.
+- **AND** the expand control MUST be keyboard and screen-reader friendly (e.g. aria-expanded, aria-controls, focus management); keyboard activation (Enter/Space); focus moves into expanded content when opened, back to expand control when closed (or follow frontend-standards)
 
 #### Scenario: On collapse, line updates from spec only when dirty
 
@@ -74,7 +88,7 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 
 - **GIVEN** a canon field (e.g. Duration) whose current text is empty (e.g. new spell or user cleared the line)
 - **WHEN** the user expands that field
-- **THEN** the editor MUST call the corresponding Tauri parser with the empty string
+- **THEN** for fields with a Tauri parser command (`range`, `duration`, `casting_time`, `area`, `damage`, and optionally `components`), the editor MUST call the corresponding parser with the empty string; for fallback-only fields (`savingThrow`, `magicResistance`), the editor MUST apply the default structured state (e.g. `defaultSavingThrowSpec()`, `defaultMagicResistanceSpec()`)
 - **AND** if the parser returns a defined default (a valid spec), the editor MUST show that spec in the structured form
 - **AND** if the parser does not return a valid default, the editor MUST treat the field as "special" with empty `raw_legacy_value` and show the structured form in that state
 
@@ -83,12 +97,37 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **GIVEN** a detail field is expanded and the structured value for that field has kind "special" (or parse failed)
 - **THEN** the editor MUST show the existing "could not be fully parsed" hint for that field (inline or in the expanded section)
 - **AND** when that field is collapsed, the editor MUST show a subtle indicator (e.g. icon or tooltip) if the last parse or loaded spec for that field was "special", so the user knows the line is stored but not fully structured for hashing
+- **AND** the "special" indicator MAY also be shown for other non-canonical kinds (e.g. `dm_adjudicated` for Saving Throw or Damage) where the value is stored but not fully structured for hashing
 
 #### Scenario: Persistence unchanged
 
 - **GIVEN** the user edits only in the canon (collapsed) view and saves
 - **THEN** the editor MUST persist the flat text columns as today
 - **AND** when structured state exists (e.g. user expanded and edited), the editor MUST continue to build and persist canonical_data from current specs on save; persistence shape (flat columns + canonical_data) is unchanged
+- **AND** on explicit Save, if any detail field is currently expanded and dirty, the editor MUST serialize that field to the canon line before building the persistence payload so flat text and canonical_data stay in sync. After applying those serialized values to the form for the persistence payload, the editor SHOULD clear the dirty flag for those fields (so that a subsequent view-only collapse does not overwrite the canon line)
+
+#### Scenario: Validation applies when saving from canon view
+
+- **GIVEN** the user edits only in the canon (collapsed) view (no expanded structured forms)
+- **WHEN** the user attempts to save
+- **THEN** existing validation rules MUST still apply (e.g. required name, Epic requires School, Quest requires Sphere, other tradition/semantic rules from the main spell-editor spec)
+- **AND** the editor MUST block save and display the same inline errors as today until the form is valid
+
+#### Scenario: Unsaved changes — warn on navigate or close; no auto-serialize; save is explicit
+
+- **GIVEN** the user has unsaved changes (e.g. edited canon lines and/or has a detail field expanded with edits not yet collapsed or saved)
+- **WHEN** the user attempts to navigate away from the spell (e.g. to another route, spell, or Add Spell) or to **close the editor** (e.g. closing the editor window or leaving the spell route so the spell is no longer being edited)
+- **THEN** the editor MUST warn the user about unsaved changes (e.g. confirm dialog or equivalent) and MUST allow the user to cancel and stay, or to leave and discard
+- **AND** the editor MUST NOT automatically serialize any dirty expanded field to the canon line on navigate/close—serialization to the canon line happens only when the user explicitly collapses that field or when the user explicitly saves
+- **AND** saving MUST always be explicit (user activates Save); the editor MUST NOT auto-save or serialize-and-persist on navigate or close
+
+#### Scenario: Stable test IDs for canon-first UI
+
+- **GIVEN** the canon-first Details block is rendered
+- **THEN** each canon single-line input MUST have a stable `data-testid` (e.g. `detail-range-input`, `detail-duration-input`, and equivalents for Components, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance)
+- **AND** each per-field expand control MUST have a stable `data-testid` (e.g. `detail-range-expand`, `detail-duration-expand`, and equivalents for the same fields)
+- **AND** when the optional ninth row (Material Component) is implemented, it MUST use `detail-material-components-input` and `detail-material-components-expand`
+- **SO THAT** E2E tests and Storybook can target elements without relying on labels or DOM order. The exact IDs are listed in Documentation Updates (developer doc).
 
 ### Requirement: Structured Field Editing
 The Spell Editor MUST provide dedicated input components for structured spell data.
@@ -148,6 +187,7 @@ The Spell Editor MUST provide dedicated input components for structured spell da
 - GIVEN a spell with null `canonical_data` and legacy string values
 - WHEN opening the spell in the editor
 - THEN the editor MUST call Tauri backend parser commands. Command names use `parse_spell_*` prefix: `parse_spell_range`, `parse_spell_duration`, `parse_spell_casting_time`, `parse_spell_area`, `parse_spell_damage`, and optionally `parse_spell_components` for legacy component strings. These commands wrap `SpellParser` in `src-tauri/src/utils/spell_parser.rs`. Each accepts a legacy string and returns the schema-native structured type.
+- AND `savingThrow` and `magicResistance` are handled without parser commands: when `canonical_data` is missing for those fields, the editor MUST use fallback mapping from legacy text to structured state.
 - AND populate structured inputs with parsed values
 - AND display a warning banner if parsing fell back to `kind: "special"`. The banner MUST appear as a single banner at the top of the form, listing the fields that fell back to special (e.g. "Range and Duration could not be fully parsed; original text preserved"). When kind is "special", the authoritative storage for the original legacy string is `raw_legacy_value`.
 
@@ -224,11 +264,18 @@ The Spell Editor MUST enforce schema-compliant input.
 - THEN the editor MUST block saving
 - AND display an inline validation error.
 
-#### Scenario: Tradition Validation (Both)
-- GIVEN a spell with tradition = "BOTH"
-- WHEN either school or sphere is not selected
-- THEN the editor MUST block saving
-- AND display inline validation errors for the missing field(s).
+#### Scenario: Tradition Load Error (School and Sphere Co-presence)
+- GIVEN a spell record loaded from the database that has both `school` and `sphere` set (co-present)
+- WHEN the editor loads the spell
+- THEN the editor MUST display a data-integrity warning identifying that school and sphere cannot both be set
+- AND MUST block saving until the conflict is resolved by clearing either school or sphere.
+
+#### Scenario: Dismissing the Tradition Load Error via Tradition Change
+- GIVEN a spell that triggered the tradition load error (both school and sphere set)
+- WHEN the user selects a new value from the tradition dropdown
+- THEN the tradition load error flag MUST be cleared and the data-integrity warning MUST be dismissed
+- AND normal tradition validation MUST take effect immediately: if school is not set for ARCANE, the ARCANE school-required error MUST appear and block save; if sphere is not set for DIVINE, the DIVINE sphere-required error MUST appear and block save.
+- The user must also clear the field that does not belong to the chosen tradition (sphere for ARCANE; school for DIVINE). The JSON schema `allOf` constraint enforces this at save time — a record with both fields set will fail schema validation regardless of tradition. Save is unblocked only when the required field is set AND the opposing tradition's field is cleared.
 
 ### Requirement: Complex Field Editing
 The Spell Editor MUST provide specialized forms for complex fields.

@@ -1,7 +1,10 @@
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
-use crate::models::{SpellArtifact, SpellCreate, SpellDetail, SpellSummary, SpellUpdate};
+use crate::models::{
+    MaterialComponentSpec, SpellArtifact, SpellComponents, SpellCreate, SpellDetail, SpellSummary,
+    SpellUpdate,
+};
 use crate::utils::migration_manager;
 use crate::utils::spell_parser::SpellParser;
 use chrono::Utc;
@@ -569,10 +572,52 @@ pub async fn parse_spell_damage(legacy: String) -> Result<Value, AppError> {
 }
 
 #[tauri::command]
-pub async fn parse_spell_components(legacy: String) -> Result<Value, AppError> {
+pub fn parse_spell_components(legacy: String) -> Result<Value, AppError> {
     let parser = SpellParser::new();
     let spec = parser.parse_components(&legacy);
     parsed_to_camel_value(&spec)
+}
+
+#[tauri::command]
+pub fn extract_materials_from_components_line(legacy: String) -> Result<Value, AppError> {
+    let parser = SpellParser::new();
+    let spec = parser.extract_materials_from_components_line(&legacy);
+    parsed_to_camel_value(&spec)
+}
+
+#[tauri::command]
+pub async fn parse_spell_material_components(legacy: String) -> Result<Value, AppError> {
+    let parser = SpellParser::new();
+    let spec = parser.parse_material_components(&legacy);
+    parsed_to_camel_value(&spec)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpellComponentsWithMigration {
+    pub components: SpellComponents,
+    pub materials: Vec<MaterialComponentSpec>,
+}
+
+#[tauri::command]
+pub fn parse_spell_components_with_migration(
+    legacy_components: String,
+    legacy_materials: Option<String>,
+) -> Result<Value, AppError> {
+    let parser = SpellParser::new();
+
+    let components = parser.parse_components(&legacy_components);
+
+    let materials = if let Some(mat_text) = legacy_materials.filter(|s| !s.trim().is_empty()) {
+        parser.parse_material_components(&mat_text)
+    } else {
+        parser.extract_materials_from_components_line(&legacy_components)
+    };
+    let result = SpellComponentsWithMigration {
+        components,
+        materials,
+    };
+    parsed_to_camel_value(&result)
 }
 
 #[tauri::command]

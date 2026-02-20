@@ -1,9 +1,10 @@
 use crate::error::AppError;
 use rusqlite::Connection;
+use tracing::{info, warn};
 
 pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
     let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    eprintln!("DB VERSION START: {}", version);
+    info!(version, "DB migration start");
 
     if version < 1 {
         let sql = include_str!("../../../../../db/migrations/0001_init.sql");
@@ -18,8 +19,8 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
                             "TABLE IF NOT EXISTS spell_vec",
                         )
                         .replace("v float[384]", "v BLOB");
-                    eprintln!(
-                        "sqlite-vec: vec0 module unavailable; falling back to blob-backed spell_vec table."
+                    warn!(
+                        "sqlite-vec vec0 unavailable; falling back to blob-backed spell_vec table"
                     );
                     conn.execute_batch(&fallback)?;
                     Ok(())
@@ -56,58 +57,58 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
     }
 
     if version < 6 {
-        eprintln!("Applying migration 0006...");
+        info!("Applying migration 0006");
         let sql = include_str!("../../../../../db/migrations/0006_add_cantrip_flag.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 6", [])?;
     }
 
     if version < 7 {
-        eprintln!("Applying migration 0007...");
+        info!("Applying migration 0007");
         let sql = include_str!("../../../../../db/migrations/0007_character_profiles.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 7", [])?;
     }
     if version < 8 {
-        eprintln!("Applying migration 0008...");
+        info!("Applying migration 0008");
         let sql = include_str!("../../../../../db/migrations/0008_character_class_label.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 8", [])?;
     }
     if version < 9 {
-        eprintln!("Applying migration 0009...");
+        info!("Applying migration 0009");
         let sql = include_str!("../../../../../db/migrations/0009_add_artifact_table.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 9", [])?;
     }
     if version < 10 {
-        eprintln!("Applying migration 0010...");
+        info!("Applying migration 0010");
         let sql = include_str!("../../../../../db/migrations/0010_character_fts_and_indexes.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 10", [])?;
     }
     if version < 11 {
-        eprintln!("Applying migration 0011...");
+        info!("Applying migration 0011");
         let sql = include_str!("../../../../../db/migrations/0011_add_spell_schema_version.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 11", [])?;
     }
 
     if version < 12 {
-        eprintln!("Applying migration 0012...");
+        info!("Applying migration 0012");
         let sql = include_str!("../../../../../db/migrations/0012_add_hash_columns.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 12", [])?;
     }
 
     if version < 13 {
-        eprintln!("Applying migration 0013...");
+        info!("Applying migration 0013");
         let sql = include_str!("../../../../../db/migrations/0013_add_mechanics_columns.sql");
         conn.execute_batch(sql)?;
         conn.execute("PRAGMA user_version = 13", [])?;
     }
 
-    eprintln!("DB VERSION END: 13");
+    info!(version = 13, "DB migration complete");
 
     Ok(())
 }

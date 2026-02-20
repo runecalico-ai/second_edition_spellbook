@@ -9,7 +9,7 @@ This document provides comprehensive guidelines for testing the Second Edition S
 | Component | Location | Command | Framework |
 |-----------|----------|---------|-----------|
 | Backend | `apps/desktop/src-tauri` | `cargo test` | Rust built-in |
-| Frontend | `apps/desktop` | `pnpm test` | Vitest |
+| Frontend | `apps/desktop` | `pnpm test:unit` | Vitest |
 | Frontend (Stories) | `apps/desktop` | `pnpm test:storybook` | Storybook + Vitest |
 | Python | `services/ml` | `pytest` | pytest |
 | E2E | `apps/desktop` | `pnpm e2e` | Playwright |
@@ -34,7 +34,7 @@ cargo test canonical_spell
 cargo test parsers::duration
 cargo test migration_manager
 
-# Show println! output during tests
+# Show captured test output during tests
 cargo test -- --nocapture
 
 # Run tests matching a pattern
@@ -43,6 +43,21 @@ cargo test test_parse_duration
 # Run a single specific test
 cargo test test_issue_2_duration_parsing_value_zero -- --exact
 ```
+
+To increase backend runtime log verbosity during tests, set `RUST_LOG` before running commands:
+
+```powershell
+# PowerShell
+$env:RUST_LOG="info,spellbook_desktop=debug"
+cargo test -- --nocapture
+```
+
+```bash
+# bash/zsh
+RUST_LOG=info,spellbook_desktop=debug cargo test -- --nocapture
+```
+
+`-- --nocapture` shows test output; backend runtime and command diagnostics should use `tracing::{info, warn, error, debug}` rather than `println!`/`eprintln!`.
 
 ### Parser Testing
 
@@ -383,20 +398,25 @@ Before deploying migration changes:
 
 ### Running Tests
 
+> **Config location**: Named Vitest projects (`unit`, `storybook`) are defined in `apps/desktop/vitest.config.ts`.
+
 ```bash
 cd apps/desktop
 
-# Run all tests
-pnpm test
+# Run unit tests
+pnpm test:unit
+
+# Run Storybook interaction tests
+pnpm test:storybook
 
 # Run in watch mode (development)
-pnpm test:watch
+pnpm vitest --project=unit --watch
 
 # Run with coverage
-pnpm test:coverage
+pnpm vitest run --project=unit --coverage
 
 # Run tests matching a pattern
-pnpm test -- --grep "SpellCard"
+pnpm vitest run --project=unit -t "SpellCard"
 ```
 
 ### Test Structure
@@ -479,7 +499,7 @@ pnpm build-storybook
 
 Creates a static build in `storybook-static/` for deployment or sharing.
 
-For detailed Storybook documentation, see [Spell Editor Components Guide](../dev/spell_editor_components.md#storybook-stories).
+For detailed Storybook documentation, see [Spell Editor Components Guide](../dev/spell_editor_components.md#storybook-stories). Canon-first Details block stories live under **SpellEditor/CanonFirstDetails** (e.g. Default Collapsed, One Field Expanded, Collapsed With Special Indicator); they use the same `detail-*-input` and `detail-*-expand` test IDs as the app.
 
 ### Hook Testing Pattern
 
@@ -590,6 +610,10 @@ pnpm e2e -- --headed
 # Run specific test file
 pnpm e2e -- tests/search.spec.ts
 ```
+
+**Test ID convention:** All `data-testid` values in the application use **kebab-case** (e.g. `detail-range-input`, `detail-range-expand`, `save-button`, `spell-name-input`). Use kebab-case when adding new test IDs so E2E and Storybook locators stay consistent. See `apps/desktop/src/AGENTS.md` (Naming Conventions for `data-testid`) and [Spell Editor Components Guide](dev/spell_editor_components.md#e2e-and-test-ids) for the full list.
+
+**Spell Editor E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand–edit–collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. Both use the same fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and target canon inputs/expand controls via `data-testid` (e.g. `detail-range-input`, `detail-range-expand`). Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
 
 ### Test Structure
 
@@ -747,7 +771,7 @@ fn test_canonical_spell_serialization() {
 cargo tarpaulin --lib --out Html
 
 # TypeScript coverage
-pnpm test:coverage
+pnpm vitest run --project=unit --coverage
 
 # Python coverage
 python -m pytest services/ml --cov --cov-report=html
@@ -774,7 +798,7 @@ Before committing, ensure:
 1. ✅ `cargo test --lib` passes
 2. ✅ `cargo clippy -- -D warnings` has no errors
 3. ✅ `cargo fmt` shows no changes needed
-4. ✅ `pnpm test` passes (if frontend changes)
+4. ✅ `pnpm test:unit` and `pnpm test:storybook` pass (if frontend changes)
 5. ✅ `python -m pytest services/ml` passes (if Python changes)
 
 ---

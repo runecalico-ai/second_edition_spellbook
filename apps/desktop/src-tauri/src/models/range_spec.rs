@@ -105,6 +105,7 @@ pub enum RangeAnchor {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct RangeSpec {
     pub kind: RangeKind,
@@ -118,12 +119,20 @@ pub struct RangeSpec {
     pub requires: Option<Vec<RangeContext>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<RangeAnchor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "region_unit"
+    )]
     pub region_unit: Option<crate::models::area_spec::RegionUnit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     /// When parsing fails or falls back to Special, the original legacy string is stored here.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "raw_legacy_value"
+    )]
     pub raw_legacy_value: Option<String>,
 }
 

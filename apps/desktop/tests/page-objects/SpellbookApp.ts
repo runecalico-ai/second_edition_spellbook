@@ -16,6 +16,38 @@ export const SELECTORS = {
   classesInput: '[data-testid="spell-classes-input"]',
   classesLabel: '[aria-label="Classes (e.g. Mage, Cleric)"]',
   fileInput: '[data-testid="import-file-input"]',
+
+  /** Spell editor: canon-first single-line detail inputs (default view) */
+  detailRangeInput: '[data-testid="detail-range-input"]',
+  detailDurationInput: '[data-testid="detail-duration-input"]',
+  detailCastingTimeInput: '[data-testid="detail-casting-time-input"]',
+  detailAreaInput: '[data-testid="detail-area-input"]',
+  detailSavingThrowInput: '[data-testid="detail-saving-throw-input"]',
+  detailDamageInput: '[data-testid="detail-damage-input"]',
+  detailMagicResistanceInput: '[data-testid="detail-magic-resistance-input"]',
+  detailComponentsInput: '[data-testid="detail-components-input"]',
+  detailMaterialComponentsInput: '[data-testid="detail-material-components-input"]',
+
+  /** Spell editor: expand/collapse for structured form (one per detail field) */
+  detailRangeExpand: '[data-testid="detail-range-expand"]',
+  detailDurationExpand: '[data-testid="detail-duration-expand"]',
+  detailCastingTimeExpand: '[data-testid="detail-casting-time-expand"]',
+  detailAreaExpand: '[data-testid="detail-area-expand"]',
+  detailSavingThrowExpand: '[data-testid="detail-saving-throw-expand"]',
+  detailDamageExpand: '[data-testid="detail-damage-expand"]',
+  detailMagicResistanceExpand: '[data-testid="detail-magic-resistance-expand"]',
+  detailComponentsExpand: '[data-testid="detail-components-expand"]',
+  detailMaterialComponentsExpand: '[data-testid="detail-material-components-expand"]',
+
+  /** Spell editor: primary actions */
+  btnSaveSpell: '[data-testid="btn-save-spell"]',
+  btnCancelEdit: '[data-testid="btn-cancel-edit"]',
+  btnDeleteSpell: '[data-testid="btn-delete-spell"]',
+
+  /** Spell editor: canonical hash (structured data spec) */
+  spellDetailHashDisplay: '[data-testid="spell-detail-hash-display"]',
+  spellDetailHashCopy: '[data-testid="spell-detail-hash-copy"]',
+  spellDetailHashExpand: '[data-testid="spell-detail-hash-expand"]',
 } as const;
 
 export interface CreateSpellOptions {
@@ -73,7 +105,11 @@ export class SpellbookApp {
     });
   }
 
-  /** Create a new spell */
+  /**
+   * Create a new spell via Add Spell → form → Save.
+   * Fills the canon-first single-line detail inputs (range, duration, etc.); expanding
+   * structured forms is not required. Waits for Library after save.
+   */
   async createSpell(options: CreateSpellOptions): Promise<void> {
     const {
       name,
@@ -151,22 +187,23 @@ export class SpellbookApp {
       await this.page.getByLabel("License").fill(options.license);
     }
     if (options.range) {
-      await this.page.getByPlaceholder("Range").fill(options.range);
+      await this.page.locator(SELECTORS.detailRangeInput).fill(options.range);
     }
     if (options.castingTime) {
-      await this.page.getByPlaceholder("Casting Time").fill(options.castingTime);
+      await this.page.locator(SELECTORS.detailCastingTimeInput).fill(options.castingTime);
     }
     if (options.duration) {
-      await this.page.getByPlaceholder("Duration").fill(options.duration);
+      await this.page.locator(SELECTORS.detailDurationInput).fill(options.duration);
     }
     if (options.area) {
-      await this.page.getByPlaceholder("Area").fill(options.area);
+      await this.page.locator(SELECTORS.detailAreaInput).fill(options.area);
     }
     if (options.savingThrow) {
-      await this.page.getByPlaceholder("Save").fill(options.savingThrow);
+      await this.page.locator(SELECTORS.detailSavingThrowInput).fill(options.savingThrow);
     }
     if (options.materialComponents) {
-      await this.page.getByLabel("Material Components").fill(options.materialComponents);
+      const matLoc = this.page.locator(SELECTORS.detailMaterialComponentsInput);
+      await matLoc.fill(options.materialComponents);
     }
     if (options.isReversible !== undefined) {
       await this.page.getByLabel("Reversible").setChecked(options.isReversible);
@@ -179,7 +216,7 @@ export class SpellbookApp {
     }
 
     if (options.components) {
-      const compLoc = this.page.getByPlaceholder("Components (V,S,M)");
+      const compLoc = this.page.locator(SELECTORS.detailComponentsInput);
       await compLoc.fill(options.components);
       await expect(compLoc).toHaveValue(options.components);
     }
@@ -191,7 +228,7 @@ export class SpellbookApp {
       await expect(tagsLoc).toHaveValue(options.tags);
     }
 
-    await this.page.getByTestId("btn-save-spell").click();
+    await this.page.locator(SELECTORS.btnSaveSpell).click();
     console.log(`Saved spell: ${name}, waiting for Library...`);
     await this.waitForLibrary();
   }
@@ -250,7 +287,10 @@ export class SpellbookApp {
     });
   }
 
-  /** Open a spell in the editor by name */
+  /**
+   * Open a spell in the editor by name (Library → search → click).
+   * Waits for Edit Spell heading; editor shows canon-first single-line detail inputs by default.
+   */
   async openSpell(name: string): Promise<void> {
     console.log(`Opening spell: ${name}`);
     await this.navigate("Library");

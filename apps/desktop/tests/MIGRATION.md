@@ -154,7 +154,7 @@ test("my test", async ({ appContext }) => {
 
 **Available Options:**
 - `timeout`: Timeout for app readiness (defaults to `TIMEOUTS.long * 2`)
-- `debug`: Pipe stdout/stderr for debugging (defaults to `true`)
+- `debug`: Pipe stdout/stderr (including backend runtime `tracing` output) for debugging (defaults to `true`)
 
 
 ### Migration Example: Complete Before/After

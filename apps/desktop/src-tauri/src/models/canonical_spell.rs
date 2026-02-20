@@ -19,12 +19,14 @@ pub const CURRENT_SCHEMA_VERSION: i64 = 1;
 pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 0;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SpellComponents {
     pub verbal: bool,
     pub somatic: bool,
     pub material: bool,
     pub focus: bool,
+    #[serde(alias = "divine_focus")]
     pub divine_focus: bool,
     pub experience: bool,
 }
@@ -56,18 +58,19 @@ pub enum CastingTimeUnit {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SpellCastingTime {
     pub text: String,
     pub unit: CastingTimeUnit,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "base_value")]
     pub base_value: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "per_level")]
     pub per_level: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "level_divisor")]
     pub level_divisor: Option<f64>,
     /// When parsing fails or unit is Special, the original legacy string is stored here.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "raw_legacy_value")]
     pub raw_legacy_value: Option<String>,
 }
 
@@ -104,16 +107,17 @@ impl SpellCastingTime {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SpellDamage {
     pub text: String,
-    #[serde(default = "default_zero_string")]
+    #[serde(default = "default_zero_string", alias = "base_dice")]
     pub base_dice: String,
-    #[serde(default = "default_zero_string")]
+    #[serde(default = "default_zero_string", alias = "per_level_dice")]
     pub per_level_dice: String,
-    #[serde(default = "default_one")]
+    #[serde(default = "default_one", alias = "level_divisor")]
     pub level_divisor: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "cap_level")]
     pub cap_level: Option<f64>,
 }
 
@@ -358,6 +362,37 @@ fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
     }
 }
 
+/// Convert camelCase keys to snake_case recursively. Schema validation expects snake_case;
+/// model structs serialize camelCase for IPC, so we convert before validating.
+fn json_keys_to_snake_case(val: serde_json::Value) -> serde_json::Value {
+    match val {
+        serde_json::Value::Object(map) => {
+            let converted: serde_json::Map<String, serde_json::Value> = map
+                .into_iter()
+                .map(|(k, v)| (camel_to_snake(&k), json_keys_to_snake_case(v)))
+                .collect();
+            serde_json::Value::Object(converted)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(json_keys_to_snake_case).collect())
+        }
+        other => other,
+    }
+}
+
+fn camel_to_snake(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 4);
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() && i > 0 && !result.ends_with('_') {
+            result.push('_');
+        }
+        for c in c.to_lowercase() {
+            result.push(c);
+        }
+    }
+    result
+}
+
 impl CanonicalSpell {
     /// See docs/architecture/canonical-serialization.md §4.1: validation runs on full JSON (including metadata).
     pub fn compute_hash(&self) -> Result<String, String> {
@@ -385,6 +420,8 @@ impl CanonicalSpell {
 
         let instance =
             serde_json::to_value(self).map_err(|e| format!("Serialization error: {}", e))?;
+        // Schema expects snake_case; models serialize camelCase for IPC. Convert keys before validation.
+        let instance = json_keys_to_snake_case(instance);
 
         // Version Validation: Reject incompatible (invalid) versions.
         if self.schema_version < MIN_SUPPORTED_SCHEMA_VERSION {
@@ -822,15 +859,15 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
         if let Some(spec) = detail.components_spec {
             spell.components = Some(spec);
             // If we have a components string, still check for experience cost
-            if let Some(comp_str) = detail.components.filter(|s| !s.is_empty()) {
-                let xp_spec = parser.parse_experience_cost(&comp_str);
+            if let Some(comp_str) = detail.components.as_ref().filter(|s| !s.is_empty()) {
+                let xp_spec = parser.parse_experience_cost(comp_str);
                 if xp_spec.kind != crate::models::experience::ExperienceKind::None {
                     spell.experience_cost = Some(xp_spec);
                 }
             }
-        } else if let Some(comp_str) = detail.components.filter(|s| !s.is_empty()) {
-            spell.components = Some(parser.parse_components(&comp_str));
-            let xp_spec = parser.parse_experience_cost(&comp_str);
+        } else if let Some(comp_str) = detail.components.as_ref().filter(|s| !s.is_empty()) {
+            spell.components = Some(parser.parse_components(comp_str));
+            let xp_spec = parser.parse_experience_cost(comp_str);
             if xp_spec.kind != crate::models::experience::ExperienceKind::None {
                 spell.experience_cost = Some(xp_spec);
             }
@@ -843,6 +880,16 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
                 .filter(|s| !s.is_empty())
                 .map(|s| parser.parse_material_components(s))
         });
+
+        // Fallback: If still no materials, try extracting from the components line
+        if spell.material_components.is_none() {
+            if let Some(comp_str) = detail.components.as_ref().filter(|s| !s.is_empty()) {
+                let extracted = parser.extract_materials_from_components_line(comp_str);
+                if !extracted.is_empty() {
+                    spell.material_components = Some(extracted);
+                }
+            }
+        }
 
         // Saving Throw and Magic Resistance
         spell.saving_throw = detail.saving_throw_spec.or_else(|| {
@@ -859,20 +906,6 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
                 .as_ref()
                 .filter(|s| !s.is_empty())
                 .map(|mr_str| parser.parse_magic_resistance(mr_str))
-                .or_else(|| {
-                    detail
-                        .saving_throw
-                        .as_ref()
-                        .filter(|s| !s.is_empty())
-                        .and_then(|st_str| {
-                            let mr_spec = parser.parse_magic_resistance(st_str);
-                            if mr_spec.kind != crate::models::MagicResistanceKind::Unknown {
-                                Some(mr_spec)
-                            } else {
-                                None
-                            }
-                        })
-                })
         });
 
         spell.reversible = Some(detail.reversible.unwrap_or(0));
@@ -1473,6 +1506,44 @@ mod tests {
             "damage.parts when kind=modeled must be retained when empty (schema required); got: {}",
             json
         );
+    }
+
+    #[test]
+    fn test_from_spell_detail_components_fallback_when_specs_omitted() {
+        use crate::models::spell::SpellDetail;
+
+        let detail = SpellDetail {
+            id: Some(1),
+            name: "Fallback Components".into(),
+            school: Some("Evocation".into()),
+            sphere: None,
+            class_list: Some("Wizard".into()),
+            level: 2,
+            components: Some("V, S, M".into()),
+            material_components: Some("ruby dust (worth 100 gp, consumed)".into()),
+            components_spec: None,
+            material_components_spec: None,
+            description: "Fallback parse behavior.".into(),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            ..Default::default()
+        };
+
+        let canon = CanonicalSpell::try_from(detail).unwrap();
+        let components = canon
+            .components
+            .expect("components should be parsed from legacy text");
+        assert!(components.verbal);
+        assert!(components.somatic);
+        assert!(components.material);
+
+        let materials = canon
+            .material_components
+            .expect("material components should be parsed from legacy text");
+        assert_eq!(materials.len(), 1);
+        assert_eq!(materials[0].name, "ruby dust");
+        assert_eq!(materials[0].gp_value, Some(100.0));
+        assert_eq!(materials[0].is_consumed, Some(true));
     }
 
     #[test]

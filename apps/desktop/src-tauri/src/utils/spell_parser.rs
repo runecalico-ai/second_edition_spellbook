@@ -83,6 +83,14 @@ impl SpellParser {
     pub fn parse_material_components(&self, input: &str) -> Vec<MaterialComponentSpec> {
         self.components.parse_material_components(input)
     }
+
+    pub fn extract_materials_from_components_line(
+        &self,
+        input: &str,
+    ) -> Vec<MaterialComponentSpec> {
+        self.components
+            .extract_materials_from_components_line(input)
+    }
 }
 
 // title_case was removed as unused

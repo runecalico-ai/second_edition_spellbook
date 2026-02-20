@@ -14,7 +14,7 @@ The Spell Editor MUST present the Details block in a canon-first way: by default
 - **GIVEN** the Spell Editor form and the Details section
 - **WHEN** the user views the editor (or has not expanded any detail field)
 - **THEN** the editor MUST show one single-line text input per canon field in this order: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance
-- **AND** the Details block MAY include an optional ninth row **Material Component** (single-line input + expand control) after the eight standard fields; when present, field order is: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, and optionally Material Component, then Description
+- **AND** the Details block MAY include an optional ninth row **Material Component** (single-line input + expand control) after the eight standard fields and before Tags; when present, field order is: Range, Components, Duration, Casting Time, Area of Effect, Saving Throw, Damage, Magic Resistance, and optionally Material Component, then Tags
 - **AND** when the optional Material Component row is implemented: the single-line input MUST be bound to material component text (e.g. form.materialComponents); when expanded, the editor MUST show ComponentCheckboxes and the material list (same collapse/expand and dirty serialization rules as for other detail fields)
 - **AND** the Description MUST remain a textarea as today (after the above fields)
 - **AND** the editor MUST NOT reorder these fields so that layout is consistent and testable

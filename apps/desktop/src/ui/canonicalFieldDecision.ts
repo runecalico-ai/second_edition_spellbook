@@ -18,8 +18,9 @@ export function decideCanonicalField<T>(
   }
 
   const rawValue = canonicalRaw[key];
+  // Spec: "null field: Treat as missing for hybrid loading (parse legacy string if available)"
   if (rawValue === null) {
-    return { suppressExpandParse: true };
+    return { suppressExpandParse: false };
   }
 
   if (!isObjectRecord(rawValue)) {

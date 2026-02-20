@@ -13,13 +13,13 @@ describe("decideCanonicalField", () => {
     expect(validate).not.toHaveBeenCalled();
   });
 
-  it("suppresses parse for explicit null canonical field", () => {
+  it("treats explicit null as missing so legacy is parsed on expand (hybrid loading spec)", () => {
     const normalize = vi.fn((value: Record<string, unknown>) => value);
     const validate = vi.fn(() => true);
 
     const result = decideCanonicalField({ range: null }, "range", normalize, validate);
 
-    expect(result).toEqual({ suppressExpandParse: true });
+    expect(result).toEqual({ suppressExpandParse: false });
     expect(normalize).not.toHaveBeenCalled();
     expect(validate).not.toHaveBeenCalled();
   });
@@ -56,7 +56,12 @@ describe("decideCanonicalField", () => {
     }));
     const validate = vi.fn(() => true);
 
-    const result = decideCanonicalField({ range: { kind: "distance", unit: "ft" } }, "range", normalize, validate);
+    const result = decideCanonicalField(
+      { range: { kind: "distance", unit: "ft" } },
+      "range",
+      normalize,
+      validate,
+    );
 
     expect(result).toEqual({
       suppressExpandParse: true,

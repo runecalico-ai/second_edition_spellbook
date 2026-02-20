@@ -404,7 +404,9 @@ export default function SpellEditor() {
   const [detailDirty, setDetailDirty] = useState<Record<DetailFieldKey, boolean>>(() =>
     createDefaultDetailDirty(),
   );
-  const [suppressExpandParse, setSuppressExpandParse] = useState<Partial<Record<DetailFieldKey, boolean>>>({});
+  const [suppressExpandParse, setSuppressExpandParse] = useState<
+    Partial<Record<DetailFieldKey, boolean>>
+  >({});
   /** Canon-first: which field is loading (async parse on expand). */
   const [detailLoading, setDetailLoading] = useState<DetailFieldKey | null>(null);
   /** Refs for focus management: expanded panel (focus first focusable on expand); collapse focuses via data-testid query. */
@@ -1177,7 +1179,6 @@ export default function SpellEditor() {
             const hasMaterialText = !!matLegacy;
 
             if (hasComponentText || hasMaterialText) {
-              setDetailLoading(field);
               const combined = await invoke<{
                 components: SpellComponents;
                 materials: MaterialComponentSpec[];
@@ -1399,7 +1400,9 @@ export default function SpellEditor() {
         experience: false,
       };
       const validRangeSpec =
-        structuredRange !== null && validateRangeSpec(structuredRange) ? structuredRange : undefined;
+        structuredRange !== null && validateRangeSpec(structuredRange)
+          ? structuredRange
+          : undefined;
       const validDurationSpec =
         structuredDuration !== null && validateDurationSpec(structuredDuration)
           ? structuredDuration

@@ -237,15 +237,15 @@ def test_confidence_scores_present(tmp_path: Path):
         assert "_source_file" in spell, "Missing _source_file field"
 
         confidence = spell["_confidence"]
-        assert (
-            confidence.get("name") == 1.0
-        ), "Name from frontmatter should have 1.0 confidence"
-        assert (
-            confidence.get("level") == 1.0
-        ), "Level from frontmatter should have 1.0 confidence"
-        assert (
-            confidence.get("description") > 0.5
-        ), "Description should have reasonable confidence"
+        assert confidence.get("name") == 1.0, (
+            "Name from frontmatter should have 1.0 confidence"
+        )
+        assert confidence.get("level") == 1.0, (
+            "Level from frontmatter should have 1.0 confidence"
+        )
+        assert confidence.get("description") > 0.5, (
+            "Description should have reasonable confidence"
+        )
 
 
 def test_low_confidence_for_missing_fields(tmp_path: Path):
@@ -270,10 +270,10 @@ def test_low_confidence_for_missing_fields(tmp_path: Path):
     confidence = spell.get("_confidence", {})
 
     # Name derived from filename should have low confidence
-    assert (
-        confidence.get("name", 1.0) < 0.5
-    ), "Heuristic name should have low confidence"
+    assert confidence.get("name", 1.0) < 0.5, (
+        "Heuristic name should have low confidence"
+    )
     # Level not in text should have very low confidence
-    assert (
-        confidence.get("level", 1.0) < 0.3
-    ), "Missing level should have low confidence"
+    assert confidence.get("level", 1.0) < 0.3, (
+        "Missing level should have low confidence"
+    )

@@ -1134,7 +1134,9 @@ test.describe("Spell Editor canon-first default", () => {
       await expect(page.getByTestId("detail-duration-loading")).not.toBeVisible({
         timeout: TIMEOUTS.medium,
       });
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await expect(page.getByTestId("detail-duration-special-hint")).toBeVisible();
       await page.getByTestId("detail-duration-expand").click();
       await expect(

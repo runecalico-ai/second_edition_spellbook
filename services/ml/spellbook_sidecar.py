@@ -568,7 +568,7 @@ def _render_spellbook_pack_html(
 </head>
 <body>
   <h1>{char_name}'s Spellbook</h1>
-  <div class="subtitle">Class: {html_escape(class_name or 'All')}</div>
+  <div class="subtitle">Class: {html_escape(class_name or "All")}</div>
   {body}
 </body>
 </html>

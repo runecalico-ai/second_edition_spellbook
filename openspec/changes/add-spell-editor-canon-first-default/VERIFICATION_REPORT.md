@@ -41,6 +41,7 @@
 | Damage/MR always visible when empty       | Both fields always rendered; E2E "Damage and Magic Resistance stay visible and empty when missing" (447–485). |
 | Only one field expanded at a time          | `expandedDetailField` state; `expandDetailField` collapses current (684–688) then sets new (692–698). E2E "Only one detail field expanded at a time" (128–178). |
 | Expand: canonical_data or parse            | `SpellEditor.tsx` 422–425 (load canonicalData), 692+ (expand uses canonical or invoke parse). E2E "Load spell with canonical_data, expand field" (320–356). |
+| Hybrid: canonical_data field `null` → parse on expand | `canonicalFieldDecision.ts`: `rawValue === null` returns `suppressExpandParse: false`. Unit test `canonicalFieldDecision.test.ts`: "treats explicit null as missing so legacy is parsed on expand". |
 | Loading state on async parse              | `detailLoading` state (313), `detail-${kebabField}-loading` (1601); cleared when populated (886). E2E "New spell: expand one field shows parsed form" waits for loading to disappear (281–284). |
 | Collapse when dirty → serialize to line    | `serializeDetailField` (621+), uses rangeToText, durationToText, componentsToText, etc.; called in expandDetailField when collapsing current (685–688). E2E "Expand field, edit structured form, collapse; single line updates" (86–126). |
 | Collapse when not dirty → line unchanged   | In `expandDetailField`, only calls `serializeDetailField` if `detailDirty[expandedDetailField]` (685). E2E "Expand field, do not edit, collapse; canon line unchanged" (180–220). |
@@ -98,6 +99,16 @@
 
 ---
 
+## Post-analysis fix (ANALYSIS_REPORT.md)
+
+Following the deep analysis of the implementation:
+
+- **Finding 1 (bug):** When `canonical_data` has a field with value `null` (e.g. `"range": null`), the spec requires "treat as missing" and parse legacy string on expand. The implementation previously returned `suppressExpandParse: true` for `null`, which skipped parsing and showed an empty structured form.
+- **Fix applied:** In `apps/desktop/src/ui/canonicalFieldDecision.ts`, the `rawValue === null` branch now returns `{ suppressExpandParse: false }` so the editor parses the legacy string on first expand.
+- **Test:** `canonicalFieldDecision.test.ts` updated: the case for explicit `null` now expects `suppressExpandParse: false` and is titled "treats explicit null as missing so legacy is parsed on expand (hybrid loading spec)".
+
+---
+
 ## Final assessment
 
-All checks passed. No critical, warning, or suggestion issues. **Ready for archive.**
+All checks passed. Post-analysis null-field fix applied and covered by unit test. **Ready for archive.**

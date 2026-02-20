@@ -398,20 +398,25 @@ Before deploying migration changes:
 
 ### Running Tests
 
+> **Config location**: Named Vitest projects (`unit`, `storybook`) are defined in `apps/desktop/vitest.config.ts`.
+
 ```bash
 cd apps/desktop
 
-# Run all tests
-pnpm test
+# Run unit tests
+pnpm test:unit
+
+# Run Storybook interaction tests
+pnpm test:storybook
 
 # Run in watch mode (development)
-pnpm test:watch
+pnpm vitest --project=unit --watch
 
 # Run with coverage
-pnpm test:coverage
+pnpm vitest run --project=unit --coverage
 
 # Run tests matching a pattern
-pnpm test -- --grep "SpellCard"
+pnpm vitest run --project=unit -t "SpellCard"
 ```
 
 ### Test Structure
@@ -766,7 +771,7 @@ fn test_canonical_spell_serialization() {
 cargo tarpaulin --lib --out Html
 
 # TypeScript coverage
-pnpm test:coverage
+pnpm vitest run --project=unit --coverage
 
 # Python coverage
 python -m pytest services/ml --cov --cov-report=html
@@ -793,7 +798,7 @@ Before committing, ensure:
 1. ✅ `cargo test --lib` passes
 2. ✅ `cargo clippy -- -D warnings` has no errors
 3. ✅ `cargo fmt` shows no changes needed
-4. ✅ `pnpm test` passes (if frontend changes)
+4. ✅ `pnpm test:unit` and `pnpm test:storybook` pass (if frontend changes)
 5. ✅ `python -m pytest services/ml` passes (if Python changes)
 
 ---

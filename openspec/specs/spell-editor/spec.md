@@ -260,11 +260,18 @@ The Spell Editor MUST enforce schema-compliant input.
 - THEN the editor MUST block saving
 - AND display an inline validation error.
 
-#### Scenario: Tradition Validation (Both)
-- GIVEN a spell with tradition = "BOTH"
-- WHEN either school or sphere is not selected
-- THEN the editor MUST block saving
-- AND display inline validation errors for the missing field(s).
+#### Scenario: Tradition Load Error (School and Sphere Co-presence)
+- GIVEN a spell record loaded from the database that has both `school` and `sphere` set (co-present)
+- WHEN the editor loads the spell
+- THEN the editor MUST display a data-integrity warning identifying that school and sphere cannot both be set
+- AND MUST block saving until the conflict is resolved by clearing either school or sphere.
+
+#### Scenario: Dismissing the Tradition Load Error via Tradition Change
+- GIVEN a spell that triggered the tradition load error (both school and sphere set)
+- WHEN the user selects a new value from the tradition dropdown
+- THEN the tradition load error flag MUST be cleared and the data-integrity warning MUST be dismissed
+- AND normal tradition validation MUST take effect immediately: if school is not set for ARCANE, the ARCANE school-required error MUST appear and block save; if sphere is not set for DIVINE, the DIVINE sphere-required error MUST appear and block save.
+- The user must also clear the field that does not belong to the chosen tradition (sphere for ARCANE; school for DIVINE). The JSON schema `allOf` constraint enforces this at save time — a record with both fields set will fail schema validation regardless of tradition. Save is unblocked only when the required field is set AND the opposing tradition's field is cleared.
 
 ### Requirement: Complex Field Editing
 The Spell Editor MUST provide specialized forms for complex fields.

@@ -101,9 +101,12 @@ cargo test --lib parsers::components
 ```
 
 **Frontend (React/TypeScript)**:
+Named Vitest projects (`unit`, `storybook`) are defined in `apps/desktop/vitest.config.ts`.
+
 ```bash
 cd apps/desktop
-pnpm test                            # Run frontend tests
+pnpm test:unit                       # Run unit tests
+pnpm test:storybook                  # Run Storybook interaction tests
 pnpm storybook                       # Start Storybook for component development/testing
 ```
 

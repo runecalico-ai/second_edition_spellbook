@@ -71,7 +71,8 @@ The Spell Editor interface MUST support the creation of strictly typed, structur
 - AND tradition/school/sphere validation MUST use "block save + inline error" (semantic rules), not clamp.
 
 #### Scenario: Tradition Validation
-- Tradition validation MUST follow the spell-editor spec: ARCANE → school required; DIVINE → sphere required; BOTH → both school and sphere required. The editor MUST block save and display inline validation errors when requirements are not met.
+- Tradition validation MUST follow the spell-editor spec: ARCANE → school required; DIVINE → sphere required. The editor MUST block save and display inline validation errors when requirements are not met.
+- Having both school and sphere set simultaneously is invalid data; the editor MUST surface a data-integrity error and block saving until resolved.
 
 ### Requirement: Identity Visibility
 The application MUST expose the unique identity of the spell to the user.

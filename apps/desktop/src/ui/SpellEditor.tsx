@@ -238,13 +238,13 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
 
 function validateSavingThrowSpecShape(value: unknown): value is SavingThrowSpec {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const kind = value.kind;
+  const kind = (value as Record<string, unknown>).kind;
   return kind === "none" || kind === "single" || kind === "multiple" || kind === "dm_adjudicated";
 }
 
 function validateMagicResistanceSpecShape(value: unknown): value is MagicResistanceSpec {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const kind = value.kind;
+  const kind = (value as Record<string, unknown>).kind;
   return (
     kind === "unknown" ||
     kind === "normal" ||
@@ -395,8 +395,9 @@ export default function SpellEditor() {
   const [hasLoadedMagicResistanceSpec, setHasLoadedMagicResistanceSpec] = useState(false);
   const [hasExpandedComponentsEdit, setHasExpandedComponentsEdit] = useState(false);
   const [hashExpanded, setHashExpanded] = useState(false);
-  type Tradition = "ARCANE" | "DIVINE" | "BOTH";
+  type Tradition = "ARCANE" | "DIVINE";
   const [tradition, setTradition] = useState<Tradition>("ARCANE");
+  const [traditionLoadError, setTraditionLoadError] = useState(false);
 
   /** Canon-first: which detail field is expanded (only one at a time). */
   const [expandedDetailField, setExpandedDetailField] = useState<DetailFieldKey | null>(null);
@@ -449,6 +450,7 @@ export default function SpellEditor() {
     setHasLoadedSavingThrowSpec(false);
     setHasLoadedMagicResistanceSpec(false);
     setHasExpandedComponentsEdit(false);
+    setTraditionLoadError(false);
     setExpandedDetailField(null);
     setDetailLoading(null);
     setDetailDirty(createDefaultDetailDirty());
@@ -529,15 +531,13 @@ export default function SpellEditor() {
             setForm(data);
             const hasSchool = !!data.school?.trim();
             const hasSphere = !!data.sphere?.trim();
-            setTradition(
-              hasSchool && hasSphere
-                ? "BOTH"
-                : hasSchool
-                  ? "ARCANE"
-                  : hasSphere
-                    ? "DIVINE"
-                    : "ARCANE",
-            );
+            if (hasSchool && hasSphere) {
+              setTraditionLoadError(true);
+              setTradition("ARCANE");
+            } else {
+              setTraditionLoadError(false);
+              setTradition(hasSchool ? "ARCANE" : hasSphere ? "DIVINE" : "ARCANE");
+            }
             if (data.canonicalData) {
               try {
                 // canonical_data is always stored in snake_case (see docs/ARCHITECTURE.md).
@@ -573,11 +573,11 @@ export default function SpellEditor() {
                 setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
                 const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
 
-                const rangeDecision = decideCanonicalField(
+                const rangeDecision = decideCanonicalField<RangeSpec>(
                   canonicalRaw,
                   "range",
                   (rawValue): RangeSpec => {
-                    const r = rawValue as RangeSpec & {
+                    const r = rawValue as unknown as RangeSpec & {
                       distance?: { per_level?: number };
                       raw_legacy_value?: string;
                     };
@@ -604,11 +604,11 @@ export default function SpellEditor() {
                   nextSuppressExpandParse.range = true;
                 }
 
-                const durationDecision = decideCanonicalField(
+                const durationDecision = decideCanonicalField<DurationSpec>(
                   canonicalRaw,
                   "duration",
                   (rawValue): DurationSpec => {
-                    const d = rawValue as DurationSpec & {
+                    const d = rawValue as unknown as DurationSpec & {
                       duration?: { per_level?: number };
                       raw_legacy_value?: string;
                     };
@@ -636,11 +636,11 @@ export default function SpellEditor() {
                   nextSuppressExpandParse.duration = true;
                 }
 
-                const castingTimeDecision = decideCanonicalField(
+                const castingTimeDecision = decideCanonicalField<SpellCastingTime>(
                   canonicalRaw,
                   "casting_time",
                   (rawValue): SpellCastingTime => {
-                    const c = rawValue as SpellCastingTime & {
+                    const c = rawValue as unknown as SpellCastingTime & {
                       base_value?: number;
                       per_level?: number;
                       level_divisor?: number;
@@ -664,7 +664,7 @@ export default function SpellEditor() {
                   nextSuppressExpandParse.castingTime = true;
                 }
 
-                const areaDecision = decideCanonicalField(
+                const areaDecision = decideCanonicalField<AreaSpec>(
                   canonicalRaw,
                   "area",
                   normalizeAreaSpec,
@@ -677,7 +677,7 @@ export default function SpellEditor() {
                   nextSuppressExpandParse.area = true;
                 }
 
-                const damageDecision = decideCanonicalField(
+                const damageDecision = decideCanonicalField<SpellDamageSpec>(
                   canonicalRaw,
                   "damage",
                   normalizeDamageSpec,
@@ -690,7 +690,7 @@ export default function SpellEditor() {
                   nextSuppressExpandParse.damage = true;
                 }
 
-                const savingThrowDecision = decideCanonicalField(
+                const savingThrowDecision = decideCanonicalField<SavingThrowSpec>(
                   canonicalRaw,
                   "saving_throw",
                   normalizeSavingThrowSpec,
@@ -704,7 +704,7 @@ export default function SpellEditor() {
                   setStructuredSavingThrow(savingThrowDecision.structuredValue);
                 }
 
-                const magicResistanceDecision = decideCanonicalField(
+                const magicResistanceDecision = decideCanonicalField<MagicResistanceSpec>(
                   canonicalRaw,
                   "magic_resistance",
                   normalizeMagicResistanceSpec,
@@ -1280,8 +1280,6 @@ export default function SpellEditor() {
 
   const isArcane = !!form.school?.trim();
   const isDivine = !!form.sphere?.trim();
-  const getIsBothTradition = () => isArcane && isDivine;
-  const isBothTradition = getIsBothTradition();
 
   const getLevelDisplay = (level: number) => {
     if (level === 0 && form.isCantrip) return "Cantrip";
@@ -1297,15 +1295,13 @@ export default function SpellEditor() {
   const classesLower = form.classList?.toLowerCase() || "";
   const hasDivine = divineClasses.some((c) => classesLower.includes(c));
 
-  const isEpicRestricted = form.level >= 10 && (isDivine || !isArcane);
+  const isEpicRestricted = form.level >= 10 && !traditionLoadError && (isDivine || !isArcane);
   const isQuestRestricted = form.isQuestSpell === 1 && (isArcane || !isDivine);
   const isConflictRestricted = form.level >= 10 && form.isQuestSpell === 1;
   const isCantripRestricted = form.isCantrip === 1 && form.level !== 0;
 
   const isArcaneMissingSchool = tradition === "ARCANE" && !form.school?.trim();
   const isDivineMissingSphere = tradition === "DIVINE" && !form.sphere?.trim();
-  const isBothMissingSchool = tradition === "BOTH" && !form.school?.trim();
-  const isBothMissingSphere = tradition === "BOTH" && !form.sphere?.trim();
 
   const validationErrors = [
     isNameInvalid && "Name is required",
@@ -1317,8 +1313,7 @@ export default function SpellEditor() {
     isCantripRestricted && "Cantrips must be Level 0",
     isArcaneMissingSchool && "School is required for Arcane tradition",
     isDivineMissingSphere && "Sphere is required for Divine tradition",
-    isBothMissingSchool && "School is required for Both tradition",
-    isBothMissingSphere && "Sphere is required for Both tradition",
+    traditionLoadError && "School and Sphere cannot both be set",
   ].filter(Boolean) as string[];
 
   const specialFallbackFields = [
@@ -1776,13 +1771,24 @@ export default function SpellEditor() {
             data-testid="spell-tradition-select"
             aria-label="Spell tradition"
             value={tradition}
-            onChange={(e) => setTradition(e.target.value as Tradition)}
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+            onChange={(e) => {
+              setTraditionLoadError(false);
+              setTradition(e.target.value as Tradition);
+            }}
+            className={`w-full bg-neutral-900 border p-2 rounded ${traditionLoadError ? "border-amber-500" : "border-neutral-700"}`}
           >
             <option value="ARCANE">Arcane</option>
             <option value="DIVINE">Divine</option>
-            <option value="BOTH">Both</option>
           </select>
+          {traditionLoadError && (
+            <div
+              className="mt-2 text-xs text-amber-500 border border-amber-500/30 bg-amber-500/10 p-2 rounded"
+              data-testid="error-tradition-conflict"
+            >
+              This spell has both a School and a Sphere set \u2014 school and sphere are mutually
+              exclusive. Remove one before saving.
+            </div>
+          )}
         </div>
         <div>
           <label htmlFor="spell-school" className="block text-sm text-neutral-400">
@@ -1791,11 +1797,11 @@ export default function SpellEditor() {
           <input
             id="spell-school"
             data-testid="spell-school-input"
-            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.level >= 10 && !form.school && !getIsBothTradition()) || isArcaneMissingSchool || isBothMissingSchool ? "border-red-500" : "border-neutral-700"}`}
+            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.level >= 10 && !form.school) || isArcaneMissingSchool ? "border-red-500" : "border-neutral-700"}`}
             value={form.school || ""}
             onChange={(e) => handleChange("school", e.target.value)}
           />
-          {form.level >= 10 && !form.school && !getIsBothTradition() && (
+          {form.level >= 10 && !form.school && (
             <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane">
               School is required for Epic (Arcane) spells.
             </p>
@@ -1808,11 +1814,6 @@ export default function SpellEditor() {
               School is required for Arcane tradition.
             </p>
           )}
-          {isBothMissingSchool && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-both">
-              School is required for Both tradition.
-            </p>
-          )}
         </div>
         <div>
           <label htmlFor="spell-sphere" className="block text-sm text-neutral-400">
@@ -1821,11 +1822,11 @@ export default function SpellEditor() {
           <input
             id="spell-sphere"
             data-testid="spell-sphere-input"
-            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.isQuestSpell === 1 && !form.sphere && !getIsBothTradition()) || isDivineMissingSphere || isBothMissingSphere ? "border-red-500" : "border-neutral-700"}`}
+            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.isQuestSpell === 1 && !form.sphere) || isDivineMissingSphere ? "border-red-500" : "border-neutral-700"}`}
             value={form.sphere || ""}
             onChange={(e) => handleChange("sphere", e.target.value)}
           />
-          {form.isQuestSpell === 1 && !form.sphere && !getIsBothTradition() && (
+          {form.isQuestSpell === 1 && !form.sphere && (
             <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine">
               Sphere is required for Quest (Divine) spells.
             </p>
@@ -1836,11 +1837,6 @@ export default function SpellEditor() {
               data-testid="error-sphere-required-divine-tradition"
             >
               Sphere is required for Divine tradition.
-            </p>
-          )}
-          {isBothMissingSphere && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-both">
-              Sphere is required for Both tradition.
             </p>
           )}
         </div>

@@ -18,7 +18,7 @@
     "tradition": {
       "type": "string",
       "description": "The magical tradition of the spell.",
-      "enum": ["ARCANE", "DIVINE", "BOTH"]
+      "enum": ["ARCANE", "DIVINE"]
     },
     "school": {
       "type": "string",
@@ -390,18 +390,6 @@
             "const": null
           }
         }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "tradition": {
-            "const": "BOTH"
-          }
-        }
-      },
-      "then": {
-        "required": ["school", "sphere"]
       }
     }
   ],

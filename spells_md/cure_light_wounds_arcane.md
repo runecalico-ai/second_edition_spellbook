@@ -1,11 +1,10 @@
-# SYNTHETIC SAMPLE — INVALID DATA: both school and sphere set
+# SYNTHETIC SAMPLE
 ---
 name: Cure Light Wounds
+tradition: ARCANE
 school: Necromancy
-sphere: Healing
 class_list:
-- Cleric
-- Druid
+- Mage
 level: 1
 range: Touch
 components: V,S

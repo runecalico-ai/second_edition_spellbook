@@ -793,7 +793,7 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
     fn try_from(detail: crate::models::spell::SpellDetail) -> Result<Self, Self::Error> {
         // Tradition Inference
         let tradition = match (&detail.school, &detail.sphere) {
-            (Some(_), Some(_)) => "BOTH".to_string(),
+            (Some(_), Some(_)) => return Err(format!("Spell '{}' (ID {:?}) is invalid: School and sphere are mutually exclusive.", detail.name, detail.id)),
             (Some(_), None) => "ARCANE".to_string(),
             (None, Some(_)) => "DIVINE".to_string(),
             (None, None) => return Err(format!("Spell '{}' (ID {:?}) is invalid: Must have a School (Arcane) or Sphere (Divine) defined.", detail.name, detail.id)),
@@ -1599,12 +1599,57 @@ mod tests {
 
         // 3. Both Inference
         detail.school = Some("Abjuration".into());
-        let canon = CanonicalSpell::try_from(detail.clone()).unwrap();
-        assert_eq!(canon.tradition, "BOTH");
-        assert_eq!(canon.school, Some("Abjuration".to_string()));
-        assert_eq!(canon.sphere, Some("Healing".to_string()));
+        let result = CanonicalSpell::try_from(detail.clone());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("mutually exclusive"));
 
         // 4. Default / Fallback tests moved to regression test
+    }
+
+    /// Verifies the JSON schema `allOf` mutual-exclusivity constraint independently of `TryFrom`.
+    /// Even if a `CanonicalSpell` is constructed with both `school` and `sphere` set (bypassing the
+    /// ingest gate), the schema-level `allOf` rule (`sphere: { const: null }` for ARCANE;
+    /// `school: { const: null }` for DIVINE) must still reject the record at `validate()` time.
+    #[test]
+    fn test_schema_rejects_both_school_and_sphere_directly() {
+        // Manually construct a CanonicalSpell with ARCANE tradition but both school and sphere set,
+        // bypassing TryFrom to exercise the allOf schema constraint directly.
+        let mut spell = CanonicalSpell::new(
+            "Both Fields Spell".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Testing schema allOf mutual-exclusivity.".to_string(),
+        );
+        // Force both fields — normally prevented by TryFrom
+        spell.school = Some("Evocation".to_string());
+        spell.sphere = Some("Combat".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+
+        // validate() directly runs the JSON schema including the allOf constraint.
+        // For ARCANE tradition, school is required AND sphere must be null.
+        // Having sphere set violates the `sphere: { const: null }` rule.
+        let result = spell.validate();
+        assert!(
+            result.is_err(),
+            "Schema validation must reject an ARCANE spell with sphere set"
+        );
+
+        // Also verify the DIVINE direction: sphere set + school set must fail.
+        let mut spell_divine = CanonicalSpell::new(
+            "Both Fields Divine".to_string(),
+            1,
+            "DIVINE".to_string(),
+            "Testing schema allOf mutual-exclusivity for DIVINE.".to_string(),
+        );
+        spell_divine.sphere = Some("Healing".to_string());
+        spell_divine.school = Some("Necromancy".to_string()); // opponent field
+        spell_divine.class_list = vec!["Priest".to_string()];
+
+        let result_divine = spell_divine.validate();
+        assert!(
+            result_divine.is_err(),
+            "Schema validation must reject a DIVINE spell with school set"
+        );
     }
 
     #[test]

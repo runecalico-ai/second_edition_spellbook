@@ -277,6 +277,15 @@ The Spell Editor MUST enforce schema-compliant input.
 - AND normal tradition validation MUST take effect immediately: if school is not set for ARCANE, the ARCANE school-required error MUST appear and block save; if sphere is not set for DIVINE, the DIVINE sphere-required error MUST appear and block save.
 - The user must also clear the field that does not belong to the chosen tradition (sphere for ARCANE; school for DIVINE). The JSON schema `allOf` constraint enforces this at save time — a record with both fields set will fail schema validation regardless of tradition. Save is unblocked only when the required field is set AND the opposing tradition's field is cleared.
 
+#### Scenario: Class List and Tradition
+- NOTE: `class_list` is currently a plain array of strings with no schema-level enforcement of Arcane/Divine membership. Arcane spells are intended for Arcane casters (e.g. Wizard, Bard); Divine spells are intended for Divine casters (e.g. Priest, Druid). No UI-level validation or restriction of `class_list` by tradition is required at this time. A future class schema feature will implement spell-list access control.
+
+### Testing Requirements
+
+The following behaviors MUST be verified using Playwright E2E tests:
+- The UI properly reflects the removal of the BOTH tradition (i.e. tradition dropdown only contains "Arcane" and "Divine").
+- Existing inline errors and block-save logic persist when saving a new spell with no school (ARCANE).
+
 ### Requirement: Complex Field Editing
 The Spell Editor MUST provide specialized forms for complex fields.
 

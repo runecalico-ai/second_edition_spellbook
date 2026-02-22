@@ -6,11 +6,13 @@ This workflow runs linting checks on all parts of the application.
 
 ## Frontend (React/TS)
 
-1. Lint the frontend code
-   - Linting ensures code quality and consistency in the React application.
+1. Lint and Type-Check the frontend code
+   - Linting (Biome) ensures code quality and style.
+   - Type-checking (tsc) ensures architectural and type safety.
    ```bash
    cd apps/desktop
    pnpm lint
+   pnpm tsc --noEmit
    ```
 
 ## Backend (Rust/Tauri)

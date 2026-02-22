@@ -8,9 +8,12 @@ import {
 } from "../../../types/spell";
 import type {
   AreaSpec,
+  DurationSpec,
   MagicResistanceSpec,
   MaterialComponentSpec,
+  RangeSpec,
   SavingThrowSpec,
+  SpellCastingTime,
   SpellComponents,
   SpellDamageSpec,
 } from "../../../types/spell";
@@ -208,11 +211,7 @@ export const OneFieldExpanded: Story = {
     const [range, setRange] = useState("Touch");
     const [duration, setDuration] = useState("1 round/level");
     const [expanded, setExpanded] = useState<"duration" | null>("duration");
-    const [durationSpec, setDurationSpec] = useState<{
-      kind: string;
-      unit?: string;
-      duration?: { mode: string; value?: number };
-    } | null>({
+    const [durationSpec, setDurationSpec] = useState<DurationSpec | null>({
       kind: "time",
       unit: "round",
       duration: { mode: "per_level", value: 1, perLevel: 1 },
@@ -295,11 +294,7 @@ export const RangeExpanded: Story = {
   render: function RangeExpandedStory() {
     const [range, setRange] = useState("30 ft");
     const [expanded, setExpanded] = useState(true);
-    const [rangeSpec, setRangeSpec] = useState<{
-      kind: string;
-      unit?: string;
-      distance?: { mode: string; value?: number };
-    } | null>({
+    const [rangeSpec, setRangeSpec] = useState<RangeSpec | null>({
       kind: "distance",
       unit: "ft",
       distance: { mode: "fixed", value: 30 },
@@ -331,11 +326,7 @@ export const CastingTimeExpanded: Story = {
   render: function CastingTimeExpandedStory() {
     const [castingTime, setCastingTime] = useState("1 action");
     const [expanded, setExpanded] = useState(true);
-    const [castingTimeSpec, setCastingTimeSpec] = useState<{
-      text?: string;
-      unit?: string;
-      baseValue?: number;
-    } | null>({
+    const [castingTimeSpec, setCastingTimeSpec] = useState<SpellCastingTime | null>({
       text: "1 action",
       unit: "action",
       baseValue: 1,

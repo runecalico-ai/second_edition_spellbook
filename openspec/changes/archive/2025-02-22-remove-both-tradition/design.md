@@ -95,7 +95,7 @@ The `"INVALID"` sentinel value used for the load-error case (Decision 2) is not 
 
 - **Import pipeline rejection** — Any Markdown or JSON import of a spell with both school and sphere will now fail validation rather than importing as `BOTH`. _Mitigation: The import error message names the spell and the conflict. Users must split the import source into two records._
 
-- **No E2E test coverage for BOTH was ever merged** — The archived verification report flagged that the BOTH E2E test was never written. Since the feature is being removed, no new E2E test for the transition error state is strictly required. The existing ARCANE and DIVINE E2E tests fully cover the remaining valid paths. _Mitigation: The unit test in `canonical_spell.rs` is updated to assert `Err` on the (school, sphere) co-presence case._
+- **E2E test coverage for UI validation** — The removal of the BOTH option from the tradition dropdown must be covered by Playwright E2E tests. _Mitigation: Two new E2E tests will be added to verify the tradition dropdown and the ARCANE/DIVINE validation requirements._
 
 ## Migration Plan
 

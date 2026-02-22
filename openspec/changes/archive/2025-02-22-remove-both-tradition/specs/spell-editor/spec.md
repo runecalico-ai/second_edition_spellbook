@@ -47,3 +47,9 @@ The Spell Editor MUST enforce schema-compliant input.
 
 #### Scenario: Class List and Tradition
 - NOTE: `class_list` is currently a plain array of strings with no schema-level enforcement of Arcane/Divine membership. Arcane spells are intended for Arcane casters (e.g. Wizard, Bard); Divine spells are intended for Divine casters (e.g. Priest, Druid). No UI-level validation or restriction of `class_list` by tradition is required at this time. A future class schema feature will implement spell-list access control.
+
+### Testing Requirements
+
+The following behaviors MUST be verified using Playwright E2E tests:
+- The UI properly reflects the removal of the BOTH tradition (i.e. tradition dropdown only contains "Arcane" and "Divine").
+- Existing inline errors and block-save logic persist when saving a new spell with no school (ARCANE).

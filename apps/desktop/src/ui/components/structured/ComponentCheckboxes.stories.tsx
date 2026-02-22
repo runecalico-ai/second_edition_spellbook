@@ -30,6 +30,9 @@ export const VsmOnly: Story = {
       verbal: true,
       somatic: true,
       material: false,
+      focus: false,
+      divineFocus: false,
+      experience: false,
     },
     materialComponents: [],
     onChange: fn(),
@@ -42,6 +45,9 @@ export const VerbalOnly: Story = {
       verbal: true,
       somatic: false,
       material: false,
+      focus: false,
+      divineFocus: false,
+      experience: false,
     },
     materialComponents: [],
     onChange: fn(),
@@ -54,6 +60,9 @@ export const VerbalSomatic: Story = {
       verbal: true,
       somatic: true,
       material: false,
+      focus: false,
+      divineFocus: false,
+      experience: false,
     },
     materialComponents: [],
     onChange: fn(),
@@ -66,6 +75,9 @@ export const AllComponents: Story = {
       verbal: true,
       somatic: true,
       material: true,
+      focus: false,
+      divineFocus: false,
+      experience: false,
     },
     materialComponents: [],
     onChange: fn(),
@@ -78,6 +90,9 @@ export const WithSingleMaterial: Story = {
       verbal: true,
       somatic: true,
       material: true,
+      focus: false,
+      divineFocus: false,
+      experience: false,
     },
     materialComponents: [
       {
@@ -96,6 +111,9 @@ export const WithMultipleMaterials: Story = {
       verbal: true,
       somatic: true,
       material: true,
+      focus: false,
+      divineFocus: false,
+      experience: false,
     },
     materialComponents: [
       {
@@ -120,6 +138,9 @@ export const WithComplexMaterial: Story = {
       verbal: true,
       somatic: true,
       material: true,
+      focus: false,
+      divineFocus: false,
+      experience: false,
     },
     materialComponents: [
       {
@@ -141,6 +162,9 @@ export const WithQuantityGreaterThanOne: Story = {
       verbal: true,
       somatic: true,
       material: true,
+      focus: false,
+      divineFocus: false,
+      experience: false,
     },
     materialComponents: [
       {

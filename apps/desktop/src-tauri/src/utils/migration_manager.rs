@@ -891,13 +891,12 @@ mod tests {
         // Insert a spell with distinct values to verify mapping
         db.execute(
             r#"INSERT INTO spell (
-                name, level, school, sphere, class_list, description, range, duration, casting_time, is_quest_spell, is_cantrip
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#,
+                name, level, school, class_list, description, range, duration, casting_time, is_quest_spell, is_cantrip
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
             params![
                 "Test Mapping Spell",
                 5,
                 "Conjuration",
-                "Creation",
                 "Wizard, Cleric",
                 "Detailed description here.",
                 "100.5 feet",
@@ -942,11 +941,7 @@ mod tests {
             "School mismatch, JSON: {}",
             json_val
         );
-        assert!(
-            json_val.contains(r#""sphere":"Creation""#),
-            "Sphere mismatch, JSON: {}",
-            json_val
-        );
+
         assert!(
             json_val.contains(r#""class_list":["Cleric","Wizard"]"#),
             "Class list mismatch, JSON: {}",

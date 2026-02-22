@@ -171,6 +171,7 @@ export const CastingTimeSimple: Story = {
   args: {
     fieldType: "casting_time",
     value: {
+      text: "1 segment",
       baseValue: 1,
       perLevel: 0,
       levelDivisor: 1,
@@ -184,6 +185,7 @@ export const CastingTimeWithPerLevel: Story = {
   args: {
     fieldType: "casting_time",
     value: {
+      text: "1 round",
       baseValue: 1,
       perLevel: 1,
       levelDivisor: 1,
@@ -197,6 +199,7 @@ export const CastingTimeComplex: Story = {
   args: {
     fieldType: "casting_time",
     value: {
+      text: "1 action",
       baseValue: 1,
       perLevel: 2,
       levelDivisor: 3,
@@ -210,6 +213,7 @@ export const CastingTimeSpecial: Story = {
   args: {
     fieldType: "casting_time",
     value: {
+      text: "Special casting time",
       baseValue: 1,
       perLevel: 0,
       levelDivisor: 1,

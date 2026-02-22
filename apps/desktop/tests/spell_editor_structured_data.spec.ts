@@ -1,7 +1,10 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
-import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { SELECTORS, SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal } from "./utils/dialog-handler";
 
 test.describe("Spell Editor structured data and hash display", () => {
@@ -244,5 +247,120 @@ test.describe("Spell Editor structured data and hash display", () => {
       const remainingName = page.getByTestId("material-component-name").first();
       await expect(remainingName).toHaveValue("Sulfur");
     });
+  });
+
+  test("Tradition dropdown shows only Arcane and Divine", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Open new spell and interact with tradition dropdown", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      const traditionSelect = page.getByTestId("spell-tradition-select");
+
+      const optionValues = await traditionSelect
+        .locator("option")
+        .evaluateAll((opts) => Array.from(opts).map((o) => (o as HTMLOptionElement).value));
+
+      expect(optionValues).toContain("ARCANE");
+      expect(optionValues).toContain("DIVINE");
+      expect(optionValues).not.toContain("BOTH");
+    });
+  });
+
+  test("Tradition validation: new spell save shows school error, no BOTH errors", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Open new spell, default ARCANE, try save", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Arcane Missing School");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Valid description so it doesn't fail on this.");
+    });
+
+    await test.step("Save blocked by school required error, NOT tradition error", async () => {
+      await page.getByTestId("btn-save-spell").click();
+
+      await expect(page.getByTestId("error-school-required-arcane-tradition")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+
+      await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
+
+      await handleCustomModal(page, "OK");
+      await page.waitForTimeout(300);
+    });
+  });
+
+  // Option A (remove-both-tradition): Import rejects spells with both school and sphere.
+  // The "open conflicted spell → banner → dismiss" UI is only reachable for pre-existing/legacy
+  // DB records (e.g. before this change); we do not seed such records in E2E.
+  test("Import rejects spell with both school and sphere; spell does not appear in library", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Both Tradition Conflict ${runId}`;
+
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `both_spell_${runId}.md`);
+    const mdContent = [
+      "---",
+      `name: "${spellName}"`,
+      "level: 1",
+      "tradition: ARCANE",
+      "school: Evocation",
+      "sphere: Combat",
+      'description: "A synthetic conflict test spell."',
+      "class_list: [Wizard]",
+      "---",
+      "",
+    ].join("\n");
+    fs.writeFileSync(tmpFile, mdContent, "utf-8");
+
+    try {
+      await test.step("Run import wizard; backend rejects co-present school and sphere", async () => {
+        await app.resetImportWizard();
+        await app.navigate("Import");
+        const fileInput = page.locator(SELECTORS.fileInput);
+        await expect(fileInput).toBeVisible({ timeout: TIMEOUTS.medium });
+        await fileInput.setInputFiles(tmpFile);
+        await expect(page.getByText(path.basename(tmpFile))).toBeVisible();
+        await page.getByRole("button", { name: "Preview →" }).click();
+        await expect(page.getByText(/Parsed \d+ spell\(s\)/)).toBeVisible({
+          timeout: TIMEOUTS.medium,
+        });
+        await page.getByRole("button", { name: "Skip Review →" }).click();
+        await page.getByRole("button", { name: "Start Import" }).click();
+
+        const modal = page.getByRole("dialog");
+        await expect(modal).toBeVisible({ timeout: TIMEOUTS.medium });
+        await expect(
+          modal.getByText(/mutually exclusive|School and sphere|Import failed/i),
+        ).toBeVisible();
+        await handleCustomModal(page, "OK");
+        await page.waitForTimeout(300);
+      });
+
+      await test.step("Spell does not appear in library", async () => {
+        await app.navigate("Library");
+        await page.getByPlaceholder(/Search spells/i).fill(spellName);
+        await page.getByRole("button", { name: "Search", exact: true }).click();
+        await expect(app.getSpellRow(spellName)).not.toBeVisible({ timeout: TIMEOUTS.short });
+      });
+    } finally {
+      try {
+        fs.unlinkSync(tmpFile);
+      } catch {
+        /* ignore */
+      }
+    }
   });
 });

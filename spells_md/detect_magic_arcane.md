@@ -1,12 +1,10 @@
-# SYNTHETIC SAMPLE — INVALID DATA: both school and sphere set
 ---
 name: Detect Magic
+tradition: ARCANE
 school: Divination
-sphere: Divination
 class_list:
 - Mage
-- Cleric
-- Druid
+- Bard
 level: 1
 range: '0'
 components: V,S

@@ -143,9 +143,10 @@ The app generates printer-friendly layouts directly from the character editor:
 From `apps/desktop`, run:
 
 ```bash
-pnpm lint
-pnpm format
-pnpm format:check
+pnpm lint          # Syntax and style linting (Biome)
+pnpm tsc --noEmit  # Static type checking (TypeScript)
+pnpm format        # Auto-format code
+pnpm format:check  # Verify formatting
 ```
 
 ## Next steps

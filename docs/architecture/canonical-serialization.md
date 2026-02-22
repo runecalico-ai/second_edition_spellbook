@@ -108,7 +108,6 @@ The `tradition` field enforces strict logical dependencies:
 |-----------|----------------|
 | `ARCANE` | `school` must be non-null |
 | `DIVINE` | `sphere` must be non-null |
-| `BOTH` | Both `school` AND `sphere` must be non-null |
 
 Validation fails if these requirements are not met.
 
@@ -118,7 +117,6 @@ During normalization, tradition-inconsistent fields are **cleared** before seria
 
 - For `tradition = "ARCANE"`: `sphere` must be omitted (cleared if present).
 - For `tradition = "DIVINE"`: `school` must be omitted (cleared if present).
-- For `tradition = "BOTH"`: both `school` and `sphere` are included.
 
 This ensures the content hash is identical whether or not the source had the other tradition's field set.
 
@@ -476,7 +474,7 @@ a1b2c3d4e5f6...
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `name` | string | Yes | Spell name |
-| `tradition` | string | Yes | ARCANE, DIVINE, or BOTH |
+| `tradition` | string | Yes | ARCANE or DIVINE |
 | `level` | integer | Yes | Spell level |
 | `description` | string | Yes | Full description text |
 | `is_cantrip` | integer | Yes | 0 or 1 |

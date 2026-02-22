@@ -1,10 +1,8 @@
-# SYNTHETIC SAMPLE — INVALID DATA: both school and sphere set
 ---
 name: Detect Magic
-school: Divination
+tradition: DIVINE
 sphere: Divination
 class_list:
-- Mage
 - Cleric
 - Druid
 level: 1

@@ -9,7 +9,9 @@ This document provides comprehensive guidelines for testing the Second Edition S
 | Component | Location | Command | Framework |
 |-----------|----------|---------|-----------|
 | Backend | `apps/desktop/src-tauri` | `cargo test` | Rust built-in |
-| Frontend | `apps/desktop` | `pnpm test:unit` | Vitest |
+| Frontend (Lint) | `apps/desktop` | `pnpm lint` | Biome |
+| Frontend (Types) | `apps/desktop` | `pnpm tsc --noEmit` | TypeScript (tsc) |
+| Frontend (Unit) | `apps/desktop` | `pnpm test:unit` | Vitest |
 | Frontend (Stories) | `apps/desktop` | `pnpm test:storybook` | Storybook + Vitest |
 | Python | `services/ml` | `pytest` | pytest |
 | E2E | `apps/desktop` | `pnpm e2e` | Playwright |
@@ -391,6 +393,26 @@ Before deploying migration changes:
 - [ ] Hash consistency verified (same input → same hash)
 - [ ] Backup/restore workflow tested
 - [ ] Rollback procedure verified
+
+---
+
+## Static Analysis & Type Checking
+
+Before running tests, it is recommended to run static analysis to catch syntax and type errors.
+
+### JS/TS Type Checking (tsc)
+Run the TypeScript compiler in "non-emitting" mode to check for type errors across the entire frontend project.
+```bash
+cd apps/desktop
+pnpm tsc --noEmit
+```
+
+### JS/TS Linting (Biome)
+Run Biome to check for syntax errors, code smells, and formatting issues.
+```bash
+cd apps/desktop
+pnpm lint
+```
 
 ---
 

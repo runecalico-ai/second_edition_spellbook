@@ -123,11 +123,13 @@ pnpm storybook                       # Start Storybook for component development
 
 ## Formatting and Linting
 
-We enforce strict formatting across all languages. Run these before committing:
+We enforce strict formatting and type safety across all languages. Run these before committing:
 
 | Language | Tool | Command (from `apps/desktop`) |
 | :--- | :--- | :--- |
-| **JS/TS** | Biome | `pnpm format` |
+| **JS/TS (Check)** | Biome | `pnpm lint` |
+| **JS/TS (Types)** | `tsc` | `pnpm tsc --noEmit` |
+| **JS/TS (Format)**| Biome | `pnpm format` |
 | **Rust** | Rustfmt | `cargo fmt` (in `src-tauri`) |
 | **Python** | Ruff | `ruff format .` (in `services/ml`) |
 

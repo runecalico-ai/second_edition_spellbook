@@ -53,7 +53,7 @@ type StructuredFieldValue = RangeSpec | DurationSpec | SpellCastingTime
 
 // The type depends on fieldType:
 // - fieldType="range" → onChange receives RangeSpec
-// - fieldType="duration" → onChange receives DurationSpec  
+// - fieldType="duration" → onChange receives DurationSpec
 // - fieldType="casting_time" → onChange receives SpellCastingTime
 ```
 
@@ -398,7 +398,7 @@ onChange: (
 ) => void
 
 // SpellComponents: { verbal: boolean, somatic: boolean, material: boolean }
-// MaterialComponentSpec: { name: string, quantity?: number, gpValue?: number, 
+// MaterialComponentSpec: { name: string, quantity?: number, gpValue?: number,
 //                           isConsumed?: boolean, description?: string, unit?: string }
 
 // onUncheckMaterialConfirm (optional): Called when Material checkbox is unchecked
@@ -588,8 +588,8 @@ const [area, setArea] = useState<AreaSpec | null>(defaultAreaSpec());
 // Parent validates on save
 const save = async () => {
   const errors = [];
-  if (tradition === "BOTH" && (!school || !sphere)) {
-    errors.push("BOTH tradition requires both school and sphere");
+  if (school && sphere) {
+    errors.push("School and sphere are mutually exclusive.");
   }
   if (errors.length > 0) {
     await modalAlert(errors, "Validation Errors", "error");

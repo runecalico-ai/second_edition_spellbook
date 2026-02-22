@@ -37,6 +37,10 @@ jobs:
         working-directory: apps/desktop
         run: pnpm format:check
 
+      - name: Type check (JS)
+        working-directory: apps/desktop
+        run: pnpm typecheck
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:

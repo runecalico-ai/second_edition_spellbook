@@ -1,7 +1,6 @@
-# SYNTHETIC SAMPLE — INVALID DATA: both school and sphere set
 ---
 name: Cure Light Wounds
-school: Necromancy
+tradition: DIVINE
 sphere: Healing
 class_list:
 - Cleric

@@ -7,11 +7,13 @@
     "node": ">=24"
   },
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "tauri:check": "pnpm run typecheck && pnpm run tauri build --check",
     "lint": "biome lint .",
     "format": "biome format --write .",
     "format:check": "biome check . --formatter-enabled=true --linter-enabled=false --organize-imports-enabled=false --assists-enabled=false",

@@ -11,6 +11,7 @@ This workflow runs linting checks on all parts of the application.
    ```bash
    cd apps/desktop
    pnpm lint
+   pnpm tsc --noEmit
    ```
 
 ## Backend (Rust/Tauri)

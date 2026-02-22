@@ -298,6 +298,90 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
+  test("Tradition conflict derives from live school/sphere edits", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Open new spell and create school+sphere conflict", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Tradition Live Conflict");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+      await page.getByTestId("spell-sphere-input").fill("Combat");
+
+      await expect(page.getByTestId("error-tradition-conflict")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Clearing sphere removes conflict banner immediately", async () => {
+      await page.getByTestId("spell-sphere-input").fill("");
+      await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
+    });
+  });
+
+  test("Tradition conflict blocks save when both school and sphere are set", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Open new spell and set both school and sphere", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Tradition Save Block");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+      await page.getByTestId("spell-sphere-input").fill("Combat");
+    });
+
+    await test.step("Save shows conflict validation error", async () => {
+      await page.getByTestId("btn-save-spell").click();
+
+      const modal = page.getByRole("dialog");
+      await expect(modal).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(modal.getByText(/School and Sphere cannot both be set/i)).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+
+      await handleCustomModal(page, "OK");
+      await expect(page.getByTestId("error-tradition-conflict")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+  });
+
+  test("Whitespace-only sphere is normalized and save succeeds", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Whitespace Sphere ${runId}`;
+
+    await test.step("Open new spell and enter school with whitespace-only sphere", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+      await page.getByTestId("spell-sphere-input").fill("   ");
+
+      await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
+    });
+
+    await test.step("Save succeeds and spell appears in library", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+
+      await page.getByPlaceholder(/Search spells/i).fill(spellName);
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await expect(app.getSpellRow(spellName)).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+  });
+
   // Option A (remove-both-tradition): Import rejects spells with both school and sphere.
   // The "open conflicted spell → banner → dismiss" UI is only reachable for pre-existing/legacy
   // DB records (e.g. before this change); we do not seed such records in E2E.

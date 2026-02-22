@@ -397,7 +397,6 @@ export default function SpellEditor() {
   const [hashExpanded, setHashExpanded] = useState(false);
   type Tradition = "ARCANE" | "DIVINE";
   const [tradition, setTradition] = useState<Tradition>("ARCANE");
-  const [traditionLoadError, setTraditionLoadError] = useState(false);
 
   /** Canon-first: which detail field is expanded (only one at a time). */
   const [expandedDetailField, setExpandedDetailField] = useState<DetailFieldKey | null>(null);
@@ -450,7 +449,6 @@ export default function SpellEditor() {
     setHasLoadedSavingThrowSpec(false);
     setHasLoadedMagicResistanceSpec(false);
     setHasExpandedComponentsEdit(false);
-    setTraditionLoadError(false);
     setExpandedDetailField(null);
     setDetailLoading(null);
     setDetailDirty(createDefaultDetailDirty());
@@ -531,13 +529,7 @@ export default function SpellEditor() {
             setForm(data);
             const hasSchool = !!data.school?.trim();
             const hasSphere = !!data.sphere?.trim();
-            if (hasSchool && hasSphere) {
-              setTraditionLoadError(true);
-              setTradition("ARCANE");
-            } else {
-              setTraditionLoadError(false);
-              setTradition(hasSchool ? "ARCANE" : hasSphere ? "DIVINE" : "ARCANE");
-            }
+            setTradition(hasSchool ? "ARCANE" : hasSphere ? "DIVINE" : "ARCANE");
             if (data.canonicalData) {
               try {
                 // canonical_data is always stored in snake_case (see docs/ARCHITECTURE.md).
@@ -1280,6 +1272,7 @@ export default function SpellEditor() {
 
   const isArcane = !!form.school?.trim();
   const isDivine = !!form.sphere?.trim();
+  const hasTraditionConflict = isArcane && isDivine;
 
   const getLevelDisplay = (level: number) => {
     if (level === 0 && form.isCantrip) return "Cantrip";
@@ -1295,7 +1288,7 @@ export default function SpellEditor() {
   const classesLower = form.classList?.toLowerCase() || "";
   const hasDivine = divineClasses.some((c) => classesLower.includes(c));
 
-  const isEpicRestricted = form.level >= 10 && !traditionLoadError && (isDivine || !isArcane);
+  const isEpicRestricted = form.level >= 10 && !hasTraditionConflict && (isDivine || !isArcane);
   const isQuestRestricted = form.isQuestSpell === 1 && (isArcane || !isDivine);
   const isConflictRestricted = form.level >= 10 && form.isQuestSpell === 1;
   const isCantripRestricted = form.isCantrip === 1 && form.level !== 0;
@@ -1313,7 +1306,7 @@ export default function SpellEditor() {
     isCantripRestricted && "Cantrips must be Level 0",
     isArcaneMissingSchool && "School is required for Arcane tradition",
     isDivineMissingSphere && "Sphere is required for Divine tradition",
-    traditionLoadError && "School and Sphere cannot both be set",
+    hasTraditionConflict && "School and Sphere cannot both be set",
   ].filter(Boolean) as string[];
 
   const specialFallbackFields = [
@@ -1451,6 +1444,14 @@ export default function SpellEditor() {
         materialComponents: formOverrides.materialComponents ?? form.materialComponents,
       };
 
+      const normalizedSchool = (spellData.school ?? "").trim();
+      const normalizedSphere = (spellData.sphere ?? "").trim();
+      const normalizedSpellData: SpellDetail = {
+        ...spellData,
+        school: normalizedSchool || null,
+        sphere: normalizedSphere || null,
+      };
+
       const componentsEditedInExpandedMode =
         detailDirty.components || detailDirty.materialComponents || hasExpandedComponentsEdit;
       const shouldSendComponentsSpec =
@@ -1468,10 +1469,10 @@ export default function SpellEditor() {
       }
 
       if (isNew) {
-        const { id, ...createData } = spellData; // eslint-disable-line @typescript-eslint/no-unused-vars
+        const { id, ...createData } = normalizedSpellData; // eslint-disable-line @typescript-eslint/no-unused-vars
         await invoke("create_spell", { spell: createData });
       } else {
-        const { artifacts, ...updateData } = spellData; // eslint-disable-line @typescript-eslint/no-unused-vars
+        const { artifacts, ...updateData } = normalizedSpellData; // eslint-disable-line @typescript-eslint/no-unused-vars
         await invoke("update_spell", { spell: updateData });
       }
       unsavedRef.current = false;
@@ -1772,15 +1773,14 @@ export default function SpellEditor() {
             aria-label="Spell tradition"
             value={tradition}
             onChange={(e) => {
-              setTraditionLoadError(false);
               setTradition(e.target.value as Tradition);
             }}
-            className={`w-full bg-neutral-900 border p-2 rounded ${traditionLoadError ? "border-amber-500" : "border-neutral-700"}`}
+            className={`w-full bg-neutral-900 border p-2 rounded ${hasTraditionConflict ? "border-amber-500" : "border-neutral-700"}`}
           >
             <option value="ARCANE">Arcane</option>
             <option value="DIVINE">Divine</option>
           </select>
-          {traditionLoadError && (
+          {hasTraditionConflict && (
             <div
               className="mt-2 text-xs text-amber-500 border border-amber-500/30 bg-amber-500/10 p-2 rounded"
               data-testid="error-tradition-conflict"

@@ -158,7 +158,7 @@ All new text fields introduced by this change MUST apply the normalization mode 
 - WHEN the spell is normalized via `normalize()`
 - THEN `AreaSpec.text` MUST be normalized with Structured mode + unit alias normalization (word boundaries), matching `RangeSpec.text`
 - AND `DurationSpec.text` MUST be normalized with Structured mode + unit alias normalization (word boundaries), matching `RangeSpec.text`
-- AND unit alias normalization MUST apply the same word-boundary-aware replacements as `RangeSpec.text` (e.g., "yards" → "yd", "feet" → "ft", "miles" → "mi", "inches" → "inch"; "backyard" unchanged).
+- AND unit alias normalization MUST apply the same word-boundary-aware replacements as `RangeSpec.text` per the unit alias list in `docs/architecture/canonical-serialization.md` §2.10 / §3 (e.g., "yards" → "yd", "feet" → "ft", "miles" → "mi", "inches" → "inch"; "backyard" unchanged).
 
 #### Scenario: raw_legacy_value Not Normalized
 - GIVEN a spell with populated `raw_legacy_value` on any spec (`SpellCastingTime`, `RangeSpec`, `AreaSpec`, `DurationSpec`, `SavingThrowSpec`)

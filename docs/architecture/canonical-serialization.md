@@ -196,6 +196,8 @@ The following table shows which normalization mode applies to specific text fiel
 | `DamagePart.notes` | `Textual` | Allow multi-line clarifications |
 | `ScalingRule.notes` | `Textual` | Allow multi-line clarifications |
 
+> **Note:** `raw_legacy_value` on SpellCastingTime, RangeSpec, AreaSpec, DurationSpec, and SavingThrowSpec is not normalized (stored as-is).
+
 ### Unicode Normalization (NFC)
 All strings undergo Unicode NFC normalization to ensure canonical representation of combining characters.
 

@@ -125,7 +125,7 @@ Section 2 ──┘
 - [ ] 3.7b Update `SpellEditor.tsx` — parser dispatch and validation:
   - [ ] Dispatch multiple field parser commands in parallel (`Promise.all`); do not dispatch sequentially
   - [ ] While parser invocations are in flight, render the form in a **loading/disabled state** until all pending parser calls resolve
-  - [ ] Add Zod schema validation (or equivalent type guard) for all Tauri parser command responses; treat validation failures as parser failures → fallback to `kind: "special"` and include in warning banner
+  - [ ] Add Zod schema validation (or equivalent type guard) for all Tauri parser command responses; treat validation failures as parser failures → fallback to `kind: "special"` and include in warning banner. Validate against the same TypeScript interfaces used for spell types (e.g. `src/types/spell.ts` or shared parser response types).
   - [ ] `savingThrow` and `magicResistance` do NOT use Tauri parser commands — use **client-side fallback mapping** from legacy text to structured state. Saving throw: resolve common 2e strings per the save_type/save_vs matrix (e.g., "Save vs. Spell" → `save_type: "spell"`, `save_vs: "spell"`). Magic resistance: "Yes" → `kind: "normal"`, "No" → `kind: "ignores_mr"`, "20%" / descriptive strings → `kind: "special"` with original string in `sourceText`
   - [ ] `SpellDamageSpec` has no `kind: "special"` fallback — on parser failure, initialize to `kind: "none"` with original string in `sourceText`; this does NOT trigger the warning banner (unlike all other field types)
 - [ ] 3.7c Update `SpellEditor.tsx` — save path:
@@ -160,7 +160,7 @@ Section 2 ──┘
 
 - [ ] 5.1 Update `docs/architecture/canonical-serialization.md`:
   - [ ] §2.2.1 hashed field inventory: add `SavingThrowSpec.raw_legacy_value`; remove `SpellDamageSpec.raw_legacy_value` (renamed to `source_text` and moved to §2.3)
-  - [ ] Normalization table: add `AreaSpec.text` → Structured + unit alias; `DurationSpec.text` → Structured + unit alias; document all `raw_legacy_value` fields (SpellCastingTime, RangeSpec, AreaSpec, DurationSpec, SavingThrowSpec) as stored as-is in a single row or footnote; add `MagicResistanceSpec.source_text` → Textual; add `SpellDamageSpec.source_text` → Textual
+  - [ ] §3 Text Field Normalization Mode Mapping table: add `AreaSpec.text` → Structured + unit alias; `DurationSpec.text` → Structured + unit alias; document all `raw_legacy_value` fields (SpellCastingTime, RangeSpec, AreaSpec, DurationSpec, SavingThrowSpec) as stored as-is in a single row or footnote; add `MagicResistanceSpec.source_text` → Textual; add `SpellDamageSpec.source_text` → Textual
   - [ ] §2.3 metadata exclusions table: add `SpellDamageSpec.source_text` and `MagicResistanceSpec.source_text` alongside `ExperienceComponentSpec.source_text`; remove `SavingThrowSpec.dm_guidance` normalization row
 - [ ] 5.2 Update `docs/SCHEMA_VERSIONING.md` with a v1→v2 section documenting: (1) bump `CURRENT_SCHEMA_VERSION` to `2`; (2) breaking changes (universal `raw_legacy_value` persistence, 5e casting time unit removal, `dm_guidance` removal from SavingThrowSpec, SpellDamageSpec `raw_legacy_value` → `source_text`); (3) reference `migrate_to_v2()` in the normalize pipeline and the `migrate_all_spells_to_v2` bulk command; (4) note that all content hashes change after migration (one-time re-hash)
 - [ ] 5.3 Update Playwright E2E tests:

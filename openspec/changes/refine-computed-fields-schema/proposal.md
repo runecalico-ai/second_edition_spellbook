@@ -2,9 +2,11 @@
 
 The current generic casting of legacy strings into `raw_legacy_value` across various computed spell fields (`casting_time`, `DurationSpec`, `AreaSpec`, `SavingThrowSpec`, `RangeSpec`, `MagicResistanceSpec`, `ExperienceComponentSpec`) is inconsistent, typically only saving the string when a parse failure occurs, or in the case of `MagicResistanceSpec`, missing a text-preservation property entirely. By updating the schema to *always* store the `raw_legacy_value` (and adding `source_text` where `raw_legacy_value` would be inappropriate for hashing reasons), we ensure a 100% auditable ground truth for migration from 2nd edition sources, even on a "successful" parse. Furthermore, exposing a literal `text` field across `AreaSpec` and `DurationSpec` aligns them with `RangeSpec` and `casting_time`, enabling UIs to display the canonical text directly without needing to re-synthesize strings from algebraic parts. Removing `dm_guidance` from `SavingThrowSpec` streamlines the data structure since generic `notes` are sufficient for that purpose.
 
-In addition to text preservation, the schema currently contains several 2nd Edition mechanical inaccuracies that must be addressed:
+In addition to text preservation, the schema contains a 2nd Edition mechanical inaccuracy that must be addressed:
 1. **Casting Time Units**: The schema includes 5th Edition combat economy terms (action, bonus action, reaction), which are fundamentally incompatible with 2e's segment/round initiative system.
-2. **Saving Throws**: The `save_type` and `save_vs` properties on `SingleSave` serve distinct semantic roles that must be clearly documented. `save_type` identifies which *row* of the 2e saving throw matrix to use (the saving throw *category*: `"paralyzation_poison_death"`, `"rod_staff_wand"`, `"petrification_polymorph"`, `"breath_weapon"`, `"spell"`, `"special"`). `save_vs` identifies *what specific effect* the target is saving against (e.g., `"spell"`, `"poison"`, `"death_magic"`, `"polymorph"`, `"petrification"`, `"breath"`, `"weapon"`, `"other"`). These are already correctly modeled in the existing schema; no enum changes are needed.
+
+**Validated as Correct (no changes required):**
+- **Saving Throws**: The `save_type` and `save_vs` properties on `SingleSave` were reviewed and confirmed to be correctly modeled. `save_type` identifies which *row* of the 2e saving throw matrix to use (the saving throw *category*: `"paralyzation_poison_death"`, `"rod_staff_wand"`, `"petrification_polymorph"`, `"breath_weapon"`, `"spell"`, `"special"`). `save_vs` identifies *what specific effect* the target is saving against (e.g., `"spell"`, `"poison"`, `"death_magic"`, `"polymorph"`, `"petrification"`, `"breath"`, `"weapon"`, `"other"`). No enum changes are needed — only documentation clarification of these distinct roles (see Design Decision 4).
 
 ## What Changes
 
@@ -27,6 +29,7 @@ In addition to text preservation, the schema currently contains several 2nd Edit
 - **SpellDamageSpec**:
   - [MODIFY] Rename `raw_legacy_value` to `source_text` (non-hashed metadata). Damage legacy text is a narrative descriptor that should not differentiate spell hashes, consistent with the approach for `MagicResistanceSpec` and `ExperienceComponentSpec`.
 - **CastingTime**:
+  - [NO CHANGE] The `text` property already exists on `casting_time` from prior schema work. No new property is added.
   - [MODIFY] Update the description of `raw_legacy_value` to indicate it is *always* stored.
   - [MODIFY] **BREAKING**: Update `unit` enum by removing 5e terms: `"action"`, `"bonus_action"`, and `"reaction"`.
 - **Schema Version**:
@@ -36,7 +39,10 @@ In addition to text preservation, the schema currently contains several 2nd Edit
 ## Capabilities
 
 ### New Capabilities
-- None
+- `migrate_all_spells_to_v2` (Tauri command): Bulk migration command that re-normalizes and re-hashes all spells in the database from schema version 1 to version 2 in a single SQLite transaction. Returns a `MigrationResult` with counts and per-spell failure details. Emits `migration-progress` events for frontend progress display. See the Bulk Migration Command Contract in the backend spec. *Note: The frontend UI for launching or monitoring this command (beyond progress event handling) is out of scope for this change.*
+
+### Unchanged Capabilities
+- `resolved-area-spec`, `resolved-duration-spec`, `resolved-range-spec`: These resolved specs are **explicitly excluded** from this change. They represent fully-evaluated algebraic snapshots at a specific caster level (fixed scalars only — no formulas, no per-level scaling). Neither `text` (a synthesized display string) nor `raw_legacy_value` (an authored legacy string) is appropriate for deterministic computational output. See Design Decision 7 for full rationale.
 
 ### Modified Capabilities
 - `spell-detail`: The rule for Saving Throw Display must be updated to remove the reference to `dm_guidance`.

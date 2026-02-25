@@ -127,6 +127,8 @@ The following table defines the required mapping from source text keywords to `s
 - **AND** MUST also populate `SavingThrowSpec.raw_legacy_value` with the original source string (see Requirement: SavingThrowSpec Legacy Value Population)
 - **AND** MUST NOT include a `dm_guidance` property on `SavingThrowSpec` (`dm_guidance` is removed in v2; use `notes` instead).
 
+> **Source of truth:** This table and the "first match wins" order are the specification. If the implementation (e.g. `parse_single_save_intern` in `mechanics.rs`) is reordered or refactored, this table and order MUST be updated so the spec remains the contract.
+
 #### Scenario: Saving Throw — Multiple Saves Input
 - **GIVEN** a saving throw string that contains multiple distinct save categories joined by `";"`, `" then "`, or `" and "` (e.g., `"Save vs. Spell, then Save vs. Poison"`)
 - **WHEN** the importer splits and parses the components

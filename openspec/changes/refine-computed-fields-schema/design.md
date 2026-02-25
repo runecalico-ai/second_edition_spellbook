@@ -49,7 +49,7 @@ The canonical `spell.schema.json` dictates the data shape for all AD&D 2nd Editi
   - `SavingThrowSpec.raw_legacy_value` → **No explicit normalization** (stored as-is). This is consistent with the existing `raw_legacy_value` fields on `SpellCastingTime`, `RangeSpec`, `AreaSpec`, and `DurationSpec`, none of which apply a normalization mode in their `normalize()` implementations. The "raw" prefix signals the value is preserved exactly as received from the parser.
   - `MagicResistanceSpec.source_text` → **Textual**. As metadata excluded from the canonical hash (§2.3), `source_text` uses the same normalization as `ExperienceComponentSpec.source_text`: NFC, trim horizontal whitespace, preserve distinct lines.
   - `SpellDamageSpec.source_text` → **Textual**. Same rationale as `MagicResistanceSpec.source_text` above.
-- *Implementation note:* All existing `raw_legacy_value` fields (`SpellCastingTime`, `RangeSpec`, `AreaSpec`, `DurationSpec`) are intentionally NOT normalized in their spec's `normalize()` method. This is by design — the "raw" prefix indicates the value is stored as received from the parser. In contrast, `source_text` fields (metadata excluded from hash) use Textual normalization for consistent storage formatting.
+- *Implementation note:* All existing `raw_legacy_value` fields (`SpellCastingTime`, `RangeSpec`, `AreaSpec`, `DurationSpec`) are intentionally NOT normalized in their spec's `normalize()` method. This is by design — the "raw" prefix indicates the value is stored as received from the parser. In contrast, `source_text` fields (metadata excluded from hash) use Textual normalization for consistent storage formatting. For the canonical-serialization normalization table, all `raw_legacy_value` fields (SpellCastingTime, RangeSpec, AreaSpec, DurationSpec, SavingThrowSpec) SHOULD be documented together—e.g. in a single footnote or one row per spec—as stored as-is (no normalization applied), so the contract is symmetric and searchable.
 - *Alternatives Considered:* Applying `Textual` normalization to all `raw_legacy_value` fields for hash stability. Rejected to avoid changing existing normalization behavior for hashed content, which could invalidate previously computed hashes beyond what the v1→v2 migration already addresses.
 
 **Decision 7: Resolved Specs Do Not Include `text` or `raw_legacy_value`**
@@ -70,6 +70,9 @@ The canonical `spell.schema.json` dictates the data shape for all AD&D 2nd Editi
 - *Risk:* During bulk migration, a corrupt or malformed spell record could cause `migrate_to_v2()` or `normalize()` to fail, potentially leaving the database in a partially-migrated state.
 - *Mitigation:* The bulk migration command (`migrate_all_spells_to_v2`) runs inside a single SQLite transaction. Individual spell-level failures (parse errors, normalization errors) are collected but do NOT abort the batch — the migration continues and reports failures in the return value. Database-level failures (disk full, locked) cause the entire transaction to roll back, leaving the database unchanged. See the Bulk Migration Command Contract in the backend spec for full details.
 
+**Trade-off: Duration concentration kind-only in editor**
+- The spell editor treats `DurationSpec.kind = "concentration"` as kind-only (no `unit`/`duration` sub-fields). Opening a spell that has concentration plus unit/duration sub-fields (valid per schema) will clear those sub-fields on next save. This is an accepted trade-off; 2e concentration spells do not use time-bounded duration sub-fields in practice.
+
 ## Migration Plan
 
 1. Update the `spell.schema.json` with the new properties and enum constraints.
@@ -86,12 +89,12 @@ The canonical `spell.schema.json` dictates the data shape for all AD&D 2nd Editi
    - Normalization table: Add entries with explicit modes per Decision 6:
      - `AreaSpec.text` → Structured + unit alias normalization (matching `RangeSpec.text`)
      - `DurationSpec.text` → Structured + unit alias normalization (matching `RangeSpec.text`)
-     - `SavingThrowSpec.raw_legacy_value` → None (not normalized, matching existing `raw_legacy_value` pattern)
+     - Document all `raw_legacy_value` fields (SpellCastingTime, RangeSpec, AreaSpec, DurationSpec, SavingThrowSpec) as stored as-is (no normalization)—e.g. one footnote or one row per spec—so the contract is symmetric (see Decision 6).
      - `MagicResistanceSpec.source_text` → Textual (matching `ExperienceComponentSpec.source_text`)
      - `SpellDamageSpec.source_text` → Textual (matching `ExperienceComponentSpec.source_text`)
    - §2.3 metadata table: Add `SpellDamageSpec.source_text` and `MagicResistanceSpec.source_text` alongside existing `ExperienceComponentSpec.source_text`.
-   - Note: Existing `raw_legacy_value` fields (`SpellCastingTime`, `RangeSpec`, `AreaSpec`, `DurationSpec`) remain unlisted in the normalization table (no mode applied), matching current implementation.
-7. Update `docs/SCHEMA_VERSIONING.md` to document the version 1 → 2 migration steps and rationale.
+   - Remove the normalization table row for `SavingThrowSpec.dm_guidance` (field removed in v2).
+7. Update `docs/SCHEMA_VERSIONING.md` to document the version 1 → 2 migration steps and rationale. The new v2 section SHOULD include: (1) bump `CURRENT_SCHEMA_VERSION` to `2` and update `MIN_SUPPORTED_SCHEMA_VERSION` as needed; (2) list breaking changes (universal `raw_legacy_value` persistence, 5e casting time unit removal, `dm_guidance` removal from SavingThrowSpec, SpellDamageSpec `raw_legacy_value` → `source_text`); (3) reference `migrate_to_v2()` in the normalize pipeline and the bulk command `migrate_all_spells_to_v2`; (4) note that content hashes change after migration (one-time re-hash).
 8. Modify the Python importer logic to unconditionally populate `raw_legacy_value` during parsing.
 9. Update the React `SpellEditor` components per the three focused delta specs (`spell-editor-complex-forms`, `spell-editor-structured-fields`, `spell-editor-data-loading`) to replace `dm_guidance` with `notes`, bind to the new `text` and `raw_legacy_value` fields, and implement hybrid data loading with parser fallback UX.
 10. Provide a bulk re-hash command (Tauri command or CLI) to migrate all spells in a single pass on first launch.

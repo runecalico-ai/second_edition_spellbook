@@ -68,3 +68,5 @@ The frontend MUST tolerate these v1-shaped fields without crashing or data loss:
 - `SpellDamageSpec.source_text` and `SpellDamageSpec.raw_legacy_value` both present: prefer `source_text` (post-migration value); discard `raw_legacy_value`.
 
 *Implementation guidance:* A lightweight client-side normalization function that maps v1 → v2 field names on the parsed `canonical_data` object before dispatching to editor state is the cleanest approach. This function runs once on load and handles both migrated (v2) and un-migrated (v1) spells transparently.
+
+**Save path:** On save, the editor MUST always produce v2-shaped `canonical_data` (no `dm_guidance` on SavingThrowSpec, `source_text` on SpellDamageSpec). Backend `normalize()` and `migrate_to_v2()` remain authoritative for persisted data; any code path that serializes editor state to `canonical_data` must emit the v2 shape.

@@ -64,7 +64,7 @@ All spells processed by the backend MUST support mapping to the Strict Spell Sch
 - GIVEN a spell with area text "special (see description)" or other unparseable area
 - WHEN the parser cannot extract structured dimensions
 - THEN it MUST fallback to `kind="special"`
-- AND preserve the original text in `AreaSpec.raw_legacy_value` (no longer in `notes`)
+- AND preserve the original text in `AreaSpec.raw_legacy_value` (previously stored in `notes`; now in raw_legacy_value only.)
 - AND `raw_legacy_value` is stored as-is (no additional normalization mode applied, consistent with existing `raw_legacy_value` fields on `SpellCastingTime`, `RangeSpec`, and `DurationSpec`).
 
 #### Scenario: Complex Range Parsing
@@ -124,6 +124,7 @@ The backend MUST increment `CURRENT_SCHEMA_VERSION` to `2` and implement a `migr
 - **Called from**: `normalize()`, as the first step, guarded by `if spell.schema_version < 2`.
 - **Side effects**: Mutates `spell` in-place across the three migration steps and stamps `schema_version = 2` on completion.
 - **Re-entrant safety**: The `schema_version = 2` stamp ensures a second call to `normalize()` on an already-migrated spell skips `migrate_to_v2()` entirely.
+- **Single-spell normalization:** When `normalize()` is invoked for a single spell (e.g. save/update path) and `migrate_to_v2()` returns `notes_truncated: true`, the caller MUST return an error and MUST NOT persist the spell. In that context `truncated_spell_id` is typically `None` (no batch context); the caller surfaces the error from `notes_truncated` alone.
 
 #### Scenario: Bulk Migration Command
 - GIVEN a database with spells at schema version 1
@@ -134,7 +135,7 @@ The backend MUST increment `CURRENT_SCHEMA_VERSION` to `2` and implement a `migr
 - **Tauri command name**: `migrate_all_spells_to_v2`
 - **Input parameters**: None (operates on the active database).
 - **Return type**: `MigrationResult { total: u32, migrated: u32, skipped: u32, failed: Vec<MigrationFailure> }` where `MigrationFailure { spell_id: i64, spell_name: Option<String>, error: String }`.
-- **Progress reporting**: The command MUST emit Tauri events (`migration-progress`) with `{ current: u32, total: u32 }` payload so the frontend can display a progress indicator.
+- **Progress reporting**: The command MUST emit Tauri events (`migration-progress`) with `{ current: u32, total: u32 }` payload so the frontend can display a progress indicator. Emit after each spell (or each N spells) is processed; `current` = number of spells processed so far (0 before any, 1 after first, …), `total` = total count of spells to process. Optionally emit a final event with `current === total` when the batch completes.
 - **Transaction semantics**: All successful SQL writes MUST be batched inside a single `BEGIN`/`COMMIT`. Spell-level failures (parse errors, normalization errors) are handled entirely in-memory before any SQL write is issued for that spell — no SQL statement is emitted for a failed spell, so no per-spell rollback is needed. The failed spell is recorded in `failed` and processing continues. All successful writes are committed together at the end; the caller receives the full `MigrationResult` including failures.
 - **Error behavior**: If a database-level error occurs (e.g., disk full, locked database), the entire transaction MUST be rolled back and the command MUST return an error. Individual spell-level parse/normalization failures do NOT abort the batch — they are collected in `failed`.
 - **Idempotency**: Spells already at `schema_version >= 2` MUST be counted in `skipped`, not re-processed.
@@ -147,7 +148,7 @@ The backend canonical schema validation MUST reject data containing elements fro
 - **THEN** schema validation MUST fail
 - **AND** reject the spell.
 
-> **Ordering note:** `migrate_to_v2()` MUST run before schema validation. Spells at `schema_version < 2` that contain 5e units are remapped to `"special"` by migration before validation runs. This rejection therefore applies only to spells at `schema_version >= 2` that still carry a 5e unit — which is a data error, not a migration case.
+> **Ordering note:** `migrate_to_v2()` MUST run before schema validation. Spells at `schema_version < 2` that contain 5e units are remapped to `"special"` by migration before validation runs. This rejection therefore applies only to spells at `schema_version >= 2` that still carry a 5e unit — which is a data error, not a migration case. Rejection MAY be enforced by JSON Schema validation (unit enum) and/or explicit backend validation before persistence.
 
 ### Requirement: Normalization Modes for New Text Fields
 All new text fields introduced by this change MUST apply the normalization mode specified in the design document (Decision 6).

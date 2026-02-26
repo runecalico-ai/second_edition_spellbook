@@ -86,6 +86,8 @@ pub struct MagicResistanceSpec {
     pub special_rule: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "source_text")]
+    pub source_text: Option<String>,
 }
 
 impl MagicResistanceSpec {
@@ -95,6 +97,7 @@ impl MagicResistanceSpec {
             && self.partial.is_none()
             && self.special_rule.is_none()
             && self.notes.is_none()
+            && self.source_text.is_none()
     }
 
     pub fn normalize(&mut self) {
@@ -113,5 +116,33 @@ impl MagicResistanceSpec {
         if let Some(p) = &mut self.partial {
             p.normalize();
         }
+        if let Some(s) = &mut self.source_text {
+            *s = crate::models::canonical_spell::normalize_string(
+                s,
+                crate::models::canonical_spell::NormalizationMode::Textual,
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Priority D (TG2): MagicResistanceSpec::normalize() applies Textual mode to source_text.
+    #[test]
+    fn test_magic_resistance_normalize_applies_textual_to_source_text() {
+        let mut mr = MagicResistanceSpec {
+            kind: MagicResistanceKind::Normal,
+            source_text: Some("  Line one   \n\n   Line two   ".to_string()),
+            ..Default::default()
+        };
+        mr.normalize();
+        // Textual: trim, collapse internal whitespace per line, collapse blank lines to single \n
+        assert_eq!(
+            mr.source_text.as_deref(),
+            Some("Line one\nLine two"),
+            "source_text must be normalized with Textual mode"
+        );
     }
 }

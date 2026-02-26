@@ -28,14 +28,9 @@ impl AreaParser {
             area_per_level_regex: Regex::new(
                 r#"(?i)^(\d+(?:\.\d+)?)\s*([a-z\.'"\-]+)?/level\s*([a-z\._-]+)$"#,
             ).unwrap(),
-            // Pattern: "20' by 10' wall", "10x10 rect", "20 ft. x 10 ft. x 10 ft. rect_prism"
-            // We use \s+ or word boundaries to separate units from "x/by" to avoid greediness
             area_multi_regex: Regex::new(r#"(?i)^(\d+(?:\.\d+)?)\s*(ft\.|ft|yards?|yd\.|mi|in\.|in|inches|'|")?\s*(?:by|x|×)\s*(\d+(?:\.\d+)?)\s*(ft\.|ft|yards?|yd\.|mi|in\.|in|inches|'|")?\s*(?:(?:by|x|×)\s*(\d+(?:\.\d+)?)\s*(ft\.|ft|yards?|yd\.|mi|in\.|in|inches|'|")?)?\s*([a-z\._-]+)$"#).unwrap(),
-            // Pattern: "1 creature/level", "up to 6 targets", "6 objects"
             area_count_regex: Regex::new(r#"(?i)^(?:up\s+to\s+)?(\d+(?:\.\d+)?|1)\s*(?:/level)?\s*(creatures?|targets?|enemies?|allies?|objects?|undead|structures?)(?:\s*/level)?$"#).unwrap(),
-            // Pattern: "1000 cubic feet", "500 cu. yd."
             area_volume_regex: Regex::new(r#"(?i)^(\d+(?:\.\d+)?)\s*(cubic|cu\.)\s*([a-z\.'"-]+)$"#).unwrap(),
-            // Pattern: "16 10ft. squares", "5 hexes"
             area_tile_regex: Regex::new(r#"(?i)^(\d+)\s*(?:(\d+(?:\.\d+)?)\s*([a-z\.'"-]+)\s*)?(squares?|hexes?|rooms?|floors?)$"#).unwrap(),
         }
     }
@@ -46,280 +41,281 @@ impl AreaParser {
             return None;
         }
 
-        let lower = input_clean.to_lowercase();
+        let res = (|| {
+            let lower = input_clean.to_lowercase();
 
-        // Detect "Point" kind early if no digits present
-        if lower == "point" || lower == "point of impact" || lower == "point of contact" {
-            return Some(AreaSpec {
-                kind: AreaKind::Point,
-                unit: Some(AreaUnit::Ft),
-                shape_unit: Some(AreaShapeUnit::Ft),
-                ..Default::default()
-            });
-        }
-
-        // Helper to map units
-        let map_units = |u: &str| -> (Option<AreaUnit>, Option<AreaShapeUnit>) {
-            let u_clean = u.trim_start_matches('-');
-            match u_clean {
-                "foot" | "ft." | "ft" | "'" | "feet" => {
-                    (Some(AreaUnit::Ft), Some(AreaShapeUnit::Ft))
-                }
-                "yard" | "yd." | "yd" | "yards" => (Some(AreaUnit::Yd), Some(AreaShapeUnit::Yd)),
-                "mile" | "mi." | "mi" | "miles" => (Some(AreaUnit::Mi), Some(AreaShapeUnit::Mi)),
-                "inch" | "in." | "in" | "inches" | "\"" => {
-                    (Some(AreaUnit::Inch), Some(AreaShapeUnit::Inch))
-                }
-                "square" | "sq." | "sq" => (Some(AreaUnit::Square), None),
-                "ft2" | "sq. ft." | "sq ft" => (Some(AreaUnit::Ft2), Some(AreaShapeUnit::Ft)),
-                "yd2" | "sq. yd." | "sq yd" => (Some(AreaUnit::Yd2), Some(AreaShapeUnit::Yd)),
-                "ft3" | "cu. ft." | "cu ft" => (Some(AreaUnit::Ft3), Some(AreaShapeUnit::Ft)),
-                "yd3" | "cu. yd." | "cu yd" => (Some(AreaUnit::Yd3), Some(AreaShapeUnit::Yd)),
-                "hex" | "hexes" => (Some(AreaUnit::Hex), None),
-                "room" | "rooms" => (Some(AreaUnit::Room), None),
-                "floor" | "floors" => (Some(AreaUnit::Floor), None),
-                _ => (None, None),
-            }
-        };
-
-        // Helper to create SpellScalar
-        let make_scalar = |v: f64| SpellScalar {
-            mode: ScalarMode::Fixed,
-            value: Some(v),
-            per_level: None,
-            min_level: None,
-            max_level: None,
-            cap_value: None,
-            cap_level: None,
-            rounding: None,
-        };
-
-        // 1. Multi-dimensional: "20' by 10' wall", "10x10 rect"
-        if let Some(caps) = self.area_multi_regex.captures(&lower) {
-            let val1 = caps
-                .get(1)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit1 = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            let val2 = caps
-                .get(3)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit2 = caps.get(4).map(|m| m.as_str()).unwrap_or("");
-            let val3 = caps
-                .get(5)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit3 = caps.get(6).map(|m| m.as_str()).unwrap_or("");
-            let shape = caps.get(7).map(|m| m.as_str()).unwrap_or("");
-
-            let (u1, su1) = map_units(unit1);
-            let (_u2, su2) = map_units(unit2);
-            let (_u3, su3) = map_units(unit3);
-
-            let main_unit = u1.or(Some(AreaUnit::Ft));
-            let main_shape_unit = su1.or(su2).or(su3).or(Some(AreaShapeUnit::Ft));
-
-            match shape {
-                "wall" => {
-                    return Some(AreaSpec {
-                        kind: AreaKind::Wall,
-                        unit: main_unit,
-                        shape_unit: main_shape_unit,
-                        length: Some(make_scalar(val1)),
-                        height: Some(make_scalar(val2)),
-                        thickness: if val3 > 0.0 {
-                            Some(make_scalar(val3))
-                        } else {
-                            None
-                        },
-                        ..Default::default()
-                    });
-                }
-                "rect" | "square" => {
-                    return Some(AreaSpec {
-                        kind: AreaKind::Rect,
-                        unit: main_unit,
-                        shape_unit: main_shape_unit,
-                        length: Some(make_scalar(val1)),
-                        width: Some(make_scalar(val2)),
-                        ..Default::default()
-                    });
-                }
-                "rect_prism" => {
-                    return Some(AreaSpec {
-                        kind: AreaKind::RectPrism,
-                        unit: main_unit,
-                        shape_unit: main_shape_unit,
-                        length: Some(make_scalar(val1)),
-                        width: Some(make_scalar(val2)),
-                        height: Some(make_scalar(val3)),
-                        ..Default::default()
-                    });
-                }
-                _ => {}
-            }
-        }
-
-        // 2. Count-based: "1 creature/level", "6 objects"
-        if let Some(caps) = self.area_count_regex.captures(&lower) {
-            let count_str = caps.get(1).map_or("1", |m| m.as_str());
-            let subject_str = caps.get(2).map_or("", |m| m.as_str());
-
-            let val = count_str.parse::<f64>().unwrap_or(1.0);
-            let is_per_level = lower.contains("/level");
-
-            let kind = if subject_str.starts_with("object") {
-                AreaKind::Objects
-            } else {
-                AreaKind::Creatures
-            };
-
-            let subject = match subject_str {
-                "creature" | "creatures" => Some(CountSubject::Creature),
-                "undead" => Some(CountSubject::Undead),
-                "ally" | "allies" => Some(CountSubject::Ally),
-                "enemy" | "enemies" => Some(CountSubject::Enemy),
-                "object" | "objects" => Some(CountSubject::Object),
-                "structure" | "structures" => Some(CountSubject::Structure),
-                _ => Some(CountSubject::Creature),
-            };
-
-            let scalar = if is_per_level {
-                SpellScalar {
-                    mode: ScalarMode::PerLevel,
-                    per_level: Some(val),
-                    ..Default::default()
-                }
-            } else {
-                make_scalar(val)
-            };
-
-            return Some(AreaSpec {
-                kind,
-                count: Some(scalar),
-                count_subject: subject,
-                ..Default::default()
-            });
-        }
-
-        // 3. Volume: "1000 cubic feet"
-        if let Some(caps) = self.area_volume_regex.captures(&lower) {
-            let val = caps
-                .get(1)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit_raw = caps.get(3).map_or("", |m| m.as_str());
-            let (u, _su) = map_units(unit_raw);
-
-            return Some(AreaSpec {
-                kind: AreaKind::Volume,
-                volume: Some(make_scalar(val)),
-                unit: u
-                    .map(|unit| match unit {
-                        AreaUnit::Ft => AreaUnit::Ft3,
-                        AreaUnit::Yd => AreaUnit::Yd3,
-                        _ => unit,
-                    })
-                    .or(Some(AreaUnit::Ft3)),
-                ..Default::default()
-            });
-        }
-
-        // 4. Tiles: "16 10ft. squares"
-        if let Some(caps) = self.area_tile_regex.captures(&lower) {
-            let count = caps
-                .get(1)
-                .map_or(1.0, |m| m.as_str().parse().unwrap_or(1.0));
-            let size = caps.get(2).map(|m| m.as_str().parse().unwrap_or(0.0));
-            let unit_raw = caps.get(3).map_or("", |m| m.as_str());
-            let tile_unit_str = caps.get(4).map_or("", |m| m.as_str());
-
-            let (u, su) = map_units(unit_raw);
-
-            let tile_unit = match tile_unit_str {
-                "square" | "squares" => Some(TileUnit::Square),
-                "hex" | "hexes" => Some(TileUnit::Hex),
-                "room" | "rooms" => Some(TileUnit::Room),
-                "floor" | "floors" => Some(TileUnit::Floor),
-                _ => None,
-            };
-
-            return Some(AreaSpec {
-                kind: AreaKind::Tiles,
-                tile_count: Some(make_scalar(count)),
-                tile_unit,
-                length: size.map(make_scalar), // For squares/hexes, size is often length
-                unit: u,
-                shape_unit: su,
-                ..Default::default()
-            });
-        }
-
-        // 5. Variable Scaling shapes: "10 ft. + 5 ft./level radius"
-        if let Some(caps) = self.area_variable_regex.captures(&lower) {
-            let val1 = caps[1].parse().unwrap_or(0.0);
-            let unit1 = caps.get(2).map_or("", |m| m.as_str());
-            let val2 = caps[3].parse().unwrap_or(0.0);
-            let unit2 = caps.get(4).map_or("", |m| m.as_str());
-            let shape_raw = caps.get(5).map_or("", |m| m.as_str());
-
-            let (u1, su1) = map_units(unit1);
-            let (u2, su2) = map_units(unit2);
-
-            // Mixed Unit detection per spec: If both units are present and different, fallback to Special.
-            if u1.is_some() && u2.is_some() && u1 != u2 {
+            // Detect "Point" kind early if no digits present
+            if lower == "point" || lower == "point of impact" || lower == "point of contact" {
                 return Some(AreaSpec {
-                    kind: AreaKind::Special,
-                    notes: Some(input.to_string()),
-                    raw_legacy_value: Some(input.to_string()),
+                    kind: AreaKind::Point,
+                    unit: Some(AreaUnit::Ft),
+                    shape_unit: Some(AreaShapeUnit::Ft),
                     ..Default::default()
                 });
             }
 
-            let final_u = u2.or(u1);
-            let final_su = su2.or(su1);
-
-            let scalar = SpellScalar {
-                mode: ScalarMode::PerLevel,
-                value: Some(val1),
-                per_level: Some(val2),
-                ..Default::default()
+            // Helper to map units
+            let map_units = |u: &str| -> (Option<AreaUnit>, Option<AreaShapeUnit>) {
+                let u_clean = u.trim_start_matches('-');
+                match u_clean {
+                    "foot" | "ft." | "ft" | "'" | "feet" => {
+                        (Some(AreaUnit::Ft), Some(AreaShapeUnit::Ft))
+                    }
+                    "yard" | "yd." | "yd" | "yards" => {
+                        (Some(AreaUnit::Yd), Some(AreaShapeUnit::Yd))
+                    }
+                    "mile" | "mi." | "mi" | "miles" => {
+                        (Some(AreaUnit::Mi), Some(AreaShapeUnit::Mi))
+                    }
+                    "inch" | "in." | "in" | "inches" | "\"" => {
+                        (Some(AreaUnit::Inch), Some(AreaShapeUnit::Inch))
+                    }
+                    "square" | "sq." | "sq" => (Some(AreaUnit::Square), None),
+                    "ft2" | "sq. ft." | "sq ft" => (Some(AreaUnit::Ft2), Some(AreaShapeUnit::Ft)),
+                    "yd2" | "sq. yd." | "sq yd" => (Some(AreaUnit::Yd2), Some(AreaShapeUnit::Yd)),
+                    "ft3" | "cu. ft." | "cu ft" => (Some(AreaUnit::Ft3), Some(AreaShapeUnit::Ft)),
+                    "yd3" | "cu. yd." | "cu yd" => (Some(AreaUnit::Yd3), Some(AreaShapeUnit::Yd)),
+                    "hex" | "hexes" => (Some(AreaUnit::Hex), None),
+                    "room" | "rooms" => (Some(AreaUnit::Room), None),
+                    "floor" | "floors" => (Some(AreaUnit::Floor), None),
+                    _ => (None, None),
+                }
             };
-            return self.build_spec(shape_raw, Some(scalar), final_u, final_su, input);
-        }
 
-        // 6. Per-level only shapes: "5 ft./level radius"
-        if let Some(caps) = self.area_per_level_regex.captures(&lower) {
-            let val = caps[1].parse().unwrap_or(0.0);
-            let unit_raw = caps.get(2).map_or("", |m| m.as_str());
-            let shape_raw = caps.get(3).map_or("", |m| m.as_str());
-
-            let (u, su) = map_units(unit_raw);
-            let scalar = SpellScalar {
-                mode: ScalarMode::PerLevel,
-                value: None,
-                per_level: Some(val),
-                ..Default::default()
+            // Helper to create SpellScalar
+            let make_scalar = |v: f64| SpellScalar {
+                mode: ScalarMode::Fixed,
+                value: Some(v),
+                per_level: None,
+                min_level: None,
+                max_level: None,
+                cap_value: None,
+                cap_level: None,
+                rounding: None,
             };
-            return self.build_spec(shape_raw, Some(scalar), u, su, input);
-        }
 
-        // 7. Simple shapes: "20' radius"
-        if let Some(caps) = self.area_simple_regex.captures(&lower) {
-            let val = caps
-                .get(1)
-                .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
-            let unit_raw = caps.get(2).map_or("", |m| m.as_str());
-            let shape_raw = caps.get(3).map_or("", |m| m.as_str());
+            // 1. Multi-dimensional: "20' by 10' wall", "10x10 rect", "20 ft. x 10 ft. x 10 ft. rect_prism"
+            if let Some(caps) = self.area_multi_regex.captures(&lower) {
+                let val1 = caps
+                    .get(1)
+                    .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                let unit1 = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                let val2 = caps
+                    .get(3)
+                    .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                let unit2 = caps.get(4).map(|m| m.as_str()).unwrap_or("");
+                let val3 = caps
+                    .get(5)
+                    .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                let unit3 = caps.get(6).map(|m| m.as_str()).unwrap_or("");
+                let shape = caps.get(7).map(|m| m.as_str()).unwrap_or("");
 
-            let (u, su) = map_units(unit_raw);
-            return self.build_spec(shape_raw, Some(make_scalar(val)), u, su, input);
-        }
+                let (u1, su1) = map_units(unit1);
+                let (_u2, su2) = map_units(unit2);
+                let (_u3, su3) = map_units(unit3);
 
-        // Fallback
-        Some(AreaSpec {
+                let main_unit = u1.or(Some(AreaUnit::Ft));
+                let main_shape_unit = su1.or(su2).or(su3).or(Some(AreaShapeUnit::Ft));
+
+                match shape {
+                    "wall" => {
+                        return Some(AreaSpec {
+                            kind: AreaKind::Wall,
+                            unit: main_unit,
+                            shape_unit: main_shape_unit,
+                            length: Some(make_scalar(val1)),
+                            height: Some(make_scalar(val2)),
+                            thickness: if val3 > 0.0 {
+                                Some(make_scalar(val3))
+                            } else {
+                                None
+                            },
+                            ..Default::default()
+                        });
+                    }
+                    "rect" | "square" | "rectangle" => {
+                        return Some(AreaSpec {
+                            kind: AreaKind::Rect,
+                            unit: main_unit,
+                            shape_unit: main_shape_unit,
+                            length: Some(make_scalar(val1)),
+                            width: Some(make_scalar(val2)),
+                            ..Default::default()
+                        });
+                    }
+                    "rect_prism" | "prism" => {
+                        return Some(AreaSpec {
+                            kind: AreaKind::RectPrism,
+                            unit: main_unit,
+                            shape_unit: main_shape_unit,
+                            length: Some(make_scalar(val1)),
+                            width: Some(make_scalar(val2)),
+                            height: Some(make_scalar(val3)),
+                            ..Default::default()
+                        });
+                    }
+                    _ => {}
+                }
+            }
+
+            // 2. Count-based: "1 creature/level", "6 objects"
+            if let Some(caps) = self.area_count_regex.captures(&lower) {
+                let count_str = caps.get(1).map_or("1", |m| m.as_str());
+                let subject_str = caps.get(2).map_or("", |m| m.as_str());
+
+                let val = count_str.parse::<f64>().unwrap_or(1.0);
+                let is_per_level = lower.contains("/level");
+
+                let scalar = if is_per_level {
+                    SpellScalar {
+                        mode: ScalarMode::PerLevel,
+                        per_level: Some(val),
+                        ..Default::default()
+                    }
+                } else {
+                    make_scalar(val)
+                };
+
+                let (kind, subject) = match subject_str {
+                    "creature" | "creatures" | "target" | "targets" | "enemy" | "enemies"
+                    | "ally" | "allies" | "undead" => {
+                        (AreaKind::Creatures, Some(CountSubject::Creature))
+                    }
+                    "object" | "objects" => (AreaKind::Objects, Some(CountSubject::Object)),
+                    "structure" | "structures" => {
+                        (AreaKind::Objects, Some(CountSubject::Structure))
+                    }
+                    _ => (AreaKind::Creatures, None),
+                };
+
+                return Some(AreaSpec {
+                    kind,
+                    count: Some(scalar),
+                    count_subject: subject,
+                    ..Default::default()
+                });
+            }
+
+            // 3. Volume: "1000 cubic feet"
+            if let Some(caps) = self.area_volume_regex.captures(&lower) {
+                let val = caps
+                    .get(1)
+                    .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                let unit = caps.get(3).map_or("", |m| m.as_str());
+
+                if let (Some(u), _) = map_units(unit) {
+                    let volume_unit = match u {
+                        AreaUnit::Ft => AreaUnit::Ft3,
+                        AreaUnit::Yd => AreaUnit::Yd3,
+                        _ => u,
+                    };
+                    return Some(AreaSpec {
+                        kind: AreaKind::Volume,
+                        unit: Some(volume_unit),
+                        volume: Some(make_scalar(val)),
+                        ..Default::default()
+                    });
+                }
+            }
+
+            // 4. Tiles: "16 10ft. squares", "5 hexes"
+            if let Some(caps) = self.area_tile_regex.captures(&lower) {
+                let count = caps
+                    .get(1)
+                    .map_or(1.0, |m| m.as_str().parse().unwrap_or(1.0));
+                let size_str = caps.get(2).map_or("", |m| m.as_str());
+                let unit_str = caps.get(3).map_or("", |m| m.as_str());
+                let tile_kind = caps.get(4).map_or("", |m| m.as_str());
+
+                let tile_unit = match tile_kind {
+                    "square" | "squares" => Some(TileUnit::Square),
+                    "hex" | "hexes" => Some(TileUnit::Hex),
+                    "room" | "rooms" => Some(TileUnit::Room),
+                    "floor" | "floors" => Some(TileUnit::Floor),
+                    _ => None,
+                };
+
+                return Some(AreaSpec {
+                    kind: AreaKind::Tiles,
+                    tile_count: Some(make_scalar(count)),
+                    tile_unit,
+                    length: if !size_str.is_empty() {
+                        Some(make_scalar(size_str.parse().unwrap_or(0.0)))
+                    } else {
+                        None
+                    },
+                    unit: if !unit_str.is_empty() {
+                        map_units(unit_str).0
+                    } else {
+                        None
+                    },
+                    ..Default::default()
+                });
+            }
+
+            // 5. Normal shapes with scaling (e.g. "20' + 5'/level radius")
+            if let Some(caps) = self.area_variable_regex.captures(&lower) {
+                let base = caps
+                    .get(1)
+                    .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                let per_level = caps
+                    .get(3)
+                    .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                let unit_raw = caps.get(2).map_or("", |m| m.as_str());
+                let shape_raw = caps.get(5).map_or("", |m| m.as_str());
+
+                let (u, su) = map_units(unit_raw);
+                let scalar = SpellScalar {
+                    mode: ScalarMode::PerLevel,
+                    value: Some(base),
+                    per_level: Some(per_level),
+                    ..Default::default()
+                };
+
+                return self.build_spec(shape_raw, Some(scalar), u, su, input_clean);
+            }
+
+            if let Some(caps) = self.area_per_level_regex.captures(&lower) {
+                let per_level = caps
+                    .get(1)
+                    .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                let unit_raw = caps.get(2).map_or("", |m| m.as_str());
+                let shape_raw = caps.get(3).map_or("", |m| m.as_str());
+
+                let (u, su) = map_units(unit_raw);
+                let scalar = SpellScalar {
+                    mode: ScalarMode::PerLevel,
+                    per_level: Some(per_level),
+                    ..Default::default()
+                };
+
+                return self.build_spec(shape_raw, Some(scalar), u, su, input_clean);
+            }
+
+            // Pattern: simple "20' radius"
+            if let Some(caps) = self.area_simple_regex.captures(&lower) {
+                let val = caps
+                    .get(1)
+                    .map_or(0.0, |m| m.as_str().parse().unwrap_or(0.0));
+                let unit_raw = caps.get(2).map_or("", |m| m.as_str());
+                let shape_raw = caps.get(3).map_or("", |m| m.as_str());
+
+                let (u, su) = map_units(unit_raw);
+                return self.build_spec(shape_raw, Some(make_scalar(val)), u, su, input_clean);
+            }
+
+            // Fallback
+            None
+        })();
+
+        let mut area = res.unwrap_or_else(|| AreaSpec {
             kind: AreaKind::Special,
-            notes: Some(input.to_string()),
-            raw_legacy_value: Some(input.to_string()),
             ..Default::default()
-        })
+        });
+
+        area.raw_legacy_value = Some(input_clean.to_string());
+        area.synthesize_text();
+        Some(area)
     }
 
     fn build_spec(
@@ -365,25 +361,13 @@ impl AreaParser {
             }
             "wall" => {
                 length = scalar;
-                height = Some(SpellScalar {
-                    mode: ScalarMode::Fixed,
-                    value: Some(10.0),
-                    ..Default::default()
-                });
-                thickness = Some(SpellScalar {
-                    mode: ScalarMode::Fixed,
-                    value: Some(1.0),
-                    ..Default::default()
-                });
+                height = Some(SpellScalar::fixed(10.0));
+                thickness = Some(SpellScalar::fixed(1.0));
                 AreaKind::Wall
             }
             "cylinder" => {
                 radius = scalar;
-                height = Some(SpellScalar {
-                    mode: ScalarMode::Fixed,
-                    value: Some(10.0),
-                    ..Default::default()
-                });
+                height = Some(SpellScalar::fixed(10.0));
                 AreaKind::Cylinder
             }
             "point" => AreaKind::Point,
@@ -555,5 +539,29 @@ mod tests {
         let length = res2.length.unwrap();
         assert_eq!(length.mode, ScalarMode::PerLevel);
         assert_eq!(length.per_level.unwrap(), 10.0);
+    }
+
+    #[test]
+    fn test_unconditional_legacy_text_preservation() {
+        let parser = AreaParser::new();
+
+        // Success case
+        let res = parser.parse("20' radius").unwrap();
+        assert_eq!(res.raw_legacy_value.as_ref().unwrap(), "20' radius");
+
+        // Fallback case
+        let res2 = parser.parse("Something weird").unwrap();
+        assert_eq!(res2.kind, AreaKind::Special);
+        assert_eq!(res2.raw_legacy_value.as_ref().unwrap(), "Something weird");
+    }
+
+    /// Task 1.5: Empty input must yield None (no spec), so no raw_legacy_value at all.
+    #[test]
+    fn test_parse_area_empty_returns_none() {
+        let parser = AreaParser::new();
+        let res = parser.parse("");
+        assert!(res.is_none(), "empty input must return None");
+        let res_ws = parser.parse("   ");
+        assert!(res_ws.is_none(), "whitespace-only input must return None");
     }
 }

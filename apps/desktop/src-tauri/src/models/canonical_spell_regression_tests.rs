@@ -38,7 +38,7 @@ fn test_issue_2_materialize_defaults() {
         ..Default::default()
     };
 
-    spell.normalize();
+    spell.normalize(None);
 
     assert_eq!(spell.reversible, None);
     assert_eq!(spell.material_components, None);
@@ -96,7 +96,7 @@ fn test_experience_flag_autosync() {
         experience: false,
     });
 
-    spell.normalize();
+    spell.normalize(None);
 
     assert!(spell.components.unwrap().experience);
 }
@@ -365,7 +365,7 @@ fn test_regression_lean_hashing_complex_pruning() {
         experience: false,
     });
 
-    spell.normalize();
+    spell.normalize(None);
 
     // Rule 88: All these should be pruned because they match their default state
     assert!(spell.saving_throw.is_none(), "Default ST should be pruned");
@@ -474,9 +474,9 @@ fn test_regression_range_text_word_boundaries() {
     spell_ft_dot.name = "FtDot".to_string();
     spell_ft_dot.range.as_mut().unwrap().text = Some("60 ft.".to_string());
 
-    spell_backyard.normalize();
-    spell_yards.normalize();
-    spell_ft_dot.normalize();
+    spell_backyard.normalize(None);
+    spell_yards.normalize(None);
+    spell_ft_dot.normalize(None);
 
     assert_eq!(
         spell_backyard.range.as_ref().unwrap().text.as_deref(),
@@ -625,7 +625,7 @@ fn test_regression_dice_term_clamping_in_spell() {
         ..Default::default()
     });
 
-    spell.normalize();
+    spell.normalize(None);
     let terms = &spell.damage.as_ref().unwrap().parts.as_ref().unwrap()[0]
         .base
         .terms;
@@ -668,4 +668,117 @@ fn test_regression_duration_spec_deny_unknown_fields() {
     let json = r#"{"kind": "time", "unit": "round", "unknown_field": "error"}"#;
     let result: Result<crate::models::duration_spec::DurationSpec, _> = serde_json::from_str(json);
     assert!(result.is_err(), "DurationSpec must reject unknown field");
+}
+
+#[test]
+fn test_regression_area_text_includes_count_subject_when_present() {
+    use crate::models::area_spec::{AreaKind, AreaSpec, CountSubject};
+    use crate::models::scalar::{ScalarMode, SpellScalar};
+
+    let mut spell = CanonicalSpell::new(
+        "Area Count Subject".into(),
+        1,
+        "ARCANE".into(),
+        "Desc".into(),
+    );
+    spell.school = Some("Evocation".into());
+    spell.class_list = vec!["Wizard".into()];
+    spell.area = Some(AreaSpec {
+        kind: AreaKind::Creatures,
+        count: Some(SpellScalar {
+            mode: ScalarMode::Fixed,
+            value: Some(3.0),
+            per_level: None,
+            min_level: None,
+            max_level: None,
+            cap_value: None,
+            cap_level: None,
+            rounding: None,
+        }),
+        count_subject: Some(CountSubject::Undead),
+        ..Default::default()
+    });
+
+    spell.normalize(None);
+
+    assert_eq!(
+        spell.area.as_ref().unwrap().text.as_deref(),
+        Some("3 undead"),
+        "Area text should include count_subject for creatures/objects when present"
+    );
+}
+
+#[test]
+fn test_regression_structured_aliases_case_insensitive_with_boundaries() {
+    let normalized = crate::models::canonical_spell::normalize_structured_text_with_unit_aliases(
+        "10 Yards and 5 FOOT near backYard",
+    );
+
+    assert_eq!(
+        normalized, "10 yd and 5 ft near backYard",
+        "Alias normalization should be case-insensitive for whole words only"
+    );
+}
+
+#[test]
+fn test_regression_raw_legacy_value_preserved_as_is() {
+    use crate::models::area_spec::{AreaKind, AreaSpec};
+    use crate::models::duration_spec::{DurationKind, DurationSpec};
+    use crate::models::range_spec::{RangeKind, RangeSpec};
+
+    let raw = "  Legacy  Value\n  WITH   Spaces  ".to_string();
+
+    let mut spell = CanonicalSpell::new(
+        "Raw Legacy Preservation".into(),
+        1,
+        "ARCANE".into(),
+        "Desc".into(),
+    );
+    spell.school = Some("Abjuration".into());
+    spell.class_list = vec!["Wizard".into()];
+
+    spell.area = Some(AreaSpec {
+        kind: AreaKind::Special,
+        raw_legacy_value: Some(raw.clone()),
+        ..Default::default()
+    });
+    spell.duration = Some(DurationSpec {
+        kind: DurationKind::Special,
+        raw_legacy_value: Some(raw.clone()),
+        ..Default::default()
+    });
+    spell.range = Some(RangeSpec {
+        kind: RangeKind::Special,
+        raw_legacy_value: Some(raw.clone()),
+        ..Default::default()
+    });
+    spell.casting_time = Some(crate::models::canonical_spell::SpellCastingTime {
+        text: "1 segment".to_string(),
+        unit: crate::models::canonical_spell::CastingTimeUnit::Special,
+        raw_legacy_value: Some(raw.clone()),
+        ..Default::default()
+    });
+
+    spell.normalize(None);
+
+    assert_eq!(
+        spell.area.as_ref().unwrap().raw_legacy_value.as_deref(),
+        Some(raw.as_str())
+    );
+    assert_eq!(
+        spell.duration.as_ref().unwrap().raw_legacy_value.as_deref(),
+        Some(raw.as_str())
+    );
+    assert_eq!(
+        spell.range.as_ref().unwrap().raw_legacy_value.as_deref(),
+        Some(raw.as_str())
+    );
+    assert_eq!(
+        spell.casting_time
+            .as_ref()
+            .unwrap()
+            .raw_legacy_value
+            .as_deref(),
+        Some(raw.as_str())
+    );
 }

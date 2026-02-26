@@ -33,51 +33,60 @@ impl ComponentsParser {
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(1.0);
 
+        // 5e units (Action, BonusAction, Reaction) are not valid for 1e/2e content.
+        // Per task 1.4: the parser must remap them to Special and always preserve the
+        // source text in raw_legacy_value so migration is not required to recover it.
         if lower.contains("bonus action") {
             return SpellCastingTime {
-                text: input.to_string(),
-                unit: CastingTimeUnit::BonusAction,
+                text: input_clean.to_string(),
+                unit: CastingTimeUnit::Special,
                 base_value: Some(base_val),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
         if lower.contains("reaction") {
             return SpellCastingTime {
-                text: input.to_string(),
-                unit: CastingTimeUnit::Reaction,
+                text: input_clean.to_string(),
+                unit: CastingTimeUnit::Special,
                 base_value: Some(base_val),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
         if lower.contains("action") {
             return SpellCastingTime {
-                text: input.to_string(),
-                unit: CastingTimeUnit::Action,
+                text: input_clean.to_string(),
+                unit: CastingTimeUnit::Special,
                 base_value: Some(base_val),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
         if lower.contains("round") {
             return SpellCastingTime {
-                text: input.to_string(),
+                text: input_clean.to_string(),
                 unit: CastingTimeUnit::Round,
                 base_value: Some(base_val),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
         if lower.contains("minute") {
             return SpellCastingTime {
-                text: input.to_string(),
+                text: input_clean.to_string(),
                 unit: CastingTimeUnit::Minute,
                 base_value: Some(base_val),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
         if lower.contains("hour") {
             return SpellCastingTime {
-                text: input.to_string(),
+                text: input_clean.to_string(),
                 unit: CastingTimeUnit::Hour,
                 base_value: Some(base_val),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
@@ -87,20 +96,20 @@ impl ComponentsParser {
             || lower.ends_with(" seg")
         {
             return SpellCastingTime {
-                text: input.to_string(),
+                text: input_clean.to_string(),
                 unit: CastingTimeUnit::Segment,
                 base_value: Some(base_val),
+                raw_legacy_value: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
 
         SpellCastingTime {
-            text: input.to_string(),
+            text: input_clean.to_string(),
             unit: CastingTimeUnit::Special,
             base_value: Some(0.0),
-            per_level: Some(0.0),
-            level_divisor: Some(1.0),
-            raw_legacy_value: Some(input.to_string()),
+            raw_legacy_value: Some(input_clean.to_string()),
+            ..Default::default()
         }
     }
 
@@ -334,7 +343,21 @@ mod tests {
         assert_eq!(res.unit, CastingTimeUnit::Round);
 
         let res2 = parser.parse_casting_time("1 action");
-        assert_eq!(res2.unit, CastingTimeUnit::Action);
+        // Per task 1.4: 5e units are remapped to Special at parse time
+        assert_eq!(res2.unit, CastingTimeUnit::Special);
+        assert_eq!(res2.raw_legacy_value.as_deref(), Some("1 action"));
+    }
+
+    /// Task 1.5: Empty casting time input must yield raw_legacy_value: None (default struct).
+    #[test]
+    fn test_parse_casting_time_empty_raw_legacy_value_none() {
+        let parser = ComponentsParser::new();
+        let res = parser.parse_casting_time("");
+        assert!(
+            res.raw_legacy_value.is_none(),
+            "empty casting time must produce raw_legacy_value None, got {:?}",
+            res.raw_legacy_value
+        );
     }
 
     #[test]
@@ -470,11 +493,14 @@ mod tests {
     fn test_parse_casting_time_bonus_reaction() {
         let parser = ComponentsParser::new();
 
+        // Per task 1.4: 5e units are remapped to Special at parse time
         let res = parser.parse_casting_time("1 bonus action");
-        assert_eq!(res.unit, CastingTimeUnit::BonusAction);
+        assert_eq!(res.unit, CastingTimeUnit::Special);
+        assert_eq!(res.raw_legacy_value.as_deref(), Some("1 bonus action"));
 
         let res2 = parser.parse_casting_time("1 reaction");
-        assert_eq!(res2.unit, CastingTimeUnit::Reaction);
+        assert_eq!(res2.unit, CastingTimeUnit::Special);
+        assert_eq!(res2.raw_legacy_value.as_deref(), Some("1 reaction"));
     }
 
     #[test]

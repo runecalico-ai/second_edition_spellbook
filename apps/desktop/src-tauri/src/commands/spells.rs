@@ -342,7 +342,7 @@ pub fn canonicalize_spell_detail(
     let mut canonical = CanonicalSpell::try_from(detail).map_err(AppError::Validation)?;
 
     // Normalize BEFORE hashing/serializing to ensure the stored data is clean
-    canonical.normalize();
+    canonical.normalize(None);
 
     let hash = canonical
         .compute_hash()

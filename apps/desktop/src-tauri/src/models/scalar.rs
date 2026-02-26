@@ -74,6 +74,33 @@ impl SpellScalar {
             ..Default::default()
         }
     }
+
+    pub fn to_text(&self) -> String {
+        let value = self.value.unwrap_or(0.0);
+        match self.mode {
+            ScalarMode::Fixed => format_numeric(value),
+            ScalarMode::PerLevel => {
+                let per_level = self.per_level.unwrap_or(0.0);
+                if value == 0.0 {
+                    format!("{}/level", format_numeric(per_level))
+                } else {
+                    format!(
+                        "{}+{}/level",
+                        format_numeric(value),
+                        format_numeric(per_level)
+                    )
+                }
+            }
+        }
+    }
+}
+
+pub fn format_numeric(value: f64) -> String {
+    if value.fract() == 0.0 {
+        format!("{}", value as i64)
+    } else {
+        format!("{}", value)
+    }
 }
 
 // SpellScalar represents a scalable numerical value (fixed or per-level).

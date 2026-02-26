@@ -66,6 +66,22 @@ pub enum DurationUnit {
     Year,
 }
 
+impl DurationUnit {
+    pub fn to_text(&self) -> &'static str {
+        match self {
+            DurationUnit::Segment => "segment",
+            DurationUnit::Round => "round",
+            DurationUnit::Turn => "turn",
+            DurationUnit::Minute => "minute",
+            DurationUnit::Hour => "hour",
+            DurationUnit::Day => "day",
+            DurationUnit::Week => "week",
+            DurationUnit::Month => "month",
+            DurationUnit::Year => "year",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
@@ -87,7 +103,10 @@ pub struct DurationSpec {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
 
-    /// When parsing fails or falls back to Special, the original legacy string is stored here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+
+    /// Original legacy source text preserved as-is for auditability.
     #[serde(skip_serializing_if = "Option::is_none", alias = "raw_legacy_value")]
     pub raw_legacy_value: Option<String>,
 }
@@ -101,6 +120,7 @@ impl Default for DurationSpec {
             condition: None,
             uses: None,
             notes: None,
+            text: None,
             raw_legacy_value: None,
         }
     }
@@ -120,7 +140,45 @@ impl DurationSpec {
                 crate::models::canonical_spell::NormalizationMode::Textual,
             );
         }
+        // Note: In the canonical pipeline, CanonicalSpell::normalize() calls
+        // synthesize_duration_text() immediately after this method, which unconditionally
+        // overwrites `text`. This branch is only effective when DurationSpec::normalize()
+        // is called standalone (e.g. in unit tests).
+        if let Some(t) = &mut self.text {
+            *t = crate::models::canonical_spell::normalize_structured_text_with_unit_aliases(t);
+        }
         crate::models::canonical_spell::normalize_scalar(&mut self.duration);
         crate::models::canonical_spell::normalize_scalar(&mut self.uses);
+    }
+
+    pub fn synthesize_text(&mut self) {
+        use crate::models::duration_spec::DurationKind;
+
+        let synthesized = match self.kind {
+            DurationKind::Special => self.raw_legacy_value.clone(),
+            DurationKind::Instant => Some("Instant".to_string()),
+            DurationKind::Permanent => Some("Permanent".to_string()),
+            DurationKind::Concentration => Some("Concentration".to_string()),
+            DurationKind::UntilDispelled => Some("Until dispelled".to_string()),
+            DurationKind::Conditional | DurationKind::UntilTriggered | DurationKind::Planar => {
+                self.condition.as_ref().map(|c| c.to_string())
+            }
+            DurationKind::UsageLimited => self
+                .uses
+                .as_ref()
+                .map(|uses| format!("{} uses", uses.to_text())),
+            DurationKind::Time => match (&self.duration, self.unit.clone()) {
+                (Some(value), Some(unit)) => {
+                    Some(format!("{} {}", value.to_text(), unit.to_text()))
+                }
+                _ => None,
+            },
+        };
+
+        if let Some(t) = synthesized {
+            self.text = Some(
+                crate::models::canonical_spell::normalize_structured_text_with_unit_aliases(&t),
+            );
+        }
     }
 }

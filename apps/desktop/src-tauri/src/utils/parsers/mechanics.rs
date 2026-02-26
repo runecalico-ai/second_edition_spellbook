@@ -18,6 +18,28 @@ impl Default for MechanicsParser {
 }
 
 impl MechanicsParser {
+    fn is_standard_complex_save_category(input_lower: &str) -> bool {
+        let normalized = input_lower
+            .replace([',', '.'], " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        matches!(
+            normalized.as_str(),
+            "rod staff or wand"
+                | "save vs rod staff or wand"
+                | "paralyzation poison or death"
+                | "save vs paralyzation poison or death"
+                | "paralyzation poison or death magic"
+                | "save vs paralyzation poison or death magic"
+                | "petrification or polymorph"
+                | "save vs petrification or polymorph"
+                | "polymorph or petrification"
+                | "save vs polymorph or petrification"
+        )
+    }
+
     pub fn new() -> Self {
         Self {
             dice_term_regex: Regex::new(r"(?P<count>\d+)?d(?P<sides>\d+)(?:\s*(?P<mod>[+-]\s*\d+))?").unwrap(),
@@ -61,7 +83,7 @@ impl MechanicsParser {
             return SpellDamageSpec {
                 kind: crate::models::damage::DamageKind::DmAdjudicated,
                 dm_guidance: Some(input_clean.to_string()),
-                raw_legacy_value: Some(input_clean.to_string()),
+                source_text: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
@@ -212,7 +234,7 @@ impl MechanicsParser {
             return SpellDamageSpec {
                 kind: crate::models::damage::DamageKind::DmAdjudicated,
                 dm_guidance: Some(input_clean.to_string()),
-                raw_legacy_value: Some(input_clean.to_string()),
+                source_text: Some(input_clean.to_string()),
                 ..Default::default()
             };
         }
@@ -223,7 +245,7 @@ impl MechanicsParser {
             parts: Some(parts),
             dm_guidance: None,
             notes: Some(input_clean.to_string()),
-            raw_legacy_value: None,
+            source_text: Some(input_clean.to_string()),
         }
     }
 
@@ -233,6 +255,11 @@ impl MechanicsParser {
         {
             return MagicResistanceSpec {
                 kind: MagicResistanceKind::Unknown,
+                source_text: if input_clean.is_empty() {
+                    None
+                } else {
+                    Some(input_clean.to_string())
+                },
                 ..Default::default()
             };
         }
@@ -277,13 +304,19 @@ impl MechanicsParser {
                 None
             },
             notes: Some(input_clean.to_string()),
+            source_text: Some(input_clean.to_string()),
         }
     }
 
     pub fn parse_saving_throw(&self, input: &str) -> SavingThrowSpec {
         let input_clean = input.trim();
+        // Per task 1.4: both empty input and the sentinel value "None" (meaning "no saving throw"
+        // required) must yield raw_legacy_value: None — there is no source text to preserve.
         if input_clean.is_empty() || input_clean == "None" {
-            return SavingThrowSpec::default();
+            return SavingThrowSpec {
+                raw_legacy_value: None,
+                ..Default::default()
+            };
         }
 
         // Split by delimiters to detect multiple saves
@@ -295,18 +328,12 @@ impl MechanicsParser {
             .collect();
 
         // Check if the entire input matches a standard category to avoid incorrect splitting
-        // (e.g. "Rod, Staff, or Wand" should not be split by " or ")
-        // " then " overrides this: "Save vs Spell, then Save vs Poison" must parse as multiple
+        // (e.g. "Rod, Staff, or Wand" should not be split by " or ").
+        // Use exact normalized categories to avoid false positives from broad substrings.
+        // " then " overrides this: "Save vs Spell, then Save vs Poison" must parse as multiple.
         let lower = input_clean.to_lowercase();
         let is_standard_complex = !lower.contains(" then ")
-            && (lower.contains("rod")
-                || lower.contains("staff")
-                || lower.contains("wand")
-                || lower.contains("poison")
-                || lower.contains("death")
-                || lower.contains("paraly")
-                || lower.contains("poly")
-                || lower.contains("petri"));
+            && Self::is_standard_complex_save_category(&lower);
 
         if parts.len() > 1 && !is_standard_complex {
             let mut saves = Vec::new();
@@ -317,8 +344,9 @@ impl MechanicsParser {
                 kind: SavingThrowKind::Multiple,
                 single: None,
                 multiple: Some(saves),
-                dm_guidance: None,
-                notes: Some(input_clean.to_string()),
+                raw_legacy_value: Some(input_clean.to_string()),
+                legacy_dm_guidance: None,
+                notes: None,
             };
         }
 
@@ -327,8 +355,9 @@ impl MechanicsParser {
             kind: SavingThrowKind::Single,
             single: Some(self.parse_single_save_intern(input_clean)),
             multiple: None,
-            dm_guidance: None,
-            notes: Some(input_clean.to_string()),
+            raw_legacy_value: Some(input_clean.to_string()),
+            legacy_dm_guidance: None,
+            notes: None,
         }
     }
 
@@ -404,7 +433,14 @@ impl MechanicsParser {
     pub fn parse_experience_cost(&self, input: &str) -> ExperienceComponentSpec {
         let input_clean = input.trim();
         if input_clean.is_empty() || input_clean == "None" || input_clean == "0" {
-            return ExperienceComponentSpec::default();
+            return ExperienceComponentSpec {
+                source_text: if input_clean.is_empty() {
+                    None
+                } else {
+                    Some(input_clean.to_string())
+                },
+                ..Default::default()
+            };
         }
 
         let lower = input_clean.to_lowercase();
@@ -440,6 +476,7 @@ impl MechanicsParser {
             amount_xp,
             per_unit,
             notes: Some(input_clean.to_string()),
+            source_text: Some(input_clean.to_string()),
             ..Default::default()
         }
     }
@@ -630,6 +667,69 @@ mod tests {
         assert_eq!(
             res6.single.as_ref().unwrap().save_type,
             SaveType::ParalyzationPoisonDeath
+        );
+    }
+
+    /// Task 1.5: Empty and "None" sentinel must yield raw_legacy_value: None.
+    #[test]
+    fn test_parse_saving_throw_empty_and_none_raw_legacy_value_none() {
+        let parser = MechanicsParser::new();
+        let res_empty = parser.parse_saving_throw("");
+        assert!(
+            res_empty.raw_legacy_value.is_none(),
+            "empty saving throw must produce raw_legacy_value None"
+        );
+        let res_none = parser.parse_saving_throw("None");
+        assert!(
+            res_none.raw_legacy_value.is_none(),
+            "\"None\" sentinel must produce raw_legacy_value None"
+        );
+    }
+
+    /// Task 1.5: Multiple-save input must retain full unsplit legacy string in raw_legacy_value.
+    #[test]
+    fn test_parse_saving_throw_multiple_retains_full_raw_legacy_value() {
+        let parser = MechanicsParser::new();
+        let full = "Fortitude partial; Will negates";
+        let res = parser.parse_saving_throw(full);
+        assert_eq!(res.kind, SavingThrowKind::Multiple);
+        assert_eq!(
+            res.raw_legacy_value.as_deref(),
+            Some(full),
+            "multiple-save raw_legacy_value must retain full unsplit string"
+        );
+    }
+
+    /// Task 1.5: "Rod, Staff, or Wand" must parse as single save via is_standard_complex heuristic (not split on " or ").
+    #[test]
+    fn test_parse_saving_throw_rod_staff_wand_single_save() {
+        let parser = MechanicsParser::new();
+        let res = parser.parse_saving_throw("Rod, Staff, or Wand");
+        assert_eq!(res.kind, SavingThrowKind::Single);
+        assert_eq!(
+            res.single.as_ref().unwrap().save_type,
+            SaveType::RodStaffWand
+        );
+        assert_eq!(
+            res.raw_legacy_value.as_deref(),
+            Some("Rod, Staff, or Wand"),
+            "single-save raw_legacy_value must preserve full text"
+        );
+    }
+
+    #[test]
+    fn test_parse_saving_throw_death_magic_or_polymorph_splits_multiple() {
+        let parser = MechanicsParser::new();
+        let res = parser.parse_saving_throw("Save vs. Death Magic or Polymorph");
+
+        assert_eq!(res.kind, SavingThrowKind::Multiple);
+        let saves = res.multiple.as_ref().unwrap();
+        assert_eq!(saves.len(), 2);
+        assert_eq!(saves[0].save_type, SaveType::ParalyzationPoisonDeath);
+        assert_eq!(saves[1].save_type, SaveType::PetrificationPolymorph);
+        assert_eq!(
+            res.raw_legacy_value.as_deref(),
+            Some("Save vs. Death Magic or Polymorph")
         );
     }
 

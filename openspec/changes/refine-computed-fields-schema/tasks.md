@@ -12,27 +12,30 @@ Section 2 ──┘
 
 ## 1. Schema & Backend
 
-- [ ] 1.1 Update `spell.schema.json` with the following precise changes:
-  - [ ] **Add** optional `text: string` to `AreaSpec` and `DurationSpec`
-  - [ ] **Add** optional `raw_legacy_value: string` to `SavingThrowSpec`
-  - [ ] **Add** optional `source_text: string` to `MagicResistanceSpec`
-  - [ ] **Remove** `dm_guidance` from `SavingThrowSpec`
-  - [ ] **Remove** `raw_legacy_value` from `SpellDamageSpec`; **add** optional `source_text: string` in its place
-  - [ ] **Remove** `"action"`, `"bonus_action"`, and `"reaction"` from the `SpellCastingTime.unit` enum
-  - [ ] **Do NOT modify** the resolved specs (`ResolvedAreaSpec`, `ResolvedDurationSpec`, `ResolvedRangeSpec`) — they must not gain `text`, `raw_legacy_value`, or `source_text` properties (Decision 7)
-- [ ] 1.2 Update Rust data models in `src/models/spell.rs`:
-  - [ ] Declare `AreaSpec.text`, `DurationSpec.text`, `SavingThrowSpec.raw_legacy_value`, and `MagicResistanceSpec.source_text` as `Option<String>` with `#[serde(skip_serializing_if = "Option::is_none")]` (existing `#[serde(rename_all = "camelCase")]` on structs handles IPC casing automatically for all new fields)
-  - [ ] Rename `SpellDamageSpec.raw_legacy_value` → `source_text`; add `#[serde(alias = "raw_legacy_value")]` on `source_text` for backward deserialization compatibility
-  - [ ] Remove `dm_guidance` from `SavingThrowSpec` struct; add a deserialization-only shadow field with `#[serde(default, skip_serializing)]` so pre-migration JSON with `dm_guidance` round-trips without data loss
-  - [ ] Confirm `prune_metadata_recursive()` prunes `"source_text"` keys on `SpellDamageSpec` and `MagicResistanceSpec` — the existing key-name exclusion for `"source_text"` (which already handles `ExperienceComponentSpec`) should cover both new fields automatically; if pruning is per-type rather than per-key, add the new types explicitly
-- [ ] 1.2b Implement `.text` synthesis in `normalize()` for `AreaSpec` and `DurationSpec` in `src/models/canonical_spell.rs`:
-  - [ ] Build a canonical display string from the structured algebraic fields (e.g., `kind`, `radius`/`distance`, `unit`) — this is a new Rust function, not just a field declaration
-  - [ ] Apply **Structured + unit alias normalization** (word boundaries) matching the existing `RangeSpec.text` normalization (e.g., "yards" → "yd", "feet" → "ft"; "backyard" unchanged)
-  - [ ] For `kind="special"`: derive `.text` from `raw_legacy_value` instead of structured fields (no structured fields exist to synthesize from)
-  - [ ] `raw_legacy_value` is NEVER the `.text` input when structured fields are present, even if both are populated (Design Decision 2)
-- [ ] 1.2c Implement **Textual normalization** for `source_text` on `SpellDamageSpec` and `MagicResistanceSpec` in `normalize()`:
-  - [ ] Apply NFC, trim horizontal whitespace, preserve distinct lines — matching the existing `ExperienceComponentSpec.source_text` normalization behavior
-  - [ ] `raw_legacy_value` fields (on all specs) must NOT be normalized (stored as-is; "raw" prefix signals no normalization)
+- [x] 1.1 Update `spell.schema.json` with the following precise changes:
+  - [x] **Add** optional `text: string` to `AreaSpec` and `DurationSpec`
+  - [x] **Add** optional `raw_legacy_value: string` to `SavingThrowSpec`
+  - [x] **Add** optional `source_text: string` to `MagicResistanceSpec`
+  - [x] **Remove** `dm_guidance` from `SavingThrowSpec`
+  - [x] **Remove** `raw_legacy_value` from `SpellDamageSpec`; **add** optional `source_text: string` in its place
+  - [x] **Remove** `"action"`, `"bonus_action"`, and `"reaction"` from the `SpellCastingTime.unit` enum
+  - [x] **Do NOT modify** the resolved specs (`ResolvedAreaSpec`, `ResolvedDurationSpec`, `ResolvedRangeSpec`) — they must not gain `text`, `raw_legacy_value`, or `source_text` properties (Decision 7)
+
+  > **⚠️ Intermediate-state notice:** Removing `"action"`, `"bonus_action"`, and `"reaction"` from the schema enum (task 1.1) in advance of `migrate_to_v2()` (task 1.3) means that any v1 spell with a 5e `casting_time.unit` value will pass deserialization but **fail `validate()` inside `compute_hash()`** — it cannot be re-hashed or saved until migration runs. A pre-migration safety shim has been added to `SpellCastingTime::normalize()` (see task 1.2) that remaps these units to `Special` before validation, preventing runtime panics in the interim. The `CastingTimeUnit` Rust enum retains the three variants for deserialization compatibility; they are deserialization-only and are documented as such. Task 1.3 (migrate_to_v2) must still be implemented to correctly populate `raw_legacy_value` and stamp `schema_version = 2`.
+
+- [x] 1.2 Update Rust data models in `src/models/spell.rs`:
+  - [x] Declare `AreaSpec.text`, `DurationSpec.text`, `SavingThrowSpec.raw_legacy_value`, and `MagicResistanceSpec.source_text` as `Option<String>` with `#[serde(skip_serializing_if = "Option::is_none")]` (existing `#[serde(rename_all = "camelCase")]` on structs handles IPC casing automatically for all new fields)
+  - [x] Rename `SpellDamageSpec.raw_legacy_value` → `source_text`; add `#[serde(alias = "raw_legacy_value")]` on `source_text` for backward deserialization compatibility
+  - [x] Remove `dm_guidance` from `SavingThrowSpec` struct; add a deserialization-only shadow field with `#[serde(default, skip_serializing)]` so pre-migration JSON with `dm_guidance` round-trips without data loss
+  - [x] Confirm `prune_metadata_recursive()` prunes `"source_text"` keys on `SpellDamageSpec` and `MagicResistanceSpec` — the existing key-name exclusion for `"source_text"` (which already handles `ExperienceComponentSpec`) should cover both new fields automatically; if pruning is per-type rather than per-key, add the new types explicitly
+- [x] 1.2b Implement `.text` synthesis in `normalize()` for `AreaSpec` and `DurationSpec` in `src/models/canonical_spell.rs`:
+  - [x] Build a canonical display string from the structured algebraic fields (e.g., `kind`, `radius`/`distance`, `unit`) — this is a new Rust function, not just a field declaration
+  - [x] Apply **Structured + unit alias normalization** (word boundaries) matching the existing `RangeSpec.text` normalization (e.g., "yards" → "yd", "feet" → "ft"; "backyard" unchanged)
+  - [x] For `kind="special"`: derive `.text` from `raw_legacy_value` instead of structured fields (no structured fields exist to synthesize from)
+  - [x] `raw_legacy_value` is NEVER the `.text` input when structured fields are present, even if both are populated (Design Decision 2)
+- [x] 1.2c Implement **Textual normalization** for `source_text` on `SpellDamageSpec` and `MagicResistanceSpec` in `normalize()`:
+  - [x] Apply NFC, trim horizontal whitespace, preserve distinct lines — matching the existing `ExperienceComponentSpec.source_text` normalization behavior
+  - [x] `raw_legacy_value` fields (on all specs) must NOT be normalized (stored as-is; "raw" prefix signals no normalization)
 - [ ] 1.3 Bump `CURRENT_SCHEMA_VERSION` to 2 and add `migrate_to_v2()` to `src/models/canonical_spell.rs`:
   - [ ] Must run as the **first step** in `normalize()`, before §2.5 default materialization, guarded by `if spell.schema_version < 2`
   - [ ] Migration steps (in order): (1) append `SavingThrowSpec.dm_guidance` into `notes` (newline-separated if `notes` non-empty), then clear `dm_guidance`; (2) remap 5e `casting_time.unit` (`"action"`, `"bonus_action"`, `"reaction"`) to `"special"`, copying `casting_time.text` into `raw_legacy_value` **only if `raw_legacy_value` is not already populated** — if `raw_legacy_value` IS already populated, preserve it as-is (no overwrite); if `casting_time.text` is also empty/null (treat empty string `""` the same as null — both fall through to synthesis), synthesize from `base_value + unit` (e.g., `"1 action"`; `base_value = 0` yields `"0 <unit>"`); (3) move `SpellDamageSpec.raw_legacy_value` to `source_text`, then clear `raw_legacy_value`; (4) stamp `schema_version = 2`

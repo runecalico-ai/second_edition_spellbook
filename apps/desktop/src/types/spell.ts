@@ -144,6 +144,7 @@ export type DurationUnit =
 
 export interface DurationSpec {
   kind: DurationKind;
+  text?: string;
   unit?: DurationUnit;
   duration?: SpellScalar;
   condition?: string;
@@ -158,9 +159,6 @@ export type CastingTimeUnit =
   | "turn"
   | "hour"
   | "minute"
-  | "action"
-  | "bonus_action"
-  | "reaction"
   | "special"
   | "instantaneous";
 
@@ -198,9 +196,6 @@ export const CASTING_TIME_UNIT_LABELS: Record<CastingTimeUnit, string> = {
   turn: "Turn",
   hour: "Hour",
   minute: "Minute",
-  action: "Action",
-  bonus_action: "Bonus Action",
-  reaction: "Reaction",
   special: "Special",
   instantaneous: "Instantaneous",
 };
@@ -222,8 +217,8 @@ export function defaultDurationSpec(): DurationSpec {
 /** Default casting time for new empty state (per spec). */
 export function defaultCastingTime(): SpellCastingTime {
   return {
-    text: "1 action",
-    unit: "action",
+    text: "1 segment",
+    unit: "segment",
     baseValue: 1,
     perLevel: 0,
     levelDivisor: 1,
@@ -270,6 +265,7 @@ export type CountSubject = "creature" | "undead" | "ally" | "enemy" | "object" |
 
 export interface AreaSpec {
   kind: AreaKind;
+  text?: string;
   unit?: AreaUnit;
   shapeUnit?: ShapeUnit;
   radius?: SpellScalar;
@@ -406,7 +402,7 @@ export interface SpellDamageSpec {
   parts?: DamagePart[];
   dmGuidance?: string;
   notes?: string;
-  rawLegacyValue?: string;
+  sourceText?: string;
 }
 
 // --- SavingThrowSpec ---
@@ -446,8 +442,8 @@ export interface SavingThrowSpec {
   kind: SavingThrowKind;
   single?: SingleSave;
   multiple?: SingleSave[];
-  dmGuidance?: string;
   notes?: string;
+  rawLegacyValue?: string;
 }
 
 // --- MagicResistanceSpec ---
@@ -465,6 +461,7 @@ export interface MagicResistanceSpec {
   partial?: MagicResistancePartial;
   specialRule?: string;
   notes?: string;
+  sourceText?: string;
 }
 
 // --- MaterialComponentSpec ---
@@ -521,7 +518,7 @@ export function defaultDamagePart(): DamagePart {
     damageType: "fire",
     base: { terms: [{ count: 1, sides: 6 }], flatModifier: 0 },
     application: { scope: "per_target" },
-    save: { kind: "half" },
+    save: { kind: "none" },
   };
 }
 
@@ -536,7 +533,7 @@ export function formatDicePool(pool: DicePool): string {
 export function damageToText(spec: SpellDamageSpec): string {
   if (spec.kind === "none") return "";
   if (spec.kind === "dm_adjudicated")
-    return spec.dmGuidance ?? spec.rawLegacyValue ?? "DM adjudicated";
+    return spec.dmGuidance ?? spec.sourceText ?? "DM adjudicated";
   if (spec.kind === "modeled" && spec.parts?.length) {
     return spec.parts
       .map((p) => {
@@ -546,7 +543,7 @@ export function damageToText(spec: SpellDamageSpec): string {
       })
       .join(" + ");
   }
-  return spec.rawLegacyValue ?? "";
+  return spec.sourceText ?? "";
 }
 
 /** Format area spec for display/storage. */
@@ -587,7 +584,7 @@ export function areaToText(spec: AreaSpec): string {
 /** Format saving throw spec for display/storage. */
 export function savingThrowToText(spec: SavingThrowSpec): string {
   if (spec.kind === "none") return "None";
-  if (spec.kind === "dm_adjudicated") return spec.dmGuidance ?? "DM adjudicated";
+  if (spec.kind === "dm_adjudicated") return spec.rawLegacyValue ?? spec.notes ?? "DM adjudicated";
   if (spec.kind === "single" && spec.single) {
     const s = spec.single;
     const onFail = s.onFailure?.result ?? "full_effect";

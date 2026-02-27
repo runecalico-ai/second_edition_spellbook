@@ -106,21 +106,22 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
           onChange={(e) => {
             const kind = e.target.value as SavingThrowKind;
             if (kind === "none") {
-              onChange({ kind: "none" });
+              onChange({ kind: "none", notes: spec.notes, rawLegacyValue: spec.rawLegacyValue });
             } else if (kind === "dm_adjudicated") {
-              onChange({
-                kind: "dm_adjudicated",
-                dmGuidance: spec.dmGuidance ?? "",
-              });
+              onChange({ kind: "dm_adjudicated", notes: spec.notes, rawLegacyValue: spec.rawLegacyValue });
             } else if (kind === "single") {
               onChange({
                 kind: "single",
                 single: spec.single ?? DEFAULT_SINGLE_SAVE,
+                notes: spec.notes,
+                rawLegacyValue: spec.rawLegacyValue,
               });
             } else {
               onChange({
                 kind: "multiple",
                 multiple: spec.multiple?.length ? spec.multiple : [DEFAULT_SINGLE_SAVE],
+                notes: spec.notes,
+                rawLegacyValue: spec.rawLegacyValue,
               });
             }
           }}
@@ -136,15 +137,11 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
         </select>
       </div>
 
-      {spec.kind === "dm_adjudicated" && (
-        <textarea
-          data-testid="saving-throw-dm-guidance"
-          aria-label="DM guidance"
-          placeholder="Describe saving throw for DM adjudication..."
-          value={spec.dmGuidance ?? ""}
-          onChange={(e) => updateSpec({ dmGuidance: e.target.value || undefined })}
-          className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-        />
+      {spec.rawLegacyValue && (
+        <div className="flex items-center gap-2 px-2 py-1 bg-amber-900/10 border border-amber-900/30 rounded text-[10px] text-amber-200/70 italic">
+          <span className="font-bold uppercase not-italic">Original source text:</span>
+          <span>{spec.rawLegacyValue}</span>
+        </div>
       )}
 
       {spec.kind === "single" && spec.single && (
@@ -191,16 +188,15 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
         </button>
       )}
 
-      {spec.kind !== "none" && (
-        <textarea
-          data-testid="saving-throw-notes"
-          aria-label="Overall saving throw notes"
-          placeholder="Overall saving throw notes (optional)..."
-          value={spec.notes ?? ""}
-          onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
-          className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-        />
-      )}
+      {/* Notes: always rendered in v2 — sole narrative field after dm_guidance removal */}
+      <textarea
+        data-testid="saving-throw-notes"
+        aria-label="Overall saving throw notes"
+        placeholder="Overall saving throw notes (optional)..."
+        value={spec.notes ?? ""}
+        onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
+        className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+      />
     </div>
   );
 }

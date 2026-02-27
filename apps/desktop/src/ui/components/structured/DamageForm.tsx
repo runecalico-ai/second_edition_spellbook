@@ -190,11 +190,13 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
           onChange={(e) => {
             const kind = e.target.value as SpellDamageSpec["kind"];
             if (kind === "none") {
-              onChange({ kind: "none", parts: undefined });
+              onChange({ kind: "none", parts: undefined, sourceText: spec.sourceText, notes: spec.notes });
             } else if (kind === "dm_adjudicated") {
               onChange({
                 kind: "dm_adjudicated",
                 dmGuidance: spec.dmGuidance ?? "",
+                sourceText: spec.sourceText,
+                notes: spec.notes,
               });
             } else {
               const parts = spec.parts?.length ? spec.parts : [defaultDamagePart()];
@@ -202,6 +204,8 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 kind: "modeled",
                 combineMode: spec.combineMode ?? "sum",
                 parts,
+                sourceText: spec.sourceText,
+                notes: spec.notes,
               });
             }
           }}
@@ -244,6 +248,13 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
           </>
         )}
       </div>
+
+      {spec.sourceText && (
+        <div className="flex items-center gap-2 px-2 py-1 bg-amber-900/10 border border-amber-900/30 rounded text-[10px] text-amber-200/70 italic">
+          <span className="font-bold uppercase not-italic">Original source text:</span>
+          <span>{spec.sourceText}</span>
+        </div>
+      )}
 
       {spec.kind === "dm_adjudicated" && (
         <textarea

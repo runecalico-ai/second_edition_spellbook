@@ -10,6 +10,39 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import spellbook_sidecar  # noqa: E402
 
 
+class TestSchemaVersionV2(unittest.TestCase):
+    """Task 2.2: Python importer stamps schema_version=2 on all newly produced spells."""
+
+    def test_spell_from_markdown_has_schema_version_2(self):
+        p = MagicMock(spec=Path)
+        p.read_text.return_value = "---\nname: Test\nlevel: 1\n---\nDesc"
+        p.stem = "test"
+        result = spellbook_sidecar._spell_from_markdown(p)
+        self.assertEqual(result.get("schema_version"), 2)
+
+    def test_spell_from_pdf_has_schema_version_2(self):
+        with patch("spellbook_sidecar.extract_pdf_text") as mock_extract:
+            mock_extract.return_value = "Spell\nLevel 1\nDesc"
+            p = MagicMock(spec=Path)
+            p.stem = "test"
+            result = spellbook_sidecar._spell_from_pdf(p)
+            self.assertEqual(result.get("schema_version"), 2)
+
+    def test_spell_from_docx_has_schema_version_2(self):
+        with patch("spellbook_sidecar.Document") as mock_document_cls:
+            mock_doc = MagicMock()
+            p1 = MagicMock()
+            p1.text = "Spell"
+            p2 = MagicMock()
+            p2.text = "Desc"
+            mock_doc.paragraphs = [p1, p2]
+            mock_document_cls.return_value = mock_doc
+            p = MagicMock(spec=Path)
+            p.stem = "test"
+            result = spellbook_sidecar._spell_from_docx(p)
+            self.assertEqual(result.get("schema_version"), 2)
+
+
 class TestParsers(unittest.TestCase):
     def test_spell_from_markdown(self):
         # Mock Path

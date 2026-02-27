@@ -118,7 +118,7 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
     confidence["components"] = 1.0 if meta.get("components") else 0.0
     confidence["duration"] = 1.0 if meta.get("duration") else 0.0
 
-    return {
+    spell = {
         "name": name,
         "school": meta.get("school"),
         "sphere": meta.get("sphere"),
@@ -146,6 +146,9 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
         "_raw_text": text,
         "_source_file": str(path),
     }
+    # v2: newly produced spells bypass migrate_to_v2() on ingest (refine-computed-fields-schema §2.1)
+    spell["schema_version"] = 2
+    return spell
 
 
 def _spell_from_pdf(path: Path) -> Dict[str, Any]:
@@ -170,7 +173,7 @@ def _spell_from_pdf(path: Path) -> Dict[str, Any]:
         "class_list": 0.0,
     }
 
-    return {
+    spell = {
         "name": path.stem.replace("_", " ").title(),
         "level": level,
         "description": text.strip(),
@@ -179,6 +182,8 @@ def _spell_from_pdf(path: Path) -> Dict[str, Any]:
         "_raw_text": text,
         "_source_file": str(path),
     }
+    spell["schema_version"] = 2
+    return spell
 
 
 def _spell_from_docx(path: Path) -> Dict[str, Any]:
@@ -204,7 +209,7 @@ def _spell_from_docx(path: Path) -> Dict[str, Any]:
         "class_list": 0.0,
     }
 
-    return {
+    spell = {
         "name": path.stem.replace("_", " ").title(),
         "level": level,
         "description": text.strip(),
@@ -213,6 +218,8 @@ def _spell_from_docx(path: Path) -> Dict[str, Any]:
         "_raw_text": text,
         "_source_file": str(path),
     }
+    spell["schema_version"] = 2
+    return spell
 
 
 def handle_embed(params: Dict[str, Any]) -> Dict[str, Any]:

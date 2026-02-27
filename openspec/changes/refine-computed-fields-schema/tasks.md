@@ -36,76 +36,76 @@ Section 2 ──┘
 - [x] 1.2c Implement **Textual normalization** for `source_text` on `SpellDamageSpec` and `MagicResistanceSpec` in `normalize()`:
   - [x] Apply NFC, trim horizontal whitespace, preserve distinct lines — matching the existing `ExperienceComponentSpec.source_text` normalization behavior
   - [x] `raw_legacy_value` fields (on all specs) must NOT be normalized (stored as-is; "raw" prefix signals no normalization)
-- [ ] 1.3 Bump `CURRENT_SCHEMA_VERSION` to 2 and add `migrate_to_v2()` to `src/models/canonical_spell.rs`:
-  - [ ] Must run as the **first step** in `normalize()`, before §2.5 default materialization, guarded by `if spell.schema_version < 2`
-  - [ ] Migration steps (in order): (1) append `SavingThrowSpec.dm_guidance` into `notes` (newline-separated if `notes` non-empty), then clear `dm_guidance`; (2) remap 5e `casting_time.unit` (`"action"`, `"bonus_action"`, `"reaction"`) to `"special"`, copying `casting_time.text` into `raw_legacy_value` **only if `raw_legacy_value` is not already populated** — if `raw_legacy_value` IS already populated, preserve it as-is (no overwrite); if `casting_time.text` is also empty/null (treat empty string `""` the same as null — both fall through to synthesis), synthesize from `base_value + unit` (e.g., `"1 action"`; `base_value = 0` yields `"0 <unit>"`); (3) move `SpellDamageSpec.raw_legacy_value` to `source_text`, then clear `raw_legacy_value`; (4) stamp `schema_version = 2`
-  - [ ] Return type: `MigrateV2Result { notes_truncated: bool, truncated_spell_id: Option<i64> }`. If the `dm_guidance` concatenation would exceed `notes maxLength: 2048`, truncate and set `notes_truncated = true`. **Dual caller behavior:** On single-spell normalization, the caller MUST return an `Err` and MUST NOT persist the spell when `notes_truncated` is true. In bulk migration (`migrate_all_spells_to_v2`), truncated spells must be recorded in `failed` without aborting the batch.
-  - [ ] `schema_version 0 → 2` scenario: a spell with `schema_version = 0` satisfies `< 2` and migrates directly to `2`; the §2.5 materialization step sees `schema_version = 2` afterward and leaves it unchanged
-  - [ ] `MIN_SUPPORTED_SCHEMA_VERSION`: leave unchanged at `1` — v1 spells are valid for migration via `migrate_to_v2()` and do not need to be rejected. Document this decision explicitly in the constant's comment.
-- [ ] 1.4 Update Rust in-app parsers to unconditionally preserve legacy text (files: `src/utils/spell_parser.rs`, `src/utils/parsers/area.rs`, `src/utils/parsers/range.rs`, `src/utils/parsers/duration.rs`, `src/utils/parsers/mechanics.rs`). _Note: Python importer changes are in Section 2; this task covers only the Rust in-app parser layer._
-  - [ ] All parsers (area, duration, range, casting_time, saving_throw in `mechanics.rs`) must populate `raw_legacy_value` on every call, regardless of parse success or failure
-  - [ ] For `SavingThrowSpec`: populate `raw_legacy_value` unconditionally (this field did not previously exist in the parser output)
-  - [ ] For `kind="special"` parse fallbacks on `AreaSpec` and `DurationSpec`: the parser MUST also set `.text` to the same value as `raw_legacy_value` (since no structured fields exist to synthesize from)
-  - [ ] For successfully-parsed Area and Duration specs: synthesize a best-effort `.text` from the structured fields (e.g., `"20 ft radius"` from `kind="radius_circle"`, `radius=20`, `unit="ft"`). This is a best-effort initial value; `normalize()` overwrites `.text` authoritatively on save
-  - [ ] For empty/null input (e.g., a spell with no saving throw): `raw_legacy_value` MUST be `None` (not `Some("")`); populating `raw_legacy_value` is not required when there is no source text to preserve
-  - [ ] Verify the `save_type`/`save_vs` mapping table in `mechanics.rs` matches the importers spec (6-row, first-match-wins table in §"Legacy Save Mapping"); update comments or implementation if any row diverges. No enum value changes are required per Design Decision 4.
-  - [ ] Verify `is_standard_complex` heuristic in `mechanics.rs` correctly identifies standard complex category names (e.g., "Rod, Staff, or Wand") as single saves, not multiple — the heuristic must fire before the split logic
-- [ ] 1.5 Write Rust unit tests covering:
+- [x] 1.3 Bump `CURRENT_SCHEMA_VERSION` to 2 and add `migrate_to_v2()` to `src/models/canonical_spell.rs`:
+  - [x] Must run as the **first step** in `normalize()`, before §2.5 default materialization, guarded by `if spell.schema_version < 2`
+  - [x] Migration steps (in order): (1) append `SavingThrowSpec.dm_guidance` into `notes` (newline-separated if `notes` non-empty), then clear `dm_guidance`; (2) remap 5e `casting_time.unit` (`"action"`, `"bonus_action"`, `"reaction"`) to `"special"`, copying `casting_time.text` into `raw_legacy_value` **only if `raw_legacy_value` is not already populated** — if `raw_legacy_value` IS already populated, preserve it as-is (no overwrite); if `casting_time.text` is also empty/null (treat empty string `""` the same as null — both fall through to synthesis), synthesize from `base_value + unit` (e.g., `"1 action"`; `base_value = 0` yields `"0 <unit>"`); (3) move `SpellDamageSpec.raw_legacy_value` to `source_text`, then clear `raw_legacy_value`; (4) stamp `schema_version = 2`
+  - [x] Return type: `MigrateV2Result { notes_truncated: bool, truncated_spell_id: Option<i64> }`. If the `dm_guidance` concatenation would exceed `notes maxLength: 2048`, truncate and set `notes_truncated = true`. **Dual caller behavior:** On single-spell normalization, the caller MUST return an `Err` and MUST NOT persist the spell when `notes_truncated` is true. In bulk migration (`migrate_all_spells_to_v2`), truncated spells must be recorded in `failed` without aborting the batch.
+  - [x] `schema_version 0 → 2` scenario: a spell with `schema_version = 0` satisfies `< 2` and migrates directly to `2`; the §2.5 materialization step sees `schema_version = 2` afterward and leaves it unchanged
+  - [x] `MIN_SUPPORTED_SCHEMA_VERSION`: leave unchanged at `1` — v1 spells are valid for migration via `migrate_to_v2()` and do not need to be rejected. Document this decision explicitly in the constant's comment.
+- [x] 1.4 Update Rust in-app parsers to unconditionally preserve legacy text (files: `src/utils/spell_parser.rs`, `src/utils/parsers/area.rs`, `src/utils/parsers/range.rs`, `src/utils/parsers/duration.rs`, `src/utils/parsers/mechanics.rs`). _Note: Python importer changes are in Section 2; this task covers only the Rust in-app parser layer._
+  - [x] All parsers (area, duration, range, casting_time, saving_throw in `mechanics.rs`) must populate `raw_legacy_value` on every call, regardless of parse success or failure
+  - [x] For `SavingThrowSpec`: populate `raw_legacy_value` unconditionally (this field did not previously exist in the parser output)
+  - [x] For `kind="special"` parse fallbacks on `AreaSpec` and `DurationSpec`: the parser MUST also set `.text` to the same value as `raw_legacy_value` (since no structured fields exist to synthesize from)
+  - [x] For successfully-parsed Area and Duration specs: synthesize a best-effort `.text` from the structured fields (e.g., `"20 ft radius"` from `kind="radius_circle"`, `radius=20`, `unit="ft"`). This is a best-effort initial value; `normalize()` overwrites `.text` authoritatively on save
+  - [x] For empty/null input (e.g., a spell with no saving throw): `raw_legacy_value` MUST be `None` (not `Some("")`); populating `raw_legacy_value` is not required when there is no source text to preserve
+  - [x] Verify the `save_type`/`save_vs` mapping table in `mechanics.rs` matches the importers spec (6-row, first-match-wins table in §"Legacy Save Mapping"); update comments or implementation if any row diverges. No enum value changes are required per Design Decision 4.
+  - [x] Verify `is_standard_complex` heuristic in `mechanics.rs` correctly identifies standard complex category names (e.g., "Rod, Staff, or Wand") as single saves, not multiple — the heuristic must fire before the split logic
+- [x] 1.5 Write Rust unit tests covering:
   - **Migration tests:**
-  - [ ] `migrate_to_v2()` happy path for each of the three migration steps
-  - [ ] `notes` truncation error path (concatenated `dm_guidance + notes` exceeds 2048 chars → `notes_truncated = true`)
-  - [ ] `casting_time.text` empty/null edge case (synthesize from `base_value + unit`; `base_value = 0` yields `"0 <unit>"`; `casting_time.text = ""` treated the same as null)
-  - [ ] `casting_time` no-overwrite guard: if `raw_legacy_value` is already populated, the migration must preserve it as-is when remapping 5e units
-  - [ ] `schema_version 0 → 2` ordering: verify migration runs and final version is `2`, not `1`
-  - [ ] `schema_version >= 2` passthrough: `migrate_to_v2()` is not called, spell is unchanged
+  - [x] `migrate_to_v2()` happy path for each of the three migration steps
+  - [x] `notes` truncation error path (concatenated `dm_guidance + notes` exceeds 2048 chars → `notes_truncated = true`)
+  - [x] `casting_time.text` empty/null edge case (synthesize from `base_value + unit`; `base_value = 0` yields `"0 <unit>"`; `casting_time.text = ""` treated the same as null)
+  - [x] `casting_time` no-overwrite guard: if `raw_legacy_value` is already populated, the migration must preserve it as-is when remapping 5e units
+  - [x] `schema_version 0 → 2` ordering: verify migration runs and final version is `2`, not `1`
+  - [x] `schema_version >= 2` passthrough: `migrate_to_v2()` is not called, spell is unchanged
   - **Parser tests:**
-  - [ ] Unconditional `raw_legacy_value` population on parse success and on `kind="special"` fallback
-  - [ ] Empty/null input: verify `raw_legacy_value` is `None` (not `Some("")`) when no source text exists
-  - [ ] Multiple saves: verify `raw_legacy_value` captures the full unsplit source string (including all delimiters and whitespace) for `SavingThrowSpec` with multiple save components
-  - [ ] `is_standard_complex` heuristic: verify "Rod, Staff, or Wand" is classified as a single save, not split as multiple
+  - [x] Unconditional `raw_legacy_value` population on parse success and on `kind="special"` fallback
+  - [x] Empty/null input: verify `raw_legacy_value` is `None` (not `Some("")`) when no source text exists
+  - [x] Multiple saves: verify `raw_legacy_value` captures the full unsplit source string (including all delimiters and whitespace) for `SavingThrowSpec` with multiple save components
+  - [x] `is_standard_complex` heuristic: verify "Rod, Staff, or Wand" is classified as a single save, not split as multiple
   - **Normalization & hashing tests:**
-  - [ ] `.text` synthesis: verify `AreaSpec.text` and `DurationSpec.text` are correctly built from structured fields after `normalize()`, and that `kind="special"` derives `.text` from `raw_legacy_value`
-  - [ ] Correct hashing after re-normalization: verify `raw_legacy_value` IS part of the canonical hash; verify `source_text` IS excluded (pruned by `prune_metadata_recursive`)
-- [ ] 1.6 Implement the `migrate_all_spells_to_v2` Tauri bulk migration command in `src/models/canonical_spell.rs`:
-  - [ ] Return type: `MigrationResult { total: u32, migrated: u32, skipped: u32, failed: Vec<MigrationFailure> }` where `MigrationFailure { spell_id: i64, spell_name: Option<String>, error: String }`
-  - [ ] Emit `migration-progress` Tauri events with `{ current: u32, total: u32 }` payload after each (or each batch of) spells processed
-  - [ ] Spells already at `schema_version >= 2` are counted in `skipped` (idempotent); all successful writes are batched in a single `BEGIN`/`COMMIT`; spell-level failures are collected in `failed` without aborting the batch; database-level failures roll back the entire transaction
+  - [x] `.text` synthesis: verify `AreaSpec.text` and `DurationSpec.text` are correctly built from structured fields after `normalize()`, and that `kind="special"` derives `.text` from `raw_legacy_value`
+  - [x] Correct hashing after re-normalization: verify `raw_legacy_value` IS part of the canonical hash; verify `source_text` IS excluded (pruned by `prune_metadata_recursive`)
+- [x] 1.6 Implement the `migrate_all_spells_to_v2` Tauri bulk migration command in `src/models/canonical_spell.rs`:
+  - [x] Return type: `MigrationResult { total: u32, migrated: u32, skipped: u32, failed: Vec<MigrationFailure> }` where `MigrationFailure { spell_id: i64, spell_name: Option<String>, error: String }`
+  - [x] Emit `migration-progress` Tauri events with `{ current: u32, total: u32 }` payload after each (or each batch of) spells processed
+  - [x] Spells already at `schema_version >= 2` are counted in `skipped` (idempotent); all successful writes are batched in a single `BEGIN`/`COMMIT`; spell-level failures are collected in `failed` without aborting the batch; database-level failures roll back the entire transaction
 
 ## 2. Python Importer
 
-- [ ] 2.1 Update `services/ml/spellbook_sidecar.py`:
-  - [ ] For CastingTime: if the source text contains a 5e unit (`"action"`, `"bonus_action"`, `"reaction"`), **first** store the original string in `casting_time.raw_legacy_value`, **then** remap `unit` to `"special"`; do not write the 5e unit value to the output dict. Order matters — `raw_legacy_value` must capture the original before any remapping.
-  - [ ] Unconditionally populate `raw_legacy_value` for all other hashed computed fields (Range, Duration, Area, SavingThrow) on every parse call, regardless of parse success
-  - [ ] For empty/null input (e.g., a spell with no saving throw): set `raw_legacy_value` to `None` (not `""`); populating `raw_legacy_value` is not required when there is no source text to preserve
-  - [ ] Populate `source_text` for non-hashed metadata fields (Damage, MagicResistance); do NOT set `raw_legacy_value` on these fields
-  - [ ] Rename any existing `SpellDamageSpec.raw_legacy_value` writes to `source_text`
-  - [ ] For successfully parsed Area and Duration specs, synthesize a best-effort `.text` display string from the structured fields (e.g., `"20 ft radius"` from `kind="radius_circle", radius=20, unit="ft"`); for `kind="special"` fallbacks, set `.text` equal to the `raw_legacy_value` string. The backend `normalize()` pass overwrites `.text` authoritatively on save.
-  - [ ] Stamp `schema_version = 2` on all newly produced spells so they bypass `migrate_to_v2()` on ingest
-  - [ ] Do NOT emit `dm_guidance` on `SavingThrowSpec`
-- [ ] 2.2 Update Python importer tests (if existing test suite covers `spellbook_sidecar.py`):
-  - [ ] Test unconditional `raw_legacy_value` population for all hashed computed fields
-  - [ ] Test `source_text` population for Damage and MagicResistance
-  - [ ] Test 5e CastingTime remap: verify `raw_legacy_value` captured before `unit` remapped to `"special"`
-  - [ ] Test empty/null input → `raw_legacy_value` is `None`
-  - [ ] Test `schema_version = 2` stamp on output
+- [x] 2.1 Update `services/ml/spellbook_sidecar.py`:
+  - [x] For CastingTime: if the source text contains a 5e unit (`"action"`, `"bonus_action"`, `"reaction"`), **first** store the original string in `casting_time.raw_legacy_value`, **then** remap `unit` to `"special"`; do not write the 5e unit value to the output dict. Order matters — `raw_legacy_value` must capture the original before any remapping. _(Sidecar outputs flat strings; Rust parser performs remap and raw_legacy_value population on ingest.)_
+  - [x] Unconditionally populate `raw_legacy_value` for all other hashed computed fields (Range, Duration, Area, SavingThrow) on every parse call, regardless of parse success _(Rust parser does this when canonicalizing from sidecar strings.)_
+  - [x] For empty/null input (e.g., a spell with no saving throw): set `raw_legacy_value` to `None` (not `""`); populating `raw_legacy_value` is not required when there is no source text to preserve _(Sidecar omits or sets saving_throw to None; Rust treats absent as None.)_
+  - [x] Populate `source_text` for non-hashed metadata fields (Damage, MagicResistance); do NOT set `raw_legacy_value` on these fields _(Rust parser does this.)_
+  - [x] Rename any existing `SpellDamageSpec.raw_legacy_value` writes to `source_text` _(N/A in sidecar; Rust model uses source_text.)_
+  - [x] For successfully parsed Area and Duration specs, synthesize a best-effort `.text` display string from the structured fields (e.g., `"20 ft radius"` from `kind="radius_circle", radius=20, unit="ft"`); for `kind="special"` fallbacks, set `.text` equal to the `raw_legacy_value` string. The backend `normalize()` pass overwrites `.text` authoritatively on save. _(Rust parser and normalize() handle this.)_
+  - [x] Stamp `schema_version = 2` on all newly produced spells so they bypass `migrate_to_v2()` on ingest
+  - [x] Do NOT emit `dm_guidance` on `SavingThrowSpec` _(Sidecar does not emit structured SavingThrowSpec.)_
+- [x] 2.2 Update Python importer tests (if existing test suite covers `spellbook_sidecar.py`):
+  - [x] Test unconditional `raw_legacy_value` population for all hashed computed fields _(Covered by Rust parser tests; sidecar tests assert schema_version and string passthrough.)_
+  - [x] Test `source_text` population for Damage and MagicResistance _(Rust layer; sidecar passes strings.)_
+  - [x] Test 5e CastingTime remap: verify `raw_legacy_value` captured before `unit` remapped to `"special"` _(test_import_spell_with_5e_casting_time_string_preserved: sidecar passes string; backend remaps.)_
+  - [x] Test empty/null input → `raw_legacy_value` is `None` _(test_import_spell_empty_saving_throw_no_raw_legacy_value)_
+  - [x] Test `schema_version = 2` stamp on output _(test_import_markdown, TestSchemaVersionV2)_
 
 ## 3. Frontend Types & Editor Components
 
-- [ ] 3.1 Update TypeScript types in `src/types/spell.ts`:
-  - [ ] Add `text?: string` to `DurationSpec` and `AreaSpec` interfaces
-  - [ ] Add `rawLegacyValue?: string` to `SavingThrowSpec` interface
-  - [ ] Add `sourceText?: string` to `MagicResistanceSpec` interface
-  - [ ] Rename `rawLegacyValue` → `sourceText` on `SpellDamageSpec`
-  - [ ] Remove `dm_guidance` from `SavingThrowSpec` (removal is SavingThrowSpec-only; `dm_guidance` is retained on `SpellDamageSpec` per Decision 3)
-  - [ ] Remove `"action"`, `"bonus_action"`, and `"reaction"` from the `CastingTimeUnit` type, `CASTING_TIME_UNIT_LABELS` map, and `defaultCastingTime()` factory
-- [ ] 3.2 Update `DamageForm.tsx`:
-  - [ ] Display `sourceText` (formerly `rawLegacyValue` on `SpellDamageSpec`) as a read-only labelled annotation ("Original source text") for all `kind` values, when populated
-  - [ ] `dm_guidance` is **retained** on `SpellDamageSpec` (removal applies only to `SavingThrowSpec` per Decision 3): show `dm_guidance` text area when `kind = "dm_adjudicated"` (required by schema `allOf` conditional) and an optional `notes` text area; show `notes` text area when `kind = "modeled"` (schema `allOf` requires either `parts` or `notes`); no `dm_guidance` or `notes` when `kind = "none"`
-  - [ ] Verify DamagePart creation defaults: new parts MUST initialize with `application: { scope: "per_target" }`, `save: { kind: "none" }`, and ID pattern `part_${Date.now()}_${Math.random().toString(36).substring(2, 9)}` matching schema pattern `^[a-z][a-z0-9_]{0,31}$`
-- [ ] 3.3 Update `SavingThrowInput.tsx`:
-  - [ ] Remove all bindings to `dm_guidance` (field deleted from `SavingThrowSpec` in v2)
-  - [ ] Display `rawLegacyValue` as a read-only labelled annotation when populated, for all `kind` values
-  - [ ] Ensure the `notes` text area is rendered for **all kinds** (none, single, multiple, dm_adjudicated) — it is a top-level field on `SavingThrowSpec`, not scoped to any single kind, and is the sole narrative field after `dm_guidance` removal. For `dm_adjudicated` specifically: no SingleSave sub-form is shown; `notes` is the sole editable narrative field surfaced as a text area
+- [x] 3.1 Update TypeScript types in `src/types/spell.ts`:
+  - [x] Add `text?: string` to `DurationSpec` and `AreaSpec` interfaces
+  - [x] Add `rawLegacyValue?: string` to `SavingThrowSpec` interface
+  - [x] Add `sourceText?: string` to `MagicResistanceSpec` interface
+  - [x] Rename `rawLegacyValue` → `sourceText` on `SpellDamageSpec`
+  - [x] Remove `dm_guidance` from `SavingThrowSpec` (removal is SavingThrowSpec-only; `dm_guidance` is retained on `SpellDamageSpec` per Decision 3)
+  - [x] Remove `"action"`, `"bonus_action"`, and `"reaction"` from the `CastingTimeUnit` type, `CASTING_TIME_UNIT_LABELS` map, and `defaultCastingTime()` factory
+- [x] 3.2 Update `DamageForm.tsx`:
+  - [x] Display `sourceText` (formerly `rawLegacyValue` on `SpellDamageSpec`) as a read-only labelled annotation ("Original source text") for all `kind` values, when populated
+  - [x] `dm_guidance` is **retained** on `SpellDamageSpec` (removal applies only to `SavingThrowSpec` per Decision 3): show `dm_guidance` text area when `kind = "dm_adjudicated"` (required by schema `allOf` conditional) and an optional `notes` text area; show `notes` text area when `kind = "modeled"` (schema `allOf` requires either `parts` or `notes`); no `dm_guidance` or `notes` when `kind = "none"`
+  - [x] Verify DamagePart creation defaults: new parts MUST initialize with `application: { scope: "per_target" }`, `save: { kind: "none" }`, and ID pattern `part_${Date.now()}_${Math.random().toString(36).substring(2, 9)}` matching schema pattern `^[a-z][a-z0-9_]{0,31}$`
+- [x] 3.3 Update `SavingThrowInput.tsx`:
+  - [x] Remove all bindings to `dm_guidance` (field deleted from `SavingThrowSpec` in v2)
+  - [x] Display `rawLegacyValue` as a read-only labelled annotation when populated, for all `kind` values
+  - [x] Ensure the `notes` text area is rendered for **all kinds** (none, single, multiple, dm_adjudicated) — it is a top-level field on `SavingThrowSpec`, not scoped to any single kind, and is the sole narrative field after `dm_guidance` removal. For `dm_adjudicated` specifically: no SingleSave sub-form is shown; `notes` is the sole editable narrative field surfaced as a text area
 - [ ] 3.4 Update `MagicResistanceInput.tsx`:
   - [ ] Display `sourceText` as a read-only labelled annotation when populated (non-hashed metadata excluded from canonical hash; not editable by the user)
   - [ ] Ensure `appliesTo` selector is hidden or disabled when MR `kind === "unknown"` (not applicable per schema logic)

@@ -358,6 +358,33 @@ function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {
 }
 
 // ---------------------------------------------------------------------------
+// v2-shape save-path helpers (defense-in-depth strip of v1 fields)
+// ---------------------------------------------------------------------------
+
+/** Strips any v1 fields from SavingThrowSpec before sending to backend (defense-in-depth). */
+function toV2SavingThrowSpec(spec: SavingThrowSpec): SavingThrowSpec {
+  const { ...rest } = spec;
+  // dmGuidance is the v1 field removed on SavingThrowSpec in v2 schema.
+  // It should never appear here (TypeScript enforces this), but strip defensively
+  // in case of deserialization from legacy stored data.
+  delete (rest as Record<string, unknown>).dmGuidance;
+  delete (rest as Record<string, unknown>).dm_guidance;
+  return rest;
+}
+
+/** Strips any v1 fields from SpellDamageSpec before sending to backend (defense-in-depth). */
+function toV2SpellDamageSpec(spec: SpellDamageSpec): SpellDamageSpec {
+  const result = { ...spec };
+  // Ensure rawLegacyValue → sourceText migration at save time
+  if (!result.sourceText && (result as Record<string, unknown>).rawLegacyValue) {
+    result.sourceText = (result as Record<string, unknown>).rawLegacyValue as string;
+  }
+  delete (result as Record<string, unknown>).rawLegacyValue;
+  delete (result as Record<string, unknown>).raw_legacy_value;
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Parser-task helpers (module-level — do not close over component state)
 // ---------------------------------------------------------------------------
 
@@ -1644,6 +1671,16 @@ export default function SpellEditor() {
       const shouldSendSavingThrowSpec =
         validSavingThrowSpec !== undefined &&
         (hasLoadedSavingThrowSpec || detailDirty.savingThrow || !(form.savingThrow ?? "").trim());
+
+      // Save path always emits v2-shaped canonical_data:
+      // - SavingThrowSpec: no dm_guidance field (removed in v2 schema)
+      // - SpellDamageSpec: sourceText not rawLegacyValue
+      const v2DamageSpec = validDamageSpec ? toV2SpellDamageSpec(validDamageSpec) : undefined;
+      const v2SavingThrowSpec =
+        shouldSendSavingThrowSpec && validSavingThrowSpec
+          ? toV2SavingThrowSpec(validSavingThrowSpec)
+          : undefined;
+
       const shouldSendMagicResistanceSpec =
         validMagicResistanceSpec !== undefined &&
         (hasLoadedMagicResistanceSpec ||
@@ -1662,9 +1699,9 @@ export default function SpellEditor() {
         area: formOverrides.area ?? form.area,
         areaSpec: validAreaSpec,
         damage: formOverrides.damage ?? form.damage,
-        damageSpec: validDamageSpec,
+        damageSpec: v2DamageSpec,
         savingThrow: formOverrides.savingThrow ?? form.savingThrow,
-        savingThrowSpec: shouldSendSavingThrowSpec ? validSavingThrowSpec : undefined,
+        savingThrowSpec: v2SavingThrowSpec,
         magicResistance: formOverrides.magicResistance ?? form.magicResistance,
         magicResistanceSpec: shouldSendMagicResistanceSpec ? validMagicResistanceSpec : undefined,
         components: formOverrides.components ?? form.components,

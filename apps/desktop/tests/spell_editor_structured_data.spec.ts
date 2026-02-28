@@ -480,4 +480,240 @@ test.describe("Spell Editor structured data and hash display", () => {
       expect(optionValues).toContain("turn");
     });
   });
+
+  test("WarningBanner: visible when field falls back to special (unparseable value)", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell and fill basic fields", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Banner Test Spell");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for banner test.");
+    });
+
+    await test.step("Fill range with unparseable value", async () => {
+      await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
+    });
+
+    await test.step("Expand range to trigger parser", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Assert warning banner is visible with expected content", async () => {
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(banner).toContainText("Range");
+      await expect(banner).toContainText("could not be fully parsed");
+    });
+  });
+
+  test("WarningBanner: persists after failed save (validation block)", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+    });
+
+    await test.step("Fill range with unparseable value and expand to trigger parser", async () => {
+      await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Wait for banner to appear", async () => {
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Attempt save without required name — validation blocks save", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await handleCustomModal(page, "OK");
+    });
+
+    await test.step("Banner is still visible after dismissed modal", async () => {
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+  });
+
+  test("WarningBanner: dismissed after successful save", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Banner Dismissed ${runId}`;
+
+    await test.step("Navigate to Add Spell and fill required fields", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for banner dismiss test.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+    });
+
+    await test.step("Fill range with unparseable value and expand to trigger parser", async () => {
+      await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Wait for banner to appear", async () => {
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Collapse range section and save successfully", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(200);
+      await page.getByTestId("btn-save-spell").click();
+    });
+
+    await test.step("App navigates to library after successful save (banner dismissed)", async () => {
+      await app.waitForLibrary();
+    });
+  });
+
+  test("WarningBanner: nav guard modal shows 'Unparsed fields' title when banner active", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell and make form dirty", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Nav Guard Banner Spell");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for nav guard test.");
+    });
+
+    await test.step("Fill range with unparseable value and expand to trigger parser and banner", async () => {
+      await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Navigate away via Library nav link to trigger nav guard", async () => {
+      await page.getByRole("link", { name: "Library" }).click();
+    });
+
+    await test.step("Nav guard modal appears with 'Unparsed fields' messaging", async () => {
+      const modal = page.getByTestId("modal-container");
+      await expect(modal).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(modal).toContainText("Unparsed fields");
+    });
+
+    await test.step("Dismiss modal and stay on page", async () => {
+      await handleCustomModal(page, "Cancel");
+    });
+  });
+
+  test("SavingThrowInput: rawLegacyValue annotation rendered when saving throw is parsed from legacy text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Saving Throw Annotation ${runId}`;
+
+    await test.step("Create and save a spell with a saving throw raw value", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for saving throw test.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByTestId("detail-saving-throw-input").fill("Save vs. Spell");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen spell and expand saving throw", async () => {
+      await app.openSpell(spellName);
+      await page.waitForTimeout(500);
+      await page.getByTestId("detail-saving-throw-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Saving throw expanded form is visible", async () => {
+      await expect(page.getByTestId("saving-throw-input")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Raw legacy annotation is visible with saved text", async () => {
+      const annotation = page.getByTestId("saving-throw-raw-legacy-annotation");
+      await expect(annotation).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(annotation).toContainText("Save vs. Spell");
+    });
+  });
+
+  test("DamageForm: sourceText annotation rendered when damage is loaded from fallback", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Damage Annotation Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for damage annotation test.");
+    });
+
+    await test.step("Fill damage canon input with text that triggers parser fallback", async () => {
+      await page.getByTestId("detail-damage-input").fill("1d6 fire per level");
+      await page.getByTestId("detail-damage-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Damage form is visible", async () => {
+      await expect(page.getByTestId("damage-form")).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Source text annotation is visible with original damage text", async () => {
+      const annotation = page.getByTestId("damage-source-text-annotation");
+      await expect(annotation).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(annotation).toContainText("1d6 fire per level");
+    });
+  });
+
+  test("MagicResistanceInput: sourceText annotation rendered when loaded from legacy text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Magic Resistance Annotation Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for magic resistance annotation test.");
+    });
+
+    await test.step("Fill magic resistance canon input with a non-standard value", async () => {
+      await page.getByTestId("detail-magic-resistance-input").fill("Yes (special conditions apply)");
+      await page.getByTestId("detail-magic-resistance-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Magic resistance input form is visible", async () => {
+      await expect(page.getByTestId("magic-resistance-input")).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Source text annotation is visible with original magic resistance text", async () => {
+      const annotation = page.getByTestId("magic-resistance-source-text-annotation");
+      await expect(annotation).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(annotation).toContainText("Yes (special conditions apply)");
+    });
+  });
 });

@@ -142,7 +142,10 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
       </div>
 
       {spec.rawLegacyValue && (
-        <div className="flex items-center gap-2 px-2 py-1 bg-amber-900/10 border border-amber-900/30 rounded text-[10px] text-amber-200/70 italic">
+        <div
+          data-testid="saving-throw-raw-legacy-annotation"
+          className="flex items-center gap-2 px-2 py-1 bg-amber-900/10 border border-amber-900/30 rounded text-[10px] text-amber-200/70 italic"
+        >
           <span className="font-bold uppercase not-italic">Original source text:</span>
           <span>{spec.rawLegacyValue}</span>
         </div>

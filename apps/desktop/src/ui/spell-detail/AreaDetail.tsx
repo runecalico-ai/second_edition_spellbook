@@ -1,6 +1,15 @@
 import type { AreaSpec } from "../../types/spell";
 import { areaToText } from "../../types/spell";
 
+function hasStructuredFields(spec: AreaSpec): boolean {
+  // "point" and "special" have algebraic meaning even without dimensional sub-fields
+  return spec.kind === "point" || spec.kind === "special"
+    || spec.radius != null || spec.diameter != null
+    || spec.length != null || spec.width != null || spec.height != null
+    || spec.edge != null || spec.count != null || spec.volume != null
+    || spec.tileCount != null || spec.surfaceArea != null || spec.thickness != null;
+}
+
 interface AreaDetailProps {
   spec: AreaSpec | undefined | null;
 }
@@ -23,7 +32,7 @@ export function AreaDetail({ spec }: AreaDetailProps) {
     );
   }
 
-  const displayText = spec.text ?? spec.rawLegacyValue ?? areaToText(spec);
+  const displayText = spec.text ?? spec.rawLegacyValue ?? (hasStructuredFields(spec) ? areaToText(spec) : null) ?? "—";
 
   return (
     <div className="space-y-1" data-testid="area-detail">

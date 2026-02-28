@@ -1,5 +1,14 @@
 import type { DurationSpec } from "../../types/spell";
-import { durationToText } from "../../types/spell";
+import { DURATION_CONDITION_KINDS, DURATION_KIND_ONLY, durationToText } from "../../types/spell";
+
+function hasStructuredFields(spec: DurationSpec): boolean {
+  // Kind-only kinds are complete by themselves
+  if (DURATION_KIND_ONLY.includes(spec.kind as typeof DURATION_KIND_ONLY[number])) return true;
+  if (DURATION_CONDITION_KINDS.includes(spec.kind as typeof DURATION_CONDITION_KINDS[number])) return spec.condition != null;
+  if (spec.kind === "time") return spec.duration != null;
+  if (spec.kind === "usage_limited") return spec.uses != null;
+  return false; // "special" with no rawLegacyValue — not synthesizable
+}
 
 interface DurationDetailProps {
   spec: DurationSpec | undefined | null;
@@ -23,7 +32,7 @@ export function DurationDetail({ spec }: DurationDetailProps) {
     );
   }
 
-  const displayText = spec.text ?? spec.rawLegacyValue ?? durationToText(spec);
+  const displayText = spec.text ?? spec.rawLegacyValue ?? (hasStructuredFields(spec) ? durationToText(spec) : null) ?? "—";
 
   return (
     <div className="space-y-1" data-testid="duration-detail">

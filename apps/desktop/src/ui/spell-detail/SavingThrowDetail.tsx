@@ -109,7 +109,7 @@ export function SavingThrowDetail({ spec }: SavingThrowDetailProps) {
           className="text-sm text-neutral-200"
           data-testid="saving-throw-dm-adjudicated"
         >
-          {spec.rawLegacyValue ?? spec.notes ?? "DM adjudicated"}
+          {spec.rawLegacyValue ?? "DM adjudicated"}
         </p>
       )}
 

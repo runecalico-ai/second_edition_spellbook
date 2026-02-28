@@ -65,7 +65,7 @@ export function MagicResistanceDetail({ spec }: MagicResistanceDetailProps) {
       {showSourceTextPrimary && (
         <p
           className="text-sm text-neutral-200"
-          data-testid="magic-resistance-source-text"
+          data-testid="magic-resistance-source-text-primary"
         >
           {spec.sourceText}
         </p>
@@ -74,7 +74,7 @@ export function MagicResistanceDetail({ spec }: MagicResistanceDetailProps) {
       {showSourceTextSupplementary && (
         <p
           className="text-xs text-neutral-400"
-          data-testid="magic-resistance-source-text"
+          data-testid="magic-resistance-source-text-supplementary"
         >
           {spec.sourceText}
         </p>

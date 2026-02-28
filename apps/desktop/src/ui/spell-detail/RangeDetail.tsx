@@ -1,5 +1,11 @@
 import type { RangeSpec } from "../../types/spell";
-import { rangeToText } from "../../types/spell";
+import { RANGE_DISTANCE_KINDS, RANGE_KIND_ONLY, rangeToText } from "../../types/spell";
+
+function hasStructuredFields(spec: RangeSpec): boolean {
+  if (RANGE_KIND_ONLY.includes(spec.kind as typeof RANGE_KIND_ONLY[number])) return true;
+  if (RANGE_DISTANCE_KINDS.includes(spec.kind as typeof RANGE_DISTANCE_KINDS[number])) return spec.distance != null && spec.unit != null;
+  return false; // "special" with no rawLegacyValue — not synthesizable
+}
 
 interface RangeDetailProps {
   spec: RangeSpec | undefined | null;
@@ -23,7 +29,7 @@ export function RangeDetail({ spec }: RangeDetailProps) {
     );
   }
 
-  const displayText = spec.text ?? spec.rawLegacyValue ?? rangeToText(spec);
+  const displayText = spec.text ?? spec.rawLegacyValue ?? (hasStructuredFields(spec) ? rangeToText(spec) : null) ?? "—";
 
   return (
     <div className="space-y-1" data-testid="range-detail">

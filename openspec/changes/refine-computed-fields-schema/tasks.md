@@ -106,39 +106,39 @@ Section 2 ──┘
   - [x] Remove all bindings to `dm_guidance` (field deleted from `SavingThrowSpec` in v2)
   - [x] Display `rawLegacyValue` as a read-only labelled annotation when populated, for all `kind` values
   - [x] Ensure the `notes` text area is rendered for **all kinds** (none, single, multiple, dm_adjudicated) — it is a top-level field on `SavingThrowSpec`, not scoped to any single kind, and is the sole narrative field after `dm_guidance` removal. For `dm_adjudicated` specifically: no SingleSave sub-form is shown; `notes` is the sole editable narrative field surfaced as a text area
-- [ ] 3.4 Update `MagicResistanceInput.tsx`:
-  - [ ] Display `sourceText` as a read-only labelled annotation when populated (non-hashed metadata excluded from canonical hash; not editable by the user)
-  - [ ] Ensure `appliesTo` selector is hidden or disabled when MR `kind === "unknown"` (not applicable per schema logic)
-  - [ ] When MR `kind === "partial"`: render `scope` enum selector (`damage_only`, `non_damage_only`, `primary_effect_only`, `secondary_effects_only`, `by_part_id`) and conditional `part_ids` picker (disabled with informational message when spell's `damage.kind` is not `"modeled"`, e.g., "No modeled damage parts available — set Damage to Modeled first")
-  - [ ] When MR `kind === "special"`: render `appliesTo` selector and `special_rule` text input (optional per schema)
-  - [ ] Show `notes` text area for all kinds (optional per schema, applies across all MR kinds)
-- [ ] 3.5 Update `AreaForm.tsx`:
-  - [ ] When `kind` is NOT `"special"`: bind `.text` as the computed canonical text preview (read-only, auto-recomputed)
-  - [ ] When `kind` IS `"special"`: expose `rawLegacyValue` as the user-editable field; derive `.text` from `rawLegacyValue` when non-empty, or emit `text: undefined` (not `""` — `AreaSpec.text` is optional in the schema, so `None`/`undefined` is correct for the no-input state) when empty/absent
-- [ ] 3.6 Update `StructuredFieldInput.tsx` (and Range/Duration/CastingTime sub-components):
-  - [ ] Ensure real-time `.text` derivation is written to the emitted value for **all three field types** (Range, Duration, Casting Time) on every change
-  - [ ] Implement kind-transition field-clearing rules per the structured-fields spec Kind Transition Behaviour tables (see `spell-editor-structured-fields/spec.md`). Key rules: **Range** — `distance`/`distance_los`/`distance_loe` initializes `distance: {mode: "fixed", value: 0}` and `unit: "ft"` if absent; kind-only kinds clear `distance`+`unit`+`rawLegacyValue`; `special` preserves `rawLegacyValue`. **Duration** — `time` initializes `unit: "round"` and `duration: {mode: "fixed", value: 1}` if absent; `conditional`/`until_triggered`/`planar` initializes `condition: ""` if absent; `usage_limited` initializes `uses: {mode: "fixed", value: 1}` if absent; `special` preserves `rawLegacyValue`. **CastingTime** — `rawLegacyValue` cleared when switching away from `special`/`"special"` unit ("data supersession" contract)
-  - [ ] `rawLegacyValue` show/hide — trigger 1 (kind/unit): visible when `kind === "special"` (Range/Duration) or `unit === "special"` (Casting Time); cleared (and hidden) when user switches away from `special`
-  - [ ] `rawLegacyValue` show/hide — trigger 2 (pre-existing data): also visible when a pre-existing `rawLegacyValue` is loaded from legacy data, regardless of current unit (e.g., a Casting Time with `unit: "segment"` but a populated `rawLegacyValue` from import). On user switch away from `special`, `rawLegacyValue` is cleared per data supersession contract
-  - [ ] `casting_time.text` is schema-required: always emit a non-empty `.text` for Casting Time; `DurationSpec.text` and `RangeSpec.text` are optional but must still be computed and emitted
-- [ ] 3.7a Update `SpellEditor.tsx` — canonical_data loading and normalization:
-  - [ ] Implement v1-shaped `canonical_data` compatibility: remap `dm_guidance → notes` (appending with `"\n"` separator if `notes` non-empty), remap `SpellDamageSpec.raw_legacy_value → sourceText`, prefer `sourceText` when both `sourceText` and `rawLegacyValue` are present on `SpellDamageSpec` (post-migration v2 value takes precedence over pre-migration v1 value)
-  - [ ] When loading from `canonical_data`, check for missing fields using loose equality (`canonicalData[field] == null`), which covers both `undefined` (key absent) and `null` (key present but null) in a single expression — do NOT use strict `=== undefined` or the `in` operator
-  - [ ] When loading from `canonical_data`, convert all keys from `snake_case` to `camelCase` before populating editor state (e.g. `raw_legacy_value` → `rawLegacyValue`, `save_type` → `saveType`); do not access `canonical_data` fields by their `snake_case` key names directly in React component state
-- [ ] 3.7b Update `SpellEditor.tsx` — parser dispatch and validation:
-  - [ ] Dispatch multiple field parser commands in parallel (`Promise.all`); do not dispatch sequentially
-  - [ ] While parser invocations are in flight, render the form in a **loading/disabled state** until all pending parser calls resolve
-  - [ ] Add Zod schema validation (or equivalent type guard) for all Tauri parser command responses; treat validation failures as parser failures → fallback to `kind: "special"` and include in warning banner. Validate against the same TypeScript interfaces used for spell types (e.g. `src/types/spell.ts` or shared parser response types).
-  - [ ] `savingThrow` and `magicResistance` do NOT use Tauri parser commands — use **client-side fallback mapping** from legacy text to structured state. Saving throw: resolve common 2e strings per the save_type/save_vs matrix (e.g., "Save vs. Spell" → `save_type: "spell"`, `save_vs: "spell"`). Magic resistance: "Yes" → `kind: "normal"`, "No" → `kind: "ignores_mr"`, "20%" / descriptive strings → `kind: "special"` with original string in `sourceText`
-  - [ ] `SpellDamageSpec` has no `kind: "special"` fallback — on parser failure, initialize to `kind: "none"` with original string in `sourceText`; this does NOT trigger the warning banner (unlike all other field types)
-- [ ] 3.7c Update `SpellEditor.tsx` — save path:
-  - [ ] Save path must always produce v2-shaped `canonical_data` (no `dm_guidance` on SavingThrowSpec, `sourceText` on SpellDamageSpec)
-- [ ] 3.7d Update `WarningBanner.tsx` — banner UX and nav guard:
-  - [ ] Non-dismissible by the user directly (no dismiss button)
-  - [ ] Per-field dismissal on edit: fields are removed from the banner individually when the user edits them to a non-special value
-  - [ ] Per-field dismissal on successful save: after a successful save, fields still at `kind: "special"` are also dismissed from the banner — the fallback value is now durably stored and no unsaved changes remain for that field. The banner is fully dismissed only when no fields remain listed.
-  - [ ] After a failed save, the banner persists unchanged for all listed fields
-  - [ ] Nav guard: prompts confirmation only when banner is active AND form has unsaved changes; integrates with any existing unsaved-changes guard rather than adding a separate interceptor
+- [x] 3.4 Update `MagicResistanceInput.tsx`:
+  - [x] Display `sourceText` as a read-only labelled annotation when populated (non-hashed metadata excluded from canonical hash; not editable by the user)
+  - [x] Ensure `appliesTo` selector is hidden or disabled when MR `kind === "unknown"` (not applicable per schema logic)
+  - [x] When MR `kind === "partial"`: render `scope` enum selector (`damage_only`, `non_damage_only`, `primary_effect_only`, `secondary_effects_only`, `by_part_id`) and conditional `part_ids` picker (disabled with informational message when spell's `damage.kind` is not `"modeled"`, e.g., "No modeled damage parts available — set Damage to Modeled first")
+  - [x] When MR `kind === "special"`: render `appliesTo` selector and `special_rule` text input (optional per schema)
+  - [x] Show `notes` text area for all kinds (optional per schema, applies across all MR kinds)
+- [x] 3.5 Update `AreaForm.tsx`:
+  - [x] When `kind` is NOT `"special"`: bind `.text` as the computed canonical text preview (read-only, auto-recomputed)
+  - [x] When `kind` IS `"special"`: expose `rawLegacyValue` as the user-editable field; derive `.text` from `rawLegacyValue` when non-empty, or emit `text: undefined` (not `""` — `AreaSpec.text` is optional in the schema, so `None`/`undefined` is correct for the no-input state) when empty/absent
+- [x] 3.6 Update `StructuredFieldInput.tsx` (and Range/Duration/CastingTime sub-components):
+  - [x] Ensure real-time `.text` derivation is written to the emitted value for **all three field types** (Range, Duration, Casting Time) on every change
+  - [x] Implement kind-transition field-clearing rules per the structured-fields spec Kind Transition Behaviour tables (see `spell-editor-structured-fields/spec.md`). Key rules: **Range** — `distance`/`distance_los`/`distance_loe` initializes `distance: {mode: "fixed", value: 0}` and `unit: "ft"` if absent; kind-only kinds clear `distance`+`unit`+`rawLegacyValue`; `special` preserves `rawLegacyValue`. **Duration** — `time` initializes `unit: "round"` and `duration: {mode: "fixed", value: 1}` if absent; `conditional`/`until_triggered`/`planar` initializes `condition: ""` if absent; `usage_limited` initializes `uses: {mode: "fixed", value: 1}` if absent; `special` preserves `rawLegacyValue`. **CastingTime** — `rawLegacyValue` cleared when switching away from `special`/`"special"` unit ("data supersession" contract)
+  - [x] `rawLegacyValue` show/hide — trigger 1 (kind/unit): visible when `kind === "special"` (Range/Duration) or `unit === "special"` (Casting Time); cleared (and hidden) when user switches away from `special`
+  - [x] `rawLegacyValue` show/hide — trigger 2 (pre-existing data): also visible when a pre-existing `rawLegacyValue` is loaded from legacy data, regardless of current unit (e.g., a Casting Time with `unit: "segment"` but a populated `rawLegacyValue` from import). On user switch away from `special`, `rawLegacyValue` is cleared per data supersession contract
+  - [x] `casting_time.text` is schema-required: always emit a non-empty `.text` for Casting Time; `DurationSpec.text` and `RangeSpec.text` are optional but must still be computed and emitted
+- [x] 3.7a Update `SpellEditor.tsx` — canonical_data loading and normalization:
+  - [x] Implement v1-shaped `canonical_data` compatibility: remap `dm_guidance → notes` (appending with `"\n"` separator if `notes` non-empty), remap `SpellDamageSpec.raw_legacy_value → sourceText`, prefer `sourceText` when both `sourceText` and `rawLegacyValue` are present on `SpellDamageSpec` (post-migration v2 value takes precedence over pre-migration v1 value)
+  - [x] When loading from `canonical_data`, check for missing fields using loose equality (`canonicalData[field] == null`), which covers both `undefined` (key absent) and `null` (key present but null) in a single expression — do NOT use strict `=== undefined` or the `in` operator
+  - [x] When loading from `canonical_data`, convert all keys from `snake_case` to `camelCase` before populating editor state (e.g. `raw_legacy_value` → `rawLegacyValue`, `save_type` → `saveType`); do not access `canonical_data` fields by their `snake_case` key names directly in React component state
+- [x] 3.7b Update `SpellEditor.tsx` — parser dispatch and validation:
+  - [x] Dispatch multiple field parser commands in parallel (`Promise.all`); do not dispatch sequentially
+  - [x] While parser invocations are in flight, render the form in a **loading/disabled state** until all pending parser calls resolve
+  - [x] Add Zod schema validation (or equivalent type guard) for all Tauri parser command responses; treat validation failures as parser failures → fallback to `kind: "special"` and include in warning banner. Validate against the same TypeScript interfaces used for spell types (e.g. `src/types/spell.ts` or shared parser response types).
+  - [x] `savingThrow` and `magicResistance` do NOT use Tauri parser commands — use **client-side fallback mapping** from legacy text to structured state. Saving throw: resolve common 2e strings per the save_type/save_vs matrix (e.g., "Save vs. Spell" → `save_type: "spell"`, `save_vs: "spell"`). Magic resistance: "Yes" → `kind: "normal"`, "No" → `kind: "ignores_mr"`, "20%" / descriptive strings → `kind: "special"` with original string in `sourceText`
+  - [x] `SpellDamageSpec` has no `kind: "special"` fallback — on parser failure, initialize to `kind: "none"` with original string in `sourceText`; this does NOT trigger the warning banner (unlike all other field types)
+- [x] 3.7c Update `SpellEditor.tsx` — save path:
+  - [x] Save path must always produce v2-shaped `canonical_data` (no `dm_guidance` on SavingThrowSpec, `sourceText` on SpellDamageSpec)
+- [x] 3.7d Update `WarningBanner.tsx` — banner UX and nav guard:
+  - [x] Non-dismissible by the user directly (no dismiss button)
+  - [x] Per-field dismissal on edit: fields are removed from the banner individually when the user edits them to a non-special value
+  - [x] Per-field dismissal on successful save: after a successful save, fields still at `kind: "special"` are also dismissed from the banner — the fallback value is now durably stored and no unsaved changes remain for that field. The banner is fully dismissed only when no fields remain listed.
+  - [x] After a failed save, the banner persists unchanged for all listed fields
+  - [x] Nav guard: prompts confirmation only when banner is active AND form has unsaved changes; integrates with any existing unsaved-changes guard rather than adding a separate interceptor
 
 ## 4. Frontend Detail Views
 

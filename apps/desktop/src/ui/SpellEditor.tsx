@@ -279,11 +279,6 @@ function toSpecialAreaSpec(rawLegacyValue: string): AreaSpec {
   return { kind: "special", rawLegacyValue } as AreaSpec;
 }
 
-function toFallbackDamageSpec(rawLegacyValue: string): SpellDamageSpec {
-  // dm_guidance required for dm_adjudicated kind per schema; sourceText preserves original for read-only annotation.
-  return { kind: "dm_adjudicated", sourceText: rawLegacyValue, dmGuidance: rawLegacyValue };
-}
-
 function normalizeLegacyText(value: string): string {
   return value
     .trim()
@@ -360,6 +355,144 @@ function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {
   }
 
   return { kind: "special", appliesTo: "whole_spell", specialRule: legacy };
+}
+
+// ---------------------------------------------------------------------------
+// Parser-task helpers (module-level — do not close over component state)
+// ---------------------------------------------------------------------------
+
+interface ParserTaskSetters {
+  setStructuredRange: (v: RangeSpec) => void;
+  setStructuredDuration: (v: DurationSpec) => void;
+  setStructuredCastingTime: (v: SpellCastingTime) => void;
+  setStructuredArea: (v: AreaSpec) => void;
+  setStructuredDamage: (v: SpellDamageSpec) => void;
+  setSuppressExpandParse: (
+    updater: (
+      prev: Partial<Record<DetailFieldKey, boolean>>,
+    ) => Partial<Record<DetailFieldKey, boolean>>,
+  ) => void;
+}
+
+/** Build the list of async parser invocations for the five invoke-based fields.
+ * Only enqueues a task when the field has content and suppress is not set.
+ * Returns the array of promises; caller is responsible for Promise.all. */
+function buildParserTasks(
+  data: SpellDetail,
+  getIsActive: () => boolean,
+  setters: ParserTaskSetters,
+  suppress: {
+    range?: boolean;
+    duration?: boolean;
+    castingTime?: boolean;
+    area?: boolean;
+    damage?: boolean;
+  },
+): Promise<void>[] {
+  const tasks: Promise<void>[] = [];
+
+  if (!suppress.range && data.range?.trim()) {
+    const legacy = data.range;
+    tasks.push(
+      invoke<RangeSpec>("parse_spell_range", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (!validateRangeSpec(parsed)) {
+            setters.setStructuredRange(toSpecialRangeSpec(legacy));
+          } else {
+            setters.setStructuredRange(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, range: true }));
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredRange(toSpecialRangeSpec(legacy));
+        }),
+    );
+  }
+
+  if (!suppress.duration && data.duration?.trim()) {
+    const legacy = data.duration;
+    tasks.push(
+      invoke<DurationSpec>("parse_spell_duration", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (!validateDurationSpec(parsed)) {
+            setters.setStructuredDuration(toSpecialDurationSpec(legacy));
+          } else {
+            setters.setStructuredDuration(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, duration: true }));
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredDuration(toSpecialDurationSpec(legacy));
+        }),
+    );
+  }
+
+  if (!suppress.castingTime && data.castingTime?.trim()) {
+    const legacy = data.castingTime;
+    tasks.push(
+      invoke<SpellCastingTime>("parse_spell_casting_time", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (!validateSpellCastingTime(parsed)) {
+            setters.setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+          } else {
+            setters.setStructuredCastingTime(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, castingTime: true }));
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+        }),
+    );
+  }
+
+  if (!suppress.area && data.area?.trim()) {
+    const legacy = data.area;
+    tasks.push(
+      invoke<AreaSpec | null>("parse_spell_area", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (parsed === null || !validateAreaSpec(parsed)) {
+            setters.setStructuredArea(toSpecialAreaSpec(legacy));
+          } else {
+            setters.setStructuredArea(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, area: true }));
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredArea(toSpecialAreaSpec(legacy));
+        }),
+    );
+  }
+
+  // Damage: parser failure falls back to { kind: "none" } — does NOT trigger warning banner.
+  if (!suppress.damage && data.damage?.trim()) {
+    const legacy = data.damage;
+    tasks.push(
+      invoke<SpellDamageSpec>("parse_spell_damage", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (!validateSpellDamageSpec(parsed)) {
+            setters.setStructuredDamage({ kind: "none", sourceText: legacy });
+          } else {
+            setters.setStructuredDamage(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, damage: true }));
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredDamage({ kind: "none", sourceText: legacy });
+        }),
+    );
+  }
+
+  return tasks;
 }
 
 export default function SpellEditor() {
@@ -764,105 +897,25 @@ export default function SpellEditor() {
                 setSuppressExpandParse(nextSuppressExpandParse);
 
                 // Parallel dispatch for parser-based fields missing from canonical_data.
-                const parserTasks: Promise<void>[] = [];
-
-                if (!rangeDecision.suppressExpandParse && data.range?.trim()) {
-                  parserTasks.push(
-                    invoke<RangeSpec>("parse_spell_range", { legacy: data.range })
-                      .then((parsed) => {
-                        if (!isActive) return;
-                        if (!validateRangeSpec(parsed)) {
-                          setStructuredRange(toSpecialRangeSpec(data.range!));
-                        } else {
-                          setStructuredRange(parsed);
-                          setSuppressExpandParse((prev) => ({ ...prev, range: true }));
-                        }
-                      })
-                      .catch(() => {
-                        if (!isActive) return;
-                        setStructuredRange(toSpecialRangeSpec(data.range ?? ""));
-                      }),
-                  );
-                }
-
-                if (!durationDecision.suppressExpandParse && data.duration?.trim()) {
-                  parserTasks.push(
-                    invoke<DurationSpec>("parse_spell_duration", { legacy: data.duration })
-                      .then((parsed) => {
-                        if (!isActive) return;
-                        if (!validateDurationSpec(parsed)) {
-                          setStructuredDuration(toSpecialDurationSpec(data.duration!));
-                        } else {
-                          setStructuredDuration(parsed);
-                          setSuppressExpandParse((prev) => ({ ...prev, duration: true }));
-                        }
-                      })
-                      .catch(() => {
-                        if (!isActive) return;
-                        setStructuredDuration(toSpecialDurationSpec(data.duration ?? ""));
-                      }),
-                  );
-                }
-
-                if (!castingTimeDecision.suppressExpandParse && data.castingTime?.trim()) {
-                  parserTasks.push(
-                    invoke<SpellCastingTime>("parse_spell_casting_time", {
-                      legacy: data.castingTime,
-                    })
-                      .then((parsed) => {
-                        if (!isActive) return;
-                        if (!validateSpellCastingTime(parsed)) {
-                          setStructuredCastingTime(toSpecialCastingTimeSpec(data.castingTime!));
-                        } else {
-                          setStructuredCastingTime(parsed);
-                          setSuppressExpandParse((prev) => ({ ...prev, castingTime: true }));
-                        }
-                      })
-                      .catch(() => {
-                        if (!isActive) return;
-                        setStructuredCastingTime(toSpecialCastingTimeSpec(data.castingTime ?? ""));
-                      }),
-                  );
-                }
-
-                if (!areaDecision.suppressExpandParse && data.area?.trim()) {
-                  parserTasks.push(
-                    invoke<AreaSpec | null>("parse_spell_area", { legacy: data.area })
-                      .then((parsed) => {
-                        if (!isActive) return;
-                        if (parsed === null || !validateAreaSpec(parsed)) {
-                          setStructuredArea(toSpecialAreaSpec(data.area!));
-                        } else {
-                          setStructuredArea(parsed);
-                          setSuppressExpandParse((prev) => ({ ...prev, area: true }));
-                        }
-                      })
-                      .catch(() => {
-                        if (!isActive) return;
-                        setStructuredArea(toSpecialAreaSpec(data.area ?? ""));
-                      }),
-                  );
-                }
-
-                // Damage: parser failure falls back to { kind: "none" } — does NOT trigger warning banner.
-                if (!damageDecision.suppressExpandParse && data.damage?.trim()) {
-                  parserTasks.push(
-                    invoke<SpellDamageSpec>("parse_spell_damage", { legacy: data.damage })
-                      .then((parsed) => {
-                        if (!isActive) return;
-                        if (!validateSpellDamageSpec(parsed)) {
-                          setStructuredDamage({ kind: "none", sourceText: data.damage! });
-                        } else {
-                          setStructuredDamage(parsed);
-                          setSuppressExpandParse((prev) => ({ ...prev, damage: true }));
-                        }
-                      })
-                      .catch(() => {
-                        if (!isActive) return;
-                        setStructuredDamage({ kind: "none", sourceText: data.damage ?? "" });
-                      }),
-                  );
-                }
+                const parserTasks = buildParserTasks(
+                  data,
+                  () => isActive,
+                  {
+                    setStructuredRange,
+                    setStructuredDuration,
+                    setStructuredCastingTime,
+                    setStructuredArea,
+                    setStructuredDamage,
+                    setSuppressExpandParse,
+                  },
+                  {
+                    range: rangeDecision.suppressExpandParse,
+                    duration: durationDecision.suppressExpandParse,
+                    castingTime: castingTimeDecision.suppressExpandParse,
+                    area: areaDecision.suppressExpandParse,
+                    damage: damageDecision.suppressExpandParse,
+                  },
+                );
 
                 // SavingThrow: client-side mapping (no invoke).
                 if (!savingThrowDecision.suppressExpandParse && data.savingThrow?.trim()) {
@@ -889,105 +942,19 @@ export default function SpellEditor() {
               }
             } else {
               // No canonical_data: dispatch all parser-based fields in parallel on load.
-              const parserTasks: Promise<void>[] = [];
-
-              if (data.range?.trim()) {
-                parserTasks.push(
-                  invoke<RangeSpec>("parse_spell_range", { legacy: data.range })
-                    .then((parsed) => {
-                      if (!isActive) return;
-                      if (!validateRangeSpec(parsed)) {
-                        setStructuredRange(toSpecialRangeSpec(data.range!));
-                      } else {
-                        setStructuredRange(parsed);
-                        setSuppressExpandParse((prev) => ({ ...prev, range: true }));
-                      }
-                    })
-                    .catch(() => {
-                      if (!isActive) return;
-                      setStructuredRange(toSpecialRangeSpec(data.range ?? ""));
-                    }),
-                );
-              }
-
-              if (data.duration?.trim()) {
-                parserTasks.push(
-                  invoke<DurationSpec>("parse_spell_duration", { legacy: data.duration })
-                    .then((parsed) => {
-                      if (!isActive) return;
-                      if (!validateDurationSpec(parsed)) {
-                        setStructuredDuration(toSpecialDurationSpec(data.duration!));
-                      } else {
-                        setStructuredDuration(parsed);
-                        setSuppressExpandParse((prev) => ({ ...prev, duration: true }));
-                      }
-                    })
-                    .catch(() => {
-                      if (!isActive) return;
-                      setStructuredDuration(toSpecialDurationSpec(data.duration ?? ""));
-                    }),
-                );
-              }
-
-              if (data.castingTime?.trim()) {
-                parserTasks.push(
-                  invoke<SpellCastingTime>("parse_spell_casting_time", {
-                    legacy: data.castingTime,
-                  })
-                    .then((parsed) => {
-                      if (!isActive) return;
-                      if (!validateSpellCastingTime(parsed)) {
-                        setStructuredCastingTime(toSpecialCastingTimeSpec(data.castingTime!));
-                      } else {
-                        setStructuredCastingTime(parsed);
-                        setSuppressExpandParse((prev) => ({ ...prev, castingTime: true }));
-                      }
-                    })
-                    .catch(() => {
-                      if (!isActive) return;
-                      setStructuredCastingTime(toSpecialCastingTimeSpec(data.castingTime ?? ""));
-                    }),
-                );
-              }
-
-              if (data.area?.trim()) {
-                parserTasks.push(
-                  invoke<AreaSpec | null>("parse_spell_area", { legacy: data.area })
-                    .then((parsed) => {
-                      if (!isActive) return;
-                      if (parsed === null || !validateAreaSpec(parsed)) {
-                        setStructuredArea(toSpecialAreaSpec(data.area!));
-                      } else {
-                        setStructuredArea(parsed);
-                        setSuppressExpandParse((prev) => ({ ...prev, area: true }));
-                      }
-                    })
-                    .catch(() => {
-                      if (!isActive) return;
-                      setStructuredArea(toSpecialAreaSpec(data.area ?? ""));
-                    }),
-                );
-              }
-
-              // Damage: parser failure falls back to { kind: "none" } — does NOT trigger warning banner.
-              if (data.damage?.trim()) {
-                parserTasks.push(
-                  invoke<SpellDamageSpec>("parse_spell_damage", { legacy: data.damage })
-                    .then((parsed) => {
-                      if (!isActive) return;
-                      if (!validateSpellDamageSpec(parsed)) {
-                        setStructuredDamage({ kind: "none", sourceText: data.damage! });
-                      } else {
-                        setStructuredDamage(parsed);
-                        setSuppressExpandParse((prev) => ({ ...prev, damage: true }));
-                      }
-                    })
-                    .catch(() => {
-                      if (!isActive) return;
-                      setStructuredDamage({ kind: "none", sourceText: data.damage ?? "" });
-                    }),
-                );
-              }
+              const parserTasks = buildParserTasks(
+                data,
+                () => isActive,
+                {
+                  setStructuredRange,
+                  setStructuredDuration,
+                  setStructuredCastingTime,
+                  setStructuredArea,
+                  setStructuredDamage,
+                  setSuppressExpandParse,
+                },
+                {},
+              );
 
               // SavingThrow: client-side mapping (no invoke).
               if (data.savingThrow?.trim()) {

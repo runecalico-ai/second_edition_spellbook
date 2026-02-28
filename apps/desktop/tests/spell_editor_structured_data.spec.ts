@@ -925,6 +925,14 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.waitForTimeout(300);
       await expect(page.getByTestId("range-text-preview")).toContainText("Varies by caster level");
     });
+
+    await test.step("Clear raw legacy value and verify text preview falls back to 'Special' label", async () => {
+      await page.getByTestId("range-raw-legacy").fill("");
+      await page.waitForTimeout(300);
+      // When rawLegacyValue is cleared, rangeToText returns the "Special" fallback label (rawLegacyValue ?? "Special")
+      // This confirms clearing the field resets the text preview rather than preserving the old value
+      await expect(page.getByTestId("range-text-preview")).toContainText("Special");
+    });
   });
 
   test("SpellEditor: parsers-pending-indicator is hidden after parser resolves", async ({
@@ -944,6 +952,8 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Fill range input and expand to trigger parser invocation", async () => {
       await page.getByTestId("detail-range-input").fill("30 ft");
       await page.getByTestId("detail-range-expand").click();
+      // Brief wait to allow the indicator to mount before first assertion poll
+      await page.waitForTimeout(100);
     });
 
     await test.step("parsers-pending-indicator appears then disappears after resolve", async () => {

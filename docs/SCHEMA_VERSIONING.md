@@ -51,7 +51,7 @@ The migration performs the following steps in order:
 
 2. **CastingTime 5e unit remapping**: If `casting_time.unit` is `"action"`, `"bonus_action"`, or `"reaction"`, it is remapped to `"special"` and `casting_time.text` is copied into `raw_legacy_value` (only if `raw_legacy_value` is not already populated). If `casting_time.text` is also empty/null, the value is synthesized from `base_value + unit` (e.g., `"1 action"`).
 
-3. **`SpellDamageSpec` field rename**: `raw_legacy_value` is moved to `source_text`, then `raw_legacy_value` is cleared.
+3. **`SpellDamageSpec` field rename (deserialization-time)**: When old JSON with `SpellDamageSpec.raw_legacy_value` is deserialized, serde's `alias` attribute (`#[serde(alias = "raw_legacy_value")]` on `source_text`) transparently maps the field to `source_text`. No executable code runs in `migrate_to_v2()` for this step — it is handled automatically at deserialization time.
 
 4. **Version stamp**: `schema_version` is set to `2`.
 
@@ -108,7 +108,7 @@ Version 2 introduces multiple breaking modifications. Every previously-hashed sp
 
 - **5e casting time units removed**: `"action"`, `"bonus_action"`, and `"reaction"` have been removed from the `casting_time.unit` enum. Existing spells with these values are remapped to `"special"` during `migrate_to_v2()`, with the original text preserved in `raw_legacy_value`.
 
-- **`SavingThrowSpec.dm_guidance` removed**: The field has been deleted from the schema and Rust types. Content is migrated to `notes` during `migrate_to_v2()`.
+- **`SavingThrowSpec.dm_guidance` removed**: The field has been removed from the JSON schema and is **no longer serialized** (excluded from all output and the canonical hash). In the Rust type it is retained as a deserialization-only shim (`legacy_dm_guidance` with `#[serde(skip_serializing, rename = "dm_guidance")]`) so that pre-v2 JSON round-trips without data loss. Content is migrated to `notes` during `migrate_to_v2()`.
 
 - **`SpellDamageSpec.raw_legacy_value` renamed to `source_text`**: Now a non-hashed metadata field (excluded from canonical hash), consistent with `ExperienceComponentSpec.source_text` and `MagicResistanceSpec.source_text`.
 
@@ -166,8 +166,8 @@ When evolving the schema (e.g., adding new fields or changing validation rules):
    ```rust
    if self.schema_version < 3 {
        // Migrate version 2 → 3
+       // migrate_to_v3() sets self.schema_version = 3 as its last step
        self.migrate_to_v3();
-       self.schema_version = 3;
    }
    ```
 
@@ -202,8 +202,7 @@ These changes can be made without incrementing the schema version.
 
 | Schema Version | Application Behavior |
 |----------------|---------------------|
-| `< 0` | **Rejected** – Import and hashing fail |
-| `0` | **Rejected** – below minimum supported schema version (`MIN_SUPPORTED_SCHEMA_VERSION = 1`) |
+| `< 1` | **Rejected** – below minimum supported schema version (`MIN_SUPPORTED_SCHEMA_VERSION = 1`); import and hashing fail |
 | `1` | Migrated to version 2 via `migrate_to_v2()` during normalization |
 | `2` (current) | Processed normally, validated against current schema |
 | `> 2` (future) | Warning logged, processed with forward compatibility mode |

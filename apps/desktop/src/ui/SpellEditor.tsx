@@ -122,6 +122,7 @@ function normalizeAreaSpec(a: Record<string, unknown>): AreaSpec {
     regionUnit: (a.regionUnit ?? a.region_unit) as string,
     scopeUnit: (a.scopeUnit ?? a.scope_unit) as string,
     rawLegacyValue: (a.rawLegacyValue ?? a.raw_legacy_value) as string,
+    text: a.text as string | undefined,
   } as AreaSpec;
 }
 
@@ -179,8 +180,7 @@ function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
     kind: (d.kind as SpellDamageSpec["kind"]) ?? "none",
     combineMode: (d.combineMode ?? d.combine_mode) as SpellDamageSpec["combineMode"],
     parts: parts as SpellDamageSpec["parts"],
-    dmGuidance: (d.dmGuidance ?? d.dm_guidance) as string,
-    rawLegacyValue: (d.rawLegacyValue ?? d.raw_legacy_value) as string,
+    sourceText: (d.sourceText ?? d.source_text ?? d.rawLegacyValue ?? d.raw_legacy_value) as string,
     notes: d.notes as string,
   } as SpellDamageSpec;
 }
@@ -209,14 +209,20 @@ function normalizeSingleSave(s: unknown): SingleSave | undefined {
 }
 
 function normalizeSavingThrowSpec(s: Record<string, unknown>): SavingThrowSpec {
+  const existingNotes = s.notes as string | undefined;
+  const dmGuidanceVal = (s.dmGuidance ?? s.dm_guidance) as string | undefined;
+  const notes = dmGuidanceVal
+    ? existingNotes
+      ? `${existingNotes}\n${dmGuidanceVal}`
+      : dmGuidanceVal
+    : existingNotes;
   return {
     kind: (s.kind as SavingThrowSpec["kind"]) ?? "none",
     single: normalizeSingleSave(s.single),
     multiple: (s.multiple as unknown[] | undefined)
       ?.map(normalizeSingleSave)
       .filter(Boolean) as SingleSave[],
-    dmGuidance: (s.dmGuidance ?? s.dm_guidance) as string,
-    notes: s.notes as string,
+    notes: notes as string,
   } as SavingThrowSpec;
 }
 
@@ -232,6 +238,7 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
         }
       : undefined,
     specialRule: (m.specialRule ?? m.special_rule) as string,
+    sourceText: (m.sourceText ?? m.source_text) as string | undefined,
     notes: m.notes as string,
   } as MagicResistanceSpec;
 }
@@ -271,7 +278,7 @@ function toSpecialAreaSpec(rawLegacyValue: string): AreaSpec {
 }
 
 function toFallbackDamageSpec(rawLegacyValue: string): SpellDamageSpec {
-  return { kind: "dm_adjudicated", rawLegacyValue, dmGuidance: rawLegacyValue };
+  return { kind: "dm_adjudicated", sourceText: rawLegacyValue, dmGuidance: rawLegacyValue };
 }
 
 function normalizeLegacyText(value: string): string {
@@ -326,7 +333,7 @@ function mapLegacySavingThrow(legacy: string): SavingThrowSpec {
     };
   }
 
-  return { kind: "dm_adjudicated", dmGuidance: legacy };
+  return { kind: "dm_adjudicated", rawLegacyValue: legacy };
 }
 
 function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {
@@ -607,6 +614,7 @@ export default function SpellEditor() {
                     return {
                       kind: d.kind,
                       unit: d.unit,
+                      text: d.text as string | undefined,
                       duration: d.duration
                         ? {
                             mode: d.duration.mode ?? "fixed",
@@ -1314,7 +1322,9 @@ export default function SpellEditor() {
     structuredDuration?.kind === "special" && "Duration",
     structuredCastingTime?.unit === "special" && "Casting time",
     structuredArea?.kind === "special" && "Area",
-    structuredDamage?.rawLegacyValue && "Damage",
+    structuredDamage?.kind === "dm_adjudicated" && "Damage",
+    structuredSavingThrow?.kind === "dm_adjudicated" && "Saving throw",
+    structuredMagicResistance?.kind === "special" && "Magic resistance",
   ].filter(Boolean) as string[];
   const hasSpecialFallback = specialFallbackFields.length > 0;
   const specialFallbackMessage = hasSpecialFallback
@@ -1946,7 +1956,7 @@ export default function SpellEditor() {
                 (structuredCastingTime?.unit === "special" ||
                   !!structuredCastingTime?.rawLegacyValue)) ||
               (field === "area" && structuredArea?.kind === "special") ||
-              (field === "damage" && !!structuredDamage?.rawLegacyValue) ||
+              (field === "damage" && !!structuredDamage?.sourceText) ||
               (field === "savingThrow" && structuredSavingThrow?.kind === "dm_adjudicated") ||
               (field === "magicResistance" && structuredMagicResistance?.kind === "special") ||
               (field === "materialComponents" && false); // Reserved: no "special" kind for material row today; shares component state
@@ -2013,6 +2023,10 @@ export default function SpellEditor() {
                             onChange={(spec) => {
                               setStructuredRange(spec as RangeSpec);
                               setDetailDirtyFor("range");
+                              setForm((prev) => ({
+                                ...prev,
+                                range: rangeToText(spec as RangeSpec),
+                              }));
                             }}
                           />
                         )}
@@ -2039,6 +2053,10 @@ export default function SpellEditor() {
                             onChange={(spec) => {
                               setStructuredDuration(spec as DurationSpec);
                               setDetailDirtyFor("duration");
+                              setForm((prev) => ({
+                                ...prev,
+                                duration: durationToText(spec as DurationSpec),
+                              }));
                             }}
                           />
                         )}
@@ -2049,15 +2067,20 @@ export default function SpellEditor() {
                             onChange={(spec) => {
                               setStructuredCastingTime(spec as SpellCastingTime);
                               setDetailDirtyFor("castingTime");
+                              setForm((prev) => ({
+                                ...prev,
+                                castingTime: castingTimeToText(spec as SpellCastingTime),
+                              }));
                             }}
                           />
                         )}
                         {field === "area" && (
                           <AreaForm
-                            value={structuredArea ?? undefined}
+                            value={structuredArea ?? defaultAreaSpec()}
                             onChange={(spec) => {
                               setStructuredArea(spec);
                               setDetailDirtyFor("area");
+                              setForm((prev) => ({ ...prev, area: areaToText(spec) }));
                             }}
                           />
                         )}
@@ -2067,6 +2090,10 @@ export default function SpellEditor() {
                             onChange={(spec) => {
                               setStructuredSavingThrow(spec);
                               setDetailDirtyFor("savingThrow");
+                              setForm((prev) => ({
+                                ...prev,
+                                savingThrow: savingThrowToText(spec),
+                              }));
                             }}
                           />
                         )}
@@ -2082,9 +2109,14 @@ export default function SpellEditor() {
                         {field === "magicResistance" && (
                           <MagicResistanceInput
                             value={structuredMagicResistance ?? undefined}
+                            damageKind={structuredDamage?.kind}
                             onChange={(spec) => {
                               setStructuredMagicResistance(spec);
                               setDetailDirtyFor("magicResistance");
+                              setForm((prev) => ({
+                                ...prev,
+                                magicResistance: magicResistanceToText(spec),
+                              }));
                             }}
                           />
                         )}

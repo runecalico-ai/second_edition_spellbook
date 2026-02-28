@@ -754,7 +754,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  test("StructuredFieldInput Duration: switching from 'time' to 'instantaneous' shows Instant in text preview", async ({
+  test("StructuredFieldInput Duration: switching from 'time' to 'instant' shows Instant in text preview", async ({
     appContext,
   }) => {
     const { page } = appContext;
@@ -763,9 +763,9 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
-      await page.getByTestId("spell-name-input").fill("Duration Instantaneous Test");
+      await page.getByTestId("spell-name-input").fill("Duration Instant Test");
       await page.getByTestId("spell-level-input").fill("1");
-      await page.getByTestId("spell-description-textarea").fill("Description for duration instantaneous test.");
+      await page.getByTestId("spell-description-textarea").fill("Description for duration instant test.");
     });
 
     await test.step("Expand duration and set kind to time", async () => {
@@ -777,8 +777,8 @@ test.describe("Spell Editor structured data and hash display", () => {
       await expect(page.getByTestId("duration-unit")).toBeVisible({ timeout: TIMEOUTS.short });
     });
 
-    await test.step("Switch to 'instantaneous' and verify time fields hidden", async () => {
-      await page.getByTestId("duration-kind-select").selectOption("instantaneous");
+    await test.step("Switch to 'instant' and verify time fields hidden", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("instant");
       await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-unit")).not.toBeVisible();
       await expect(page.getByTestId("duration-base-value")).not.toBeVisible();
@@ -789,7 +789,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  test("StructuredFieldInput Duration: switching from 'instantaneous' to 'time' re-initializes duration unit and value", async ({
+  test("StructuredFieldInput Duration: switching from 'instant' to 'time' re-initializes duration unit and value", async ({
     appContext,
   }) => {
     const { page } = appContext;
@@ -803,11 +803,11 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-description-textarea").fill("Description for duration time reinit test.");
     });
 
-    await test.step("Expand duration and set kind to instantaneous then time", async () => {
+    await test.step("Expand duration and set kind to instant then time", async () => {
       await page.getByTestId("detail-duration-expand").click();
       await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
-      await page.getByTestId("duration-kind-select").selectOption("instantaneous");
+      await page.getByTestId("duration-kind-select").selectOption("instant");
       await page.waitForTimeout(300);
       await page.getByTestId("duration-kind-select").selectOption("time");
       await page.waitForTimeout(300);

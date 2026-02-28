@@ -289,3 +289,35 @@ The implementation is **mostly correct and spec-compliant**. Two functional bugs
 2. `MagicResistanceDetail` silently hides `specialRule` when `sourceText` is present — a data visibility issue for spells with both fields populated.
 
 Fix F1 and F2 before proceeding to task 5.
+
+---
+
+## Resolution
+
+**Resolved:** 2026-02-28  
+**Commits:** `14acff9`, `8b2c18d`, `040dfb2`
+
+### Actions Completed
+
+| Finding | Action | Status | Commit |
+|---------|--------|--------|--------|
+| **F1** | `DurationDetail.tsx`: `condition != null` → `!!spec.condition` | ✅ Fixed | `14acff9` |
+| **F2** | `MagicResistanceDetail.tsx`: removed `!showSourceTextPrimary` guard from `showSpecialRule` | ✅ Fixed | `14acff9` |
+| **F4** | `DamageDetail.tsx`: added inline comment explaining `sourceText` (v2) / `dmGuidance` (v1) fallback | ✅ Done | `14acff9` |
+| **Q1** | Added 7 Storybook story files with `play`-function assertions (133 tests, 14 test files) | ✅ Done | `8b2c18d`, `040dfb2` |
+
+### Test Results
+
+```
+Test Files  14 passed (14)
+     Tests  133 passed (133)
+  Duration  5.56s
+```
+
+### Notes
+
+- **F1 regression guard:** `DurationDetail.stories.tsx` — `F1EmptyConditionNoSynthesis` story: `condition: ""` → asserts output is `"—"`.
+- **F2 regression guard:** `MagicResistanceDetail.stories.tsx` — `F2BothSourceTextAndSpecialRule` story: asserts both `magic-resistance-source-text-primary` and `magic-resistance-special-rule` render simultaneously.
+- `CastingTimeDetail` has no `notes` field on `SpellCastingTime` (flat type) — quality finding about missing `WithNotes` story was a false positive; no fix needed.
+- Minor polish: JSDoc typo (`renderd` → `rendered`) and `null`/`undefined` standardization in `NullSpec` story args (`040dfb2`).
+- All informational findings (F3, F5, F6, Q2, Q3, Q4) noted but no code changes required.

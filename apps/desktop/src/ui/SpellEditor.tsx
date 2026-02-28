@@ -63,6 +63,7 @@ import {
   createDefaultDetailDirty,
 } from "./detailDirty";
 import { decideCanonicalField } from "./canonicalFieldDecision";
+import { WarningBanner } from "./components/WarningBanner";
 
 type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
 
@@ -399,6 +400,8 @@ interface ParserTaskSetters {
       prev: Partial<Record<DetailFieldKey, boolean>>,
     ) => Partial<Record<DetailFieldKey, boolean>>,
   ) => void;
+  /** Called when a field falls back to kind="special" due to a parse failure in this session. */
+  addParserFallback: (field: string) => void;
 }
 
 /** Build the list of async parser invocations for the five invoke-based fields.
@@ -426,6 +429,7 @@ function buildParserTasks(
           if (!getIsActive()) return;
           if (!validateRangeSpec(parsed)) {
             setters.setStructuredRange(toSpecialRangeSpec(legacy));
+            setters.addParserFallback("Range");
           } else {
             setters.setStructuredRange(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, range: true }));
@@ -434,6 +438,7 @@ function buildParserTasks(
         .catch(() => {
           if (!getIsActive()) return;
           setters.setStructuredRange(toSpecialRangeSpec(legacy));
+          setters.addParserFallback("Range");
         }),
     );
   }
@@ -446,6 +451,7 @@ function buildParserTasks(
           if (!getIsActive()) return;
           if (!validateDurationSpec(parsed)) {
             setters.setStructuredDuration(toSpecialDurationSpec(legacy));
+            setters.addParserFallback("Duration");
           } else {
             setters.setStructuredDuration(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, duration: true }));
@@ -454,6 +460,7 @@ function buildParserTasks(
         .catch(() => {
           if (!getIsActive()) return;
           setters.setStructuredDuration(toSpecialDurationSpec(legacy));
+          setters.addParserFallback("Duration");
         }),
     );
   }
@@ -466,6 +473,7 @@ function buildParserTasks(
           if (!getIsActive()) return;
           if (!validateSpellCastingTime(parsed)) {
             setters.setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+            setters.addParserFallback("Casting time");
           } else {
             setters.setStructuredCastingTime(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, castingTime: true }));
@@ -474,6 +482,7 @@ function buildParserTasks(
         .catch(() => {
           if (!getIsActive()) return;
           setters.setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+          setters.addParserFallback("Casting time");
         }),
     );
   }
@@ -486,6 +495,7 @@ function buildParserTasks(
           if (!getIsActive()) return;
           if (parsed === null || !validateAreaSpec(parsed)) {
             setters.setStructuredArea(toSpecialAreaSpec(legacy));
+            setters.addParserFallback("Area");
           } else {
             setters.setStructuredArea(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, area: true }));
@@ -494,6 +504,7 @@ function buildParserTasks(
         .catch(() => {
           if (!getIsActive()) return;
           setters.setStructuredArea(toSpecialAreaSpec(legacy));
+          setters.addParserFallback("Area");
         }),
     );
   }
@@ -520,6 +531,20 @@ function buildParserTasks(
   }
 
   return tasks;
+}
+
+/** Maps a DetailFieldKey to the display label used in parserFallbackFields. */
+function getParserFallbackLabel(field: DetailFieldKey): string {
+  switch (field) {
+    case "range": return "Range";
+    case "duration": return "Duration";
+    case "castingTime": return "Casting time";
+    case "area": return "Area";
+    case "savingThrow": return "Saving throw";
+    case "magicResistance": return "Magic resistance";
+    case "damage": return "Damage"; // damage never added to parserFallbackFields
+    default: return field;
+  }
 }
 
 export default function SpellEditor() {
@@ -591,6 +616,16 @@ export default function SpellEditor() {
   /** True while parallel parser invocations are in flight on spell load; disables save. */
   const [parsersPending, setParsersPending] = useState(false);
 
+  /**
+   * Tracks which fields triggered a parser fallback (kind="special") in THIS session.
+   * Fields are added when a parallel-load parser returns a special fallback.
+   * Removed when: (a) user edits the field, (b) successful save.
+   * After successful save all remaining tracked fields are dismissed (durably stored).
+   * Does NOT include fields loaded from canonical_data as kind="special"
+   * (those are accepted user data, not parse failures).
+   */
+  const [parserFallbackFields, setParserFallbackFields] = useState<Set<string>>(new Set());
+
   const isNew = id === "new";
 
   useEffect(() => {
@@ -626,6 +661,7 @@ export default function SpellEditor() {
     setDetailDirty(createDefaultDetailDirty());
     setSuppressExpandParse({});
     setParsersPending(false);
+    setParserFallbackFields(new Set());
     expandedDetailRef.current = null;
     prevExpandedDetailRef.current = null;
   }, []);
@@ -675,7 +711,12 @@ export default function SpellEditor() {
       b.proceed?.();
       return;
     }
-    modalConfirm("You have unsaved changes. Leave and discard?", "Unsaved changes").then((ok) => {
+    const hasBannerActive = parserFallbackFields.size > 0;
+    const message = hasBannerActive
+      ? "You have unparsed fields. Navigating away will discard your current editor state. Continue?"
+      : "You have unsaved changes. Leave and discard?";
+    const title = hasBannerActive ? "Unparsed fields" : "Unsaved changes";
+    modalConfirm(message, title).then((ok) => {
       if (ok) {
         unsavedRef.current = false;
         setHasUnsavedState(false);
@@ -684,7 +725,7 @@ export default function SpellEditor() {
         b.reset?.();
       }
     });
-  }, [blocker.state, modalConfirm]);
+  }, [blocker.state, parserFallbackFields, modalConfirm]);
 
   useEffect(() => {
     if (!isNew && id) {
@@ -934,6 +975,8 @@ export default function SpellEditor() {
                     setStructuredArea,
                     setStructuredDamage,
                     setSuppressExpandParse,
+                    addParserFallback: (f) =>
+                      setParserFallbackFields((prev) => new Set([...prev, f])),
                   },
                   {
                     range: rangeDecision.suppressExpandParse,
@@ -946,16 +989,24 @@ export default function SpellEditor() {
 
                 // SavingThrow: client-side mapping (no invoke).
                 if (!savingThrowDecision.suppressExpandParse && data.savingThrow?.trim()) {
-                  setStructuredSavingThrow(mapLegacySavingThrow(data.savingThrow));
+                  const stResult = mapLegacySavingThrow(data.savingThrow);
+                  setStructuredSavingThrow(stResult);
                   setHasLoadedSavingThrowSpec(true);
                   setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
+                  if (stResult.kind === "dm_adjudicated") {
+                    setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+                  }
                 }
 
                 // MagicResistance: client-side mapping (no invoke).
                 if (!magicResistanceDecision.suppressExpandParse && data.magicResistance?.trim()) {
-                  setStructuredMagicResistance(mapLegacyMagicResistance(data.magicResistance));
+                  const mrResult = mapLegacyMagicResistance(data.magicResistance);
+                  setStructuredMagicResistance(mrResult);
                   setHasLoadedMagicResistanceSpec(true);
                   setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
+                  if (mrResult.kind === "special") {
+                    setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+                  }
                 }
 
                 if (parserTasks.length > 0) {
@@ -979,22 +1030,32 @@ export default function SpellEditor() {
                   setStructuredArea,
                   setStructuredDamage,
                   setSuppressExpandParse,
+                  addParserFallback: (f) =>
+                    setParserFallbackFields((prev) => new Set([...prev, f])),
                 },
                 {},
               );
 
               // SavingThrow: client-side mapping (no invoke).
               if (data.savingThrow?.trim()) {
-                setStructuredSavingThrow(mapLegacySavingThrow(data.savingThrow));
+                const stResult = mapLegacySavingThrow(data.savingThrow);
+                setStructuredSavingThrow(stResult);
                 setHasLoadedSavingThrowSpec(true);
                 setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
+                if (stResult.kind === "dm_adjudicated") {
+                  setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+                }
               }
 
               // MagicResistance: client-side mapping (no invoke).
               if (data.magicResistance?.trim()) {
-                setStructuredMagicResistance(mapLegacyMagicResistance(data.magicResistance));
+                const mrResult = mapLegacyMagicResistance(data.magicResistance);
+                setStructuredMagicResistance(mrResult);
                 setHasLoadedMagicResistanceSpec(true);
                 setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
+                if (mrResult.kind === "special") {
+                  setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+                }
               }
 
               if (parserTasks.length > 0) {
@@ -1088,6 +1149,13 @@ export default function SpellEditor() {
           setHasExpandedComponentsEdit(false);
           break;
       }
+      // Dismiss parser fallback when user edits the field directly
+      const fallbackLabel = getParserFallbackLabel(detailField);
+      setParserFallbackFields((prev) => {
+        const next = new Set(prev);
+        next.delete(fallbackLabel);
+        return next;
+      });
     }
   };
 
@@ -1351,6 +1419,7 @@ export default function SpellEditor() {
           if (requestId !== expandRequestId.current) return;
           if (!validateRangeSpec(parsed)) {
             setStructuredRange(toSpecialRangeSpec(legacy));
+            setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           } else {
             setStructuredRange(parsed);
           }
@@ -1361,6 +1430,7 @@ export default function SpellEditor() {
           if (requestId !== expandRequestId.current) return;
           if (!validateDurationSpec(parsed)) {
             setStructuredDuration(toSpecialDurationSpec(legacy));
+            setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           } else {
             setStructuredDuration(parsed);
           }
@@ -1371,6 +1441,7 @@ export default function SpellEditor() {
           if (requestId !== expandRequestId.current) return;
           if (!validateSpellCastingTime(parsed)) {
             setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+            setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           } else {
             setStructuredCastingTime(parsed);
           }
@@ -1381,6 +1452,7 @@ export default function SpellEditor() {
           if (requestId !== expandRequestId.current) return;
           if (parsed === null || !validateAreaSpec(parsed)) {
             setStructuredArea(toSpecialAreaSpec(legacy));
+            setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           } else {
             setStructuredArea(parsed);
           }
@@ -1399,11 +1471,23 @@ export default function SpellEditor() {
         }
         case "savingThrow":
           if (requestId !== expandRequestId.current) return;
-          setStructuredSavingThrow(mapLegacySavingThrow(legacy));
+          {
+            const stResult = mapLegacySavingThrow(legacy);
+            setStructuredSavingThrow(stResult);
+            if (stResult.kind === "dm_adjudicated") {
+              setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+            }
+          }
           break;
         case "magicResistance":
           if (requestId !== expandRequestId.current) return;
-          setStructuredMagicResistance(mapLegacyMagicResistance(legacy));
+          {
+            const mrResult = mapLegacyMagicResistance(legacy);
+            setStructuredMagicResistance(mrResult);
+            if (mrResult.kind === "special") {
+              setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+            }
+          }
           break;
         case "components":
         case "materialComponents":
@@ -1453,26 +1537,40 @@ export default function SpellEditor() {
       switch (field) {
         case "range":
           setStructuredRange(toSpecialRangeSpec(leg));
+          setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           break;
         case "duration":
           setStructuredDuration(toSpecialDurationSpec(leg));
+          setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           break;
         case "castingTime":
           setStructuredCastingTime(toSpecialCastingTimeSpec(leg));
+          setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           break;
         case "area":
           setStructuredArea(toSpecialAreaSpec(leg));
+          setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           break;
         case "damage":
           // Parser failure: kind "none" with sourceText; does NOT trigger warning banner.
           setStructuredDamage({ kind: "none", sourceText: leg });
           break;
-        case "savingThrow":
-          setStructuredSavingThrow(mapLegacySavingThrow(leg));
+        case "savingThrow": {
+          const stResult = mapLegacySavingThrow(leg);
+          setStructuredSavingThrow(stResult);
+          if (stResult.kind === "dm_adjudicated") {
+            setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+          }
           break;
-        case "magicResistance":
-          setStructuredMagicResistance(mapLegacyMagicResistance(leg));
+        }
+        case "magicResistance": {
+          const mrResult = mapLegacyMagicResistance(leg);
+          setStructuredMagicResistance(mrResult);
+          if (mrResult.kind === "special") {
+            setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+          }
           break;
+        }
         case "components":
         case "materialComponents":
           {
@@ -1516,6 +1614,13 @@ export default function SpellEditor() {
     if (field === "components" || field === "materialComponents") {
       setHasExpandedComponentsEdit(true);
     }
+    // Dismiss parser fallback when user edits structured field
+    const label = getParserFallbackLabel(field);
+    setParserFallbackFields((prev) => {
+      const next = new Set(prev);
+      next.delete(label);
+      return next;
+    });
   };
 
   const isNameInvalid = !form.name.trim();
@@ -1560,20 +1665,6 @@ export default function SpellEditor() {
     isDivineMissingSphere && "Sphere is required for Divine tradition",
     hasTraditionConflict && "School and Sphere cannot both be set",
   ].filter(Boolean) as string[];
-
-  const specialFallbackFields = [
-    structuredRange?.kind === "special" && "Range",
-    structuredDuration?.kind === "special" && "Duration",
-    structuredCastingTime?.unit === "special" && "Casting time",
-    structuredArea?.kind === "special" && "Area",
-    structuredDamage?.kind === "dm_adjudicated" && "Damage",
-    structuredSavingThrow?.kind === "dm_adjudicated" && "Saving throw",
-    structuredMagicResistance?.kind === "special" && "Magic resistance",
-  ].filter(Boolean) as string[];
-  const hasSpecialFallback = specialFallbackFields.length > 0;
-  const specialFallbackMessage = hasSpecialFallback
-    ? `${specialFallbackFields.join(" and ")} could not be fully parsed; original text preserved.`
-    : "";
 
   const isInvalid = validationErrors.length > 0;
   const save = async () => {
@@ -1739,6 +1830,8 @@ export default function SpellEditor() {
         const { artifacts, ...updateData } = normalizedSpellData; // eslint-disable-line @typescript-eslint/no-unused-vars
         await invoke("update_spell", { spell: updateData });
       }
+      // Dismiss all parser fallback fields after successful save (data is now durably stored)
+      setParserFallbackFields(new Set());
       unsavedRef.current = false;
       setHasUnsavedState(false);
       navigate("/");
@@ -1793,15 +1886,7 @@ export default function SpellEditor() {
           Parsing fields…
         </div>
       )}
-      {hasSpecialFallback && (
-        <div
-          role="alert"
-          className="rounded border border-amber-600/50 bg-amber-600/10 px-3 py-2 text-sm text-amber-200"
-          data-testid="spell-editor-special-fallback-banner"
-        >
-          {specialFallbackMessage}
-        </div>
-      )}
+      <WarningBanner fields={[...parserFallbackFields]} />
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h1>

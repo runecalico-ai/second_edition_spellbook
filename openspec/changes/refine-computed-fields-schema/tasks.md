@@ -142,22 +142,22 @@ Section 2 ──┘
 
 ## 4. Frontend Detail Views
 
-- [ ] 4.1 Update spell detail views in `src/ui/spell-detail/` for Saving Throw:
-  - [ ] Remove `dmGuidance` references
-  - [ ] For `single`/`multiple` kinds: display `rawLegacyValue` as a secondary "Original source" annotation (collapsible to reduce clutter)
-  - [ ] For `dm_adjudicated` kind: display `rawLegacyValue` as the primary descriptive content
-  - [ ] Always display `notes` when present
-- [ ] 4.2 Update spell detail views for Range, Duration, and Area:
-  - [ ] Primary display: computed `.text` value from `canonical_data`
-  - [ ] First fallback: `rawLegacyValue` (original authored string) when `.text` is absent
-  - [ ] Second fallback: synthesize a display string from the structured algebraic fields when both `.text` and `rawLegacyValue` are absent AND structured fields are non-empty (i.e., structured fields are present and not null/undefined — not merely zero-valued); do NOT attempt to synthesize from empty/absent structured fields
-- [ ] 4.2b Update spell detail views for Casting Time (flat object, separate from spec-based fields):
-  - [ ] Primary display: computed `.text` value from `canonical_data`
-  - [ ] First fallback: `rawLegacyValue` when `.text` is absent
-  - [ ] Second fallback: synthesize from `(baseValue, unit)` — the only two structured fields on the `CastingTime` flat object
-- [ ] 4.3 Update spell detail views for Damage and Magic Resistance:
-  - [ ] Damage: display the structured formula from algebraic fields when present; fall back to `sourceText` when algebraic fields are absent or empty
-  - [ ] Magic Resistance: display `kind` and `appliesTo`; display `sourceText` when present (primary content for `kind = "special"`)
+- [x] 4.1 Update spell detail views in `src/ui/spell-detail/` for Saving Throw:
+  - [x] Remove `dmGuidance` references
+  - [x] For `single`/`multiple` kinds: display `rawLegacyValue` as a secondary "Original source" annotation (collapsible to reduce clutter)
+  - [x] For `dm_adjudicated` kind: display `rawLegacyValue` as the primary descriptive content
+  - [x] Always display `notes` when present
+- [x] 4.2 Update spell detail views for Range, Duration, and Area:
+  - [x] Primary display: computed `.text` value from `canonical_data`
+  - [x] First fallback: `rawLegacyValue` (original authored string) when `.text` is absent
+  - [x] Second fallback: synthesize a display string from the structured algebraic fields when both `.text` and `rawLegacyValue` are absent AND structured fields are non-empty (i.e., structured fields are present and not null/undefined — not merely zero-valued); do NOT attempt to synthesize from empty/absent structured fields
+- [x] 4.2b Update spell detail views for Casting Time (flat object, separate from spec-based fields):
+  - [x] Primary display: computed `.text` value from `canonical_data`
+  - [x] First fallback: `rawLegacyValue` when `.text` is absent
+  - [x] Second fallback: synthesize from `(baseValue, unit)` — the only two structured fields on the `CastingTime` flat object
+- [x] 4.3 Update spell detail views for Damage and Magic Resistance:
+  - [x] Damage: display the structured formula from algebraic fields when present; fall back to `sourceText` when algebraic fields are absent or empty
+  - [x] Magic Resistance: display `kind` and `appliesTo`; display `sourceText` when present (primary content for `kind = "special"`)
 
 ## 5. Documentation & E2E Tests
 

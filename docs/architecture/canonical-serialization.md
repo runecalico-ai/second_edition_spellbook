@@ -28,7 +28,7 @@ Fields representing unordered sets have their elements sorted lexicographically 
 - **Omitted (skip_serializing_if)**: Optional fields (like `range`, `school`, `sphere`, etc.) are **omitted** from the JSON if they are `None`. This is the preferred standard over literal `null` values for better forward compatibility.
 
 ### 2.2.1 Fallback storage (raw_legacy_value)
-When parsing falls back to a generic type (e.g. "special" unit or kind), the original legacy string MAY be stored in an optional **`raw_legacy_value`** field on the spec. The JSON schema (`schemas/spell.schema.json`) allows this property on `casting_time`, `range` (RangeSpec), `duration` (DurationSpec), `area` (AreaSpec), and `damage` (SpellDamageSpec). This field is **included in the canonical hash** (it is content, not metadata) so that different fallback text produces different hashes.
+When parsing falls back to a generic type (e.g. "special" unit or kind), the original legacy string MAY be stored in an optional **`raw_legacy_value`** field on the spec. The JSON schema (`schemas/spell.schema.json`) allows this property on `casting_time`, `range` (RangeSpec), `duration` (DurationSpec), `area` (AreaSpec), and `saving_throw` (SavingThrowSpec). This field is **included in the canonical hash** (it is content, not metadata) so that different fallback text produces different hashes.
 
 ### 2.3 Metadata Exclusion
 
@@ -46,7 +46,7 @@ The following fields are **excluded from the canonical hash** but preserved for 
 | `created_at` | Root only | Temporal metadata |
 | `updated_at` | Root only | Temporal metadata |
 | `artifacts` | All depths | Attached artifacts |
-| `source_text` | All depths | Original source text |
+| `source_text` | All depths | Original source text (`ExperienceComponentSpec.source_text`, `SpellDamageSpec.source_text`, `MagicResistanceSpec.source_text`) |
 
 > **Note:** Nested `id` fields (e.g., in `DamagePart`, `SingleSave`) are **preserved** because they are mechanical identifiers.
 
@@ -159,8 +159,10 @@ The following table shows which normalization mode applies to specific text fiel
 | `RangeSpec.text` | Structured + unit alias normalization (word boundaries) | Collapse whitespace (preserve case), then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
 | `RangeSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **AreaSpec** |  |  |
+| `AreaSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; collapse whitespace, then normalize unit aliases (e.g. "20 yards" → "20 yd"; "backyard" unchanged) |
 | `AreaSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **DurationSpec** |  |  |
+| `DurationSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; same treatment as `RangeSpec.text` and `AreaSpec.text` |
 | `DurationSpec.condition` | `Structured` | Condition text should collapse whitespace |
 | `DurationSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **MaterialComponentSpec** |  |  |
@@ -169,7 +171,6 @@ The following table shows which normalization mode applies to specific text fiel
 | `MaterialComponentSpec.description` | `Textual` | Allow multi-line component details |
 | **SavingThrowSpec** |  |  |
 | `SavingThrowSpec.notes` | `Textual` | Allow multi-line clarifications |
-| `SavingThrowSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
 | `SingleSave.id` | `LowercaseStructured` | IDs for lookup/comparison |
 | `SaveOutcomeEffect.notes` | `Textual` | Allow multi-line clarifications |
 | **SpellCastingTime** |  |  |
@@ -178,6 +179,7 @@ The following table shows which normalization mode applies to specific text fiel
 | `MagicResistanceSpec.notes` | `Textual` | Allow multi-line clarifications |
 | `MagicResistanceSpec.special_rule` | `Textual` | Allow multi-line special rules |
 | `MrPartialSpec.part_ids` | `LowercaseStructured` | IDs for comparison |
+| `MagicResistanceSpec.source_text` | `Textual` | Original source text (metadata, excluded from hash) |
 | **ExperienceComponentSpec** |  |  |
 | `ExperienceComponentSpec.notes` | `Textual` | Allow multi-line clarifications |
 | `ExperienceComponentSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
@@ -191,6 +193,7 @@ The following table shows which normalization mode applies to specific text fiel
 | **SpellDamageSpec** |  |  |
 | `SpellDamageSpec.notes` | `Textual` | Allow multi-line clarifications |
 | `SpellDamageSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
+| `SpellDamageSpec.source_text` | `Textual` | Original source text (metadata, excluded from hash) |
 | `DamagePart.id` | `LowercaseStructured` | IDs for lookup/comparison |
 | `DamagePart.label` | `Textual` | Allow multi-line labels |
 | `DamagePart.notes` | `Textual` | Allow multi-line clarifications |

@@ -576,6 +576,9 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("App navigates to library after successful save (banner dismissed)", async () => {
+      // Note: banner dismissal is verified indirectly — a successful save calls setParserFallbackFields(new Set())
+      // and navigates to library. Direct banner visibility after navigate is not testable since
+      // the editor is unmounted. If `waitForLibrary()` succeeds, the save path ran fully.
       await app.waitForLibrary();
     });
   });
@@ -655,7 +658,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  test("DamageForm: sourceText annotation rendered when damage is loaded from fallback", async ({
+  test("DamageForm: sourceText annotation rendered when damage text is present", async ({
     appContext,
   }) => {
     const { page } = appContext;
@@ -669,7 +672,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-description-textarea").fill("Description for damage annotation test.");
     });
 
-    await test.step("Fill damage canon input with text that triggers parser fallback", async () => {
+    await test.step("Fill damage canon input with text to verify sourceText annotation", async () => {
       await page.getByTestId("detail-damage-input").fill("1d6 fire per level");
       await page.getByTestId("detail-damage-expand").click();
       await page.waitForTimeout(300);

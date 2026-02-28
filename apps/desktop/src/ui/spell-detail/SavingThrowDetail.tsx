@@ -113,8 +113,7 @@ export function SavingThrowDetail({ spec }: SavingThrowDetailProps) {
         </p>
       )}
 
-      {/* Show notes when present, but not when notes was already used as the primary dm_adjudicated content */}
-      {spec.notes && !(spec.kind === "dm_adjudicated" && !spec.rawLegacyValue) && (
+      {spec.notes && (
         <p
           className="text-xs text-neutral-400 italic"
           data-testid="saving-throw-notes"

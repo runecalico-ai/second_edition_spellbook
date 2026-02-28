@@ -610,7 +610,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Nav guard modal appears with 'Unparsed fields' messaging", async () => {
-      const modal = page.getByTestId("modal-container");
+      const modal = page.getByRole("dialog");
       await expect(modal).toBeVisible({ timeout: TIMEOUTS.medium });
       await expect(modal).toContainText("Unparsed fields");
     });

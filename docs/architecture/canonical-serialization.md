@@ -156,10 +156,10 @@ The following table shows which normalization mode applies to specific text fiel
 | `name` | `Structured` | Spell name should collapse whitespace |
 | `description` | `Textual` | Preserve paragraph breaks |
 | **RangeSpec** |  |  |
-| `RangeSpec.text` | Structured + unit alias normalization (word boundaries) | Collapse whitespace (preserve case), then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
+| `RangeSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; collapse whitespace (preserve case), then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
 | `RangeSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **AreaSpec** |  |  |
-| `AreaSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; collapse whitespace, then normalize unit aliases (e.g. "20 yards" → "20 yd"; "backyard" unchanged) |
+| `AreaSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; collapse whitespace (preserve case), then normalize unit aliases with word boundaries (e.g. "20 yards" → "20 yd"; "backyard" unchanged) |
 | `AreaSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **DurationSpec** |  |  |
 | `DurationSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; same treatment as `RangeSpec.text` and `AreaSpec.text` |
@@ -199,7 +199,7 @@ The following table shows which normalization mode applies to specific text fiel
 | `DamagePart.notes` | `Textual` | Allow multi-line clarifications |
 | `ScalingRule.notes` | `Textual` | Allow multi-line clarifications |
 
-> **Note:** `raw_legacy_value` on SpellCastingTime, RangeSpec, AreaSpec, DurationSpec, and SavingThrowSpec is not normalized (stored as-is).
+> **Note:** `raw_legacy_value` on SpellCastingTime, RangeSpec, DurationSpec, AreaSpec, and SavingThrowSpec is not normalized (stored as-is).
 
 ### Unicode Normalization (NFC)
 All strings undergo Unicode NFC normalization to ensure canonical representation of combining characters.

@@ -1954,6 +1954,7 @@ export default function SpellEditor() {
               id="btn-delete-spell"
               data-testid="btn-delete-spell"
               type="button"
+              disabled={parsersPending}
               onClick={handleDelete}
               className="px-3 py-2 text-red-400 hover:bg-neutral-800 rounded"
             >

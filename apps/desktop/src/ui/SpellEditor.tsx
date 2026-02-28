@@ -181,7 +181,8 @@ function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
     combineMode: (d.combineMode ?? d.combine_mode) as SpellDamageSpec["combineMode"],
     parts: parts as SpellDamageSpec["parts"],
     sourceText: (d.sourceText ?? d.source_text ?? d.rawLegacyValue ?? d.raw_legacy_value) as string,
-    notes: d.notes as string,
+    dmGuidance: (d.dmGuidance ?? d.dm_guidance) as string | undefined,
+    notes: d.notes as string | undefined,
   } as SpellDamageSpec;
 }
 
@@ -211,6 +212,7 @@ function normalizeSingleSave(s: unknown): SingleSave | undefined {
 function normalizeSavingThrowSpec(s: Record<string, unknown>): SavingThrowSpec {
   const existingNotes = s.notes as string | undefined;
   const dmGuidanceVal = (s.dmGuidance ?? s.dm_guidance) as string | undefined;
+  // Empty dm_guidance is treated as absent — falsy guard is intentional.
   const notes = dmGuidanceVal
     ? existingNotes
       ? `${existingNotes}\n${dmGuidanceVal}`
@@ -222,7 +224,7 @@ function normalizeSavingThrowSpec(s: Record<string, unknown>): SavingThrowSpec {
     multiple: (s.multiple as unknown[] | undefined)
       ?.map(normalizeSingleSave)
       .filter(Boolean) as SingleSave[],
-    notes: notes as string,
+    notes: notes as string | undefined,
   } as SavingThrowSpec;
 }
 
@@ -278,6 +280,7 @@ function toSpecialAreaSpec(rawLegacyValue: string): AreaSpec {
 }
 
 function toFallbackDamageSpec(rawLegacyValue: string): SpellDamageSpec {
+  // dm_guidance required for dm_adjudicated kind per schema; sourceText preserves original for read-only annotation.
   return { kind: "dm_adjudicated", sourceText: rawLegacyValue, dmGuidance: rawLegacyValue };
 }
 

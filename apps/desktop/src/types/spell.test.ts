@@ -18,6 +18,29 @@ import {
   type SpellDamageSpec,
 } from "./spell";
 
+// Compile-time-only assertions for removed v2 units.
+// These are validated by `pnpm run typecheck`, not by Vitest runtime execution.
+// @ts-expect-error action is not a valid DurationUnit
+const _invalidDurationUnit: DurationSpec = { kind: "time", unit: "action", duration: { mode: "fixed", value: 1 } };
+// @ts-expect-error bonus_action is not a valid DurationUnit
+const _invalidDurationBonusAction: DurationSpec = { kind: "time", unit: "bonus_action", duration: { mode: "fixed", value: 1 } };
+// @ts-expect-error reaction is not a valid DurationUnit
+const _invalidDurationReaction: DurationSpec = { kind: "time", unit: "reaction", duration: { mode: "fixed", value: 1 } };
+
+// @ts-expect-error action is not a valid CastingTimeUnit
+const _invalidCastingTimeUnit: SpellCastingTime = { text: "1 action", unit: "action" };
+// @ts-expect-error bonus_action is not a valid CastingTimeUnit
+const _invalidCastingTimeBonusAction: SpellCastingTime = { text: "1 bonus action", unit: "bonus_action" };
+// @ts-expect-error reaction is not a valid CastingTimeUnit
+const _invalidCastingTimeReaction: SpellCastingTime = { text: "1 reaction", unit: "reaction" };
+
+void _invalidDurationUnit;
+void _invalidDurationBonusAction;
+void _invalidDurationReaction;
+void _invalidCastingTimeUnit;
+void _invalidCastingTimeBonusAction;
+void _invalidCastingTimeReaction;
+
 describe("formatDicePool", () => {
   it("formats without a modifier", () => {
     expect(formatDicePool({ terms: [{ count: 2, sides: 6 }] })).toBe("2d6");
@@ -57,6 +80,50 @@ describe("damageToText", () => {
     };
 
     expect(damageToText(spec)).toBe("DM rules this at runtime");
+  });
+
+  it("ignores sourceText for kind none", () => {
+    const noneSpec: SpellDamageSpec = {
+      kind: "none",
+      sourceText: "Original source string",
+    };
+
+    expect(damageToText(noneSpec)).toBe("");
+  });
+
+  it("prefers modeled formula over sourceText when parts are present", () => {
+    const modeledSpec: SpellDamageSpec = {
+      kind: "modeled",
+      parts: [
+        {
+          id: "part_cold",
+          damageType: "cold",
+          base: { terms: [{ count: 1, sides: 8 }] },
+          save: { kind: "none" },
+        },
+      ],
+      sourceText: "Original source string",
+    };
+
+    expect(damageToText(modeledSpec)).toBe("1d8 cold");
+  });
+
+  it("falls back to sourceText when modeled has no parts", () => {
+    const modeledFallbackSpec: SpellDamageSpec = {
+      kind: "modeled",
+      sourceText: "Original source string",
+    };
+
+    expect(damageToText(modeledFallbackSpec)).toBe("Original source string");
+  });
+
+  it("uses sourceText for dm_adjudicated", () => {
+    const dmSpec: SpellDamageSpec = {
+      kind: "dm_adjudicated",
+      sourceText: "Original source string",
+    };
+
+    expect(damageToText(dmSpec)).toBe("Original source string");
   });
 });
 
@@ -165,6 +232,23 @@ describe("savingThrowToText", () => {
         rawLegacyValue: "Save outcome varies by terrain",
       }),
     ).toBe("Save outcome varies by terrain");
+  });
+
+  it("prefers rawLegacyValue over notes and falls back to notes", () => {
+    expect(
+      savingThrowToText({
+        kind: "dm_adjudicated",
+        rawLegacyValue: "Original save text",
+        notes: "Refined editor note",
+      }),
+    ).toBe("Original save text");
+
+    expect(
+      savingThrowToText({
+        kind: "dm_adjudicated",
+        notes: "Refined editor note",
+      }),
+    ).toBe("Refined editor note");
   });
 });
 
@@ -287,7 +371,7 @@ describe("durationToText", () => {
     expect(durationToText(spec)).toBe("Special");
   });
 
-  it("formats time duration with unit", () => {
+  it("formats time duration with bare unit string", () => {
     const spec: DurationSpec = {
       kind: "time",
       unit: "round",

@@ -177,11 +177,11 @@ Section 2 ──┘
   - [x] Verify form loading/disabled state: form inputs must be disabled while parser invocations are in flight and enabled after all resolve
   - [x] Add E2E scenario for loading v1-shaped `canonical_data`: verify `dm_guidance` is remapped to `notes`, `SpellDamageSpec.raw_legacy_value` is treated as `sourceText`, and both `sourceText`+`rawLegacyValue` coexistence prefers `sourceText` <!-- deferred: no file-injection fixture infrastructure; v1 compat verified via source code review -->
   - [x] Regenerate any test fixture `canonical_data` blobs whose `content_hash` values are invalidated by the v1→v2 migration <!-- N/A: no JSON fixture blobs exist in tests/fixtures/ -->
-- [ ] 5.4 Update Storybook stories for all modified editor components (`DamageForm`, `SavingThrowInput`, `MagicResistanceInput`, `AreaForm`, `StructuredFieldInput`): add/update stories to reflect new `source_text`, `raw_legacy_value`, and `text` props; remove stories that reference `dm_guidance` on `SavingThrowSpec`
-- [ ] 5.5 Update Vitest unit tests in `apps/desktop/src/types/spell.test.ts`:
-  - [ ] `savingThrowToText`: the `dm_adjudicated` test uses `dmGuidance` (old field) — update to use `rawLegacyValue` (or `notes`, whichever the function now reads for that kind after `dm_guidance` removal) and add a test case for `rawLegacyValue` as the fallback annotation
-  - [ ] `damageToText`: the `dm_adjudicated` test uses `rawLegacyValue` on `SpellDamageSpec` — update to use `sourceText` (renamed field) and add a test case for `sourceText` as the read-only annotation for all kinds
-  - [ ] Add tests for `castingTimeToText()` and `durationToText()` covering: input with a removed 5e unit (`"action"`, `"bonus_action"`, `"reaction"`) is not accepted (TypeScript compile-time), `unit="special"` with `rawLegacyValue` displays the legacy string, standard units produce the expected output string. Note: `durationToText` produces bare unit strings (e.g., `"3 round"`, not `"3 rounds"`) — tests must assert this exact format
+- [x] 5.4 Update Storybook stories for all modified editor components (`DamageForm`, `SavingThrowInput`, `MagicResistanceInput`, `AreaForm`, `StructuredFieldInput`): add/update stories to reflect new `source_text`, `raw_legacy_value`, and `text` props; remove stories that reference `dm_guidance` on `SavingThrowSpec`
+- [x] 5.5 Update Vitest unit tests in `apps/desktop/src/types/spell.test.ts`:
+  - [x] `savingThrowToText`: the `dm_adjudicated` test uses `dmGuidance` (old field) — update to use `rawLegacyValue` (or `notes`, whichever the function now reads for that kind after `dm_guidance` removal) and add a test case for `rawLegacyValue` as the fallback annotation
+  - [x] `damageToText`: the `dm_adjudicated` test uses `rawLegacyValue` on `SpellDamageSpec` — update to use `sourceText` (renamed field) and add a test case for `sourceText` as the read-only annotation for all kinds
+  - [x] Add tests for `castingTimeToText()` and `durationToText()` covering: input with a removed 5e unit (`"action"`, `"bonus_action"`, `"reaction"`) is not accepted (TypeScript compile-time), `unit="special"` with `rawLegacyValue` displays the legacy string, standard units produce the expected output string. Note: `durationToText` produces bare unit strings (e.g., `"3 round"`, not `"3 rounds"`) — tests must assert this exact format
 
 ---
 

@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { defaultMagicResistanceSpec } from "../../../types/spell";
 import { MagicResistanceInput } from "./MagicResistanceInput";
 import { fn } from "./storybook-utils";
 
@@ -56,6 +55,7 @@ export const Partial: Story = {
     value: {
       kind: "partial",
       appliesTo: "harmful_effects_only",
+      sourceText: "MR applies only to direct damage.",
       partial: {
         scope: "damage_only",
       },
@@ -84,6 +84,7 @@ export const Special: Story = {
       kind: "special",
       appliesTo: "dm",
       specialRule: "MR applies only to the initial damage, not ongoing effects.",
+      sourceText: "Special: subject to DM adjudication by effect stage",
     },
     onChange: fn(),
   },

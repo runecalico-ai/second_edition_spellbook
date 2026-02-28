@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { defaultSavingThrowSpec } from "../../../types/spell";
 import { SavingThrowInput } from "./SavingThrowInput";
 import { fn } from "./storybook-utils";
 
@@ -93,6 +92,7 @@ export const DMAdjudicated: Story = {
     value: {
       kind: "dm_adjudicated",
       rawLegacyValue: "Saving throw varies based on spell level and target type.",
+      notes: "Adjudicate based on creature category and spell context.",
     },
     onChange: fn(),
   },

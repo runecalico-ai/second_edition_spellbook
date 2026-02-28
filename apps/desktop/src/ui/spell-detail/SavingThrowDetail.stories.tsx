@@ -105,7 +105,7 @@ export const SingleWithNotes: Story = {
 // ---------------------------------------------------------------------------
 
 export const NullSpec: Story = {
-  args: { spec: undefined },
+  args: { spec: null },
 };
 
 export const Multiple: Story = {

@@ -70,7 +70,7 @@ export const NullSpec: Story = {
   },
 };
 
-/** Notes renderd when present */
+/** Notes rendered when present */
 export const WithNotes: Story = {
   args: {
     spec: {

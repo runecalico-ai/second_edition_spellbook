@@ -43,6 +43,8 @@ export function MagicResistanceDetail({ spec }: MagicResistanceDetailProps) {
   const showSourceTextPrimary = spec.kind === "special" && spec.sourceText;
   // For other kinds, sourceText is supplementary
   const showSourceTextSupplementary = spec.kind !== "special" && spec.sourceText;
+  // For "special" kind without sourceText, specialRule is the supplementary content
+  const showSpecialRule = spec.kind === "special" && spec.specialRule != null && !showSourceTextPrimary;
 
   return (
     <div className="space-y-1" data-testid="magic-resistance-detail">
@@ -77,6 +79,15 @@ export function MagicResistanceDetail({ spec }: MagicResistanceDetailProps) {
           data-testid="magic-resistance-source-text-supplementary"
         >
           {spec.sourceText}
+        </p>
+      )}
+
+      {showSpecialRule && (
+        <p
+          className="text-xs text-neutral-400"
+          data-testid="magic-resistance-special-rule"
+        >
+          {spec.specialRule}
         </p>
       )}
 

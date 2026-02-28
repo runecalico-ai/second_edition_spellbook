@@ -2,8 +2,8 @@ import type { AreaSpec } from "../../types/spell";
 import { areaToText } from "../../types/spell";
 
 function hasStructuredFields(spec: AreaSpec): boolean {
-  // "point" and "special" have algebraic meaning even without dimensional sub-fields
-  return spec.kind === "point" || spec.kind === "special"
+  // "point" has algebraic meaning even without dimensional sub-fields
+  return spec.kind === "point"
     || spec.radius != null || spec.diameter != null
     || spec.length != null || spec.width != null || spec.height != null
     || spec.edge != null || spec.count != null || spec.volume != null

@@ -101,15 +101,22 @@ export function DamageDetail({ spec }: DamageDetailProps) {
     );
   }
 
-  // Fallback: sourceText (covers dm_adjudicated and modeled with no parts)
-  const fallbackText = spec.sourceText ?? spec.notes;
-  if (!fallbackText) return null;
+  // Fallback: sourceText / dmGuidance (covers dm_adjudicated and modeled with no parts)
+  const fallbackText = spec.sourceText ?? spec.dmGuidance;
+  if (!fallbackText && !spec.notes) return null;
 
   return (
     <div className="space-y-1" data-testid="damage-detail">
-      <p className="text-sm text-neutral-200" data-testid="damage-source-text">
-        {fallbackText}
-      </p>
+      {fallbackText && (
+        <p className="text-sm text-neutral-200" data-testid="damage-source-text">
+          {fallbackText}
+        </p>
+      )}
+      {spec.notes && (
+        <p className="text-xs text-neutral-400 italic" data-testid="damage-notes">
+          {spec.notes}
+        </p>
+      )}
     </div>
   );
 }

@@ -66,7 +66,7 @@ The migration performs the following steps in order:
 After migration, the spell is fully re-normalized and re-hashed. This is a one-time migration cost affecting all stored spells — all content hashes change after migration.
 
 > [!NOTE]
-> A spell with `schema_version = 0` satisfies `< 2` and migrates directly to version 2, skipping the intermediate version 1 state.
+> Schema version `0` is **rejected** by the validator (`schema_version < MIN_SUPPORTED_SCHEMA_VERSION = 1`) before `migrate_to_v2()` is invoked. Only spells with `schema_version = 1` flow through this migration path.
 
 ### Validation Behavior
 

@@ -13,32 +13,60 @@ The canonical spell schema uses a versioning system to ensure:
 
 ## Current Schema Version
 
-**Current Version**: `1`
+**Current Version**: `2`
 
 Defined in [`canonical_spell.rs`](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src-tauri/src/models/canonical_spell.rs#L18):
 
 ```rust
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
-pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 0;
+pub const CURRENT_SCHEMA_VERSION: i64 = 2;
+pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 1; // v1 spells are valid for migration via migrate_to_v2(); do not reject them
 ```
 
-Every `CanonicalSpell` includes a `schema_version` field with a default value of `1`.
+Every `CanonicalSpell` includes a `schema_version` field with a default value of `2`.
 
 ---
 
 ## Migration Strategy
 
-### Automatic Migration (Version 0 → 1)
+### Migration: Version 0 → 1 (Legacy)
 
-When a spell with `schema_version: 0` is normalized, it is **automatically upgraded** to version 1:
+When schema versioning was first introduced, spells with `schema_version: 0` were **automatically upgraded** to version 1. This migration path is now subsumed by the v1→v2 migration — any spell with `schema_version < 2` is migrated directly to version 2.
+
+### Migration: Version 1 → 2
+
+When a spell with `schema_version < 2` is normalized, `migrate_to_v2()` is invoked (guarded by `schema_version < 2`):
 
 ```rust
-if self.schema_version == 0 || self.schema_version < CURRENT_SCHEMA_VERSION {
-    self.schema_version = CURRENT_SCHEMA_VERSION;
+if self.schema_version < 2 {
+    let result = self.migrate_to_v2();
+    // result.notes_truncated check happens on single-spell path
 }
 ```
 
-This ensures legacy spells created before schema versioning was implemented are seamlessly migrated.
+This covers both `schema_version = 0` and `schema_version = 1` spells, migrating them directly to version 2.
+
+The migration performs the following steps in order:
+
+1. **`SavingThrowSpec.dm_guidance` → `notes`**: `dm_guidance` content is appended to `notes` (newline-separated if `notes` is non-empty), then `dm_guidance` is cleared.
+
+2. **CastingTime 5e unit remapping**: If `casting_time.unit` is `"action"`, `"bonus_action"`, or `"reaction"`, it is remapped to `"special"` and `casting_time.text` is copied into `raw_legacy_value` (only if `raw_legacy_value` is not already populated). If `casting_time.text` is also empty/null, the value is synthesized from `base_value + unit` (e.g., `"1 action"`).
+
+3. **`SpellDamageSpec` field rename**: `raw_legacy_value` is moved to `source_text`, then `raw_legacy_value` is cleared.
+
+4. **Version stamp**: `schema_version` is set to `2`.
+
+**Rust function**: `migrate_to_v2()` in `canonical_spell.rs`
+
+**Bulk command**: `migrate_all_spells_to_v2` Tauri command
+
+**Return type**: `MigrateV2Result { notes_truncated: bool, truncated_spell_id: Option<i64> }`
+- On single-spell normalization: the caller returns `Err` and does **not** persist if `notes_truncated = true`
+- In bulk migration: truncated spells are recorded in `failed` without aborting the batch
+
+After migration, the spell is fully re-normalized and re-hashed. This is a one-time migration cost affecting all stored spells — all content hashes change after migration.
+
+> [!NOTE]
+> A spell with `schema_version = 0` satisfies `< 2` and migrates directly to version 2, skipping the intermediate version 1 state.
 
 ### Validation Behavior
 
@@ -48,7 +76,7 @@ During spell validation, the system handles version mismatches as follows:
 - **Behavior**: Reject with error
 - **Result**: Import and hash computation fail
 
-#### Older Versions (< 1, >= 0)
+#### Older Versions (< 2, >= 0)
 - **Behavior**: Logs a warning, allows migration
 - **Warning Message**:
   ```
@@ -57,7 +85,7 @@ During spell validation, the system handles version mismatches as follows:
   ```
 - **Result**: Spell is migrated and processed normally
 
-#### Newer Versions (> 1)
+#### Newer Versions (> 2)
 - **Behavior**: Logs a warning, continues processing
 - **Warning Message**:
   ```
@@ -69,6 +97,20 @@ During spell validation, the system handles version mismatches as follows:
 
 > [!NOTE]
 > The system uses **warnings instead of hard errors** to maximize compatibility and allow gradual migration across multiple application versions.
+
+---
+
+## Breaking Changes: v1 → v2
+
+Version 2 introduces multiple breaking modifications. Every previously-hashed spell will produce a different SHA-256 hash after re-normalization.
+
+- **Universal `raw_legacy_value` persistence**: `raw_legacy_value` is now populated unconditionally on every parse for all hashed computed fields (`AreaSpec`, `DurationSpec`, `RangeSpec`, `SavingThrowSpec`, `casting_time`). Per §2.2.1 of [`canonical-serialization.md`](./architecture/canonical-serialization.md), `raw_legacy_value` is included in the canonical hash, so every spell that previously lacked this field will produce a different hash after re-normalization.
+
+- **5e casting time units removed**: `"action"`, `"bonus_action"`, and `"reaction"` have been removed from the `casting_time.unit` enum. Existing spells with these values are remapped to `"special"` during `migrate_to_v2()`, with the original text preserved in `raw_legacy_value`.
+
+- **`SavingThrowSpec.dm_guidance` removed**: The field has been deleted from the schema and Rust types. Content is migrated to `notes` during `migrate_to_v2()`.
+
+- **`SpellDamageSpec.raw_legacy_value` renamed to `source_text`**: Now a non-hashed metadata field (excluded from canonical hash), consistent with `ExperienceComponentSpec.source_text` and `MagicResistanceSpec.source_text`.
 
 ---
 
@@ -97,7 +139,7 @@ Hash stability is verified by comprehensive tests:
 #[test]
 fn test_hash_stability_across_schema_versions() {
     spell1.schema_version = 1;
-    spell2.schema_version = 2; // Hypothetical future version
+    spell2.schema_version = 2; // Current version
 
     assert_eq!(
         spell1.compute_hash().unwrap(),
@@ -161,9 +203,10 @@ These changes can be made without incrementing the schema version.
 | Schema Version | Application Behavior |
 |----------------|---------------------|
 | `< 0` | **Rejected** – Import and hashing fail |
-| `0` | Auto-migrated to version 1 during normalization |
-| `1` (current) | Processed normally, validated against current schema |
-| `> 1` (future) | Warning logged, processed with forward compatibility mode |
+| `0` | Auto-migrated to version 2 during normalization |
+| `1` | Migrated to version 2 via `migrate_to_v2()` during normalization |
+| `2` (current) | Processed normally, validated against current schema |
+| `> 2` (future) | Warning logged, processed with forward compatibility mode |
 
 ---
 
@@ -194,4 +237,4 @@ This allows the application to:
 
 ---
 
-**Last Updated**: 2026-02-06
+**Last Updated**: 2026-02-28

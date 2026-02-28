@@ -625,6 +625,8 @@ export default function SpellEditor() {
    * (those are accepted user data, not parse failures).
    */
   const [parserFallbackFields, setParserFallbackFields] = useState<Set<string>>(new Set());
+  const parserFallbackFieldsRef = useRef<Set<string>>(new Set());
+  parserFallbackFieldsRef.current = parserFallbackFields;
 
   const isNew = id === "new";
 
@@ -711,7 +713,7 @@ export default function SpellEditor() {
       b.proceed?.();
       return;
     }
-    const hasBannerActive = parserFallbackFields.size > 0;
+    const hasBannerActive = parserFallbackFieldsRef.current.size > 0;
     const message = hasBannerActive
       ? "You have unparsed fields. Navigating away will discard your current editor state. Continue?"
       : "You have unsaved changes. Leave and discard?";
@@ -725,7 +727,7 @@ export default function SpellEditor() {
         b.reset?.();
       }
     });
-  }, [blocker.state, parserFallbackFields, modalConfirm]);
+  }, [blocker.state, modalConfirm]);
 
   useEffect(() => {
     if (!isNew && id) {

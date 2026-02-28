@@ -72,11 +72,11 @@ After migration, the spell is fully re-normalized and re-hashed. This is a one-t
 
 During spell validation, the system handles version mismatches as follows:
 
-#### Invalid Versions (< 0)
+#### Invalid Versions (< 1 — below minimum supported)
 - **Behavior**: Reject with error
 - **Result**: Import and hash computation fail
 
-#### Older Versions (< 2, >= 0)
+#### Older Versions (< 2, >= 1)
 - **Behavior**: Logs a warning, allows migration
 - **Warning Message**:
   ```
@@ -159,15 +159,15 @@ When evolving the schema (e.g., adding new fields or changing validation rules):
 
 1. **Increment `CURRENT_SCHEMA_VERSION`**:
    ```rust
-   pub const CURRENT_SCHEMA_VERSION: i64 = 2;
+   pub const CURRENT_SCHEMA_VERSION: i64 = 3; // example: next version
    ```
 
 2. **Add migration logic in `normalize()`**:
    ```rust
-   if self.schema_version < 2 {
-       // Migrate version 1 → 2
-       self.migrate_to_v2();
-       self.schema_version = 2;
+   if self.schema_version < 3 {
+       // Migrate version 2 → 3
+       self.migrate_to_v3();
+       self.schema_version = 3;
    }
    ```
 
@@ -203,7 +203,7 @@ These changes can be made without incrementing the schema version.
 | Schema Version | Application Behavior |
 |----------------|---------------------|
 | `< 0` | **Rejected** – Import and hashing fail |
-| `0` | Auto-migrated to version 2 during normalization |
+| `0` | **Rejected** – below minimum supported schema version (`MIN_SUPPORTED_SCHEMA_VERSION = 1`) |
 | `1` | Migrated to version 2 via `migrate_to_v2()` during normalization |
 | `2` (current) | Processed normally, validated against current schema |
 | `> 2` (future) | Warning logged, processed with forward compatibility mode |

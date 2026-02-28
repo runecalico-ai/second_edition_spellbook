@@ -447,4 +447,37 @@ test.describe("Spell Editor structured data and hash display", () => {
       }
     }
   });
+
+  test("CastingTime dropdown: 5e unit options absent (action, bonus_action, reaction)", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell and expand Casting Time", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("detail-casting-time-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Verify 5e unit options are absent and AD&D 2e units are present", async () => {
+      const unitSelect = page.getByTestId("casting-time-unit");
+      await expect(unitSelect).toBeVisible({ timeout: TIMEOUTS.short });
+
+      const optionValues = await unitSelect
+        .locator("option")
+        .evaluateAll((opts) => Array.from(opts).map((o) => (o as HTMLOptionElement).value));
+
+      // 5e combat economy units must NOT be present (schema v2 removed these)
+      expect(optionValues).not.toContain("action");
+      expect(optionValues).not.toContain("bonus_action");
+      expect(optionValues).not.toContain("reaction");
+
+      // AD&D 2e units must be present
+      expect(optionValues).toContain("segment");
+      expect(optionValues).toContain("round");
+      expect(optionValues).toContain("turn");
+    });
+  });
 });

@@ -300,40 +300,48 @@ function mapLegacySavingThrow(legacy: string): SavingThrowSpec {
     return { kind: "none" };
   }
 
+  // --- 6-row save_type/save_vs matrix (first match wins) ---
+  let saveType: SaveType = "spell";
+  let saveVs: string | undefined;
+  if (hasTokenPattern(normalized, /\bparaly\b|\bpoison\b|\bdeath\b/)) {
+    saveType = "paralyzation_poison_death";
+    saveVs = hasTokenPattern(normalized, /\bpoison\b/) ? "poison" : "death_magic";
+  } else if (hasTokenPattern(normalized, /\bbreath\b/)) {
+    saveType = "breath_weapon";
+    saveVs = "breath";
+  } else if (hasTokenPattern(normalized, /\brod\b|\bstaff\b|\bwand\b/)) {
+    saveType = "rod_staff_wand";
+    saveVs = "other";
+  } else if (hasTokenPattern(normalized, /\bpoly\b|\bpetrif\b/)) {
+    saveType = "petrification_polymorph";
+    saveVs = hasTokenPattern(normalized, /\bpoly\b/) ? "polymorph" : "petrification";
+  } else if (hasTokenPattern(normalized, /\bspecial\b/)) {
+    saveType = "special";
+  }
+
+  // --- Outcome detection ---
+  let onSuccess: SaveOutcomeEffect;
   if (hasTokenPattern(normalized, /\bnegat(?:e|es|ed|ing)?\b/)) {
-    return {
-      kind: "single",
-      single: {
-        saveType: "spell",
-        onSuccess: { result: "no_effect" },
-        onFailure: { result: "full_effect" },
-      },
-    };
+    onSuccess = { result: "no_effect" };
+  } else if (hasTokenPattern(normalized, /\bhalf\b|\b1\s*\/\s*2\b/)) {
+    onSuccess = { result: "reduced_effect" };
+  } else if (hasTokenPattern(normalized, /\bpartial\b/)) {
+    onSuccess = { result: "partial_non_damage_only" };
+  } else {
+    // No recognizable outcome token → dm_adjudicated
+    return { kind: "dm_adjudicated", rawLegacyValue: legacy };
   }
 
-  if (hasTokenPattern(normalized, /\bhalf\b|\b1\s*\/\s*2\b/)) {
-    return {
-      kind: "single",
-      single: {
-        saveType: "spell",
-        onSuccess: { result: "reduced_effect" },
-        onFailure: { result: "full_effect" },
-      },
-    };
-  }
-
-  if (hasTokenPattern(normalized, /\bpartial\b/)) {
-    return {
-      kind: "single",
-      single: {
-        saveType: "spell",
-        onSuccess: { result: "partial_non_damage_only" },
-        onFailure: { result: "full_effect" },
-      },
-    };
-  }
-
-  return { kind: "dm_adjudicated", rawLegacyValue: legacy };
+  return {
+    kind: "single",
+    single: {
+      saveType,
+      ...(saveVs !== undefined ? { saveVs } : {}),
+      onSuccess,
+      onFailure: { result: "full_effect" },
+    },
+    rawLegacyValue: legacy,
+  };
 }
 
 function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {

@@ -720,7 +720,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  test("StructuredFieldInput Range: switching from distance kind to 'personal' clears distance and unit fields", async ({
+  test("StructuredFieldInput Range: switching from distance kind to 'personal' clears distance fields", async ({
     appContext,
   }) => {
     const { page } = appContext;
@@ -742,7 +742,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.waitForTimeout(300);
     });
 
-    await test.step("range-base-value is visible after selecting distance", async () => {
+    await test.step("Distance value field is visible after selecting distance kind", async () => {
       await expect(page.getByTestId("range-base-value")).toBeVisible({ timeout: TIMEOUTS.short });
     });
 
@@ -855,7 +855,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  test("StructuredFieldInput CastingTime: switching to 'special' unit shows raw legacy input; switching away hides it", async ({
+  test("StructuredFieldInput CastingTime: switching to 'special' unit shows raw legacy field; switching away hides it", async ({
     appContext,
   }) => {
     const { page } = appContext;
@@ -913,11 +913,11 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.waitForTimeout(300);
     });
 
-    await test.step("range-raw-legacy is visible and editable", async () => {
+    await test.step("range-raw-legacy is visible and editable (not readOnly) when kind is special", async () => {
       const rawLegacy = page.getByTestId("range-raw-legacy");
       await expect(rawLegacy).toBeVisible({ timeout: TIMEOUTS.short });
-      // Input should be editable (not readOnly) when kind is special
-      await expect(rawLegacy).not.toBeDisabled();
+      // readOnly={!isSpecial} — must use not.toHaveAttribute("readonly"), not not.toBeDisabled()
+      await expect(rawLegacy).not.toHaveAttribute("readonly");
     });
 
     await test.step("Fill raw legacy value and verify text preview updates", async () => {
@@ -941,15 +941,19 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-description-textarea").fill("Description for parsers pending test.");
     });
 
-    await test.step("Fill range input to trigger parser invocation", async () => {
+    await test.step("Fill range input and expand to trigger parser invocation", async () => {
       await page.getByTestId("detail-range-input").fill("30 ft");
       await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(TIMEOUTS.medium);
     });
 
-    await test.step("parsers-pending-indicator is not visible after parsers resolve", async () => {
-      // The indicator appears briefly during parsing; verifying its absence confirms parsers resolved
-      await expect(page.getByTestId("parsers-pending-indicator")).not.toBeVisible();
+    await test.step("parsers-pending-indicator appears then disappears after resolve", async () => {
+      // Verify the indicator appeared (parsers started), then cleared (parsers resolved)
+      await expect(page.getByTestId("parsers-pending-indicator")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("parsers-pending-indicator")).not.toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
     });
   });
 

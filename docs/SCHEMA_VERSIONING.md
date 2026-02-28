@@ -30,7 +30,7 @@ Every `CanonicalSpell` includes a `schema_version` field with a default value of
 
 ### Migration: Version 0 → 1 (Legacy)
 
-When schema versioning was first introduced, spells with `schema_version: 0` were **automatically upgraded** to version 1. This migration path is now subsumed by the v1→v2 migration — any spell with `schema_version < 2` is migrated directly to version 2.
+When schema versioning was first introduced, spells with `schema_version: 0` were **automatically upgraded** to version 1. That upgrade path no longer exists — `schema_version = 0` is now **rejected** by the validator (it is below `MIN_SUPPORTED_SCHEMA_VERSION = 1`). Only spells with `schema_version = 1` are migrated, going directly to version 2 via `migrate_to_v2()`.
 
 ### Migration: Version 1 → 2
 
@@ -43,7 +43,7 @@ if self.schema_version < 2 {
 }
 ```
 
-This covers both `schema_version = 0` and `schema_version = 1` spells, migrating them directly to version 2.
+This covers `schema_version = 1` spells, migrating them directly to version 2. (`schema_version = 0` is rejected by the validator before this guard is reached.)
 
 The migration performs the following steps in order:
 

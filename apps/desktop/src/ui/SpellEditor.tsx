@@ -364,7 +364,7 @@ function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {
     };
   }
 
-  return { kind: "special", appliesTo: "whole_spell", specialRule: legacy };
+  return { kind: "special", appliesTo: "whole_spell", specialRule: legacy, sourceText: legacy };
 }
 
 // ---------------------------------------------------------------------------
@@ -2033,6 +2033,7 @@ export default function SpellEditor() {
         </div>
       )}
 
+      <fieldset disabled={parsersPending} className="contents">
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label htmlFor="spell-name" className="block text-sm text-neutral-400">
@@ -2578,6 +2579,7 @@ export default function SpellEditor() {
           ))}
         </div>
       )}
+      </fieldset>
     </div>
   );
 }

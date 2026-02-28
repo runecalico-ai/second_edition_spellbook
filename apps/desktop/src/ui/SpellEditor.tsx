@@ -377,8 +377,8 @@ function toV2SavingThrowSpec(spec: SavingThrowSpec): SavingThrowSpec {
   // dmGuidance is the v1 field removed on SavingThrowSpec in v2 schema.
   // It should never appear here (TypeScript enforces this), but strip defensively
   // in case of deserialization from legacy stored data.
-  delete (rest as Record<string, unknown>).dmGuidance;
-  delete (rest as Record<string, unknown>).dm_guidance;
+  (rest as Record<string, unknown>).dmGuidance = undefined;
+  (rest as Record<string, unknown>).dm_guidance = undefined;
   return rest;
 }
 
@@ -389,8 +389,8 @@ function toV2SpellDamageSpec(spec: SpellDamageSpec): SpellDamageSpec {
   if (!result.sourceText && (result as Record<string, unknown>).rawLegacyValue) {
     result.sourceText = (result as Record<string, unknown>).rawLegacyValue as string;
   }
-  delete (result as Record<string, unknown>).rawLegacyValue;
-  delete (result as Record<string, unknown>).raw_legacy_value;
+  (result as Record<string, unknown>).rawLegacyValue = undefined;
+  (result as Record<string, unknown>).raw_legacy_value = undefined;
   return result;
 }
 
@@ -783,7 +783,7 @@ export default function SpellEditor() {
                   };
                   material_components?: MaterialComponentSpec[];
                 };
-                const canonicalHasMaterialComponentsSpec = canonicalRaw["material_components"] != null;
+                const canonicalHasMaterialComponentsSpec = canonicalRaw.material_components != null;
                 setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
                 const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
 

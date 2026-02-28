@@ -719,4 +719,273 @@ test.describe("Spell Editor structured data and hash display", () => {
       await expect(annotation).toContainText("Yes (special conditions apply)");
     });
   });
+
+  test("StructuredFieldInput Range: switching from distance kind to 'personal' clears distance and unit fields", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Range Kind Transition Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for range kind transition test.");
+    });
+
+    await test.step("Expand range and set kind to distance", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("range-kind-select").selectOption("distance");
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("range-base-value is visible after selecting distance", async () => {
+      await expect(page.getByTestId("range-base-value")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Switch to 'personal' and verify distance fields are hidden", async () => {
+      await page.getByTestId("range-kind-select").selectOption("personal");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("range-base-value")).not.toBeVisible();
+      await expect(page.getByTestId("range-raw-legacy")).not.toBeVisible();
+    });
+  });
+
+  test("StructuredFieldInput Duration: switching from 'time' to 'instantaneous' shows Instant in text preview", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Duration Instantaneous Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for duration instantaneous test.");
+    });
+
+    await test.step("Expand duration and set kind to time", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-unit")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Switch to 'instantaneous' and verify time fields hidden", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("instantaneous");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-unit")).not.toBeVisible();
+      await expect(page.getByTestId("duration-base-value")).not.toBeVisible();
+    });
+
+    await test.step("duration-text-preview contains 'Instant'", async () => {
+      await expect(page.getByTestId("duration-text-preview")).toContainText("Instant");
+    });
+  });
+
+  test("StructuredFieldInput Duration: switching from 'instantaneous' to 'time' re-initializes duration unit and value", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Duration Time Reinit Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for duration time reinit test.");
+    });
+
+    await test.step("Expand duration and set kind to instantaneous then time", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("duration-kind-select").selectOption("instantaneous");
+      await page.waitForTimeout(300);
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("duration-unit and duration-base-value are visible after switching to time", async () => {
+      await expect(page.getByTestId("duration-unit")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("duration-base-value")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+  });
+
+  test("StructuredFieldInput Duration: switching to 'special' kind shows raw legacy field; switching away hides it", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Duration Special Raw Legacy Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for duration special raw legacy test.");
+    });
+
+    await test.step("Expand duration and set to time — raw legacy not visible", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-raw-legacy")).not.toBeVisible();
+    });
+
+    await test.step("Switch to special — raw legacy becomes visible", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("special");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-raw-legacy")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Switch back to time — raw legacy hidden again", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-raw-legacy")).not.toBeVisible();
+    });
+  });
+
+  test("StructuredFieldInput CastingTime: switching to 'special' unit shows raw legacy input; switching away hides it", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("CastingTime Special Unit Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for casting time special unit test.");
+    });
+
+    await test.step("Expand casting time and set unit to round — raw legacy not visible", async () => {
+      await page.getByTestId("detail-casting-time-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-unit")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("casting-time-unit").selectOption("round");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-raw-legacy")).not.toBeVisible();
+    });
+
+    await test.step("Switch casting time unit to special — raw legacy becomes visible", async () => {
+      await page.getByTestId("casting-time-unit").selectOption("special");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-raw-legacy")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Switch casting time unit back to round — raw legacy hidden again", async () => {
+      await page.getByTestId("casting-time-unit").selectOption("round");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-raw-legacy")).not.toBeVisible();
+    });
+  });
+
+  test("StructuredFieldInput Range kind=special: text preview reflects rawLegacyValue input", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Range Special Text Preview Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for range special text preview test.");
+    });
+
+    await test.step("Expand range and set kind to special", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("range-kind-select").selectOption("special");
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("range-raw-legacy is visible and editable", async () => {
+      const rawLegacy = page.getByTestId("range-raw-legacy");
+      await expect(rawLegacy).toBeVisible({ timeout: TIMEOUTS.short });
+      // Input should be editable (not readOnly) when kind is special
+      await expect(rawLegacy).not.toBeDisabled();
+    });
+
+    await test.step("Fill raw legacy value and verify text preview updates", async () => {
+      await page.getByTestId("range-raw-legacy").fill("Varies by caster level");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("range-text-preview")).toContainText("Varies by caster level");
+    });
+  });
+
+  test("SpellEditor: parsers-pending-indicator is hidden after parser resolves", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Parsers Pending Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for parsers pending test.");
+    });
+
+    await test.step("Fill range input to trigger parser invocation", async () => {
+      await page.getByTestId("detail-range-input").fill("30 ft");
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(TIMEOUTS.medium);
+    });
+
+    await test.step("parsers-pending-indicator is not visible after parsers resolve", async () => {
+      // The indicator appears briefly during parsing; verifying its absence confirms parsers resolved
+      await expect(page.getByTestId("parsers-pending-indicator")).not.toBeVisible();
+    });
+  });
+
+  test("StructuredFieldInput Duration: usage_limited kind shows uses input; round-trip through time restores uses input", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Duration Usage Limited Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for duration usage limited test.");
+    });
+
+    await test.step("Expand duration and set to usage_limited — uses input visible", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("duration-kind-select").selectOption("usage_limited");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-uses-value")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Switch to time — uses input hidden", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-uses-value")).not.toBeVisible();
+    });
+
+    await test.step("Switch back to usage_limited — uses input visible again", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("usage_limited");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-uses-value")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+  });
 });

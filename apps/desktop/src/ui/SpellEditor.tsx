@@ -774,10 +774,7 @@ export default function SpellEditor() {
                   };
                   material_components?: MaterialComponentSpec[];
                 };
-                const canonicalHasMaterialComponentsSpec = Object.prototype.hasOwnProperty.call(
-                  canonicalRaw,
-                  "material_components",
-                );
+                const canonicalHasMaterialComponentsSpec = canonicalRaw["material_components"] != null;
                 setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
                 const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
 

@@ -226,6 +226,7 @@ function normalizeSavingThrowSpec(s: Record<string, unknown>): SavingThrowSpec {
       ?.map(normalizeSingleSave)
       .filter(Boolean) as SingleSave[],
     notes: notes as string | undefined,
+    rawLegacyValue: (s.rawLegacyValue ?? s.raw_legacy_value) as string | undefined,
   } as SavingThrowSpec;
 }
 

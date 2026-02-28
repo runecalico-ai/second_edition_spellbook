@@ -442,6 +442,7 @@ function buildParserTasks(
           } else {
             setters.setStructuredRange(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, range: true }));
+            if ((parsed as RangeSpec).kind === "special") setters.addParserFallback("Range");
           }
         })
         .catch(() => {
@@ -464,6 +465,7 @@ function buildParserTasks(
           } else {
             setters.setStructuredDuration(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, duration: true }));
+            if ((parsed as DurationSpec).kind === "special") setters.addParserFallback("Duration");
           }
         })
         .catch(() => {
@@ -486,6 +488,7 @@ function buildParserTasks(
           } else {
             setters.setStructuredCastingTime(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, castingTime: true }));
+            if ((parsed as SpellCastingTime).unit === "special") setters.addParserFallback("Casting time");
           }
         })
         .catch(() => {
@@ -508,6 +511,7 @@ function buildParserTasks(
           } else {
             setters.setStructuredArea(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, area: true }));
+            if ((parsed as AreaSpec).kind === "special") setters.addParserFallback("Area");
           }
         })
         .catch(() => {
@@ -1418,6 +1422,7 @@ export default function SpellEditor() {
     }
 
     setDetailLoading(field);
+    setParsersPending(true);
     const legacy = getLegacy();
 
     try {
@@ -1430,6 +1435,7 @@ export default function SpellEditor() {
             setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           } else {
             setStructuredRange(parsed);
+            if (parsed.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           }
           break;
         }
@@ -1441,6 +1447,7 @@ export default function SpellEditor() {
             setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           } else {
             setStructuredDuration(parsed);
+            if (parsed.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           }
           break;
         }
@@ -1452,6 +1459,7 @@ export default function SpellEditor() {
             setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           } else {
             setStructuredCastingTime(parsed);
+            if (parsed.unit === "special") setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           }
           break;
         }
@@ -1463,6 +1471,7 @@ export default function SpellEditor() {
             setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           } else {
             setStructuredArea(parsed);
+            if (parsed.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           }
           break;
         }
@@ -1611,6 +1620,7 @@ export default function SpellEditor() {
           break;
       }
     } finally {
+      setParsersPending(false);
       if (expandedDetailRef.current === field) setDetailLoading(null);
     }
   };

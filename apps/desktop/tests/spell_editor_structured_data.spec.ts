@@ -493,6 +493,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-name-input").fill("Banner Test Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description for banner test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
     });
 
     await test.step("Fill range with unparseable value", async () => {
@@ -519,6 +520,9 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for banner persist test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
     });
 
     await test.step("Fill range with unparseable value and expand to trigger parser", async () => {
@@ -556,6 +560,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description for banner dismiss test.");
       await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByTestId("spell-school-input").fill("Evocation");
     });
 
     await test.step("Fill range with unparseable value and expand to trigger parser", async () => {
@@ -595,6 +600,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-name-input").fill("Nav Guard Banner Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description for nav guard test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
     });
 
     await test.step("Fill range with unparseable value and expand to trigger parser and banner", async () => {
@@ -634,6 +640,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-name-input").fill(spellName);
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description for saving throw test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
       await page.getByTestId("spell-classes-input").fill("Wizard");
       await page.getByTestId("detail-saving-throw-input").fill("Save vs. Spell");
       await page.getByTestId("btn-save-spell").click();
@@ -701,10 +708,11 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-name-input").fill("Magic Resistance Annotation Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description for magic resistance annotation test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
     });
 
     await test.step("Fill magic resistance canon input with a non-standard value", async () => {
-      await page.getByTestId("detail-magic-resistance-input").fill("Yes (special conditions apply)");
+      await page.getByTestId("detail-magic-resistance-input").fill("20% (limited cases only)");
       await page.getByTestId("detail-magic-resistance-expand").click();
       await page.waitForTimeout(300);
     });
@@ -716,7 +724,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Source text annotation is visible with original magic resistance text", async () => {
       const annotation = page.getByTestId("magic-resistance-source-text-annotation");
       await expect(annotation).toBeVisible({ timeout: TIMEOUTS.short });
-      await expect(annotation).toContainText("Yes (special conditions apply)");
+      await expect(annotation).toContainText("20% (limited cases only)");
     });
   });
 
@@ -947,23 +955,37 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("spell-name-input").fill("Parsers Pending Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description for parsers pending test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
     });
 
     await test.step("Fill range input and expand to trigger parser invocation", async () => {
       await page.getByTestId("detail-range-input").fill("30 ft");
+      // Install a MutationObserver BEFORE clicking expand to catch any brief appearance of the indicator
+      await page.evaluate(() => {
+        (window as unknown as Record<string, unknown>).__parserPendingShown = false;
+        const observer = new MutationObserver(() => {
+          if (document.querySelector('[data-testid="parsers-pending-indicator"]')) {
+            (window as unknown as Record<string, unknown>).__parserPendingShown = true;
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        (window as unknown as Record<string, unknown>).__parserPendingObserver = observer;
+      });
       await page.getByTestId("detail-range-expand").click();
-      // Brief wait to allow the indicator to mount before first assertion poll
-      await page.waitForTimeout(100);
     });
 
     await test.step("parsers-pending-indicator appears then disappears after resolve", async () => {
-      // Verify the indicator appeared (parsers started), then cleared (parsers resolved)
-      await expect(page.getByTestId("parsers-pending-indicator")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
+      // Wait for parser to finish — indicator must be gone when parsers resolve
       await expect(page.getByTestId("parsers-pending-indicator")).not.toBeVisible({
         timeout: TIMEOUTS.medium,
       });
+      // Verify the indicator was shown (even briefly) via the MutationObserver
+      const shown = await page.evaluate(() => {
+        const obs = (window as unknown as Record<string, unknown>).__parserPendingObserver as MutationObserver;
+        obs.disconnect();
+        return (window as unknown as Record<string, unknown>).__parserPendingShown as boolean;
+      });
+      expect(shown).toBe(true);
     });
   });
 

@@ -101,7 +101,7 @@ export function DamageDetail({ spec }: DamageDetailProps) {
     );
   }
 
-  // Fallback: sourceText / dmGuidance (covers dm_adjudicated and modeled with no parts)
+  // Fallback: sourceText (v2 field) preferred; dmGuidance (v1 backward-compat for dm_adjudicated)
   const fallbackText = spec.sourceText ?? spec.dmGuidance;
   if (!fallbackText && !spec.notes) return null;
 

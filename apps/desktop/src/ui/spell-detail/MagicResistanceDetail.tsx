@@ -43,8 +43,9 @@ export function MagicResistanceDetail({ spec }: MagicResistanceDetailProps) {
   const showSourceTextPrimary = spec.kind === "special" && spec.sourceText;
   // For other kinds, sourceText is supplementary
   const showSourceTextSupplementary = spec.kind !== "special" && spec.sourceText;
-  // For "special" kind without sourceText, specialRule is the supplementary content
-  const showSpecialRule = spec.kind === "special" && spec.specialRule != null && !showSourceTextPrimary;
+  // specialRule is shown for "special" kind whenever present — shown alongside sourceText if both populated,
+  // since they represent distinct data (raw imported string vs. curated rule annotation)
+  const showSpecialRule = spec.kind === "special" && spec.specialRule != null;
 
   return (
     <div className="space-y-1" data-testid="magic-resistance-detail">

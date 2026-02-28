@@ -324,11 +324,11 @@ export const RangeExpanded: Story = {
 /** Casting Time expanded: StructuredFieldInput for casting_time. */
 export const CastingTimeExpanded: Story = {
   render: function CastingTimeExpandedStory() {
-    const [castingTime, setCastingTime] = useState("1 action");
+    const [castingTime, setCastingTime] = useState("1 minute");
     const [expanded, setExpanded] = useState(true);
     const [castingTimeSpec, setCastingTimeSpec] = useState<SpellCastingTime | null>({
-      text: "1 action",
-      unit: "action",
+      text: "1 minute",
+      unit: "minute",
       baseValue: 1,
     });
     return (

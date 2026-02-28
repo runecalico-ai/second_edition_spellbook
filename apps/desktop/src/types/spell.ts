@@ -532,8 +532,7 @@ export function formatDicePool(pool: DicePool): string {
 /** Format damage spec for display/storage. */
 export function damageToText(spec: SpellDamageSpec): string {
   if (spec.kind === "none") return "";
-  if (spec.kind === "dm_adjudicated")
-    return spec.dmGuidance ?? spec.sourceText ?? "DM adjudicated";
+  if (spec.kind === "dm_adjudicated") return spec.dmGuidance ?? spec.sourceText ?? "DM adjudicated";
   if (spec.kind === "modeled" && spec.parts?.length) {
     return spec.parts
       .map((p) => {
@@ -548,7 +547,6 @@ export function damageToText(spec: SpellDamageSpec): string {
 
 /** Format area spec for display/storage. */
 export function areaToText(spec: AreaSpec): string {
-  if (spec.rawLegacyValue) return spec.rawLegacyValue;
   if (spec.kind === "point") return "Point";
   if (spec.kind === "special") return spec.rawLegacyValue ?? "Special";
   const unit = spec.shapeUnit ?? spec.unit ?? "ft";
@@ -636,4 +634,112 @@ export function componentsToText(
     })
     .join("; ");
   return { components, materialComponents };
+}
+/** Compute display text for range from structured value (lowercase units per spec). */
+export function rangeToText(spec: RangeSpec): string {
+  if (spec.kind === "special") return spec.rawLegacyValue ?? "Special";
+  if (
+    RANGE_DISTANCE_KINDS.includes(spec.kind as (typeof RANGE_DISTANCE_KINDS)[number]) &&
+    spec.distance &&
+    spec.unit
+  ) {
+    const d = spec.distance;
+    const val =
+      d.mode === "fixed"
+        ? (d.value ?? 0)
+        : (d.perLevel ?? (d as SpellScalar & { per_level?: number }).per_level ?? 0);
+    const unit = spec.unit;
+    if (d.mode === "per_level") {
+      return `${val}/${unit}/level`;
+    }
+    return `${val} ${unit}`;
+  }
+  const labels: Record<string, string> = {
+    personal: "Personal",
+    touch: "Touch",
+    los: "Line of sight",
+    loe: "Line of effect",
+    distance: "Distance",
+    distance_los: "Distance (LOS)",
+    distance_loe: "Distance (LOE)",
+    sight: "Sight",
+    hearing: "Hearing",
+    voice: "Voice",
+    senses: "Senses",
+    same_room: "Same room",
+    same_structure: "Same structure",
+    same_dungeon_level: "Same dungeon level",
+    wilderness: "Wilderness",
+    same_plane: "Same plane",
+    interplanar: "Interplanar",
+    anywhere_on_plane: "Anywhere on plane",
+    domain: "Domain",
+    unlimited: "Unlimited",
+  };
+  return labels[spec.kind] ?? spec.kind;
+}
+
+/** Compute display text for duration. */
+export function durationToText(spec: DurationSpec): string {
+  if (spec.kind === "special") return spec.rawLegacyValue ?? "Special";
+  if (DURATION_KIND_ONLY.includes(spec.kind as (typeof DURATION_KIND_ONLY)[number])) {
+    const labels: Record<string, string> = {
+      instant: "Instant",
+      permanent: "Permanent",
+      until_dispelled: "Until dispelled",
+      concentration: "Concentration",
+    };
+    return labels[spec.kind] ?? spec.kind;
+  }
+  if (spec.kind === "time" && spec.unit && spec.duration) {
+    const d = spec.duration;
+    const val =
+      d.mode === "fixed"
+        ? (d.value ?? 0)
+        : (d.perLevel ?? (d as SpellScalar & { per_level?: number }).per_level ?? 0);
+    const unit = spec.unit;
+    if (d.mode === "per_level") {
+      return `${val} ${unit}/level`;
+    }
+    return `${val} ${unit}`;
+  }
+  if (DURATION_CONDITION_KINDS.includes(spec.kind as (typeof DURATION_CONDITION_KINDS)[number])) {
+    return spec.condition ?? spec.kind.replace(/_/g, " ");
+  }
+  if (spec.kind === "usage_limited" && spec.uses) {
+    const u = spec.uses;
+    const val =
+      u.mode === "fixed"
+        ? (u.value ?? 0)
+        : (u.perLevel ?? (u as SpellScalar & { per_level?: number }).per_level ?? 0);
+    if (u.mode === "per_level") return `${val} uses/level`;
+    return `${val} use(s)`;
+  }
+  return spec.kind.replace(/_/g, " ");
+}
+
+/** Compute display text for casting time from structured value. */
+export function castingTimeToText(ct: SpellCastingTime): string {
+  if (ct.unit === "special") return ct.rawLegacyValue ?? "Special";
+  const base = ct.baseValue ?? 1;
+  const perLevel = ct.perLevel ?? 0;
+  const div = ct.levelDivisor ?? 1;
+  const unit = ct.unit;
+  const unitLabels: Record<string, string> = {
+    segment: "segment",
+    round: "round",
+    turn: "turn",
+    hour: "hour",
+    minute: "minute",
+    instantaneous: "instantaneous",
+  };
+  const u = unitLabels[unit] ?? unit;
+  if (perLevel !== 0 && div !== 1) {
+    return `${base} + ${perLevel}/${div}/level ${u}`;
+  }
+  if (perLevel !== 0) {
+    return `${base} + ${perLevel}/level ${u}`;
+  }
+  if (base === 1) return `1 ${u}`;
+  return `${base} ${u}s`;
 }

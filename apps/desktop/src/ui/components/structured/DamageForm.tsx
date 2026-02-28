@@ -190,7 +190,12 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
           onChange={(e) => {
             const kind = e.target.value as SpellDamageSpec["kind"];
             if (kind === "none") {
-              onChange({ kind: "none", parts: undefined, sourceText: spec.sourceText, notes: spec.notes });
+              onChange({
+                kind: "none",
+                parts: undefined,
+                sourceText: spec.sourceText,
+                notes: spec.notes,
+              });
             } else if (kind === "dm_adjudicated") {
               onChange({
                 kind: "dm_adjudicated",

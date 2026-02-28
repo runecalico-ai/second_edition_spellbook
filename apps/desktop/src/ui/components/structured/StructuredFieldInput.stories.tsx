@@ -199,11 +199,11 @@ export const CastingTimeComplex: Story = {
   args: {
     fieldType: "casting_time",
     value: {
-      text: "1 action",
+      text: "1 minute",
       baseValue: 1,
       perLevel: 2,
       levelDivisor: 3,
-      unit: "action",
+      unit: "minute",
     },
     onChange: fn(),
   },

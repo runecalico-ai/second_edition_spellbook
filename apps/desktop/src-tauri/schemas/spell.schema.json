@@ -176,15 +176,7 @@
         },
         "unit": {
           "type": "string",
-          "enum": [
-            "segment",
-            "round",
-            "turn",
-            "hour",
-            "minute",
-            "special",
-            "instantaneous"
-          ],
+          "enum": ["segment", "round", "turn", "hour", "minute", "special", "instantaneous"],
           "default": "segment"
         },
         "base_value": {

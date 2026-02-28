@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DurationSpec, RangeSpec, SpellCastingTime } from "../../../types/spell";
-import { castingTimeToText, durationToText, rangeToText } from "./StructuredFieldInput";
+import { castingTimeToText, durationToText, rangeToText } from "../../../types/spell";
 
 describe("rangeToText", () => {
   it('returns "Touch" for kind touch', () => {

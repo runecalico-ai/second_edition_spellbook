@@ -1,9 +1,5 @@
-export {
-  StructuredFieldInput,
-  rangeToText,
-  durationToText,
-  castingTimeToText,
-} from "./StructuredFieldInput";
+export { StructuredFieldInput } from "./StructuredFieldInput";
+export { rangeToText, durationToText, castingTimeToText } from "../../../types/spell";
 export { ScalarInput } from "./ScalarInput";
 export { DamageForm } from "./DamageForm";
 export { AreaForm } from "./AreaForm";

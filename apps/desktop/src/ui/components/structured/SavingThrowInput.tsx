@@ -108,7 +108,11 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
             if (kind === "none") {
               onChange({ kind: "none", notes: spec.notes, rawLegacyValue: spec.rawLegacyValue });
             } else if (kind === "dm_adjudicated") {
-              onChange({ kind: "dm_adjudicated", notes: spec.notes, rawLegacyValue: spec.rawLegacyValue });
+              onChange({
+                kind: "dm_adjudicated",
+                notes: spec.notes,
+                rawLegacyValue: spec.rawLegacyValue,
+              });
             } else if (kind === "single") {
               onChange({
                 kind: "single",

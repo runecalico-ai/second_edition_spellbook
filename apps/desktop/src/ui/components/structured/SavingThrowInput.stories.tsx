@@ -92,7 +92,7 @@ export const DMAdjudicated: Story = {
   args: {
     value: {
       kind: "dm_adjudicated",
-      dmGuidance: "Saving throw varies based on spell level and target type.",
+      rawLegacyValue: "Saving throw varies based on spell level and target type.",
     },
     onChange: fn(),
   },

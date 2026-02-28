@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   areaToText,
+  castingTimeToText,
   componentsToText,
   damageToText,
+  durationToText,
   formatDicePool,
   magicResistanceToText,
+  rangeToText,
   savingThrowToText,
   type AreaSpec,
+  type DurationSpec,
+  type RangeSpec,
   type SavingThrowSpec,
+  type SpellCastingTime,
   type SpellComponents,
   type SpellDamageSpec,
 } from "./spell";
@@ -44,10 +50,10 @@ describe("damageToText", () => {
     expect(damageToText(spec)).toBe("2d6+1 physical bludgeoning (half save)");
   });
 
-  it("uses dm_adjudicated raw legacy fallback", () => {
+  it("uses dm_adjudicated sourceText fallback", () => {
     const spec: SpellDamageSpec = {
       kind: "dm_adjudicated",
-      rawLegacyValue: "DM rules this at runtime",
+      sourceText: "DM rules this at runtime",
     };
 
     expect(damageToText(spec)).toBe("DM rules this at runtime");
@@ -92,13 +98,26 @@ describe("areaToText", () => {
     expect(areaToText(line)).toBe("Line 120 yd");
   });
 
-  it("short-circuits to rawLegacyValue", () => {
+  it("ignores rawLegacyValue for non-special kinds", () => {
     const spec: AreaSpec = {
       kind: "point",
       rawLegacyValue: "40 ft radius burst",
     };
+    // Design Decision 2: rawLegacyValue is NEVER the .text input when structured fields are present
+    expect(areaToText(spec)).toBe("Point");
+  });
 
+  it("uses rawLegacyValue for special kind", () => {
+    const spec: AreaSpec = {
+      kind: "special",
+      rawLegacyValue: "40 ft radius burst",
+    };
     expect(areaToText(spec)).toBe("40 ft radius burst");
+  });
+
+  it("returns 'Special' when special kind has no rawLegacyValue", () => {
+    const spec: AreaSpec = { kind: "special" };
+    expect(areaToText(spec)).toBe("Special");
   });
 });
 
@@ -143,7 +162,7 @@ describe("savingThrowToText", () => {
     expect(
       savingThrowToText({
         kind: "dm_adjudicated",
-        dmGuidance: "Save outcome varies by terrain",
+        rawLegacyValue: "Save outcome varies by terrain",
       }),
     ).toBe("Save outcome varies by terrain");
   });
@@ -211,5 +230,107 @@ describe("componentsToText", () => {
     ]);
 
     expect(rendered.materialComponents).toBe("diamond dust x2 (100 gp) (consumed); bat guano");
+  });
+});
+
+describe("rangeToText", () => {
+  it("ignores rawLegacyValue for non-special kinds", () => {
+    const spec: RangeSpec = {
+      kind: "touch",
+      rawLegacyValue: "Touch (see text)",
+    };
+    expect(rangeToText(spec)).toBe("Touch");
+  });
+
+  it("uses rawLegacyValue for special kind", () => {
+    const spec: RangeSpec = {
+      kind: "special",
+      rawLegacyValue: "Caster only",
+    };
+    expect(rangeToText(spec)).toBe("Caster only");
+  });
+
+  it("returns 'Special' when special kind has no rawLegacyValue", () => {
+    const spec: RangeSpec = { kind: "special" };
+    expect(rangeToText(spec)).toBe("Special");
+  });
+
+  it("formats distance with unit", () => {
+    const spec: RangeSpec = {
+      kind: "distance",
+      unit: "ft",
+      distance: { mode: "fixed", value: 60 },
+    };
+    expect(rangeToText(spec)).toBe("60 ft");
+  });
+});
+
+describe("durationToText", () => {
+  it("ignores rawLegacyValue for non-special kinds", () => {
+    const spec: DurationSpec = {
+      kind: "instant",
+      rawLegacyValue: "Instantaneous (see text)",
+    };
+    expect(durationToText(spec)).toBe("Instant");
+  });
+
+  it("uses rawLegacyValue for special kind", () => {
+    const spec: DurationSpec = {
+      kind: "special",
+      rawLegacyValue: "Until sunrise",
+    };
+    expect(durationToText(spec)).toBe("Until sunrise");
+  });
+
+  it("returns 'Special' when special kind has no rawLegacyValue", () => {
+    const spec: DurationSpec = { kind: "special" };
+    expect(durationToText(spec)).toBe("Special");
+  });
+
+  it("formats time duration with unit", () => {
+    const spec: DurationSpec = {
+      kind: "time",
+      unit: "round",
+      duration: { mode: "fixed", value: 3 },
+    };
+    expect(durationToText(spec)).toBe("3 round");
+  });
+});
+
+describe("castingTimeToText", () => {
+  it("ignores rawLegacyValue for non-special units", () => {
+    const ct: SpellCastingTime = {
+      text: "1 round",
+      unit: "round",
+      baseValue: 1,
+      rawLegacyValue: "1 round (see below)",
+    };
+    expect(castingTimeToText(ct)).toBe("1 round");
+  });
+
+  it("uses rawLegacyValue for special unit", () => {
+    const ct: SpellCastingTime = {
+      text: "Special",
+      unit: "special",
+      rawLegacyValue: "1 hour per gem",
+    };
+    expect(castingTimeToText(ct)).toBe("1 hour per gem");
+  });
+
+  it("returns 'Special' when special unit has no rawLegacyValue", () => {
+    const ct: SpellCastingTime = {
+      text: "Special",
+      unit: "special",
+    };
+    expect(castingTimeToText(ct)).toBe("Special");
+  });
+
+  it("formats base value with unit", () => {
+    const ct: SpellCastingTime = {
+      text: "3 segments",
+      unit: "segment",
+      baseValue: 3,
+    };
+    expect(castingTimeToText(ct)).toBe("3 segments");
   });
 });

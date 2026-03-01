@@ -86,7 +86,11 @@ pub struct MagicResistanceSpec {
     pub special_rule: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", alias = "source_text")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "source_text"
+    )]
     pub source_text: Option<String>,
 }
 

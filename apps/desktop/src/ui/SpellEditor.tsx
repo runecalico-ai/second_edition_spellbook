@@ -488,7 +488,8 @@ function buildParserTasks(
           } else {
             setters.setStructuredCastingTime(parsed);
             setters.setSuppressExpandParse((prev) => ({ ...prev, castingTime: true }));
-            if ((parsed as SpellCastingTime).unit === "special") setters.addParserFallback("Casting time");
+            if ((parsed as SpellCastingTime).unit === "special")
+              setters.addParserFallback("Casting time");
           }
         })
         .catch(() => {
@@ -549,14 +550,22 @@ function buildParserTasks(
 /** Maps a DetailFieldKey to the display label used in parserFallbackFields. */
 function getParserFallbackLabel(field: DetailFieldKey): string {
   switch (field) {
-    case "range": return "Range";
-    case "duration": return "Duration";
-    case "castingTime": return "Casting time";
-    case "area": return "Area";
-    case "savingThrow": return "Saving throw";
-    case "magicResistance": return "Magic resistance";
-    case "damage": return "Damage"; // damage never added to parserFallbackFields
-    default: return field;
+    case "range":
+      return "Range";
+    case "duration":
+      return "Duration";
+    case "castingTime":
+      return "Casting time";
+    case "area":
+      return "Area";
+    case "savingThrow":
+      return "Saving throw";
+    case "magicResistance":
+      return "Magic resistance";
+    case "damage":
+      return "Damage"; // damage never added to parserFallbackFields
+    default:
+      return field;
   }
 }
 
@@ -1435,7 +1444,8 @@ export default function SpellEditor() {
             setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           } else {
             setStructuredRange(parsed);
-            if (parsed.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Range"]));
+            if (parsed.kind === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           }
           break;
         }
@@ -1447,7 +1457,8 @@ export default function SpellEditor() {
             setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           } else {
             setStructuredDuration(parsed);
-            if (parsed.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
+            if (parsed.kind === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           }
           break;
         }
@@ -1459,7 +1470,8 @@ export default function SpellEditor() {
             setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           } else {
             setStructuredCastingTime(parsed);
-            if (parsed.unit === "special") setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
+            if (parsed.unit === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           }
           break;
         }
@@ -1471,7 +1483,8 @@ export default function SpellEditor() {
             setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           } else {
             setStructuredArea(parsed);
-            if (parsed.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Area"]));
+            if (parsed.kind === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           }
           break;
         }
@@ -2038,593 +2051,602 @@ export default function SpellEditor() {
       )}
 
       <fieldset disabled={parsersPending} className="contents">
-      <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="spell-name" className="block text-sm text-neutral-400">
+              Name
+            </label>
+            <input
+              id="spell-name"
+              data-testid="spell-name-input"
+              className={`w-full bg-neutral-900 border p-2 rounded ${
+                isNameInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
+              placeholder="Spell Name"
+              value={form.name}
+              onChange={(e) => handleChange("name", e.target.value)}
+              required
+            />
+            {isNameInvalid && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-name-required">
+                Name is required.
+              </p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="spell-level" className="block text-sm text-neutral-400">
+              Level
+            </label>
+            <input
+              id="spell-level"
+              data-testid="spell-level-input"
+              className={`w-full bg-neutral-900 border p-2 rounded ${
+                isLevelInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
+              type="number"
+              value={form.level}
+              onChange={(e) => {
+                const val = e.target.valueAsNumber;
+                const clamped = Math.max(0, Math.min(12, Number.isNaN(val) ? 0 : Math.floor(val)));
+                handleChange("level", clamped);
+                if (clamped !== 0) handleChange("isCantrip", 0);
+                if (clamped !== 8) handleChange("isQuestSpell", 0);
+              }}
+            />
+            <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">
+              {getLevelDisplay(form.level)}
+            </div>
+            <div className="flex gap-4 mt-2">
+              <label
+                className={`flex items-center gap-2 cursor-pointer group ${form.level !== 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  data-testid="chk-cantrip"
+                  disabled={form.level !== 0}
+                  checked={form.isCantrip === 1}
+                  onChange={(e) => handleChange("isCantrip", e.target.checked ? 1 : 0)}
+                  className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
+                />
+                <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
+                  Cantrip
+                </span>
+              </label>
+              <label
+                className={`flex items-center gap-2 cursor-pointer group ${form.level !== 8 ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  data-testid="chk-quest"
+                  disabled={form.level !== 8}
+                  checked={form.isQuestSpell === 1}
+                  onChange={(e) => handleChange("isQuestSpell", e.target.checked ? 1 : 0)}
+                  className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
+                />
+                <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
+                  Quest Spell
+                </span>
+              </label>
+            </div>
+            {isLevelInvalid && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-level-range">
+                Level must be 0-12.
+              </p>
+            )}
+            {isEpicRestricted && (
+              <p className="text-xs text-yellow-500 mt-1" data-testid="warning-epic-arcane">
+                Epic levels (10-12) are Arcane only.
+              </p>
+            )}
+            {isQuestRestricted && (
+              <p className="text-xs text-yellow-500 mt-1" data-testid="warning-quest-divine">
+                Quest spells are Divine only.
+              </p>
+            )}
+            {isConflictRestricted && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-epic-quest-conflict">
+                Cannot be both Epic and Quest spell.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="spell-tradition" className="block text-sm text-neutral-400">
+              Tradition
+            </label>
+            <select
+              id="spell-tradition"
+              data-testid="spell-tradition-select"
+              aria-label="Spell tradition"
+              value={tradition}
+              onChange={(e) => {
+                setTradition(e.target.value as Tradition);
+              }}
+              className={`w-full bg-neutral-900 border p-2 rounded ${hasTraditionConflict ? "border-amber-500" : "border-neutral-700"}`}
+            >
+              <option value="ARCANE">Arcane</option>
+              <option value="DIVINE">Divine</option>
+            </select>
+            {hasTraditionConflict && (
+              <div
+                className="mt-2 text-xs text-amber-500 border border-amber-500/30 bg-amber-500/10 p-2 rounded"
+                data-testid="error-tradition-conflict"
+              >
+                This spell has both a School and a Sphere set \u2014 school and sphere are mutually
+                exclusive. Remove one before saving.
+              </div>
+            )}
+          </div>
+          <div>
+            <label htmlFor="spell-school" className="block text-sm text-neutral-400">
+              School
+            </label>
+            <input
+              id="spell-school"
+              data-testid="spell-school-input"
+              className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.level >= 10 && !form.school) || isArcaneMissingSchool ? "border-red-500" : "border-neutral-700"}`}
+              value={form.school || ""}
+              onChange={(e) => handleChange("school", e.target.value)}
+            />
+            {form.level >= 10 && !form.school && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane">
+                School is required for Epic (Arcane) spells.
+              </p>
+            )}
+            {isArcaneMissingSchool && (
+              <p
+                className="text-xs text-red-400 mt-1"
+                data-testid="error-school-required-arcane-tradition"
+              >
+                School is required for Arcane tradition.
+              </p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="spell-sphere" className="block text-sm text-neutral-400">
+              Sphere
+            </label>
+            <input
+              id="spell-sphere"
+              data-testid="spell-sphere-input"
+              className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.isQuestSpell === 1 && !form.sphere) || isDivineMissingSphere ? "border-red-500" : "border-neutral-700"}`}
+              value={form.sphere || ""}
+              onChange={(e) => handleChange("sphere", e.target.value)}
+            />
+            {form.isQuestSpell === 1 && !form.sphere && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine">
+                Sphere is required for Quest (Divine) spells.
+              </p>
+            )}
+            {isDivineMissingSphere && (
+              <p
+                className="text-xs text-red-400 mt-1"
+                data-testid="error-sphere-required-divine-tradition"
+              >
+                Sphere is required for Divine tradition.
+              </p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="spell-classes" className="block text-sm text-neutral-400">
+              Classes (e.g. Mage, Cleric)
+            </label>
+            <input
+              id="spell-classes"
+              data-testid="spell-classes-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.classList || ""}
+              onChange={(e) => handleChange("classList", e.target.value)}
+            />
+          </div>
+          {/* Add more fields as needed for MVP */}
+          <div>
+            <label htmlFor="spell-source" className="block text-sm text-neutral-400">
+              Source
+            </label>
+            <input
+              id="spell-source"
+              data-testid="spell-source-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.source || ""}
+              onChange={(e) => handleChange("source", e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="spell-edition" className="block text-sm text-neutral-400">
+              Edition
+            </label>
+            <input
+              id="spell-edition"
+              data-testid="spell-edition-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.edition || ""}
+              onChange={(e) => handleChange("edition", e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="spell-author" className="block text-sm text-neutral-400">
+              Author
+            </label>
+            <input
+              id="spell-author"
+              data-testid="spell-author-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.author || ""}
+              onChange={(e) => handleChange("author", e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="spell-license" className="block text-sm text-neutral-400">
+              License
+            </label>
+            <input
+              id="spell-license"
+              data-testid="spell-license-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.license || ""}
+              onChange={(e) => handleChange("license", e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="spell-reversible"
+              data-testid="chk-reversible"
+              type="checkbox"
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+              checked={Boolean(form.reversible)}
+              onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
+            />
+            <label htmlFor="spell-reversible" className="text-sm text-neutral-400">
+              Reversible
+            </label>
+          </div>
+        </div>
+
         <div>
-          <label htmlFor="spell-name" className="block text-sm text-neutral-400">
-            Name
+          <span className="block text-sm text-neutral-400">Details</span>
+          <div className="space-y-3 text-sm">
+            {DETAIL_FIELD_ORDER.map((field) => {
+              const label =
+                field === "area"
+                  ? "Area of Effect"
+                  : field === "castingTime"
+                    ? "Casting Time"
+                    : field === "savingThrow"
+                      ? "Saving Throw"
+                      : field === "magicResistance"
+                        ? "Magic Resistance"
+                        : field === "materialComponents"
+                          ? "Material Component"
+                          : field.charAt(0).toUpperCase() + field.slice(1);
+              const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+              const panelId = `detail-${kebabField}-panel`;
+              const inputId = `detail-${field}-input`;
+              const expandId = `detail-${field}-expand`;
+              const value = form[field] ?? "";
+              const isExpanded = expandedDetailField === field;
+              const isLoading = detailLoading === field;
+              const isSpecial =
+                (field === "range" && structuredRange?.kind === "special") ||
+                (field === "duration" && structuredDuration?.kind === "special") ||
+                (field === "castingTime" &&
+                  (structuredCastingTime?.unit === "special" ||
+                    !!structuredCastingTime?.rawLegacyValue)) ||
+                (field === "area" && structuredArea?.kind === "special") ||
+                (field === "damage" && !!structuredDamage?.sourceText) ||
+                (field === "savingThrow" && structuredSavingThrow?.kind === "dm_adjudicated") ||
+                (field === "magicResistance" && structuredMagicResistance?.kind === "special") ||
+                (field === "materialComponents" && false); // Reserved: no "special" kind for material row today; shares component state
+
+              return (
+                <div key={field} className="flex flex-col gap-1">
+                  <label htmlFor={inputId} className="text-xs text-neutral-500">
+                    {label}
+                  </label>
+                  <div className="flex flex-col gap-1">
+                    <input
+                      id={inputId}
+                      data-testid={`detail-${kebabField}-input`}
+                      type="text"
+                      aria-label={label}
+                      className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+                      value={String(value)}
+                      onChange={(e) => handleChange(field, e.target.value)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        data-testid={`detail-${kebabField}-expand`}
+                        aria-expanded={isExpanded}
+                        aria-controls={isExpanded ? panelId : undefined}
+                        onClick={() =>
+                          isExpanded ? collapseExpandedField() : expandDetailField(field)
+                        }
+                        className="text-xs text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                      >
+                        {isExpanded ? "Collapse" : "Expand"}
+                      </button>
+                      {isSpecial && !isExpanded && (
+                        <span
+                          className="text-xs text-amber-500"
+                          title="Stored as text; not fully structured for hashing"
+                        >
+                          (special)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <section
+                      ref={expandedPanelRef}
+                      id={panelId}
+                      aria-label={`Structured ${label}`}
+                      tabIndex={-1}
+                      className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
+                    >
+                      {isLoading ? (
+                        <div
+                          className="text-sm text-neutral-500"
+                          data-testid={`detail-${kebabField}-loading`}
+                        >
+                          Loading…
+                        </div>
+                      ) : (
+                        <>
+                          {field === "range" && (
+                            <StructuredFieldInput
+                              fieldType="range"
+                              value={structuredRange ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredRange(spec as RangeSpec);
+                                setDetailDirtyFor("range");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  range: rangeToText(spec as RangeSpec),
+                                }));
+                                if ((spec as RangeSpec).kind !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Range");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {(field === "components" || field === "materialComponents") && (
+                            <ComponentCheckboxes
+                              components={structuredComponents}
+                              materialComponents={structuredMaterialComponents}
+                              onChange={(comp, mats) => {
+                                setStructuredComponents(comp);
+                                setStructuredMaterialComponents(mats);
+                                setDetailDirtyFor("components");
+                                setDetailDirtyFor("materialComponents");
+                              }}
+                              onUncheckMaterialConfirm={() =>
+                                modalConfirm(
+                                  "Clear all material component data?",
+                                  "Uncheck Material",
+                                )
+                              }
+                              variant="vsm"
+                            />
+                          )}
+                          {field === "duration" && (
+                            <StructuredFieldInput
+                              fieldType="duration"
+                              value={structuredDuration ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredDuration(spec as DurationSpec);
+                                setDetailDirtyFor("duration");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  duration: durationToText(spec as DurationSpec),
+                                }));
+                                if ((spec as DurationSpec).kind !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Duration");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {field === "castingTime" && (
+                            <StructuredFieldInput
+                              fieldType="casting_time"
+                              value={structuredCastingTime ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredCastingTime(spec as SpellCastingTime);
+                                setDetailDirtyFor("castingTime");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  castingTime: castingTimeToText(spec as SpellCastingTime),
+                                }));
+                                if ((spec as SpellCastingTime).unit !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Casting time");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {field === "area" && (
+                            <AreaForm
+                              value={structuredArea ?? defaultAreaSpec()}
+                              onChange={(spec) => {
+                                setStructuredArea(spec);
+                                setDetailDirtyFor("area");
+                                setForm((prev) => ({ ...prev, area: areaToText(spec) }));
+                                if (spec.kind !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Area");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {field === "savingThrow" && (
+                            <SavingThrowInput
+                              value={structuredSavingThrow ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredSavingThrow(spec);
+                                setDetailDirtyFor("savingThrow");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  savingThrow: savingThrowToText(spec),
+                                }));
+                                if (spec.kind !== "dm_adjudicated") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Saving throw");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {field === "damage" && (
+                            <DamageForm
+                              value={structuredDamage ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredDamage(spec);
+                                setDetailDirtyFor("damage");
+                              }}
+                            />
+                          )}
+                          {field === "magicResistance" && (
+                            <MagicResistanceInput
+                              value={structuredMagicResistance ?? undefined}
+                              damageKind={structuredDamage?.kind}
+                              onChange={(spec) => {
+                                setStructuredMagicResistance(spec);
+                                setDetailDirtyFor("magicResistance");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  magicResistance: magicResistanceToText(spec),
+                                }));
+                                if (spec.kind !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Magic resistance");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {isSpecial && (
+                            <p
+                              className="mt-2 text-xs text-amber-500"
+                              data-testid={`detail-${kebabField}-special-hint`}
+                            >
+                              Could not be fully parsed; original text preserved.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </section>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="spell-tags" className="block text-sm text-neutral-400">
+            Tags
           </label>
-          <input
-            id="spell-name"
-            data-testid="spell-name-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isNameInvalid ? "border-red-500" : "border-neutral-700"
+          <textarea
+            id="spell-tags"
+            data-testid="spell-tags-input"
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
+            placeholder="Comma-separated tags"
+            value={form.tags || ""}
+            onChange={(e) => handleChange("tags", e.target.value)}
+          />
+        </div>
+
+        <div className="flex-1 flex flex-col">
+          <label htmlFor="spell-description" className="block text-sm text-neutral-400">
+            Description
+          </label>
+          <textarea
+            id="spell-description"
+            data-testid="spell-description-textarea"
+            className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
+              isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
             }`}
-            placeholder="Spell Name"
-            value={form.name}
-            onChange={(e) => handleChange("name", e.target.value)}
+            value={form.description}
+            onChange={(e) => handleChange("description", e.target.value)}
             required
           />
-          {isNameInvalid && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-name-required">
-              Name is required.
-            </p>
-          )}
-        </div>
-        <div>
-          <label htmlFor="spell-level" className="block text-sm text-neutral-400">
-            Level
-          </label>
-          <input
-            id="spell-level"
-            data-testid="spell-level-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isLevelInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
-            type="number"
-            value={form.level}
-            onChange={(e) => {
-              const val = e.target.valueAsNumber;
-              const clamped = Math.max(0, Math.min(12, Number.isNaN(val) ? 0 : Math.floor(val)));
-              handleChange("level", clamped);
-              if (clamped !== 0) handleChange("isCantrip", 0);
-              if (clamped !== 8) handleChange("isQuestSpell", 0);
-            }}
-          />
-          <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">
-            {getLevelDisplay(form.level)}
-          </div>
-          <div className="flex gap-4 mt-2">
-            <label
-              className={`flex items-center gap-2 cursor-pointer group ${form.level !== 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              <input
-                type="checkbox"
-                data-testid="chk-cantrip"
-                disabled={form.level !== 0}
-                checked={form.isCantrip === 1}
-                onChange={(e) => handleChange("isCantrip", e.target.checked ? 1 : 0)}
-                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
-              />
-              <span className="text-sm text-neutral-400 group-hover:text-neutral-300">Cantrip</span>
-            </label>
-            <label
-              className={`flex items-center gap-2 cursor-pointer group ${form.level !== 8 ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              <input
-                type="checkbox"
-                data-testid="chk-quest"
-                disabled={form.level !== 8}
-                checked={form.isQuestSpell === 1}
-                onChange={(e) => handleChange("isQuestSpell", e.target.checked ? 1 : 0)}
-                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
-              />
-              <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
-                Quest Spell
-              </span>
-            </label>
-          </div>
-          {isLevelInvalid && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-level-range">
-              Level must be 0-12.
-            </p>
-          )}
-          {isEpicRestricted && (
-            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-epic-arcane">
-              Epic levels (10-12) are Arcane only.
-            </p>
-          )}
-          {isQuestRestricted && (
-            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-quest-divine">
-              Quest spells are Divine only.
-            </p>
-          )}
-          {isConflictRestricted && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-epic-quest-conflict">
-              Cannot be both Epic and Quest spell.
+          {isDescriptionInvalid && (
+            <p className="text-xs text-red-400 mt-1" data-testid="error-description-required">
+              Description is required.
             </p>
           )}
         </div>
 
-        <div>
-          <label htmlFor="spell-tradition" className="block text-sm text-neutral-400">
-            Tradition
-          </label>
-          <select
-            id="spell-tradition"
-            data-testid="spell-tradition-select"
-            aria-label="Spell tradition"
-            value={tradition}
-            onChange={(e) => {
-              setTradition(e.target.value as Tradition);
-            }}
-            className={`w-full bg-neutral-900 border p-2 rounded ${hasTraditionConflict ? "border-amber-500" : "border-neutral-700"}`}
-          >
-            <option value="ARCANE">Arcane</option>
-            <option value="DIVINE">Divine</option>
-          </select>
-          {hasTraditionConflict && (
-            <div
-              className="mt-2 text-xs text-amber-500 border border-amber-500/30 bg-amber-500/10 p-2 rounded"
-              data-testid="error-tradition-conflict"
-            >
-              This spell has both a School and a Sphere set \u2014 school and sphere are mutually
-              exclusive. Remove one before saving.
+        {form.artifacts && form.artifacts.length > 0 && (
+          <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
+              <button
+                type="button"
+                data-testid="btn-reparse-artifact"
+                aria-label="Reparse spell from artifact"
+                onClick={async () => {
+                  if (!form.artifacts || form.artifacts.length === 0) return;
+                  const artifactId = form.artifacts[0].id;
+
+                  const confirmed = await modalConfirm(
+                    "Re-parse this spell from the original artifact file? This will overwrite manual changes.",
+                    "Reparse Spell",
+                  );
+                  if (!confirmed) return;
+
+                  try {
+                    setLoading(true);
+                    const updated = await invoke<SpellDetail>("reparse_artifact", { artifactId });
+                    setForm(updated);
+                    await modalAlert(
+                      "Spell re-parsed successfully!",
+                      "Reparse Complete",
+                      "success",
+                    );
+                  } catch (e) {
+                    await modalAlert(`Reparse failed: ${e}`, "Reparse Error", "error");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+              >
+                Reparse
+              </button>
             </div>
-          )}
-        </div>
-        <div>
-          <label htmlFor="spell-school" className="block text-sm text-neutral-400">
-            School
-          </label>
-          <input
-            id="spell-school"
-            data-testid="spell-school-input"
-            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.level >= 10 && !form.school) || isArcaneMissingSchool ? "border-red-500" : "border-neutral-700"}`}
-            value={form.school || ""}
-            onChange={(e) => handleChange("school", e.target.value)}
-          />
-          {form.level >= 10 && !form.school && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane">
-              School is required for Epic (Arcane) spells.
-            </p>
-          )}
-          {isArcaneMissingSchool && (
-            <p
-              className="text-xs text-red-400 mt-1"
-              data-testid="error-school-required-arcane-tradition"
-            >
-              School is required for Arcane tradition.
-            </p>
-          )}
-        </div>
-        <div>
-          <label htmlFor="spell-sphere" className="block text-sm text-neutral-400">
-            Sphere
-          </label>
-          <input
-            id="spell-sphere"
-            data-testid="spell-sphere-input"
-            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.isQuestSpell === 1 && !form.sphere) || isDivineMissingSphere ? "border-red-500" : "border-neutral-700"}`}
-            value={form.sphere || ""}
-            onChange={(e) => handleChange("sphere", e.target.value)}
-          />
-          {form.isQuestSpell === 1 && !form.sphere && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine">
-              Sphere is required for Quest (Divine) spells.
-            </p>
-          )}
-          {isDivineMissingSphere && (
-            <p
-              className="text-xs text-red-400 mt-1"
-              data-testid="error-sphere-required-divine-tradition"
-            >
-              Sphere is required for Divine tradition.
-            </p>
-          )}
-        </div>
-        <div>
-          <label htmlFor="spell-classes" className="block text-sm text-neutral-400">
-            Classes (e.g. Mage, Cleric)
-          </label>
-          <input
-            id="spell-classes"
-            data-testid="spell-classes-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.classList || ""}
-            onChange={(e) => handleChange("classList", e.target.value)}
-          />
-        </div>
-        {/* Add more fields as needed for MVP */}
-        <div>
-          <label htmlFor="spell-source" className="block text-sm text-neutral-400">
-            Source
-          </label>
-          <input
-            id="spell-source"
-            data-testid="spell-source-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.source || ""}
-            onChange={(e) => handleChange("source", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="spell-edition" className="block text-sm text-neutral-400">
-            Edition
-          </label>
-          <input
-            id="spell-edition"
-            data-testid="spell-edition-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.edition || ""}
-            onChange={(e) => handleChange("edition", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="spell-author" className="block text-sm text-neutral-400">
-            Author
-          </label>
-          <input
-            id="spell-author"
-            data-testid="spell-author-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.author || ""}
-            onChange={(e) => handleChange("author", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="spell-license" className="block text-sm text-neutral-400">
-            License
-          </label>
-          <input
-            id="spell-license"
-            data-testid="spell-license-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.license || ""}
-            onChange={(e) => handleChange("license", e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="spell-reversible"
-            data-testid="chk-reversible"
-            type="checkbox"
-            className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
-            checked={Boolean(form.reversible)}
-            onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
-          />
-          <label htmlFor="spell-reversible" className="text-sm text-neutral-400">
-            Reversible
-          </label>
-        </div>
-      </div>
-
-      <div>
-        <span className="block text-sm text-neutral-400">Details</span>
-        <div className="space-y-3 text-sm">
-          {DETAIL_FIELD_ORDER.map((field) => {
-            const label =
-              field === "area"
-                ? "Area of Effect"
-                : field === "castingTime"
-                  ? "Casting Time"
-                  : field === "savingThrow"
-                    ? "Saving Throw"
-                    : field === "magicResistance"
-                      ? "Magic Resistance"
-                      : field === "materialComponents"
-                        ? "Material Component"
-                        : field.charAt(0).toUpperCase() + field.slice(1);
-            const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-            const panelId = `detail-${kebabField}-panel`;
-            const inputId = `detail-${field}-input`;
-            const expandId = `detail-${field}-expand`;
-            const value = form[field] ?? "";
-            const isExpanded = expandedDetailField === field;
-            const isLoading = detailLoading === field;
-            const isSpecial =
-              (field === "range" && structuredRange?.kind === "special") ||
-              (field === "duration" && structuredDuration?.kind === "special") ||
-              (field === "castingTime" &&
-                (structuredCastingTime?.unit === "special" ||
-                  !!structuredCastingTime?.rawLegacyValue)) ||
-              (field === "area" && structuredArea?.kind === "special") ||
-              (field === "damage" && !!structuredDamage?.sourceText) ||
-              (field === "savingThrow" && structuredSavingThrow?.kind === "dm_adjudicated") ||
-              (field === "magicResistance" && structuredMagicResistance?.kind === "special") ||
-              (field === "materialComponents" && false); // Reserved: no "special" kind for material row today; shares component state
-
-            return (
-              <div key={field} className="flex flex-col gap-1">
-                <label htmlFor={inputId} className="text-xs text-neutral-500">
-                  {label}
-                </label>
-                <div className="flex flex-col gap-1">
-                  <input
-                    id={inputId}
-                    data-testid={`detail-${kebabField}-input`}
-                    type="text"
-                    aria-label={label}
-                    className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-                    value={String(value)}
-                    onChange={(e) => handleChange(field, e.target.value)}
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      data-testid={`detail-${kebabField}-expand`}
-                      aria-expanded={isExpanded}
-                      aria-controls={isExpanded ? panelId : undefined}
-                      onClick={() =>
-                        isExpanded ? collapseExpandedField() : expandDetailField(field)
-                      }
-                      className="text-xs text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
-                    >
-                      {isExpanded ? "Collapse" : "Expand"}
-                    </button>
-                    {isSpecial && !isExpanded && (
-                      <span
-                        className="text-xs text-amber-500"
-                        title="Stored as text; not fully structured for hashing"
-                      >
-                        (special)
-                      </span>
-                    )}
-                  </div>
+            {form.artifacts?.map((art) => (
+              <div key={art.id} className="text-xs space-y-1 text-neutral-500">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-neutral-400">
+                    Type: {art.type.toUpperCase()}
+                  </span>
+                  <span>Imported: {new Date(art.importedAt).toLocaleString()}</span>
                 </div>
-                {isExpanded && (
-                  <section
-                    ref={expandedPanelRef}
-                    id={panelId}
-                    aria-label={`Structured ${label}`}
-                    tabIndex={-1}
-                    className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
-                  >
-                    {isLoading ? (
-                      <div
-                        className="text-sm text-neutral-500"
-                        data-testid={`detail-${kebabField}-loading`}
-                      >
-                        Loading…
-                      </div>
-                    ) : (
-                      <>
-                        {field === "range" && (
-                          <StructuredFieldInput
-                            fieldType="range"
-                            value={structuredRange ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredRange(spec as RangeSpec);
-                              setDetailDirtyFor("range");
-                              setForm((prev) => ({
-                                ...prev,
-                                range: rangeToText(spec as RangeSpec),
-                              }));
-                              if ((spec as RangeSpec).kind !== "special") {
-                                setParserFallbackFields((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete("Range");
-                                  return next;
-                                });
-                              }
-                            }}
-                          />
-                        )}
-                        {(field === "components" || field === "materialComponents") && (
-                          <ComponentCheckboxes
-                            components={structuredComponents}
-                            materialComponents={structuredMaterialComponents}
-                            onChange={(comp, mats) => {
-                              setStructuredComponents(comp);
-                              setStructuredMaterialComponents(mats);
-                              setDetailDirtyFor("components");
-                              setDetailDirtyFor("materialComponents");
-                            }}
-                            onUncheckMaterialConfirm={() =>
-                              modalConfirm("Clear all material component data?", "Uncheck Material")
-                            }
-                            variant="vsm"
-                          />
-                        )}
-                        {field === "duration" && (
-                          <StructuredFieldInput
-                            fieldType="duration"
-                            value={structuredDuration ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredDuration(spec as DurationSpec);
-                              setDetailDirtyFor("duration");
-                              setForm((prev) => ({
-                                ...prev,
-                                duration: durationToText(spec as DurationSpec),
-                              }));
-                              if ((spec as DurationSpec).kind !== "special") {
-                                setParserFallbackFields((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete("Duration");
-                                  return next;
-                                });
-                              }
-                            }}
-                          />
-                        )}
-                        {field === "castingTime" && (
-                          <StructuredFieldInput
-                            fieldType="casting_time"
-                            value={structuredCastingTime ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredCastingTime(spec as SpellCastingTime);
-                              setDetailDirtyFor("castingTime");
-                              setForm((prev) => ({
-                                ...prev,
-                                castingTime: castingTimeToText(spec as SpellCastingTime),
-                              }));
-                              if ((spec as SpellCastingTime).unit !== "special") {
-                                setParserFallbackFields((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete("Casting time");
-                                  return next;
-                                });
-                              }
-                            }}
-                          />
-                        )}
-                        {field === "area" && (
-                          <AreaForm
-                            value={structuredArea ?? defaultAreaSpec()}
-                            onChange={(spec) => {
-                              setStructuredArea(spec);
-                              setDetailDirtyFor("area");
-                              setForm((prev) => ({ ...prev, area: areaToText(spec) }));
-                              if (spec.kind !== "special") {
-                                setParserFallbackFields((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete("Area");
-                                  return next;
-                                });
-                              }
-                            }}
-                          />
-                        )}
-                        {field === "savingThrow" && (
-                          <SavingThrowInput
-                            value={structuredSavingThrow ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredSavingThrow(spec);
-                              setDetailDirtyFor("savingThrow");
-                              setForm((prev) => ({
-                                ...prev,
-                                savingThrow: savingThrowToText(spec),
-                              }));
-                              if (spec.kind !== "dm_adjudicated") {
-                                setParserFallbackFields((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete("Saving throw");
-                                  return next;
-                                });
-                              }
-                            }}
-                          />
-                        )}
-                        {field === "damage" && (
-                          <DamageForm
-                            value={structuredDamage ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredDamage(spec);
-                              setDetailDirtyFor("damage");
-                            }}
-                          />
-                        )}
-                        {field === "magicResistance" && (
-                          <MagicResistanceInput
-                            value={structuredMagicResistance ?? undefined}
-                            damageKind={structuredDamage?.kind}
-                            onChange={(spec) => {
-                              setStructuredMagicResistance(spec);
-                              setDetailDirtyFor("magicResistance");
-                              setForm((prev) => ({
-                                ...prev,
-                                magicResistance: magicResistanceToText(spec),
-                              }));
-                              if (spec.kind !== "special") {
-                                setParserFallbackFields((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete("Magic resistance");
-                                  return next;
-                                });
-                              }
-                            }}
-                          />
-                        )}
-                        {isSpecial && (
-                          <p
-                            className="mt-2 text-xs text-amber-500"
-                            data-testid={`detail-${kebabField}-special-hint`}
-                          >
-                            Could not be fully parsed; original text preserved.
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </section>
-                )}
+                <div className="truncate">Path: {art.path}</div>
+                <div className="font-mono text-[10px] opacity-70">SHA256: {art.hash}</div>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="spell-tags" className="block text-sm text-neutral-400">
-          Tags
-        </label>
-        <textarea
-          id="spell-tags"
-          data-testid="spell-tags-input"
-          className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
-          placeholder="Comma-separated tags"
-          value={form.tags || ""}
-          onChange={(e) => handleChange("tags", e.target.value)}
-        />
-      </div>
-
-      <div className="flex-1 flex flex-col">
-        <label htmlFor="spell-description" className="block text-sm text-neutral-400">
-          Description
-        </label>
-        <textarea
-          id="spell-description"
-          data-testid="spell-description-textarea"
-          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
-            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
-          }`}
-          value={form.description}
-          onChange={(e) => handleChange("description", e.target.value)}
-          required
-        />
-        {isDescriptionInvalid && (
-          <p className="text-xs text-red-400 mt-1" data-testid="error-description-required">
-            Description is required.
-          </p>
-        )}
-      </div>
-
-      {form.artifacts && form.artifacts.length > 0 && (
-        <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
-            <button
-              type="button"
-              data-testid="btn-reparse-artifact"
-              aria-label="Reparse spell from artifact"
-              onClick={async () => {
-                if (!form.artifacts || form.artifacts.length === 0) return;
-                const artifactId = form.artifacts[0].id;
-
-                const confirmed = await modalConfirm(
-                  "Re-parse this spell from the original artifact file? This will overwrite manual changes.",
-                  "Reparse Spell",
-                );
-                if (!confirmed) return;
-
-                try {
-                  setLoading(true);
-                  const updated = await invoke<SpellDetail>("reparse_artifact", { artifactId });
-                  setForm(updated);
-                  await modalAlert("Spell re-parsed successfully!", "Reparse Complete", "success");
-                } catch (e) {
-                  await modalAlert(`Reparse failed: ${e}`, "Reparse Error", "error");
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
-            >
-              Reparse
-            </button>
+            ))}
           </div>
-          {form.artifacts?.map((art) => (
-            <div key={art.id} className="text-xs space-y-1 text-neutral-500">
-              <div className="flex justify-between">
-                <span className="font-semibold text-neutral-400">
-                  Type: {art.type.toUpperCase()}
-                </span>
-                <span>Imported: {new Date(art.importedAt).toLocaleString()}</span>
-              </div>
-              <div className="truncate">Path: {art.path}</div>
-              <div className="font-mono text-[10px] opacity-70">SHA256: {art.hash}</div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
       </fieldset>
     </div>
   );

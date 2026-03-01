@@ -774,7 +774,8 @@ fn test_regression_raw_legacy_value_preserved_as_is() {
         Some(raw.as_str())
     );
     assert_eq!(
-        spell.casting_time
+        spell
+            .casting_time
             .as_ref()
             .unwrap()
             .raw_legacy_value

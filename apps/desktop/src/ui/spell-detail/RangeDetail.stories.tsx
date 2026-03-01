@@ -82,7 +82,9 @@ export const WithNotes: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByTestId("range-detail-notes")).toHaveTextContent("Range doubles outdoors");
+    await expect(canvas.getByTestId("range-detail-notes")).toHaveTextContent(
+      "Range doubles outdoors",
+    );
   },
 };
 

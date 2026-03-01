@@ -66,10 +66,7 @@ export function MagicResistanceDetail({ spec }: MagicResistanceDetailProps) {
       </div>
 
       {showSourceTextPrimary && (
-        <p
-          className="text-sm text-neutral-200"
-          data-testid="magic-resistance-source-text-primary"
-        >
+        <p className="text-sm text-neutral-200" data-testid="magic-resistance-source-text-primary">
           {spec.sourceText}
         </p>
       )}
@@ -84,10 +81,7 @@ export function MagicResistanceDetail({ spec }: MagicResistanceDetailProps) {
       )}
 
       {showSpecialRule && (
-        <p
-          className="text-xs text-neutral-400"
-          data-testid="magic-resistance-special-rule"
-        >
+        <p className="text-xs text-neutral-400" data-testid="magic-resistance-special-rule">
           {spec.specialRule}
         </p>
       )}

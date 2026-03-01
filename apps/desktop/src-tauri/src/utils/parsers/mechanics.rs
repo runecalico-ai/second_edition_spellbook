@@ -335,8 +335,8 @@ impl MechanicsParser {
         // Use exact normalized categories to avoid false positives from broad substrings.
         // " then " overrides this: "Save vs Spell, then Save vs Poison" must parse as multiple.
         let lower = input_clean.to_lowercase();
-        let is_standard_complex = !lower.contains(" then ")
-            && Self::is_standard_complex_save_category(&lower);
+        let is_standard_complex =
+            !lower.contains(" then ") && Self::is_standard_complex_save_category(&lower);
 
         if parts.len() > 1 && !is_standard_complex {
             let mut saves = Vec::new();

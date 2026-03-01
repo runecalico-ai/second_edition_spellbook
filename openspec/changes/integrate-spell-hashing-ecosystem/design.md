@@ -32,7 +32,7 @@ The application is moving from ID-based spell identity to content-addressable id
 Single-spell export:
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "a1b2c3d4e5f6...",
   "name": "Fireball",
   "tradition": "ARCANE",
@@ -46,11 +46,11 @@ Single-spell export:
 Bundle export:
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "bundle_format_version": 1,
   "spells": [
-    { "schema_version": 1, "id": "a1b2c3...", "name": "Fireball", "...": "..." },
-    { "schema_version": 1, "id": "d4e5f6...", "name": "Magic Missile", "...": "..." }
+    { "schema_version": 2, "id": "a1b2c3...", "name": "Fireball", "...": "..." },
+    { "schema_version": 2, "id": "d4e5f6...", "name": "Magic Missile", "...": "..." }
   ]
 }
 ```

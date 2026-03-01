@@ -28,10 +28,7 @@ function SaveEntry({
       className="flex flex-wrap gap-1 items-center text-sm"
       data-testid={`save-entry${testSuffix}`}
     >
-      <span
-        className="font-medium text-neutral-100"
-        data-testid={`save-type${testSuffix}`}
-      >
+      <span className="font-medium text-neutral-100" data-testid={`save-type${testSuffix}`}>
         {SAVE_TYPE_LABELS[saveType] ?? saveType.replace(/_/g, " ")}
       </span>
       {saveVs && (
@@ -105,19 +102,13 @@ export function SavingThrowDetail({ spec }: SavingThrowDetailProps) {
       )}
 
       {spec.kind === "dm_adjudicated" && (
-        <p
-          className="text-sm text-neutral-200"
-          data-testid="saving-throw-dm-adjudicated"
-        >
+        <p className="text-sm text-neutral-200" data-testid="saving-throw-dm-adjudicated">
           {spec.rawLegacyValue ?? "DM adjudicated"}
         </p>
       )}
 
       {spec.notes && (
-        <p
-          className="text-xs text-neutral-400 italic"
-          data-testid="saving-throw-notes"
-        >
+        <p className="text-xs text-neutral-400 italic" data-testid="saving-throw-notes">
           {spec.notes}
         </p>
       )}

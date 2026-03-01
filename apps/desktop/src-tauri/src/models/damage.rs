@@ -448,10 +448,9 @@ mod tests {
 
     #[test]
     fn test_damage_spec_alias_raw_legacy_value_reads_into_source_text() {
-        let from_source_text: SpellDamageSpec = serde_json::from_str(
-            r#"{"kind":"dm_adjudicated","source_text":"from source_text"}"#,
-        )
-        .expect("deserialize source_text variant");
+        let from_source_text: SpellDamageSpec =
+            serde_json::from_str(r#"{"kind":"dm_adjudicated","source_text":"from source_text"}"#)
+                .expect("deserialize source_text variant");
         assert_eq!(
             from_source_text.source_text.as_deref(),
             Some("from source_text")

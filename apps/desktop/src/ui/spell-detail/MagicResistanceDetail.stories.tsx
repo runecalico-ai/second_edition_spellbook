@@ -46,9 +46,7 @@ export const KindUnknownHidesAppliesTo: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByTestId("magic-resistance-kind")).toHaveTextContent("N/A");
-    await expect(
-      canvas.queryByTestId("magic-resistance-applies-to"),
-    ).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId("magic-resistance-applies-to")).not.toBeInTheDocument();
   },
 };
 

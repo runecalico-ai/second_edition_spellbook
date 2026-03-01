@@ -3603,7 +3603,10 @@ mod tests {
 
         let st = spell.saving_throw.as_ref().unwrap();
         assert!(st.legacy_dm_guidance.is_none());
-        assert_eq!(st.notes.as_ref().unwrap(), "Original Notes\nLegacy Guidance");
+        assert_eq!(
+            st.notes.as_ref().unwrap(),
+            "Original Notes\nLegacy Guidance"
+        );
 
         let ct = spell.casting_time.as_ref().unwrap();
         assert_eq!(ct.unit, CastingTimeUnit::Special);
@@ -3614,8 +3617,12 @@ mod tests {
     fn test_migrate_v1_to_v2_notes_truncation_flag() {
         use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
 
-        let mut spell =
-            CanonicalSpell::new("Migration Truncate".into(), 1, "ARCANE".into(), "Desc".into());
+        let mut spell = CanonicalSpell::new(
+            "Migration Truncate".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
         spell.schema_version = 1;
         spell.saving_throw = Some(SavingThrowSpec {
             kind: SavingThrowKind::Single,
@@ -3654,9 +3661,9 @@ mod tests {
             ..Default::default()
         });
 
-        let hash_err = spell.compute_hash().expect_err(
-            "compute_hash() must fail when migration truncates notes",
-        );
+        let hash_err = spell
+            .compute_hash()
+            .expect_err("compute_hash() must fail when migration truncates notes");
         assert!(
             hash_err.contains("truncated"),
             "error should mention truncation; got: {hash_err}"
@@ -3675,8 +3682,12 @@ mod tests {
     fn test_migrate_v1_to_v2_casting_time_empty_text_synthesizes_raw() {
         use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
 
-        let mut spell =
-            CanonicalSpell::new("Migration Cast Empty".into(), 1, "ARCANE".into(), "Desc".into());
+        let mut spell = CanonicalSpell::new(
+            "Migration Cast Empty".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
         spell.schema_version = 1;
         spell.casting_time = Some(SpellCastingTime {
             unit: CastingTimeUnit::Action,
@@ -3695,8 +3706,12 @@ mod tests {
     fn test_migrate_v1_to_v2_casting_time_preserves_existing_raw() {
         use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
 
-        let mut spell =
-            CanonicalSpell::new("Migration Cast Preserve".into(), 1, "ARCANE".into(), "Desc".into());
+        let mut spell = CanonicalSpell::new(
+            "Migration Cast Preserve".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
         spell.schema_version = 1;
         spell.casting_time = Some(SpellCastingTime {
             unit: CastingTimeUnit::Reaction,
@@ -3742,7 +3757,10 @@ mod tests {
         assert!(!res.notes_truncated);
         assert_eq!(res.truncated_spell_id, None);
         assert_eq!(spell.schema_version, 2);
-        assert_eq!(spell.casting_time.as_ref().unwrap().unit, CastingTimeUnit::Round);
+        assert_eq!(
+            spell.casting_time.as_ref().unwrap().unit,
+            CastingTimeUnit::Round
+        );
     }
 
     /// Priority D (TG5): Future schema_version (e.g. 3) is passed through without migration.
@@ -3750,12 +3768,8 @@ mod tests {
     fn test_migrate_v1_to_v2_passthrough_future_schema_version() {
         use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
 
-        let mut spell = CanonicalSpell::new(
-            "Future Version".into(),
-            1,
-            "ARCANE".into(),
-            "Desc".into(),
-        );
+        let mut spell =
+            CanonicalSpell::new("Future Version".into(), 1, "ARCANE".into(), "Desc".into());
         spell.schema_version = 3;
         spell.casting_time = Some(SpellCastingTime {
             unit: CastingTimeUnit::Round,
@@ -3766,7 +3780,10 @@ mod tests {
         let res = spell.normalize(None);
         assert!(!res.notes_truncated);
         assert_eq!(res.truncated_spell_id, None);
-        assert_eq!(spell.schema_version, 3, "future schema_version must be preserved");
+        assert_eq!(
+            spell.schema_version, 3,
+            "future schema_version must be preserved"
+        );
         assert_eq!(
             spell.casting_time.as_ref().unwrap().unit,
             CastingTimeUnit::Round,
@@ -3780,8 +3797,7 @@ mod tests {
         use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
         use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
 
-        let mut spell =
-            CanonicalSpell::new("Step Order".into(), 1, "ARCANE".into(), "Desc".into());
+        let mut spell = CanonicalSpell::new("Step Order".into(), 1, "ARCANE".into(), "Desc".into());
         spell.schema_version = 1;
         spell.saving_throw = Some(SavingThrowSpec {
             kind: SavingThrowKind::Single,
@@ -3806,7 +3822,12 @@ mod tests {
             .unwrap();
         assert!(notes.contains("Existing."));
         assert!(notes.contains("DM says be careful."));
-        assert!(spell.saving_throw.as_ref().unwrap().legacy_dm_guidance.is_none());
+        assert!(spell
+            .saving_throw
+            .as_ref()
+            .unwrap()
+            .legacy_dm_guidance
+            .is_none());
         // Step 2: 5e unit remapped to Special, raw preserved
         let ct = spell.casting_time.as_ref().unwrap();
         assert_eq!(ct.unit, CastingTimeUnit::Special);
@@ -3864,7 +3885,10 @@ mod tests {
             [],
             |r| r.get(0),
         )?;
-        assert_eq!(schema_v2, 2, "Successful spell must be updated to schema_version 2");
+        assert_eq!(
+            schema_v2, 2,
+            "Successful spell must be updated to schema_version 2"
+        );
 
         let has_hash: i64 = conn.query_row(
             "SELECT COUNT(*) FROM spell WHERE name = 'Good' AND content_hash IS NOT NULL",
@@ -3955,8 +3979,7 @@ mod tests {
             "#,
         )?;
 
-        let mut spell =
-            CanonicalSpell::new("Truncate".into(), 1, "ARCANE".into(), "Desc".into());
+        let mut spell = CanonicalSpell::new("Truncate".into(), 1, "ARCANE".into(), "Desc".into());
         spell.schema_version = 1;
         spell.saving_throw = Some(SavingThrowSpec {
             kind: SavingThrowKind::Single,

@@ -143,7 +143,11 @@ pub struct SavingThrowSpec {
     pub single: Option<SingleSave>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multiple: Option<Vec<SingleSave>>,
-    #[serde(default, skip_serializing_if = "Option::is_none", alias = "raw_legacy_value")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "raw_legacy_value"
+    )]
     pub raw_legacy_value: Option<String>,
     #[serde(
         default,

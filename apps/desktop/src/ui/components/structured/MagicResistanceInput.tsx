@@ -92,7 +92,6 @@ export function MagicResistanceInput({ value, onChange, damageKind }: MagicResis
             ))}
           </select>
         )}
-
       </div>
       {spec.sourceText && (
         <div

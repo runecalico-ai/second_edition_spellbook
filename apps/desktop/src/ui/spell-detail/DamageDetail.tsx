@@ -43,10 +43,7 @@ function DamagePartRow({ part, index }: DamagePartRowProps) {
   const label = part.label ? ` — ${part.label}` : "";
 
   return (
-    <div
-      className="flex flex-wrap items-center gap-1 text-sm"
-      data-testid={`damage-part-${index}`}
-    >
+    <div className="flex flex-wrap items-center gap-1 text-sm" data-testid={`damage-part-${index}`}>
       {formula && (
         <span className="font-mono text-amber-300" data-testid={`damage-formula-${index}`}>
           {formula}

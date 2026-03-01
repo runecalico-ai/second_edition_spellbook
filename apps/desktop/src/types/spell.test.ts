@@ -20,34 +20,37 @@ import {
 
 // Compile-time-only assertions for removed v2 units.
 // These are validated by `pnpm run typecheck`, not by Vitest runtime execution.
-// @ts-expect-error action is not a valid DurationUnit
 const _invalidDurationUnit: DurationSpec = {
   kind: "time",
+  // @ts-expect-error action is not a valid DurationUnit
   unit: "action",
   duration: { mode: "fixed", value: 1 },
 };
-// @ts-expect-error bonus_action is not a valid DurationUnit
 const _invalidDurationBonusAction: DurationSpec = {
   kind: "time",
+  // @ts-expect-error bonus_action is not a valid DurationUnit
   unit: "bonus_action",
   duration: { mode: "fixed", value: 1 },
 };
-// @ts-expect-error reaction is not a valid DurationUnit
 const _invalidDurationReaction: DurationSpec = {
   kind: "time",
+  // @ts-expect-error reaction is not a valid DurationUnit
   unit: "reaction",
   duration: { mode: "fixed", value: 1 },
 };
 
 // @ts-expect-error action is not a valid CastingTimeUnit
 const _invalidCastingTimeUnit: SpellCastingTime = { text: "1 action", unit: "action" };
-// @ts-expect-error bonus_action is not a valid CastingTimeUnit
 const _invalidCastingTimeBonusAction: SpellCastingTime = {
   text: "1 bonus action",
+  // @ts-expect-error bonus_action is not a valid CastingTimeUnit
   unit: "bonus_action",
 };
-// @ts-expect-error reaction is not a valid CastingTimeUnit
-const _invalidCastingTimeReaction: SpellCastingTime = { text: "1 reaction", unit: "reaction" };
+const _invalidCastingTimeReaction: SpellCastingTime = {
+  text: "1 reaction",
+  // @ts-expect-error reaction is not a valid CastingTimeUnit
+  unit: "reaction",
+};
 
 void _invalidDurationUnit;
 void _invalidDurationBonusAction;

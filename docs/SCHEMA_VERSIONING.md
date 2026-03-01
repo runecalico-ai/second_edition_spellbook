@@ -28,9 +28,11 @@ Every `CanonicalSpell` includes a `schema_version` field with a default value of
 
 ## Migration Strategy
 
-### Migration: Version 0 → 1 (Legacy)
+### Migration: Version 0 → 2 (via `normalize`)
 
-When schema versioning was first introduced, spells with `schema_version: 0` were **automatically upgraded** to version 1. That upgrade path no longer exists — `schema_version = 0` is now **rejected** by the validator (it is below `MIN_SUPPORTED_SCHEMA_VERSION = 1`). Only spells with `schema_version = 1` are migrated, going directly to version 2 via `migrate_to_v2()`.
+The `migrate_to_v2()` guard is `schema_version < 2`, which covers **both** v0 and v1 spells. In the standard pipeline (`normalize()` → `validate()`, used by `compute_hash()` and save paths), `normalize()` calls `migrate_to_v2()` first, upgrading v0 → v2 before validation ever runs. The spell is therefore valid by the time `validate()` sees it.
+
+However, calling `validate()` in isolation (without prior normalization) **will reject** `schema_version = 0` because it is below `MIN_SUPPORTED_SCHEMA_VERSION = 1`. This distinction matters only for code paths that call `validate()` directly.
 
 ### Migration: Version 1 → 2
 
@@ -43,7 +45,7 @@ if self.schema_version < 2 {
 }
 ```
 
-This covers `schema_version = 1` spells, migrating them directly to version 2. (`schema_version = 0` is rejected by the validator before this guard is reached.)
+This covers both `schema_version = 0` and `schema_version = 1` spells, migrating them directly to version 2. In the standard pipeline, `normalize()` runs this migration **before** `validate()`, so v0 spells are upgraded to v2 before validation occurs.
 
 The migration performs the following steps in order:
 
@@ -66,24 +68,20 @@ The migration performs the following steps in order:
 After migration, the spell is fully re-normalized and re-hashed. This is a one-time migration cost affecting all stored spells — all content hashes change after migration.
 
 > [!NOTE]
-> Schema version `0` is **rejected** by the validator (`schema_version < MIN_SUPPORTED_SCHEMA_VERSION = 1`) before `migrate_to_v2()` is invoked. Only spells with `schema_version = 1` flow through this migration path.
+> In the standard pipeline (`compute_hash`, save paths), `normalize()` runs `migrate_to_v2()` **before** `validate()`. Because the migration guard is `schema_version < 2`, both v0 and v1 spells are upgraded to v2 before validation. A standalone `validate()` call (without prior normalization) will reject `schema_version = 0` as below `MIN_SUPPORTED_SCHEMA_VERSION = 1`.
 
 ### Validation Behavior
 
 During spell validation, the system handles version mismatches as follows:
 
 #### Invalid Versions (< 1 — below minimum supported)
-- **Behavior**: Reject with error
-- **Result**: Import and hash computation fail
+- **Behavior**: Rejected by standalone `validate()` calls (without prior normalization)
+- **Standard pipeline**: In `compute_hash()` and save paths, `normalize()` upgrades v0 → v2 via `migrate_to_v2()` before `validate()` runs, so v0 spells migrate successfully
+- **Direct `validate()` only**: Rejects with error (`schema_version < MIN_SUPPORTED_SCHEMA_VERSION`)
 
 #### Older Versions (< 2, >= 1)
-- **Behavior**: Logs a warning, allows migration
-- **Warning Message**:
-  ```
-  WARNING: Spell '{name}' uses an older schema version ({version}).
-  Migrating to version {CURRENT_SCHEMA_VERSION} for hashing.
-  ```
-- **Result**: Spell is migrated and processed normally
+- **Behavior**: Silently migrated to version 2 via `migrate_to_v2()` during `normalize()`
+- **Result**: Spell is migrated and processed normally (no warning logged)
 
 #### Newer Versions (> 2)
 - **Behavior**: Logs a warning, continues processing
@@ -139,12 +137,12 @@ Hash stability is verified by comprehensive tests:
 #[test]
 fn test_hash_stability_across_schema_versions() {
     spell1.schema_version = 1;
-    spell2.schema_version = 2; // Current version
+    spell2.schema_version = 0; // Historical/migration version
 
     assert_eq!(
         spell1.compute_hash().unwrap(),
         spell2.compute_hash().unwrap(),
-        "Hash must be identical across schema versions"
+        "Hash must be identical across supported schema versions (0 and 1)"
     );
 }
 ```
@@ -202,7 +200,7 @@ These changes can be made without incrementing the schema version.
 
 | Schema Version | Application Behavior |
 |----------------|---------------------|
-| `< 1` | **Rejected** – below minimum supported schema version (`MIN_SUPPORTED_SCHEMA_VERSION = 1`); import and hashing fail |
+| `< 1` (e.g. `0`) | Migrated to version 2 via `migrate_to_v2()` in the standard pipeline (`normalize` → `validate`). Rejected only by standalone `validate()` calls without prior normalization |
 | `1` | Migrated to version 2 via `migrate_to_v2()` during normalization |
 | `2` (current) | Processed normally, validated against current schema |
 | `> 2` (future) | Warning logged, processed with forward compatibility mode |
@@ -236,4 +234,4 @@ This allows the application to:
 
 ---
 
-**Last Updated**: 2026-02-28
+**Last Updated**: 2026-03-01

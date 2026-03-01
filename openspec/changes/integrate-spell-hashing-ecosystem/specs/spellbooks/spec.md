@@ -1,6 +1,8 @@
 # Capability: Spell List Integration
 
-> See [design.md Decision #5](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/openspec/changes/integrate-spell-hashing-ecosystem/design.md) for full context.
+> See [design.md Decision #5](../../design.md) for full context.
+>
+> **Directory note:** This spec lives in `specs/spellbooks/` for historical reasons. It covers the `character_class_spell` table (per-class spell sets), NOT the deprecated `spellbook` table.
 
 **Spell List** here means the per-class spell set stored in `character_class_spell`, not a separate list entity.
 

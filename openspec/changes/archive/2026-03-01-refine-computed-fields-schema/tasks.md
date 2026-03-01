@@ -189,12 +189,12 @@ Section 2 ──┘
 
 The following invariants MUST hold after all tasks are complete:
 
-- [ ] All existing spells can be migrated from schema v1 to v2 without data loss (except truncated `dm_guidance` → `notes` which is surfaced as an error)
-- [ ] No 5e casting time units (`"action"`, `"bonus_action"`, `"reaction"`) remain in the schema enum, TypeScript types, or UI dropdowns
-- [ ] `dm_guidance` is fully removed from `SavingThrowSpec` in schema, Rust types, TypeScript types, and all UI bindings (retained only on `SpellDamageSpec`)
-- [ ] Every hashed computed field (`AreaSpec`, `DurationSpec`, `RangeSpec`, `SavingThrowSpec`, `casting_time`) unconditionally populates `raw_legacy_value` on every parse
-- [ ] Every non-hashed metadata field (`SpellDamageSpec`, `MagicResistanceSpec`, `ExperienceComponentSpec`) uses `source_text` (not `raw_legacy_value`)
-- [ ] `AreaSpec.text` and `DurationSpec.text` are synthesized by `normalize()` from structured fields (or from `raw_legacy_value` for `kind="special"`)
-- [ ] Content hashes are consistent after migration — `raw_legacy_value` IS hashed, `source_text` IS pruned
-- [ ] Frontend can load both v1-shaped and v2-shaped `canonical_data` without errors
-- [ ] Resolved specs (`ResolvedAreaSpec`, `ResolvedDurationSpec`, `ResolvedRangeSpec`) remain unchanged
+- [x] All existing spells can be migrated from schema v1 to v2 without data loss (except truncated `dm_guidance` → `notes` which is surfaced as an error)
+- [x] No 5e casting time units (`"action"`, `"bonus_action"`, `"reaction"`) remain in the schema enum, TypeScript types, or UI dropdowns
+- [x] `dm_guidance` is fully removed from `SavingThrowSpec` in schema, Rust types, TypeScript types, and all UI bindings (retained only on `SpellDamageSpec`)
+- [x] Every hashed computed field (`AreaSpec`, `DurationSpec`, `RangeSpec`, `SavingThrowSpec`, `casting_time`) unconditionally populates `raw_legacy_value` on every parse
+- [x] Every non-hashed metadata field (`SpellDamageSpec`, `MagicResistanceSpec`, `ExperienceComponentSpec`) uses `source_text` (not `raw_legacy_value`)
+- [x] `AreaSpec.text` and `DurationSpec.text` are synthesized by `normalize()` from structured fields (or from `raw_legacy_value` for `kind="special"`)
+- [x] Content hashes are consistent after migration — `raw_legacy_value` IS hashed, `source_text` IS pruned
+- [x] Frontend can load both v1-shaped and v2-shaped `canonical_data` without errors
+- [x] Resolved specs (`ResolvedAreaSpec`, `ResolvedDurationSpec`, `ResolvedRangeSpec`) remain unchanged

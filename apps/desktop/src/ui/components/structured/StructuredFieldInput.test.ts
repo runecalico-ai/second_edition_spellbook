@@ -16,14 +16,14 @@ describe("rangeToText", () => {
     expect(rangeToText(spec)).toBe("30 ft");
   });
 
-  it("returns rawLegacyValue when present (documents short-circuit)", () => {
+  it("ignores rawLegacyValue for non-special kinds", () => {
     const spec: RangeSpec = {
       kind: "distance",
       distance: { mode: "fixed", value: 30 },
       unit: "ft",
       rawLegacyValue: "weird text",
     };
-    expect(rangeToText(spec)).toBe("weird text");
+    expect(rangeToText(spec)).toBe("30 ft");
   });
 
   it("returns per_level format for distance", () => {
@@ -58,14 +58,14 @@ describe("durationToText", () => {
     expect(durationToText(spec)).toBe("3 round");
   });
 
-  it("returns rawLegacyValue when present (documents short-circuit)", () => {
+  it("ignores rawLegacyValue for non-special kinds", () => {
     const spec: DurationSpec = {
       kind: "time",
       unit: "round",
       duration: { mode: "fixed", value: 3 },
       rawLegacyValue: "stale",
     };
-    expect(durationToText(spec)).toBe("stale");
+    expect(durationToText(spec)).toBe("3 round");
   });
 
   it("returns per_level format for time duration", () => {
@@ -110,7 +110,7 @@ describe("castingTimeToText", () => {
     expect(castingTimeToText(ct)).toBe("1 round");
   });
 
-  it("returns rawLegacyValue when present (documents short-circuit)", () => {
+  it("ignores rawLegacyValue for non-special units", () => {
     const ct: SpellCastingTime = {
       text: "1 round",
       unit: "round",
@@ -119,7 +119,7 @@ describe("castingTimeToText", () => {
       levelDivisor: 1,
       rawLegacyValue: "stale",
     };
-    expect(castingTimeToText(ct)).toBe("stale");
+    expect(castingTimeToText(ct)).toBe("1 round");
   });
 
   it("returns per_level format", () => {

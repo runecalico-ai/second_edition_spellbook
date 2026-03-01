@@ -1632,13 +1632,6 @@ export default function SpellEditor() {
     if (field === "components" || field === "materialComponents") {
       setHasExpandedComponentsEdit(true);
     }
-    // Dismiss parser fallback when user edits structured field
-    const label = getParserFallbackLabel(field);
-    setParserFallbackFields((prev) => {
-      const next = new Set(prev);
-      next.delete(label);
-      return next;
-    });
   };
 
   const isNameInvalid = !form.name.trim();
@@ -2396,6 +2389,13 @@ export default function SpellEditor() {
                                 ...prev,
                                 range: rangeToText(spec as RangeSpec),
                               }));
+                              if ((spec as RangeSpec).kind !== "special") {
+                                setParserFallbackFields((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete("Range");
+                                  return next;
+                                });
+                              }
                             }}
                           />
                         )}
@@ -2426,6 +2426,13 @@ export default function SpellEditor() {
                                 ...prev,
                                 duration: durationToText(spec as DurationSpec),
                               }));
+                              if ((spec as DurationSpec).kind !== "special") {
+                                setParserFallbackFields((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete("Duration");
+                                  return next;
+                                });
+                              }
                             }}
                           />
                         )}
@@ -2440,6 +2447,13 @@ export default function SpellEditor() {
                                 ...prev,
                                 castingTime: castingTimeToText(spec as SpellCastingTime),
                               }));
+                              if ((spec as SpellCastingTime).unit !== "special") {
+                                setParserFallbackFields((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete("Casting time");
+                                  return next;
+                                });
+                              }
                             }}
                           />
                         )}
@@ -2450,6 +2464,13 @@ export default function SpellEditor() {
                               setStructuredArea(spec);
                               setDetailDirtyFor("area");
                               setForm((prev) => ({ ...prev, area: areaToText(spec) }));
+                              if (spec.kind !== "special") {
+                                setParserFallbackFields((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete("Area");
+                                  return next;
+                                });
+                              }
                             }}
                           />
                         )}
@@ -2463,6 +2484,13 @@ export default function SpellEditor() {
                                 ...prev,
                                 savingThrow: savingThrowToText(spec),
                               }));
+                              if (spec.kind !== "dm_adjudicated") {
+                                setParserFallbackFields((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete("Saving throw");
+                                  return next;
+                                });
+                              }
                             }}
                           />
                         )}
@@ -2486,6 +2514,13 @@ export default function SpellEditor() {
                                 ...prev,
                                 magicResistance: magicResistanceToText(spec),
                               }));
+                              if (spec.kind !== "special") {
+                                setParserFallbackFields((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete("Magic resistance");
+                                  return next;
+                                });
+                              }
                             }}
                           />
                         )}

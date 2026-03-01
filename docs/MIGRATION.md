@@ -118,7 +118,7 @@ Parsers convert legacy text strings into structured specification objects. Below
 > **Complex Duration Handling**: Parsers support most common patterns but may fall back to "Special" for highly conditional durations (e.g., "until dispelled or 1 day per level"). See [PARSER_COVERAGE.md](./PARSER_COVERAGE.md) for a complete coverage matrix and known limitations.
 
 > [!NOTE]
-> **Unparseable strings**: When parsing falls back to Special (or equivalent), the original legacy string is stored in the spec's **`raw_legacy_value`** field so it is preserved in `canonical_data` and included in hashing. See PARSER_COVERAGE.md for details.
+> **Text Preservation**: Complex computed fields unconditionally store the original legacy string in the spec's **`raw_legacy_value`** field (or **`source_text`** for metadata specs like Magic Resistance and Damage) so it is preserved in `canonical_data` and included in hashing (for `raw_legacy_value`). This provides 100% auditability of the source text even after a successful parse.
 
 #### Component Patterns (`ComponentsParser`)
 
@@ -151,9 +151,9 @@ Parsers convert legacy text strings into structured specification objects. Below
 
 | Legacy Text | Parsed Result |
 |-------------|---------------|
-| "Yes" | `MagicResistanceSpec { kind: Yes }` |
-| "No" | `MagicResistanceSpec { kind: No }` |
-| "Special" | `MagicResistanceSpec { kind: Special }` |
+| "Yes" | `MagicResistanceSpec { kind: Yes, source_text: "Yes" }` |
+| "No" | `MagicResistanceSpec { kind: No, source_text: "No" }` |
+| "Special" | `MagicResistanceSpec { kind: Special, source_text: "Special" }` |
 
 
 ### Database Strategy

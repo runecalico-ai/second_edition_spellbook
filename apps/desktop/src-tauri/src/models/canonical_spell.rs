@@ -247,8 +247,18 @@ fn default_version() -> String {
 fn default_zero_string() -> String {
     "0".into()
 }
+/// Returns [`CURRENT_SCHEMA_VERSION`] as the serde default for `schema_version`.
+///
+/// When a `canonical_data` JSON blob lacks a `schema_version` key, serde
+/// deserializes the field to this value. This assumes all serialization paths
+/// always include `schema_version` in the output, so the default only applies
+/// to manually-crafted or externally-imported JSON.
+///
+/// **Consequence:** a blob missing the key will be treated as already at the
+/// current version, and [`migrate_to_v2()`] (or any future migration) will be
+/// skipped silently.
 fn default_schema_version() -> i64 {
-    2
+    CURRENT_SCHEMA_VERSION
 }
 
 impl CanonicalSpell {

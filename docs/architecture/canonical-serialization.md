@@ -27,8 +27,8 @@ Fields representing unordered sets have their elements sorted lexicographically 
 ### 2.2 Nulls vs Omitted
 - **Omitted (skip_serializing_if)**: Optional fields (like `range`, `school`, `sphere`, etc.) are **omitted** from the JSON if they are `None`. This is the preferred standard over literal `null` values for better forward compatibility.
 
-### 2.2.1 Fallback storage (raw_legacy_value)
-When parsing falls back to a generic type (e.g. "special" unit or kind), the original legacy string MAY be stored in an optional **`raw_legacy_value`** field on the spec. The JSON schema (`schemas/spell.schema.json`) allows this property on `casting_time`, `range` (RangeSpec), `duration` (DurationSpec), `area` (AreaSpec), and `saving_throw` (SavingThrowSpec). This field is **included in the canonical hash** (it is content, not metadata) so that different fallback text produces different hashes.
+### 2.2.1 Text persistence (raw_legacy_value)
+The canonical schema dictates that complex computed fields unconditionally store the original textual representation from the source data. This is stored in an optional **`raw_legacy_value`** field on the spec. The JSON schema (`schemas/spell.schema.json`) allows this property on `casting_time`, `range` (RangeSpec), `duration` (DurationSpec), `area` (AreaSpec), and `saving_throw` (SavingThrowSpec). This field is **included in the canonical hash** (it is content, not metadata) so that different source text produces different hashes. Note that `SpellDamageSpec`, `MagicResistanceSpec`, and `ExperienceComponentSpec` use `source_text` (metadata) instead of `raw_legacy_value` because their original text is considered narrative descriptor rather than mechanical content that should differentiate hashes.
 
 ### 2.3 Metadata Exclusion
 
@@ -65,7 +65,7 @@ To ensure spells hash consistently regardless of whether defaults were explicitl
 | `material_components` | *(see Lean Hashing)* | Empty arrays omitted |
 | `components.*` | `false` | All component flags |
 | `casting_time.unit` | `"segment"` | If unit unspecified |
-| `schema_version` | `1` | If `0` |
+| `schema_version` | `2` | Default for new spells; older versions migrated to `2` via `migrate_to_v2()` |
 | `scalar.value` | `0` | When `mode="per_level"` and omitted |
 | `MaterialComponentSpec.quantity` | `1.0` | If omitted |
 | `MaterialComponentSpec.is_consumed` | `false` | If omitted |
@@ -199,7 +199,10 @@ The following table shows which normalization mode applies to specific text fiel
 | `DamagePart.notes` | `Textual` | Allow multi-line clarifications |
 | `ScalingRule.notes` | `Textual` | Allow multi-line clarifications |
 
-> **Note:** `raw_legacy_value` on SpellCastingTime, RangeSpec, DurationSpec, AreaSpec, and SavingThrowSpec is not normalized (stored as-is).
+> [!NOTE]
+> **Resolved Specs Unchanged**: Resolved specifications (`ResolvedAreaSpec`, `ResolvedDurationSpec`, `ResolvedRangeSpec`) represent deterministic computational output and are explicitly excluded from these changes. They do not include `text`, `raw_legacy_value`, or `source_text` properties.
+
+> **Note:** `raw_legacy_value` on SpellCastingTime, RangeSpec, DurationSpec, AreaSpec, and SavingThrowSpec is not normalized (stored as-is to preserve exact source wording). All `source_text` fields (SpellDamageSpec, MagicResistanceSpec, ExperienceComponentSpec) use `Textual` normalization.
 
 ### Unicode Normalization (NFC)
 All strings undergo Unicode NFC normalization to ensure canonical representation of combining characters.
@@ -274,6 +277,9 @@ All enums at all depths of the `CanonicalSpell` object undergo normalization in 
 | `"mind-affecting"` | `"Mind-Affecting"` | Descriptors |
 
 For unrecognized values, simple title case is applied. Note: duration kind and casting time unit use different canonical forms—`DurationSpec.kind` is `"instant"`; casting time unit is `"instantaneous"`.
+
+> [!IMPORTANT]
+> **5e Combat Economy Units Removed in v2**: The units `"action"`, `"bonus_action"`, and `"reaction"` have been removed from `casting_time.unit` in schema version 2 to align with AD&D 2nd Edition mechanics. Spells using these units are remapped to `"special"` with original text preserved in `raw_legacy_value` during migration.
 
 ## 6. Canonical Serialization Examples
 
@@ -542,4 +548,4 @@ Key functions:
 
 ---
 
-*Last Updated: 2026-02-07*
+*Last Updated: 2026-03-01*

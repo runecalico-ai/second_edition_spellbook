@@ -8,7 +8,7 @@ This document provides a comprehensive overview of the spell parser system, incl
 
 The spell parser system uses a **modular architecture** to convert legacy text fields into structured specifications. Each parser handles a specific domain and is designed to gracefully fallback to a "Special" type when patterns aren't recognized.
 
-When a legacy string cannot be parsed with high confidence, the original value is stored in the **`raw_legacy_value`** field on the spec (e.g. `RangeSpec`, `DurationSpec`, `AreaSpec`, `SpellCastingTime`, `SpellDamageSpec`). This preserves the source text for display, admin review, and future parser improvements. See [MIGRATION.md](./MIGRATION.md) and the library spec for sync and hashing behavior.
+When a legacy string is parsed, the original value is unconditionally stored in the **`raw_legacy_value`** field (on `RangeSpec`, `DurationSpec`, `AreaSpec`, `SavingThrowSpec`, `SpellCastingTime`) or **`source_text`** (on `SpellDamageSpec`, `MagicResistanceSpec`, `ExperienceComponentSpec`). This preserves the source text for display, auditability, and future parser improvements regardless of parse success. See [MIGRATION.md](./MIGRATION.md) and the library spec for sync and hashing behavior.
 
 **Location**: `src/utils/parsers/`
 
@@ -90,8 +90,8 @@ These patterns are parsed with high confidence into structured specifications.
 | Valued materials | `"M (ruby worth 50 gp)"` | `value: 50, currency: "gp"` |
 | Consumed materials | `"M (consumed incense)"` | `consumed: true` |
 | Focus components | `"V, S, F (crystal orb)"` | `focus: true` |
-| Casting time units | `"1 action"`, `"1 round"`, `"10 minutes"` | `SpellCastingTime` struct |
-| Bonus/reaction | `"1 bonus action"`, `"1 reaction"` | Corresponding unit |
+| Casting time units | `"1 round"`, `"10 minutes"`, `"1 turn"` | `SpellCastingTime` struct |
+| Obsolete units | `"1 action"`, `"1 bonus action"`, `"1 reaction"` | Migrated to `CastingTimeUnit::Special` in schema v2 |
 | Segment casting | `"1 segment"`, `"2 segments"`, `"1 seg"` | `CastingTimeUnit::Segment` |
 | Undelimited components | `"VSM"`, `"VS"`, `"V"`, `"df"` (no commas/spaces) | Each character → V/S/M/F/E or `df` → divine_focus |
 
@@ -109,7 +109,7 @@ These patterns are parsed with high confidence into structured specifications.
 | Ongoing damage | `"1d6/round for 3 rounds"` | `ongoing_rounds` |
 | Saving throw result | `"None"`, `"Negates"`, `"Half"` | `SavingThrowKind` |
 | Save type | `"Spell negates"`, `"Reflex half"` | `save_type` field |
-| Magic resistance | `"Yes"`, `"No"`, `"Special"` | `MagicResistanceKind` |
+| Magic resistance | `"Yes"`, `"No"`, `"Special"` | `MagicResistanceKind` (with `source_text`) |
 | Experience cost | `"50 XP"`, `"100 XP per HD"` | `ExperienceComponentSpec` |
 
 ---
@@ -281,4 +281,4 @@ Based on the current implementation:
 
 ---
 
-**Last Updated**: 2026-02-05
+**Last Updated**: 2026-03-01

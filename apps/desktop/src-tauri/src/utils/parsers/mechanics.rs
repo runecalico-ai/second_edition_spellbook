@@ -25,19 +25,22 @@ impl MechanicsParser {
             .collect::<Vec<_>>()
             .join(" ");
 
-        matches!(
-            normalized.as_str(),
-            "rod staff or wand"
-                | "save vs rod staff or wand"
-                | "paralyzation poison or death"
-                | "save vs paralyzation poison or death"
-                | "paralyzation poison or death magic"
-                | "save vs paralyzation poison or death magic"
-                | "petrification or polymorph"
-                | "save vs petrification or polymorph"
-                | "polymorph or petrification"
-                | "save vs polymorph or petrification"
-        )
+        const PATTERNS: &[&str] = &[
+            "rod staff or wand",
+            "save vs rod staff or wand",
+            "paralyzation poison or death",
+            "save vs paralyzation poison or death",
+            "paralyzation poison or death magic",
+            "save vs paralyzation poison or death magic",
+            "petrification or polymorph",
+            "save vs petrification or polymorph",
+            "polymorph or petrification",
+            "save vs polymorph or petrification",
+        ];
+
+        PATTERNS
+            .iter()
+            .any(|pat| normalized == *pat || normalized.starts_with(&format!("{pat} ")))
     }
 
     pub fn new() -> Self {
@@ -760,5 +763,28 @@ mod tests {
         // "0" = unknown (not "ignores MR")
         let mr6 = parser.parse_magic_resistance("0");
         assert_eq!(mr6.kind, MagicResistanceKind::Unknown);
+    }
+
+    #[test]
+    fn test_is_standard_complex_save_category_trailing_modifiers() {
+        // Exact match still works
+        assert!(MechanicsParser::is_standard_complex_save_category(
+            "rod, staff, or wand"
+        ));
+
+        // Trailing modifier: should still be recognized as standard complex
+        assert!(MechanicsParser::is_standard_complex_save_category(
+            "rod, staff, or wand at -2"
+        ));
+
+        // Paralyzation with trailing modifier
+        assert!(MechanicsParser::is_standard_complex_save_category(
+            "paralyzation, poison, or death at +2"
+        ));
+
+        // Non-matching input must return false
+        assert!(!MechanicsParser::is_standard_complex_save_category(
+            "spell at -2"
+        ));
     }
 }

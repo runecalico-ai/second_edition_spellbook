@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { defaultSpellDamageSpec, generateDamagePartId } from "../../../types/spell";
+import { generateDamagePartId } from "../../../types/spell";
 import { DamageForm } from "./DamageForm";
 import { fn } from "./storybook-utils";
 
@@ -36,6 +36,7 @@ export const DMAdjudicated: Story = {
     value: {
       kind: "dm_adjudicated",
       dmGuidance: "Damage varies based on spell level and target resistance.",
+      sourceText: "Damage: Special (DM adjudication)",
     },
     onChange: fn(),
   },
@@ -45,6 +46,7 @@ export const ModeledSinglePart: Story = {
   args: {
     value: {
       kind: "modeled",
+      sourceText: "1d6 fire",
       combineMode: "sum",
       parts: [
         {

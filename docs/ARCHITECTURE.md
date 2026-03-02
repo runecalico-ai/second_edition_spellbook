@@ -11,7 +11,7 @@ To ensure spell uniqueness and version tracking, we use a Canonical Spell Hashin
 ### Implementation
 - **Model**: `CanonicalSpell` (in `src/models/canonical_spell.rs`).
 - **Data Model**: Uses a nested struct hierarchy for complex fields (`SpellRange`, `SpellCastingTime`, `SpellDuration`, `SpellArea`, `SpellDamage`, `SpellComponents`, `SourceRef`).
-- **Schema**: `schemas/spell.schema.json` (aligned with the official OpenSpec resource). The schema allows optional `raw_legacy_value` (string) on `casting_time`, RangeSpec, DurationSpec, AreaSpec, and SpellDamageSpec for fallback storage when parsing is inconclusive; see [Canonical Serialization](./architecture/canonical-serialization.md#221-fallback-storage-raw_legacy_value).
+- **Schema**: `schemas/spell.schema.json` (aligned with the official OpenSpec resource). The schema mandates the unconditional storage of the original legacy text in `raw_legacy_value` for key mechanical fields (`casting_time`, RangeSpec, DurationSpec, AreaSpec, and SavingThrowSpec). These fields are included in the canonical hash. Non-mechanical descriptors use `source_text` (metadata excluded from hash). See [Canonical Serialization](./architecture/canonical-serialization.md#221-text-persistence-raw_legacy_value).
 - **Serialization**: RFC 8785 (JCS) with sorted keys and array normalization.
 - **Hashing**: SHA-256 of the canonical JSON string.
 - **Casing Standard**: **All canonical data MUST use `snake_case`.** The `canonical_data` column (and any stored canonical JSON) is always snake_case; this distinguishes it from IPC data, which uses `camelCase`. The frontend may read with dual keys (e.g. `per_level` / `perLevel`) for resilience when parsing.

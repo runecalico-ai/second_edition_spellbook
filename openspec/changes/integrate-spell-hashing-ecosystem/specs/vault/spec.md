@@ -1,6 +1,6 @@
 # Capability: Spellbook Vault
 
-> See [design.md Decisions #2, #6](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/openspec/changes/integrate-spell-hashing-ecosystem/design.md) for full context.
+> See [design.md Decisions #2, #6](../../design.md) for full context.
 
 ## MODIFIED Requirements
 
@@ -15,7 +15,15 @@ The Vault MUST support storing spell definitions using their canonical content h
 #### Scenario: Integrity Verification
 - GIVEN a spell file `spells/{hash}.json`
 - WHEN read from vault
-- THEN computed hash of file content MUST match filename hash.
+- THEN content hash MUST be recomputed by applying canonical serialization (normalize → validate → strip metadata → apply JCS → SHA-256) to the file content
+- AND recomputed hash MUST match filename hash.
+
+#### Scenario: Vault File Content
+- GIVEN a spell stored in vault as `spells/{hash}.json`
+- WHEN the file is read
+- THEN file content MUST be the full CanonicalSpell JSON (including metadata)
+- AND integrity check MUST recompute hash via canonical serialization (normalize → validate → strip metadata → JCS → SHA-256)
+- AND raw file byte hash is NOT used for integrity verification.
 
 #### Scenario: GC with Deferred Cleanup
 - GIVEN a spell deleted from DB
@@ -29,8 +37,14 @@ The Vault MUST support storing spell definitions using their canonical content h
 
 Both GC approaches are valid; implementation may use either or both.
 
+#### Scenario: GC Blocked During Import
+- GIVEN an import operation is in progress
+- WHEN vault GC is triggered (manually or scheduled)
+- THEN GC MUST NOT execute until the import completes
+- AND implementation MUST use either a mutex/lock or UI-level mutual exclusion (e.g., disable GC button during import).
+
 ### Requirement: Vault Integrity Recovery
-The Vault MUST detect and recover from missing files.
+The Vault MUST detect and recover from missing files. The vault integrity check runs at implementation-defined times (e.g. on application startup when the vault is opened, on-demand from Settings, and/or before running GC).
 
 #### Scenario: Missing Vault File
 - GIVEN spell row exists with content_hash H

@@ -6,7 +6,8 @@ import type {
   ShapeUnit,
   TileUnit,
 } from "../../../types/spell";
-import { defaultAreaSpec } from "../../../types/spell";
+import { areaToText, defaultAreaSpec } from "../../../types/spell";
+import { useMemo } from "react";
 import { ScalarInput } from "./ScalarInput";
 
 const AREA_KIND_LABELS: Record<AreaKind, string> = {
@@ -105,8 +106,14 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
   const spec = value ?? defaultAreaSpec();
 
   const updateSpec = (updates: Partial<AreaSpec>) => {
-    onChange({ ...spec, ...updates });
+    const next = { ...spec, ...updates };
+    if (next.kind !== "special") {
+      next.text = areaToText(next);
+    }
+    onChange(next);
   };
+
+  const textPreview = useMemo(() => areaToText(spec), [spec]);
 
   return (
     <div className="space-y-3" data-testid="area-form">
@@ -117,11 +124,10 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
           value={spec.kind}
           onChange={(e) => {
             const kind = e.target.value as AreaKind;
-            const next: AreaSpec = { ...spec, kind };
+            const next: AreaSpec = { kind, notes: spec.notes } as AreaSpec;
             if (kind === "special") {
-              next.rawLegacyValue = spec.rawLegacyValue ?? "";
-            } else {
-              next.rawLegacyValue = undefined;
+              next.rawLegacyValue = spec.rawLegacyValue || undefined;
+              next.text = next.rawLegacyValue;
             }
             if (["radius_circle", "radius_sphere"].includes(kind)) {
               next.radius = spec.radius ?? { mode: "fixed", value: 0 };
@@ -166,6 +172,9 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
               next.regionUnit = spec.regionUnit ?? "region";
             } else if (kind === "scope") {
               next.scopeUnit = spec.scopeUnit ?? "los";
+            }
+            if (kind !== "special") {
+              next.text = areaToText(next);
             }
             onChange(next);
           }}
@@ -553,21 +562,30 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
           aria-label="Raw legacy value"
           placeholder="Original text"
           value={spec.rawLegacyValue ?? ""}
-          onChange={(e) => updateSpec({ rawLegacyValue: e.target.value || undefined })}
+          onChange={(e) => {
+            const rawLegacyValue = e.target.value || undefined;
+            onChange({
+              ...spec,
+              rawLegacyValue,
+              text: rawLegacyValue,
+            });
+          }}
           className="flex-1 min-w-[200px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
         />
       )}
 
-      {spec.kind !== "point" && (
-        <textarea
-          data-testid="area-form-notes"
-          aria-label="Area notes"
-          placeholder="Area notes (optional)..."
-          value={spec.notes ?? ""}
-          onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
-          className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-        />
-      )}
+      <textarea
+        data-testid="area-form-notes"
+        aria-label="Area notes"
+        placeholder="Area notes (optional)..."
+        value={spec.notes ?? ""}
+        onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
+        className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+      />
+
+      <p className="text-sm text-neutral-500 italic" data-testid="area-text-preview">
+        {textPreview || "—"}
+      </p>
     </div>
   );
 }

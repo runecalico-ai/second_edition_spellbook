@@ -27,9 +27,10 @@ const PARTIAL_SCOPE_OPTIONS = [
 interface MagicResistanceInputProps {
   value: MagicResistanceSpec | null | undefined;
   onChange: (v: MagicResistanceSpec) => void;
+  damageKind?: string;
 }
 
-export function MagicResistanceInput({ value, onChange }: MagicResistanceInputProps) {
+export function MagicResistanceInput({ value, onChange, damageKind }: MagicResistanceInputProps) {
   const spec = value ?? defaultMagicResistanceSpec();
 
   const updateSpec = (updates: Partial<MagicResistanceSpec>) => {
@@ -55,9 +56,11 @@ export function MagicResistanceInput({ value, onChange }: MagicResistanceInputPr
             } else if (kind === "partial") {
               next.appliesTo = spec.appliesTo ?? "whole_spell";
               next.partial = spec.partial ?? { scope: "damage_only" };
+              next.specialRule = undefined;
             } else if (kind === "special") {
               next.appliesTo = spec.appliesTo ?? "whole_spell";
               next.specialRule = spec.specialRule ?? "";
+              next.partial = undefined;
             } else {
               next.appliesTo = spec.appliesTo ?? "whole_spell";
               next.partial = undefined;
@@ -90,50 +93,87 @@ export function MagicResistanceInput({ value, onChange }: MagicResistanceInputPr
           </select>
         )}
       </div>
+      {spec.sourceText && (
+        <div
+          data-testid="magic-resistance-source-text-annotation"
+          className="flex items-center gap-2 px-2 py-1 bg-amber-900/10 border border-amber-900/30 rounded text-[10px] text-amber-200/70 italic"
+        >
+          <span className="font-bold uppercase not-italic">Original source text:</span>
+          <span>{spec.sourceText}</span>
+        </div>
+      )}
 
       {spec.kind === "partial" && (
-        <div className="flex flex-wrap items-center gap-2 p-2 bg-neutral-900/50 rounded">
-          <select
-            data-testid="magic-resistance-partial-scope"
-            aria-label="Partial scope"
-            value={spec.partial?.scope ?? "damage_only"}
-            onChange={(e) =>
-              updateSpec({
-                partial: {
-                  ...spec.partial,
-                  scope: e.target.value,
-                } as MagicResistanceSpec["partial"],
-              })
-            }
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-          >
-            {PARTIAL_SCOPE_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            data-testid="magic-resistance-part-ids"
-            aria-label="Part IDs (comma-separated)"
-            placeholder="Part IDs (optional)"
-            value={spec.partial?.partIds?.join(", ") ?? ""}
-            onChange={(e) => {
-              const partIds = e.target.value
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean);
-              updateSpec({
-                partial: {
-                  ...spec.partial,
-                  scope: spec.partial?.scope ?? "damage_only",
-                  partIds: partIds.length ? partIds : undefined,
-                } as MagicResistanceSpec["partial"],
-              });
-            }}
-            className="flex-1 min-w-[120px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-          />
+        <div className="flex flex-col gap-2 p-2 bg-neutral-900/50 rounded border border-neutral-800">
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="magic-resistance-partial-scope"
+              className="text-xs text-neutral-500 min-w-[60px]"
+            >
+              Scope:
+            </label>
+            <select
+              id="magic-resistance-partial-scope"
+              data-testid="magic-resistance-partial-scope"
+              aria-label="Partial scope"
+              value={spec.partial?.scope ?? "damage_only"}
+              onChange={(e) =>
+                updateSpec({
+                  partial: {
+                    ...spec.partial,
+                    scope: e.target.value,
+                  } as MagicResistanceSpec["partial"],
+                })
+              }
+              className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            >
+              {PARTIAL_SCOPE_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+          </div>
+          {spec.partial?.scope === "by_part_id" && (
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="magic-resistance-part-ids"
+                className="text-xs text-neutral-500 min-w-[60px]"
+              >
+                Part IDs:
+              </label>
+              <div className="flex-1 flex flex-col gap-1">
+                <input
+                  id="magic-resistance-part-ids"
+                  type="text"
+                  data-testid="magic-resistance-part-ids"
+                  aria-label="Part IDs (comma-separated)"
+                  placeholder="Part IDs (e.g. part_1, part_2)"
+                  disabled={damageKind !== "modeled"}
+                  value={spec.partial?.partIds?.join(", ") ?? ""}
+                  onChange={(e) => {
+                    const partIds = e.target.value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    updateSpec({
+                      partial: {
+                        ...spec.partial,
+                        scope: spec.partial?.scope ?? "damage_only",
+                        partIds: partIds.length ? partIds : undefined,
+                      } as MagicResistanceSpec["partial"],
+                    });
+                  }}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100 disabled:opacity-50"
+                />
+                {damageKind !== "modeled" && (
+                  <p className="text-[10px] text-amber-500 italic">
+                    No modeled damage parts available — set Damage to Modeled first
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -148,16 +188,14 @@ export function MagicResistanceInput({ value, onChange }: MagicResistanceInputPr
         />
       )}
 
-      {spec.kind !== "unknown" && (
-        <textarea
-          data-testid="magic-resistance-notes"
-          aria-label="Overall Magic Resistance notes"
-          placeholder="Overall MR notes (optional)..."
-          value={spec.notes ?? ""}
-          onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
-          className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-        />
-      )}
+      <textarea
+        data-testid="magic-resistance-notes"
+        aria-label="Overall Magic Resistance notes"
+        placeholder="Overall MR notes (optional)..."
+        value={spec.notes ?? ""}
+        onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
+        className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+      />
     </div>
   );
 }

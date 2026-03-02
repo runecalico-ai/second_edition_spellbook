@@ -447,4 +447,628 @@ test.describe("Spell Editor structured data and hash display", () => {
       }
     }
   });
+
+  test("CastingTime dropdown: 5e unit options absent (action, bonus_action, reaction)", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell and expand Casting Time", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("detail-casting-time-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Verify 5e unit options are absent and AD&D 2e units are present", async () => {
+      const unitSelect = page.getByTestId("casting-time-unit");
+      await expect(unitSelect).toBeVisible({ timeout: TIMEOUTS.short });
+
+      const optionValues = await unitSelect
+        .locator("option")
+        .evaluateAll((opts) => Array.from(opts).map((o) => (o as HTMLOptionElement).value));
+
+      // 5e combat economy units must NOT be present (schema v2 removed these)
+      expect(optionValues).not.toContain("action");
+      expect(optionValues).not.toContain("bonus_action");
+      expect(optionValues).not.toContain("reaction");
+
+      // AD&D 2e units must be present
+      expect(optionValues).toContain("segment");
+      expect(optionValues).toContain("round");
+      expect(optionValues).toContain("turn");
+    });
+  });
+
+  test("WarningBanner: visible when field falls back to special (unparseable value)", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell and fill basic fields", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Banner Test Spell");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for banner test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+    });
+
+    await test.step("Fill range with unparseable value", async () => {
+      await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
+    });
+
+    await test.step("Expand range to trigger parser", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Assert warning banner is visible with expected content", async () => {
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(banner).toContainText("Range");
+      await expect(banner).toContainText("could not be fully parsed");
+    });
+  });
+
+  test("WarningBanner: persists after failed save (validation block)", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for banner persist test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+    });
+
+    await test.step("Fill range with unparseable value and expand to trigger parser", async () => {
+      await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Wait for banner to appear", async () => {
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Attempt save without required name — validation blocks save", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await handleCustomModal(page, "OK");
+    });
+
+    await test.step("Banner is still visible after dismissed modal", async () => {
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+  });
+
+  test("WarningBanner: dismissed after successful save", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Banner Dismissed ${runId}`;
+
+    await test.step("Navigate to Add Spell and fill required fields", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for banner dismiss test.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+    });
+
+    await test.step("Fill range with unparseable value and expand to trigger parser", async () => {
+      await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Wait for banner to appear", async () => {
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Collapse range section and save successfully", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(200);
+      await page.getByTestId("btn-save-spell").click();
+    });
+
+    await test.step("App navigates to library after successful save (banner dismissed)", async () => {
+      // Note: banner dismissal is verified indirectly — a successful save calls setParserFallbackFields(new Set())
+      // and navigates to library. Direct banner visibility after navigate is not testable since
+      // the editor is unmounted. If `waitForLibrary()` succeeds, the save path ran fully.
+      await app.waitForLibrary();
+    });
+  });
+
+  test("WarningBanner: nav guard modal shows 'Unparsed fields' title when banner active", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell and make form dirty", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Nav Guard Banner Spell");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description for nav guard test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+    });
+
+    await test.step("Fill range with unparseable value and expand to trigger parser and banner", async () => {
+      await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+      const banner = page.getByTestId("spell-editor-special-fallback-banner");
+      await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Navigate away via Library nav link to trigger nav guard", async () => {
+      await page.getByRole("link", { name: "Library" }).click();
+    });
+
+    await test.step("Nav guard modal appears with 'Unparsed fields' messaging", async () => {
+      const modal = page.getByRole("dialog");
+      await expect(modal).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(modal).toContainText("Unparsed fields");
+    });
+
+    await test.step("Dismiss modal and stay on page", async () => {
+      await handleCustomModal(page, "Cancel");
+    });
+  });
+
+  test("SavingThrowInput: rawLegacyValue annotation rendered when saving throw is parsed from legacy text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Saving Throw Annotation ${runId}`;
+
+    await test.step("Create and save a spell with a saving throw raw value", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill(spellName);
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for saving throw test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+      await page.getByTestId("detail-saving-throw-input").fill("Save vs. Spell");
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+    });
+
+    await test.step("Reopen spell and expand saving throw", async () => {
+      await app.openSpell(spellName);
+      await page.waitForTimeout(500);
+      await page.getByTestId("detail-saving-throw-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Saving throw expanded form is visible", async () => {
+      await expect(page.getByTestId("saving-throw-input")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Raw legacy annotation is visible with saved text", async () => {
+      const annotation = page.getByTestId("saving-throw-raw-legacy-annotation");
+      await expect(annotation).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(annotation).toContainText("Save vs. Spell");
+    });
+  });
+
+  test("DamageForm: sourceText annotation rendered when damage text is present", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Damage Annotation Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for damage annotation test.");
+    });
+
+    await test.step("Fill damage canon input with text to verify sourceText annotation", async () => {
+      await page.getByTestId("detail-damage-input").fill("1d6 fire per level");
+      await page.getByTestId("detail-damage-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Damage form is visible", async () => {
+      await expect(page.getByTestId("damage-form")).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+
+    await test.step("Source text annotation is visible with original damage text", async () => {
+      const annotation = page.getByTestId("damage-source-text-annotation");
+      await expect(annotation).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(annotation).toContainText("1d6 fire per level");
+    });
+  });
+
+  test("MagicResistanceInput: sourceText annotation rendered when loaded from legacy text", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Magic Resistance Annotation Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for magic resistance annotation test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+    });
+
+    await test.step("Fill magic resistance canon input with a non-standard value", async () => {
+      await page.getByTestId("detail-magic-resistance-input").fill("20% (limited cases only)");
+      await page.getByTestId("detail-magic-resistance-expand").click();
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Magic resistance input form is visible", async () => {
+      await expect(page.getByTestId("magic-resistance-input")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+    });
+
+    await test.step("Source text annotation is visible with original magic resistance text", async () => {
+      const annotation = page.getByTestId("magic-resistance-source-text-annotation");
+      await expect(annotation).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(annotation).toContainText("20% (limited cases only)");
+    });
+  });
+
+  test("StructuredFieldInput Range: switching from distance kind to 'personal' clears distance fields", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Range Kind Transition Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for range kind transition test.");
+    });
+
+    await test.step("Expand range and set kind to distance", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("range-kind-select").selectOption("distance");
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("Distance value field is visible after selecting distance kind", async () => {
+      await expect(page.getByTestId("range-base-value")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Switch to 'personal' and verify distance fields are hidden", async () => {
+      await page.getByTestId("range-kind-select").selectOption("personal");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("range-base-value")).not.toBeVisible();
+      await expect(page.getByTestId("range-raw-legacy")).not.toBeVisible();
+    });
+  });
+
+  test("StructuredFieldInput Duration: switching from 'time' to 'instant' shows Instant in text preview", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Duration Instant Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for duration instant test.");
+    });
+
+    await test.step("Expand duration and set kind to time", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-unit")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Switch to 'instant' and verify time fields hidden", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("instant");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-unit")).not.toBeVisible();
+      await expect(page.getByTestId("duration-base-value")).not.toBeVisible();
+    });
+
+    await test.step("duration-text-preview contains 'Instant'", async () => {
+      await expect(page.getByTestId("duration-text-preview")).toContainText("Instant");
+    });
+  });
+
+  test("StructuredFieldInput Duration: switching from 'instant' to 'time' re-initializes duration unit and value", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Duration Time Reinit Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for duration time reinit test.");
+    });
+
+    await test.step("Expand duration and set kind to instant then time", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("duration-kind-select").selectOption("instant");
+      await page.waitForTimeout(300);
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("duration-unit and duration-base-value are visible after switching to time", async () => {
+      await expect(page.getByTestId("duration-unit")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByTestId("duration-base-value")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+  });
+
+  test("StructuredFieldInput Duration: switching to 'special' kind shows raw legacy field; switching away hides it", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Duration Special Raw Legacy Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for duration special raw legacy test.");
+    });
+
+    await test.step("Expand duration and set to time — raw legacy not visible", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-raw-legacy")).not.toBeVisible();
+    });
+
+    await test.step("Switch to special — raw legacy becomes visible", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("special");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-raw-legacy")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Switch back to time — raw legacy hidden again", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-raw-legacy")).not.toBeVisible();
+    });
+  });
+
+  test("StructuredFieldInput CastingTime: switching to 'special' unit shows raw legacy field; switching away hides it", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("CastingTime Special Unit Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for casting time special unit test.");
+    });
+
+    await test.step("Expand casting time and set unit to round — raw legacy not visible", async () => {
+      await page.getByTestId("detail-casting-time-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-unit")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("casting-time-unit").selectOption("round");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-raw-legacy")).not.toBeVisible();
+    });
+
+    await test.step("Switch casting time unit to special — raw legacy becomes visible", async () => {
+      await page.getByTestId("casting-time-unit").selectOption("special");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-raw-legacy")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Switch casting time unit back to round — raw legacy hidden again", async () => {
+      await page.getByTestId("casting-time-unit").selectOption("round");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-raw-legacy")).not.toBeVisible();
+    });
+  });
+
+  test("StructuredFieldInput Range kind=special: text preview reflects rawLegacyValue input", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Range Special Text Preview Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for range special text preview test.");
+    });
+
+    await test.step("Expand range and set kind to special", async () => {
+      await page.getByTestId("detail-range-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("range-kind-select").selectOption("special");
+      await page.waitForTimeout(300);
+    });
+
+    await test.step("range-raw-legacy is visible and editable (not readOnly) when kind is special", async () => {
+      const rawLegacy = page.getByTestId("range-raw-legacy");
+      await expect(rawLegacy).toBeVisible({ timeout: TIMEOUTS.short });
+      // readOnly={!isSpecial} — must use not.toHaveAttribute("readonly"), not not.toBeDisabled()
+      await expect(rawLegacy).not.toHaveAttribute("readonly");
+    });
+
+    await test.step("Fill raw legacy value and verify text preview updates", async () => {
+      await page.getByTestId("range-raw-legacy").fill("Varies by caster level");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("range-text-preview")).toContainText("Varies by caster level");
+    });
+
+    await test.step("Clear raw legacy value and verify text preview falls back to 'Special' label", async () => {
+      await page.getByTestId("range-raw-legacy").fill("");
+      await page.waitForTimeout(300);
+      // When rawLegacyValue is cleared, rangeToText returns the "Special" fallback label (rawLegacyValue ?? "Special")
+      // This confirms clearing the field resets the text preview rather than preserving the old value
+      await expect(page.getByTestId("range-text-preview")).toContainText("Special");
+    });
+  });
+
+  test("SpellEditor: parsers-pending-indicator is hidden after parser resolves", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Parsers Pending Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for parsers pending test.");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+    });
+
+    await test.step("Fill range input and expand to trigger parser invocation", async () => {
+      await page.getByTestId("detail-range-input").fill("30 ft");
+      // Install a MutationObserver BEFORE clicking expand to catch any brief appearance of the indicator
+      await page.evaluate(() => {
+        (window as unknown as Record<string, unknown>).__parserPendingShown = false;
+        const observer = new MutationObserver(() => {
+          if (document.querySelector('[data-testid="parsers-pending-indicator"]')) {
+            (window as unknown as Record<string, unknown>).__parserPendingShown = true;
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        (window as unknown as Record<string, unknown>).__parserPendingObserver = observer;
+      });
+      await page.getByTestId("detail-range-expand").click();
+    });
+
+    await test.step("parsers-pending-indicator appears then disappears after resolve", async () => {
+      // Wait for parser to finish — indicator must be gone when parsers resolve
+      await expect(page.getByTestId("parsers-pending-indicator")).not.toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      // Verify the indicator was shown (even briefly) via the MutationObserver
+      const shown = await page.evaluate(() => {
+        const obs = (window as unknown as Record<string, unknown>)
+          .__parserPendingObserver as MutationObserver;
+        obs.disconnect();
+        return (window as unknown as Record<string, unknown>).__parserPendingShown as boolean;
+      });
+      expect(shown).toBe(true);
+    });
+  });
+
+  test("StructuredFieldInput Duration: usage_limited kind shows uses input; round-trip through time restores uses input", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await page.getByTestId("spell-name-input").fill("Duration Usage Limited Test");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("Description for duration usage limited test.");
+    });
+
+    await test.step("Expand duration and set to usage_limited — uses input visible", async () => {
+      await page.getByTestId("detail-duration-expand").click();
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await page.getByTestId("duration-kind-select").selectOption("usage_limited");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-uses-value")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Switch to time — uses input hidden", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("time");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-uses-value")).not.toBeVisible();
+    });
+
+    await test.step("Switch back to usage_limited — uses input visible again", async () => {
+      await page.getByTestId("duration-kind-select").selectOption("usage_limited");
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId("duration-uses-value")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+  });
 });

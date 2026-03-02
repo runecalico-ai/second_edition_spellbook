@@ -27,8 +27,8 @@ Fields representing unordered sets have their elements sorted lexicographically 
 ### 2.2 Nulls vs Omitted
 - **Omitted (skip_serializing_if)**: Optional fields (like `range`, `school`, `sphere`, etc.) are **omitted** from the JSON if they are `None`. This is the preferred standard over literal `null` values for better forward compatibility.
 
-### 2.2.1 Fallback storage (raw_legacy_value)
-When parsing falls back to a generic type (e.g. "special" unit or kind), the original legacy string MAY be stored in an optional **`raw_legacy_value`** field on the spec. The JSON schema (`schemas/spell.schema.json`) allows this property on `casting_time`, `range` (RangeSpec), `duration` (DurationSpec), `area` (AreaSpec), and `damage` (SpellDamageSpec). This field is **included in the canonical hash** (it is content, not metadata) so that different fallback text produces different hashes.
+### 2.2.1 Text persistence (raw_legacy_value)
+The canonical schema dictates that complex computed fields unconditionally store the original textual representation from the source data. This is stored in an optional **`raw_legacy_value`** field on the spec. The JSON schema (`schemas/spell.schema.json`) allows this property on `casting_time`, `range` (RangeSpec), `duration` (DurationSpec), `area` (AreaSpec), and `saving_throw` (SavingThrowSpec). This field is **included in the canonical hash** (it is content, not metadata) so that different source text produces different hashes. Note that `SpellDamageSpec`, `MagicResistanceSpec`, and `ExperienceComponentSpec` use `source_text` (metadata) instead of `raw_legacy_value` because their original text is considered narrative descriptor rather than mechanical content that should differentiate hashes.
 
 ### 2.3 Metadata Exclusion
 
@@ -46,7 +46,7 @@ The following fields are **excluded from the canonical hash** but preserved for 
 | `created_at` | Root only | Temporal metadata |
 | `updated_at` | Root only | Temporal metadata |
 | `artifacts` | All depths | Attached artifacts |
-| `source_text` | All depths | Original source text |
+| `source_text` | All depths | Original source text (`ExperienceComponentSpec.source_text`, `SpellDamageSpec.source_text`, `MagicResistanceSpec.source_text`) |
 
 > **Note:** Nested `id` fields (e.g., in `DamagePart`, `SingleSave`) are **preserved** because they are mechanical identifiers.
 
@@ -65,7 +65,7 @@ To ensure spells hash consistently regardless of whether defaults were explicitl
 | `material_components` | *(see Lean Hashing)* | Empty arrays omitted |
 | `components.*` | `false` | All component flags |
 | `casting_time.unit` | `"segment"` | If unit unspecified |
-| `schema_version` | `1` | If `0` |
+| `schema_version` | `2` | Default for new spells; older versions migrated to `2` via `migrate_to_v2()` |
 | `scalar.value` | `0` | When `mode="per_level"` and omitted |
 | `MaterialComponentSpec.quantity` | `1.0` | If omitted |
 | `MaterialComponentSpec.is_consumed` | `false` | If omitted |
@@ -156,11 +156,13 @@ The following table shows which normalization mode applies to specific text fiel
 | `name` | `Structured` | Spell name should collapse whitespace |
 | `description` | `Textual` | Preserve paragraph breaks |
 | **RangeSpec** |  |  |
-| `RangeSpec.text` | Structured + unit alias normalization (word boundaries) | Collapse whitespace (preserve case), then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
+| `RangeSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; collapse whitespace (preserve case), then unit aliases with word boundaries (e.g. "10 yards" → "10 yd"; "backyard" unchanged) |
 | `RangeSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **AreaSpec** |  |  |
+| `AreaSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; collapse whitespace (preserve case), then normalize unit aliases with word boundaries (e.g. "20 yards" → "20 yd"; "backyard" unchanged) |
 | `AreaSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **DurationSpec** |  |  |
+| `DurationSpec.text` | Structured + unit alias normalization (word boundaries) | Computed display string; same treatment as `RangeSpec.text` and `AreaSpec.text` |
 | `DurationSpec.condition` | `Structured` | Condition text should collapse whitespace |
 | `DurationSpec.notes` | `Textual` | Allow multi-line clarifications |
 | **MaterialComponentSpec** |  |  |
@@ -169,7 +171,6 @@ The following table shows which normalization mode applies to specific text fiel
 | `MaterialComponentSpec.description` | `Textual` | Allow multi-line component details |
 | **SavingThrowSpec** |  |  |
 | `SavingThrowSpec.notes` | `Textual` | Allow multi-line clarifications |
-| `SavingThrowSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
 | `SingleSave.id` | `LowercaseStructured` | IDs for lookup/comparison |
 | `SaveOutcomeEffect.notes` | `Textual` | Allow multi-line clarifications |
 | **SpellCastingTime** |  |  |
@@ -178,6 +179,7 @@ The following table shows which normalization mode applies to specific text fiel
 | `MagicResistanceSpec.notes` | `Textual` | Allow multi-line clarifications |
 | `MagicResistanceSpec.special_rule` | `Textual` | Allow multi-line special rules |
 | `MrPartialSpec.part_ids` | `LowercaseStructured` | IDs for comparison |
+| `MagicResistanceSpec.source_text` | `Textual` | Original source text (metadata, excluded from hash) |
 | **ExperienceComponentSpec** |  |  |
 | `ExperienceComponentSpec.notes` | `Textual` | Allow multi-line clarifications |
 | `ExperienceComponentSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
@@ -191,10 +193,16 @@ The following table shows which normalization mode applies to specific text fiel
 | **SpellDamageSpec** |  |  |
 | `SpellDamageSpec.notes` | `Textual` | Allow multi-line clarifications |
 | `SpellDamageSpec.dm_guidance` | `Textual` | Allow multi-line DM guidance |
+| `SpellDamageSpec.source_text` | `Textual` | Original source text (metadata, excluded from hash) |
 | `DamagePart.id` | `LowercaseStructured` | IDs for lookup/comparison |
 | `DamagePart.label` | `Textual` | Allow multi-line labels |
 | `DamagePart.notes` | `Textual` | Allow multi-line clarifications |
 | `ScalingRule.notes` | `Textual` | Allow multi-line clarifications |
+
+> [!NOTE]
+> **Resolved Specs Unchanged**: Resolved specifications (`ResolvedAreaSpec`, `ResolvedDurationSpec`, `ResolvedRangeSpec`) represent deterministic computational output and are explicitly excluded from these changes. They do not include `text`, `raw_legacy_value`, or `source_text` properties.
+
+> **Note:** `raw_legacy_value` on SpellCastingTime, RangeSpec, DurationSpec, AreaSpec, and SavingThrowSpec is not normalized (stored as-is to preserve exact source wording). All `source_text` fields (SpellDamageSpec, MagicResistanceSpec, ExperienceComponentSpec) use `Textual` normalization.
 
 ### Unicode Normalization (NFC)
 All strings undergo Unicode NFC normalization to ensure canonical representation of combining characters.
@@ -269,6 +277,9 @@ All enums at all depths of the `CanonicalSpell` object undergo normalization in 
 | `"mind-affecting"` | `"Mind-Affecting"` | Descriptors |
 
 For unrecognized values, simple title case is applied. Note: duration kind and casting time unit use different canonical forms—`DurationSpec.kind` is `"instant"`; casting time unit is `"instantaneous"`.
+
+> [!IMPORTANT]
+> **5e Combat Economy Units Removed in v2**: The units `"action"`, `"bonus_action"`, and `"reaction"` have been removed from `casting_time.unit` in schema version 2 to align with AD&D 2nd Edition mechanics. Spells using these units are remapped to `"special"` with original text preserved in `raw_legacy_value` during migration.
 
 ## 6. Canonical Serialization Examples
 
@@ -537,4 +548,4 @@ Key functions:
 
 ---
 
-*Last Updated: 2026-02-07*
+*Last Updated: 2026-03-01*

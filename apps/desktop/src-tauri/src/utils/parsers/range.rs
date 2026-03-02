@@ -453,6 +453,7 @@ impl RangeParser {
         };
 
         res.text = Some(input_clean.to_string());
+        res.raw_legacy_value = Some(input_clean.to_string());
         res
     }
 }
@@ -462,6 +463,18 @@ mod tests {
     use super::*;
     use crate::models::scalar::ScalarMode;
     use crate::models::{RangeAnchor, RangeContext, RangeKind, RangeUnit, RegionUnit};
+
+    /// Task 1.5: Empty input must yield raw_legacy_value: None (RangeSpec::default()).
+    #[test]
+    fn test_parse_range_empty_raw_legacy_value_none() {
+        let parser = RangeParser::new();
+        let res = parser.parse("");
+        assert!(
+            res.raw_legacy_value.is_none(),
+            "empty range input must produce raw_legacy_value None, got {:?}",
+            res.raw_legacy_value
+        );
+    }
 
     #[test]
     fn test_parse_simple_range() {
@@ -606,5 +619,19 @@ mod tests {
         let res7 = parser.parse("Line of Sight");
         assert_eq!(res7.kind, RangeKind::Los);
         assert!(res7.requires.as_ref().unwrap().contains(&RangeContext::Los));
+    }
+
+    #[test]
+    fn test_unconditional_legacy_text_preservation() {
+        let parser = RangeParser::new();
+
+        // Success case
+        let res = parser.parse("60 ft.");
+        assert_eq!(res.raw_legacy_value.as_ref().unwrap(), "60 ft.");
+
+        // Fallback case
+        let res2 = parser.parse("Remote corner");
+        assert_eq!(res2.kind, RangeKind::Special);
+        assert_eq!(res2.raw_legacy_value.as_ref().unwrap(), "Remote corner");
     }
 }

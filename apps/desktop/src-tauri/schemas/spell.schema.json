@@ -176,18 +176,7 @@
         },
         "unit": {
           "type": "string",
-          "enum": [
-            "segment",
-            "round",
-            "turn",
-            "hour",
-            "minute",
-            "action",
-            "bonus_action",
-            "reaction",
-            "special",
-            "instantaneous"
-          ],
+          "enum": ["segment", "round", "turn", "hour", "minute", "special", "instantaneous"],
           "default": "segment"
         },
         "base_value": {
@@ -207,7 +196,7 @@
         },
         "raw_legacy_value": {
           "type": "string",
-          "description": "When parsing fails or unit is Special, the original legacy string is stored here for admin review."
+          "description": "The original legacy string is always stored here for admin review."
         }
       },
       "required": ["text", "unit"],
@@ -603,9 +592,13 @@
         "notes": {
           "type": "string"
         },
+        "text": {
+          "type": "string",
+          "description": "Canonical display text synthesized from structured fields (or from raw_legacy_value when kind is special)."
+        },
         "raw_legacy_value": {
           "type": "string",
-          "description": "When parsing fails or kind is special, the original legacy string is stored here for admin review."
+          "description": "The original legacy string is always stored here for admin review."
         }
       },
       "allOf": [
@@ -896,7 +889,7 @@
         },
         "raw_legacy_value": {
           "type": "string",
-          "description": "When parsing fails or kind is special, the original legacy string is stored here for admin review."
+          "description": "The original legacy string is always stored here for admin review."
         }
       },
       "allOf": [
@@ -1298,9 +1291,9 @@
           "type": "string",
           "maxLength": 2048
         },
-        "raw_legacy_value": {
+        "source_text": {
           "type": "string",
-          "description": "When parsing fails or kind is dm_adjudicated, the original legacy string is stored here for admin review."
+          "description": "Original source text preserved as non-hashed metadata."
         }
       },
       "allOf": [
@@ -1616,6 +1609,11 @@
         "notes": {
           "type": "string",
           "maxLength": 1024
+        },
+        "source_text": {
+          "type": "string",
+          "maxLength": 2048,
+          "description": "Original source text preserved as non-hashed metadata."
         }
       }
     },
@@ -1639,13 +1637,13 @@
             "$ref": "#/$defs/SingleSave"
           }
         },
-        "dm_guidance": {
-          "type": "string",
-          "maxLength": 2048
-        },
         "notes": {
           "type": "string",
           "maxLength": 2048
+        },
+        "raw_legacy_value": {
+          "type": "string",
+          "description": "The original legacy string is always stored here for admin review."
         }
       }
     },
@@ -1802,9 +1800,13 @@
           "type": "string",
           "description": "Freeform clarification; must not contain mechanical formulas."
         },
+        "text": {
+          "type": "string",
+          "description": "Canonical display text synthesized from structured fields (or from raw_legacy_value when kind is special)."
+        },
         "raw_legacy_value": {
           "type": "string",
-          "description": "When parsing fails or kind is special, the original legacy string is stored here for admin review."
+          "description": "The original legacy string is always stored here for admin review."
         }
       },
       "allOf": [

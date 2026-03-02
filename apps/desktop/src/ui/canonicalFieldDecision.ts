@@ -13,16 +13,12 @@ export function decideCanonicalField<T>(
   normalize: (value: Record<string, unknown>) => T,
   validate: (value: T) => boolean,
 ): CanonicalFieldDecision<T> {
-  if (!Object.prototype.hasOwnProperty.call(canonicalRaw, key)) {
+  // Spec: loose equality covers both undefined (key absent) and null (key present with null value)
+  if (canonicalRaw[key] == null) {
     return { suppressExpandParse: false };
   }
 
   const rawValue = canonicalRaw[key];
-  // Spec: "null field: Treat as missing for hybrid loading (parse legacy string if available)"
-  if (rawValue === null) {
-    return { suppressExpandParse: false };
-  }
-
   if (!isObjectRecord(rawValue)) {
     return { suppressExpandParse: false };
   }

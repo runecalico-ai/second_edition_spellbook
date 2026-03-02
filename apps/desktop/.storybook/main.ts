@@ -1,7 +1,10 @@
 import type { StorybookConfig } from "@storybook/react-vite";
 
 const config: StorybookConfig = {
-  stories: ["../src/ui/components/structured/**/*.stories.@(js|jsx|mjs|ts|tsx)"],
+  stories: [
+    "../src/ui/components/structured/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/ui/spell-detail/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+  ],
   addons: [
     "@chromatic-com/storybook",
     "@storybook/addon-vitest",

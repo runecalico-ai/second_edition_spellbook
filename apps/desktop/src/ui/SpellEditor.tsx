@@ -63,6 +63,7 @@ import {
   createDefaultDetailDirty,
 } from "./detailDirty";
 import { decideCanonicalField } from "./canonicalFieldDecision";
+import { WarningBanner } from "./components/WarningBanner";
 
 type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
 
@@ -122,6 +123,7 @@ function normalizeAreaSpec(a: Record<string, unknown>): AreaSpec {
     regionUnit: (a.regionUnit ?? a.region_unit) as string,
     scopeUnit: (a.scopeUnit ?? a.scope_unit) as string,
     rawLegacyValue: (a.rawLegacyValue ?? a.raw_legacy_value) as string,
+    text: a.text as string | undefined,
   } as AreaSpec;
 }
 
@@ -179,9 +181,9 @@ function normalizeDamageSpec(d: Record<string, unknown>): SpellDamageSpec {
     kind: (d.kind as SpellDamageSpec["kind"]) ?? "none",
     combineMode: (d.combineMode ?? d.combine_mode) as SpellDamageSpec["combineMode"],
     parts: parts as SpellDamageSpec["parts"],
-    dmGuidance: (d.dmGuidance ?? d.dm_guidance) as string,
-    rawLegacyValue: (d.rawLegacyValue ?? d.raw_legacy_value) as string,
-    notes: d.notes as string,
+    sourceText: (d.sourceText ?? d.source_text ?? d.rawLegacyValue ?? d.raw_legacy_value) as string,
+    dmGuidance: (d.dmGuidance ?? d.dm_guidance) as string | undefined,
+    notes: d.notes as string | undefined,
   } as SpellDamageSpec;
 }
 
@@ -209,14 +211,22 @@ function normalizeSingleSave(s: unknown): SingleSave | undefined {
 }
 
 function normalizeSavingThrowSpec(s: Record<string, unknown>): SavingThrowSpec {
+  const existingNotes = s.notes as string | undefined;
+  const dmGuidanceVal = (s.dmGuidance ?? s.dm_guidance) as string | undefined;
+  // Empty dm_guidance is treated as absent — falsy guard is intentional.
+  const notes = dmGuidanceVal
+    ? existingNotes
+      ? `${existingNotes}\n${dmGuidanceVal}`
+      : dmGuidanceVal
+    : existingNotes;
   return {
     kind: (s.kind as SavingThrowSpec["kind"]) ?? "none",
     single: normalizeSingleSave(s.single),
     multiple: (s.multiple as unknown[] | undefined)
       ?.map(normalizeSingleSave)
       .filter(Boolean) as SingleSave[],
-    dmGuidance: (s.dmGuidance ?? s.dm_guidance) as string,
-    notes: s.notes as string,
+    notes: notes as string | undefined,
+    rawLegacyValue: (s.rawLegacyValue ?? s.raw_legacy_value) as string | undefined,
   } as SavingThrowSpec;
 }
 
@@ -232,6 +242,7 @@ function normalizeMagicResistanceSpec(m: Record<string, unknown>): MagicResistan
         }
       : undefined,
     specialRule: (m.specialRule ?? m.special_rule) as string,
+    sourceText: (m.sourceText ?? m.source_text) as string | undefined,
     notes: m.notes as string,
   } as MagicResistanceSpec;
 }
@@ -270,10 +281,6 @@ function toSpecialAreaSpec(rawLegacyValue: string): AreaSpec {
   return { kind: "special", rawLegacyValue } as AreaSpec;
 }
 
-function toFallbackDamageSpec(rawLegacyValue: string): SpellDamageSpec {
-  return { kind: "dm_adjudicated", rawLegacyValue, dmGuidance: rawLegacyValue };
-}
-
 function normalizeLegacyText(value: string): string {
   return value
     .trim()
@@ -293,40 +300,48 @@ function mapLegacySavingThrow(legacy: string): SavingThrowSpec {
     return { kind: "none" };
   }
 
+  // --- 6-row save_type/save_vs matrix (first match wins) ---
+  let saveType: SaveType = "spell";
+  let saveVs: string | undefined;
+  if (hasTokenPattern(normalized, /\bparaly\b|\bpoison\b|\bdeath\b/)) {
+    saveType = "paralyzation_poison_death";
+    saveVs = hasTokenPattern(normalized, /\bpoison\b/) ? "poison" : "death_magic";
+  } else if (hasTokenPattern(normalized, /\bbreath\b/)) {
+    saveType = "breath_weapon";
+    saveVs = "breath";
+  } else if (hasTokenPattern(normalized, /\brod\b|\bstaff\b|\bwand\b/)) {
+    saveType = "rod_staff_wand";
+    saveVs = "other";
+  } else if (hasTokenPattern(normalized, /\bpoly\b|\bpetrif\b/)) {
+    saveType = "petrification_polymorph";
+    saveVs = hasTokenPattern(normalized, /\bpoly\b/) ? "polymorph" : "petrification";
+  } else if (hasTokenPattern(normalized, /\bspecial\b/)) {
+    saveType = "special";
+  }
+
+  // --- Outcome detection ---
+  let onSuccess: SaveOutcomeEffect;
   if (hasTokenPattern(normalized, /\bnegat(?:e|es|ed|ing)?\b/)) {
-    return {
-      kind: "single",
-      single: {
-        saveType: "spell",
-        onSuccess: { result: "no_effect" },
-        onFailure: { result: "full_effect" },
-      },
-    };
+    onSuccess = { result: "no_effect" };
+  } else if (hasTokenPattern(normalized, /\bhalf\b|\b1\s*\/\s*2\b/)) {
+    onSuccess = { result: "reduced_effect" };
+  } else if (hasTokenPattern(normalized, /\bpartial\b/)) {
+    onSuccess = { result: "partial_non_damage_only" };
+  } else {
+    // No recognizable outcome token → dm_adjudicated
+    return { kind: "dm_adjudicated", rawLegacyValue: legacy };
   }
 
-  if (hasTokenPattern(normalized, /\bhalf\b|\b1\s*\/\s*2\b/)) {
-    return {
-      kind: "single",
-      single: {
-        saveType: "spell",
-        onSuccess: { result: "reduced_effect" },
-        onFailure: { result: "full_effect" },
-      },
-    };
-  }
-
-  if (hasTokenPattern(normalized, /\bpartial\b/)) {
-    return {
-      kind: "single",
-      single: {
-        saveType: "spell",
-        onSuccess: { result: "partial_non_damage_only" },
-        onFailure: { result: "full_effect" },
-      },
-    };
-  }
-
-  return { kind: "dm_adjudicated", dmGuidance: legacy };
+  return {
+    kind: "single",
+    single: {
+      saveType,
+      ...(saveVs !== undefined ? { saveVs } : {}),
+      onSuccess,
+      onFailure: { result: "full_effect" },
+    },
+    rawLegacyValue: legacy,
+  };
 }
 
 function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {
@@ -349,7 +364,209 @@ function mapLegacyMagicResistance(legacy: string): MagicResistanceSpec {
     };
   }
 
-  return { kind: "special", appliesTo: "whole_spell", specialRule: legacy };
+  return { kind: "special", appliesTo: "whole_spell", specialRule: legacy, sourceText: legacy };
+}
+
+// ---------------------------------------------------------------------------
+// v2-shape save-path helpers (defense-in-depth strip of v1 fields)
+// ---------------------------------------------------------------------------
+
+/** Strips any v1 fields from SavingThrowSpec before sending to backend (defense-in-depth). */
+function toV2SavingThrowSpec(spec: SavingThrowSpec): SavingThrowSpec {
+  const { ...rest } = spec;
+  // dmGuidance is the v1 field removed on SavingThrowSpec in v2 schema.
+  // It should never appear here (TypeScript enforces this), but strip defensively
+  // in case of deserialization from legacy stored data.
+  (rest as Record<string, unknown>).dmGuidance = undefined;
+  (rest as Record<string, unknown>).dm_guidance = undefined;
+  return rest;
+}
+
+/** Strips any v1 fields from SpellDamageSpec before sending to backend (defense-in-depth). */
+function toV2SpellDamageSpec(spec: SpellDamageSpec): SpellDamageSpec {
+  const result = { ...spec };
+  // Ensure rawLegacyValue → sourceText migration at save time
+  if (!result.sourceText && (result as Record<string, unknown>).rawLegacyValue) {
+    result.sourceText = (result as Record<string, unknown>).rawLegacyValue as string;
+  }
+  (result as Record<string, unknown>).rawLegacyValue = undefined;
+  (result as Record<string, unknown>).raw_legacy_value = undefined;
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Parser-task helpers (module-level — do not close over component state)
+// ---------------------------------------------------------------------------
+
+interface ParserTaskSetters {
+  setStructuredRange: (v: RangeSpec) => void;
+  setStructuredDuration: (v: DurationSpec) => void;
+  setStructuredCastingTime: (v: SpellCastingTime) => void;
+  setStructuredArea: (v: AreaSpec) => void;
+  setStructuredDamage: (v: SpellDamageSpec) => void;
+  setSuppressExpandParse: (
+    updater: (
+      prev: Partial<Record<DetailFieldKey, boolean>>,
+    ) => Partial<Record<DetailFieldKey, boolean>>,
+  ) => void;
+  /** Called when a field falls back to kind="special" due to a parse failure in this session. */
+  addParserFallback: (field: string) => void;
+}
+
+/** Build the list of async parser invocations for the five invoke-based fields.
+ * Only enqueues a task when the field has content and suppress is not set.
+ * Returns the array of promises; caller is responsible for Promise.all. */
+function buildParserTasks(
+  data: SpellDetail,
+  getIsActive: () => boolean,
+  setters: ParserTaskSetters,
+  suppress: {
+    range?: boolean;
+    duration?: boolean;
+    castingTime?: boolean;
+    area?: boolean;
+    damage?: boolean;
+  },
+): Promise<void>[] {
+  const tasks: Promise<void>[] = [];
+
+  if (!suppress.range && data.range?.trim()) {
+    const legacy = data.range;
+    tasks.push(
+      invoke<RangeSpec>("parse_spell_range", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (!validateRangeSpec(parsed)) {
+            setters.setStructuredRange(toSpecialRangeSpec(legacy));
+            setters.addParserFallback("Range");
+          } else {
+            setters.setStructuredRange(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, range: true }));
+            if ((parsed as RangeSpec).kind === "special") setters.addParserFallback("Range");
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredRange(toSpecialRangeSpec(legacy));
+          setters.addParserFallback("Range");
+        }),
+    );
+  }
+
+  if (!suppress.duration && data.duration?.trim()) {
+    const legacy = data.duration;
+    tasks.push(
+      invoke<DurationSpec>("parse_spell_duration", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (!validateDurationSpec(parsed)) {
+            setters.setStructuredDuration(toSpecialDurationSpec(legacy));
+            setters.addParserFallback("Duration");
+          } else {
+            setters.setStructuredDuration(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, duration: true }));
+            if ((parsed as DurationSpec).kind === "special") setters.addParserFallback("Duration");
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredDuration(toSpecialDurationSpec(legacy));
+          setters.addParserFallback("Duration");
+        }),
+    );
+  }
+
+  if (!suppress.castingTime && data.castingTime?.trim()) {
+    const legacy = data.castingTime;
+    tasks.push(
+      invoke<SpellCastingTime>("parse_spell_casting_time", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (!validateSpellCastingTime(parsed)) {
+            setters.setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+            setters.addParserFallback("Casting time");
+          } else {
+            setters.setStructuredCastingTime(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, castingTime: true }));
+            if ((parsed as SpellCastingTime).unit === "special")
+              setters.addParserFallback("Casting time");
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+          setters.addParserFallback("Casting time");
+        }),
+    );
+  }
+
+  if (!suppress.area && data.area?.trim()) {
+    const legacy = data.area;
+    tasks.push(
+      invoke<AreaSpec | null>("parse_spell_area", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (parsed === null || !validateAreaSpec(parsed)) {
+            setters.setStructuredArea(toSpecialAreaSpec(legacy));
+            setters.addParserFallback("Area");
+          } else {
+            setters.setStructuredArea(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, area: true }));
+            if ((parsed as AreaSpec).kind === "special") setters.addParserFallback("Area");
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredArea(toSpecialAreaSpec(legacy));
+          setters.addParserFallback("Area");
+        }),
+    );
+  }
+
+  // Damage: parser failure falls back to { kind: "none" } — does NOT trigger warning banner.
+  if (!suppress.damage && data.damage?.trim()) {
+    const legacy = data.damage;
+    tasks.push(
+      invoke<SpellDamageSpec>("parse_spell_damage", { legacy })
+        .then((parsed) => {
+          if (!getIsActive()) return;
+          if (!validateSpellDamageSpec(parsed)) {
+            setters.setStructuredDamage({ kind: "none", sourceText: legacy });
+          } else {
+            setters.setStructuredDamage(parsed);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, damage: true }));
+          }
+        })
+        .catch(() => {
+          if (!getIsActive()) return;
+          setters.setStructuredDamage({ kind: "none", sourceText: legacy });
+        }),
+    );
+  }
+
+  return tasks;
+}
+
+/** Maps a DetailFieldKey to the display label used in parserFallbackFields. */
+function getParserFallbackLabel(field: DetailFieldKey): string {
+  switch (field) {
+    case "range":
+      return "Range";
+    case "duration":
+      return "Duration";
+    case "castingTime":
+      return "Casting time";
+    case "area":
+      return "Area";
+    case "savingThrow":
+      return "Saving throw";
+    case "magicResistance":
+      return "Magic resistance";
+    case "damage":
+      return "Damage"; // damage never added to parserFallbackFields
+    default:
+      return field;
+  }
 }
 
 export default function SpellEditor() {
@@ -418,6 +635,20 @@ export default function SpellEditor() {
   /** Track unsaved changes for navigate/close warning. */
   const unsavedRef = useRef(false);
   const [hasUnsavedState, setHasUnsavedState] = useState(false);
+  /** True while parallel parser invocations are in flight on spell load; disables save. */
+  const [parsersPending, setParsersPending] = useState(false);
+
+  /**
+   * Tracks which fields triggered a parser fallback (kind="special") in THIS session.
+   * Fields are added when a parallel-load parser returns a special fallback.
+   * Removed when: (a) user edits the field, (b) successful save.
+   * After successful save all remaining tracked fields are dismissed (durably stored).
+   * Does NOT include fields loaded from canonical_data as kind="special"
+   * (those are accepted user data, not parse failures).
+   */
+  const [parserFallbackFields, setParserFallbackFields] = useState<Set<string>>(new Set());
+  const parserFallbackFieldsRef = useRef<Set<string>>(new Set());
+  parserFallbackFieldsRef.current = parserFallbackFields;
 
   const isNew = id === "new";
 
@@ -453,6 +684,8 @@ export default function SpellEditor() {
     setDetailLoading(null);
     setDetailDirty(createDefaultDetailDirty());
     setSuppressExpandParse({});
+    setParsersPending(false);
+    setParserFallbackFields(new Set());
     expandedDetailRef.current = null;
     prevExpandedDetailRef.current = null;
   }, []);
@@ -502,7 +735,12 @@ export default function SpellEditor() {
       b.proceed?.();
       return;
     }
-    modalConfirm("You have unsaved changes. Leave and discard?", "Unsaved changes").then((ok) => {
+    const hasBannerActive = parserFallbackFieldsRef.current.size > 0;
+    const message = hasBannerActive
+      ? "You have unparsed fields. Navigating away will discard your current editor state. Continue?"
+      : "You have unsaved changes. Leave and discard?";
+    const title = hasBannerActive ? "Unparsed fields" : "Unsaved changes";
+    modalConfirm(message, title).then((ok) => {
       if (ok) {
         unsavedRef.current = false;
         setHasUnsavedState(false);
@@ -558,10 +796,7 @@ export default function SpellEditor() {
                   };
                   material_components?: MaterialComponentSpec[];
                 };
-                const canonicalHasMaterialComponentsSpec = Object.prototype.hasOwnProperty.call(
-                  canonicalRaw,
-                  "material_components",
-                );
+                const canonicalHasMaterialComponentsSpec = canonicalRaw.material_components != null;
                 setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
                 const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
 
@@ -607,6 +842,7 @@ export default function SpellEditor() {
                     return {
                       kind: d.kind,
                       unit: d.unit,
+                      text: d.text as string | undefined,
                       duration: d.duration
                         ? {
                             mode: d.duration.mode ?? "fixed",
@@ -748,12 +984,108 @@ export default function SpellEditor() {
                   setStructuredMaterialComponents(mats);
                 }
                 setSuppressExpandParse(nextSuppressExpandParse);
+
+                // Parallel dispatch for parser-based fields missing from canonical_data.
+                const parserTasks = buildParserTasks(
+                  data,
+                  () => isActive,
+                  {
+                    setStructuredRange,
+                    setStructuredDuration,
+                    setStructuredCastingTime,
+                    setStructuredArea,
+                    setStructuredDamage,
+                    setSuppressExpandParse,
+                    addParserFallback: (f) =>
+                      setParserFallbackFields((prev) => new Set([...prev, f])),
+                  },
+                  {
+                    range: rangeDecision.suppressExpandParse,
+                    duration: durationDecision.suppressExpandParse,
+                    castingTime: castingTimeDecision.suppressExpandParse,
+                    area: areaDecision.suppressExpandParse,
+                    damage: damageDecision.suppressExpandParse,
+                  },
+                );
+
+                // SavingThrow: client-side mapping (no invoke).
+                if (!savingThrowDecision.suppressExpandParse && data.savingThrow?.trim()) {
+                  const stResult = mapLegacySavingThrow(data.savingThrow);
+                  setStructuredSavingThrow(stResult);
+                  setHasLoadedSavingThrowSpec(true);
+                  setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
+                  if (stResult.kind === "dm_adjudicated") {
+                    setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+                  }
+                }
+
+                // MagicResistance: client-side mapping (no invoke).
+                if (!magicResistanceDecision.suppressExpandParse && data.magicResistance?.trim()) {
+                  const mrResult = mapLegacyMagicResistance(data.magicResistance);
+                  setStructuredMagicResistance(mrResult);
+                  setHasLoadedMagicResistanceSpec(true);
+                  setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
+                  if (mrResult.kind === "special") {
+                    setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+                  }
+                }
+
+                if (parserTasks.length > 0) {
+                  setParsersPending(true);
+                  Promise.all(parserTasks).finally(() => {
+                    if (isActive) setParsersPending(false);
+                  });
+                }
               } catch {
                 // ignore parse error, fall back to legacy
               }
+            } else {
+              // No canonical_data: dispatch all parser-based fields in parallel on load.
+              const parserTasks = buildParserTasks(
+                data,
+                () => isActive,
+                {
+                  setStructuredRange,
+                  setStructuredDuration,
+                  setStructuredCastingTime,
+                  setStructuredArea,
+                  setStructuredDamage,
+                  setSuppressExpandParse,
+                  addParserFallback: (f) =>
+                    setParserFallbackFields((prev) => new Set([...prev, f])),
+                },
+                {},
+              );
+
+              // SavingThrow: client-side mapping (no invoke).
+              if (data.savingThrow?.trim()) {
+                const stResult = mapLegacySavingThrow(data.savingThrow);
+                setStructuredSavingThrow(stResult);
+                setHasLoadedSavingThrowSpec(true);
+                setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
+                if (stResult.kind === "dm_adjudicated") {
+                  setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+                }
+              }
+
+              // MagicResistance: client-side mapping (no invoke).
+              if (data.magicResistance?.trim()) {
+                const mrResult = mapLegacyMagicResistance(data.magicResistance);
+                setStructuredMagicResistance(mrResult);
+                setHasLoadedMagicResistanceSpec(true);
+                setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
+                if (mrResult.kind === "special") {
+                  setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+                }
+              }
+
+              if (parserTasks.length > 0) {
+                setParsersPending(true);
+                Promise.all(parserTasks).finally(() => {
+                  if (isActive) setParsersPending(false);
+                });
+              }
             }
-            // Canon-first: do not parse on load for fields missing from canonical_data;
-            // parse on first expand instead.
             unsavedRef.current = false;
             setHasUnsavedState(false);
           }
@@ -838,6 +1170,13 @@ export default function SpellEditor() {
           setHasExpandedComponentsEdit(false);
           break;
       }
+      // Dismiss parser fallback when user edits the field directly
+      const fallbackLabel = getParserFallbackLabel(detailField);
+      setParserFallbackFields((prev) => {
+        const next = new Set(prev);
+        next.delete(fallbackLabel);
+        return next;
+      });
     }
   };
 
@@ -1092,6 +1431,7 @@ export default function SpellEditor() {
     }
 
     setDetailLoading(field);
+    setParsersPending(true);
     const legacy = getLegacy();
 
     try {
@@ -1101,8 +1441,11 @@ export default function SpellEditor() {
           if (requestId !== expandRequestId.current) return;
           if (!validateRangeSpec(parsed)) {
             setStructuredRange(toSpecialRangeSpec(legacy));
+            setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           } else {
             setStructuredRange(parsed);
+            if (parsed.kind === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           }
           break;
         }
@@ -1111,8 +1454,11 @@ export default function SpellEditor() {
           if (requestId !== expandRequestId.current) return;
           if (!validateDurationSpec(parsed)) {
             setStructuredDuration(toSpecialDurationSpec(legacy));
+            setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           } else {
             setStructuredDuration(parsed);
+            if (parsed.kind === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           }
           break;
         }
@@ -1121,8 +1467,11 @@ export default function SpellEditor() {
           if (requestId !== expandRequestId.current) return;
           if (!validateSpellCastingTime(parsed)) {
             setStructuredCastingTime(toSpecialCastingTimeSpec(legacy));
+            setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           } else {
             setStructuredCastingTime(parsed);
+            if (parsed.unit === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           }
           break;
         }
@@ -1131,8 +1480,11 @@ export default function SpellEditor() {
           if (requestId !== expandRequestId.current) return;
           if (parsed === null || !validateAreaSpec(parsed)) {
             setStructuredArea(toSpecialAreaSpec(legacy));
+            setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           } else {
             setStructuredArea(parsed);
+            if (parsed.kind === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           }
           break;
         }
@@ -1140,7 +1492,8 @@ export default function SpellEditor() {
           const parsed = await invoke<SpellDamageSpec>("parse_spell_damage", { legacy });
           if (requestId !== expandRequestId.current) return;
           if (!validateSpellDamageSpec(parsed)) {
-            setStructuredDamage(toFallbackDamageSpec(legacy));
+            // Parser failure: kind "none" with sourceText; does NOT trigger warning banner.
+            setStructuredDamage({ kind: "none", sourceText: legacy });
           } else {
             setStructuredDamage(parsed);
           }
@@ -1148,11 +1501,23 @@ export default function SpellEditor() {
         }
         case "savingThrow":
           if (requestId !== expandRequestId.current) return;
-          setStructuredSavingThrow(mapLegacySavingThrow(legacy));
+          {
+            const stResult = mapLegacySavingThrow(legacy);
+            setStructuredSavingThrow(stResult);
+            if (stResult.kind === "dm_adjudicated") {
+              setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+            }
+          }
           break;
         case "magicResistance":
           if (requestId !== expandRequestId.current) return;
-          setStructuredMagicResistance(mapLegacyMagicResistance(legacy));
+          {
+            const mrResult = mapLegacyMagicResistance(legacy);
+            setStructuredMagicResistance(mrResult);
+            if (mrResult.kind === "special") {
+              setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+            }
+          }
           break;
         case "components":
         case "materialComponents":
@@ -1202,25 +1567,40 @@ export default function SpellEditor() {
       switch (field) {
         case "range":
           setStructuredRange(toSpecialRangeSpec(leg));
+          setParserFallbackFields((prev) => new Set([...prev, "Range"]));
           break;
         case "duration":
           setStructuredDuration(toSpecialDurationSpec(leg));
+          setParserFallbackFields((prev) => new Set([...prev, "Duration"]));
           break;
         case "castingTime":
           setStructuredCastingTime(toSpecialCastingTimeSpec(leg));
+          setParserFallbackFields((prev) => new Set([...prev, "Casting time"]));
           break;
         case "area":
           setStructuredArea(toSpecialAreaSpec(leg));
+          setParserFallbackFields((prev) => new Set([...prev, "Area"]));
           break;
         case "damage":
-          setStructuredDamage(toFallbackDamageSpec(leg));
+          // Parser failure: kind "none" with sourceText; does NOT trigger warning banner.
+          setStructuredDamage({ kind: "none", sourceText: leg });
           break;
-        case "savingThrow":
-          setStructuredSavingThrow(mapLegacySavingThrow(leg));
+        case "savingThrow": {
+          const stResult = mapLegacySavingThrow(leg);
+          setStructuredSavingThrow(stResult);
+          if (stResult.kind === "dm_adjudicated") {
+            setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+          }
           break;
-        case "magicResistance":
-          setStructuredMagicResistance(mapLegacyMagicResistance(leg));
+        }
+        case "magicResistance": {
+          const mrResult = mapLegacyMagicResistance(leg);
+          setStructuredMagicResistance(mrResult);
+          if (mrResult.kind === "special") {
+            setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+          }
           break;
+        }
         case "components":
         case "materialComponents":
           {
@@ -1253,6 +1633,7 @@ export default function SpellEditor() {
           break;
       }
     } finally {
+      setParsersPending(false);
       if (expandedDetailRef.current === field) setDetailLoading(null);
     }
   };
@@ -1308,18 +1689,6 @@ export default function SpellEditor() {
     isDivineMissingSphere && "Sphere is required for Divine tradition",
     hasTraditionConflict && "School and Sphere cannot both be set",
   ].filter(Boolean) as string[];
-
-  const specialFallbackFields = [
-    structuredRange?.kind === "special" && "Range",
-    structuredDuration?.kind === "special" && "Duration",
-    structuredCastingTime?.unit === "special" && "Casting time",
-    structuredArea?.kind === "special" && "Area",
-    structuredDamage?.rawLegacyValue && "Damage",
-  ].filter(Boolean) as string[];
-  const hasSpecialFallback = specialFallbackFields.length > 0;
-  const specialFallbackMessage = hasSpecialFallback
-    ? `${specialFallbackFields.join(" and ")} could not be fully parsed; original text preserved.`
-    : "";
 
   const isInvalid = validationErrors.length > 0;
   const save = async () => {
@@ -1417,6 +1786,16 @@ export default function SpellEditor() {
       const shouldSendSavingThrowSpec =
         validSavingThrowSpec !== undefined &&
         (hasLoadedSavingThrowSpec || detailDirty.savingThrow || !(form.savingThrow ?? "").trim());
+
+      // Save path always emits v2-shaped canonical_data:
+      // - SavingThrowSpec: no dm_guidance field (removed in v2 schema)
+      // - SpellDamageSpec: sourceText not rawLegacyValue
+      const v2DamageSpec = validDamageSpec ? toV2SpellDamageSpec(validDamageSpec) : undefined;
+      const v2SavingThrowSpec =
+        shouldSendSavingThrowSpec && validSavingThrowSpec
+          ? toV2SavingThrowSpec(validSavingThrowSpec)
+          : undefined;
+
       const shouldSendMagicResistanceSpec =
         validMagicResistanceSpec !== undefined &&
         (hasLoadedMagicResistanceSpec ||
@@ -1435,9 +1814,9 @@ export default function SpellEditor() {
         area: formOverrides.area ?? form.area,
         areaSpec: validAreaSpec,
         damage: formOverrides.damage ?? form.damage,
-        damageSpec: validDamageSpec,
+        damageSpec: v2DamageSpec,
         savingThrow: formOverrides.savingThrow ?? form.savingThrow,
-        savingThrowSpec: shouldSendSavingThrowSpec ? validSavingThrowSpec : undefined,
+        savingThrowSpec: v2SavingThrowSpec,
         magicResistance: formOverrides.magicResistance ?? form.magicResistance,
         magicResistanceSpec: shouldSendMagicResistanceSpec ? validMagicResistanceSpec : undefined,
         components: formOverrides.components ?? form.components,
@@ -1475,6 +1854,8 @@ export default function SpellEditor() {
         const { artifacts, ...updateData } = normalizedSpellData; // eslint-disable-line @typescript-eslint/no-unused-vars
         await invoke("update_spell", { spell: updateData });
       }
+      // Dismiss all parser fallback fields after successful save (data is now durably stored)
+      setParserFallbackFields(new Set());
       unsavedRef.current = false;
       setHasUnsavedState(false);
       navigate("/");
@@ -1520,15 +1901,16 @@ export default function SpellEditor() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4 overflow-auto h-full">
-      {hasSpecialFallback && (
+      {parsersPending && (
         <div
-          role="alert"
-          className="rounded border border-amber-600/50 bg-amber-600/10 px-3 py-2 text-sm text-amber-200"
-          data-testid="spell-editor-special-fallback-banner"
+          className="rounded border border-blue-600/50 bg-blue-600/10 px-3 py-2 text-sm text-blue-300"
+          data-testid="parsers-pending-indicator"
+          aria-live="polite"
         >
-          {specialFallbackMessage}
+          Parsing fields…
         </div>
       )}
+      <WarningBanner fields={[...parserFallbackFields]} />
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h1>
@@ -1588,6 +1970,7 @@ export default function SpellEditor() {
               id="btn-delete-spell"
               data-testid="btn-delete-spell"
               type="button"
+              disabled={parsersPending}
               onClick={handleDelete}
               className="px-3 py-2 text-red-400 hover:bg-neutral-800 rounded"
             >
@@ -1618,7 +2001,8 @@ export default function SpellEditor() {
             data-testid="btn-save-spell"
             type="button"
             onClick={save}
-            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold"
+            disabled={parsersPending}
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Save Spell
           </button>
@@ -1666,529 +2050,604 @@ export default function SpellEditor() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <fieldset disabled={parsersPending} className="contents">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="spell-name" className="block text-sm text-neutral-400">
+              Name
+            </label>
+            <input
+              id="spell-name"
+              data-testid="spell-name-input"
+              className={`w-full bg-neutral-900 border p-2 rounded ${
+                isNameInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
+              placeholder="Spell Name"
+              value={form.name}
+              onChange={(e) => handleChange("name", e.target.value)}
+              required
+            />
+            {isNameInvalid && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-name-required">
+                Name is required.
+              </p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="spell-level" className="block text-sm text-neutral-400">
+              Level
+            </label>
+            <input
+              id="spell-level"
+              data-testid="spell-level-input"
+              className={`w-full bg-neutral-900 border p-2 rounded ${
+                isLevelInvalid ? "border-red-500" : "border-neutral-700"
+              }`}
+              type="number"
+              value={form.level}
+              onChange={(e) => {
+                const val = e.target.valueAsNumber;
+                const clamped = Math.max(0, Math.min(12, Number.isNaN(val) ? 0 : Math.floor(val)));
+                handleChange("level", clamped);
+                if (clamped !== 0) handleChange("isCantrip", 0);
+                if (clamped !== 8) handleChange("isQuestSpell", 0);
+              }}
+            />
+            <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">
+              {getLevelDisplay(form.level)}
+            </div>
+            <div className="flex gap-4 mt-2">
+              <label
+                className={`flex items-center gap-2 cursor-pointer group ${form.level !== 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  data-testid="chk-cantrip"
+                  disabled={form.level !== 0}
+                  checked={form.isCantrip === 1}
+                  onChange={(e) => handleChange("isCantrip", e.target.checked ? 1 : 0)}
+                  className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
+                />
+                <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
+                  Cantrip
+                </span>
+              </label>
+              <label
+                className={`flex items-center gap-2 cursor-pointer group ${form.level !== 8 ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  data-testid="chk-quest"
+                  disabled={form.level !== 8}
+                  checked={form.isQuestSpell === 1}
+                  onChange={(e) => handleChange("isQuestSpell", e.target.checked ? 1 : 0)}
+                  className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
+                />
+                <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
+                  Quest Spell
+                </span>
+              </label>
+            </div>
+            {isLevelInvalid && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-level-range">
+                Level must be 0-12.
+              </p>
+            )}
+            {isEpicRestricted && (
+              <p className="text-xs text-yellow-500 mt-1" data-testid="warning-epic-arcane">
+                Epic levels (10-12) are Arcane only.
+              </p>
+            )}
+            {isQuestRestricted && (
+              <p className="text-xs text-yellow-500 mt-1" data-testid="warning-quest-divine">
+                Quest spells are Divine only.
+              </p>
+            )}
+            {isConflictRestricted && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-epic-quest-conflict">
+                Cannot be both Epic and Quest spell.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="spell-tradition" className="block text-sm text-neutral-400">
+              Tradition
+            </label>
+            <select
+              id="spell-tradition"
+              data-testid="spell-tradition-select"
+              aria-label="Spell tradition"
+              value={tradition}
+              onChange={(e) => {
+                setTradition(e.target.value as Tradition);
+              }}
+              className={`w-full bg-neutral-900 border p-2 rounded ${hasTraditionConflict ? "border-amber-500" : "border-neutral-700"}`}
+            >
+              <option value="ARCANE">Arcane</option>
+              <option value="DIVINE">Divine</option>
+            </select>
+            {hasTraditionConflict && (
+              <div
+                className="mt-2 text-xs text-amber-500 border border-amber-500/30 bg-amber-500/10 p-2 rounded"
+                data-testid="error-tradition-conflict"
+              >
+                This spell has both a School and a Sphere set \u2014 school and sphere are mutually
+                exclusive. Remove one before saving.
+              </div>
+            )}
+          </div>
+          <div>
+            <label htmlFor="spell-school" className="block text-sm text-neutral-400">
+              School
+            </label>
+            <input
+              id="spell-school"
+              data-testid="spell-school-input"
+              className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.level >= 10 && !form.school) || isArcaneMissingSchool ? "border-red-500" : "border-neutral-700"}`}
+              value={form.school || ""}
+              onChange={(e) => handleChange("school", e.target.value)}
+            />
+            {form.level >= 10 && !form.school && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane">
+                School is required for Epic (Arcane) spells.
+              </p>
+            )}
+            {isArcaneMissingSchool && (
+              <p
+                className="text-xs text-red-400 mt-1"
+                data-testid="error-school-required-arcane-tradition"
+              >
+                School is required for Arcane tradition.
+              </p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="spell-sphere" className="block text-sm text-neutral-400">
+              Sphere
+            </label>
+            <input
+              id="spell-sphere"
+              data-testid="spell-sphere-input"
+              className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.isQuestSpell === 1 && !form.sphere) || isDivineMissingSphere ? "border-red-500" : "border-neutral-700"}`}
+              value={form.sphere || ""}
+              onChange={(e) => handleChange("sphere", e.target.value)}
+            />
+            {form.isQuestSpell === 1 && !form.sphere && (
+              <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine">
+                Sphere is required for Quest (Divine) spells.
+              </p>
+            )}
+            {isDivineMissingSphere && (
+              <p
+                className="text-xs text-red-400 mt-1"
+                data-testid="error-sphere-required-divine-tradition"
+              >
+                Sphere is required for Divine tradition.
+              </p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="spell-classes" className="block text-sm text-neutral-400">
+              Classes (e.g. Mage, Cleric)
+            </label>
+            <input
+              id="spell-classes"
+              data-testid="spell-classes-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.classList || ""}
+              onChange={(e) => handleChange("classList", e.target.value)}
+            />
+          </div>
+          {/* Add more fields as needed for MVP */}
+          <div>
+            <label htmlFor="spell-source" className="block text-sm text-neutral-400">
+              Source
+            </label>
+            <input
+              id="spell-source"
+              data-testid="spell-source-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.source || ""}
+              onChange={(e) => handleChange("source", e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="spell-edition" className="block text-sm text-neutral-400">
+              Edition
+            </label>
+            <input
+              id="spell-edition"
+              data-testid="spell-edition-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.edition || ""}
+              onChange={(e) => handleChange("edition", e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="spell-author" className="block text-sm text-neutral-400">
+              Author
+            </label>
+            <input
+              id="spell-author"
+              data-testid="spell-author-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.author || ""}
+              onChange={(e) => handleChange("author", e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="spell-license" className="block text-sm text-neutral-400">
+              License
+            </label>
+            <input
+              id="spell-license"
+              data-testid="spell-license-input"
+              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              value={form.license || ""}
+              onChange={(e) => handleChange("license", e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="spell-reversible"
+              data-testid="chk-reversible"
+              type="checkbox"
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+              checked={Boolean(form.reversible)}
+              onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
+            />
+            <label htmlFor="spell-reversible" className="text-sm text-neutral-400">
+              Reversible
+            </label>
+          </div>
+        </div>
+
         <div>
-          <label htmlFor="spell-name" className="block text-sm text-neutral-400">
-            Name
+          <span className="block text-sm text-neutral-400">Details</span>
+          <div className="space-y-3 text-sm">
+            {DETAIL_FIELD_ORDER.map((field) => {
+              const label =
+                field === "area"
+                  ? "Area of Effect"
+                  : field === "castingTime"
+                    ? "Casting Time"
+                    : field === "savingThrow"
+                      ? "Saving Throw"
+                      : field === "magicResistance"
+                        ? "Magic Resistance"
+                        : field === "materialComponents"
+                          ? "Material Component"
+                          : field.charAt(0).toUpperCase() + field.slice(1);
+              const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+              const panelId = `detail-${kebabField}-panel`;
+              const inputId = `detail-${field}-input`;
+              const expandId = `detail-${field}-expand`;
+              const value = form[field] ?? "";
+              const isExpanded = expandedDetailField === field;
+              const isLoading = detailLoading === field;
+              const isSpecial =
+                (field === "range" && structuredRange?.kind === "special") ||
+                (field === "duration" && structuredDuration?.kind === "special") ||
+                (field === "castingTime" &&
+                  (structuredCastingTime?.unit === "special" ||
+                    !!structuredCastingTime?.rawLegacyValue)) ||
+                (field === "area" && structuredArea?.kind === "special") ||
+                (field === "damage" && !!structuredDamage?.sourceText) ||
+                (field === "savingThrow" && structuredSavingThrow?.kind === "dm_adjudicated") ||
+                (field === "magicResistance" && structuredMagicResistance?.kind === "special") ||
+                (field === "materialComponents" && false); // Reserved: no "special" kind for material row today; shares component state
+
+              return (
+                <div key={field} className="flex flex-col gap-1">
+                  <label htmlFor={inputId} className="text-xs text-neutral-500">
+                    {label}
+                  </label>
+                  <div className="flex flex-col gap-1">
+                    <input
+                      id={inputId}
+                      data-testid={`detail-${kebabField}-input`}
+                      type="text"
+                      aria-label={label}
+                      className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+                      value={String(value)}
+                      onChange={(e) => handleChange(field, e.target.value)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        data-testid={`detail-${kebabField}-expand`}
+                        aria-expanded={isExpanded}
+                        aria-controls={isExpanded ? panelId : undefined}
+                        onClick={() =>
+                          isExpanded ? collapseExpandedField() : expandDetailField(field)
+                        }
+                        className="text-xs text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                      >
+                        {isExpanded ? "Collapse" : "Expand"}
+                      </button>
+                      {isSpecial && !isExpanded && (
+                        <span
+                          className="text-xs text-amber-500"
+                          title="Stored as text; not fully structured for hashing"
+                        >
+                          (special)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <section
+                      ref={expandedPanelRef}
+                      id={panelId}
+                      aria-label={`Structured ${label}`}
+                      tabIndex={-1}
+                      className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
+                    >
+                      {isLoading ? (
+                        <div
+                          className="text-sm text-neutral-500"
+                          data-testid={`detail-${kebabField}-loading`}
+                        >
+                          Loading…
+                        </div>
+                      ) : (
+                        <>
+                          {field === "range" && (
+                            <StructuredFieldInput
+                              fieldType="range"
+                              value={structuredRange ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredRange(spec as RangeSpec);
+                                setDetailDirtyFor("range");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  range: rangeToText(spec as RangeSpec),
+                                }));
+                                if ((spec as RangeSpec).kind !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Range");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {(field === "components" || field === "materialComponents") && (
+                            <ComponentCheckboxes
+                              components={structuredComponents}
+                              materialComponents={structuredMaterialComponents}
+                              onChange={(comp, mats) => {
+                                setStructuredComponents(comp);
+                                setStructuredMaterialComponents(mats);
+                                setDetailDirtyFor("components");
+                                setDetailDirtyFor("materialComponents");
+                              }}
+                              onUncheckMaterialConfirm={() =>
+                                modalConfirm(
+                                  "Clear all material component data?",
+                                  "Uncheck Material",
+                                )
+                              }
+                              variant="vsm"
+                            />
+                          )}
+                          {field === "duration" && (
+                            <StructuredFieldInput
+                              fieldType="duration"
+                              value={structuredDuration ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredDuration(spec as DurationSpec);
+                                setDetailDirtyFor("duration");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  duration: durationToText(spec as DurationSpec),
+                                }));
+                                if ((spec as DurationSpec).kind !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Duration");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {field === "castingTime" && (
+                            <StructuredFieldInput
+                              fieldType="casting_time"
+                              value={structuredCastingTime ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredCastingTime(spec as SpellCastingTime);
+                                setDetailDirtyFor("castingTime");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  castingTime: castingTimeToText(spec as SpellCastingTime),
+                                }));
+                                if ((spec as SpellCastingTime).unit !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Casting time");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {field === "area" && (
+                            <AreaForm
+                              value={structuredArea ?? defaultAreaSpec()}
+                              onChange={(spec) => {
+                                setStructuredArea(spec);
+                                setDetailDirtyFor("area");
+                                setForm((prev) => ({ ...prev, area: areaToText(spec) }));
+                                if (spec.kind !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Area");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {field === "savingThrow" && (
+                            <SavingThrowInput
+                              value={structuredSavingThrow ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredSavingThrow(spec);
+                                setDetailDirtyFor("savingThrow");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  savingThrow: savingThrowToText(spec),
+                                }));
+                                if (spec.kind !== "dm_adjudicated") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Saving throw");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {field === "damage" && (
+                            <DamageForm
+                              value={structuredDamage ?? undefined}
+                              onChange={(spec) => {
+                                setStructuredDamage(spec);
+                                setDetailDirtyFor("damage");
+                              }}
+                            />
+                          )}
+                          {field === "magicResistance" && (
+                            <MagicResistanceInput
+                              value={structuredMagicResistance ?? undefined}
+                              damageKind={structuredDamage?.kind}
+                              onChange={(spec) => {
+                                setStructuredMagicResistance(spec);
+                                setDetailDirtyFor("magicResistance");
+                                setForm((prev) => ({
+                                  ...prev,
+                                  magicResistance: magicResistanceToText(spec),
+                                }));
+                                if (spec.kind !== "special") {
+                                  setParserFallbackFields((prev) => {
+                                    const next = new Set(prev);
+                                    next.delete("Magic resistance");
+                                    return next;
+                                  });
+                                }
+                              }}
+                            />
+                          )}
+                          {isSpecial && (
+                            <p
+                              className="mt-2 text-xs text-amber-500"
+                              data-testid={`detail-${kebabField}-special-hint`}
+                            >
+                              Could not be fully parsed; original text preserved.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </section>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="spell-tags" className="block text-sm text-neutral-400">
+            Tags
           </label>
-          <input
-            id="spell-name"
-            data-testid="spell-name-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isNameInvalid ? "border-red-500" : "border-neutral-700"
+          <textarea
+            id="spell-tags"
+            data-testid="spell-tags-input"
+            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
+            placeholder="Comma-separated tags"
+            value={form.tags || ""}
+            onChange={(e) => handleChange("tags", e.target.value)}
+          />
+        </div>
+
+        <div className="flex-1 flex flex-col">
+          <label htmlFor="spell-description" className="block text-sm text-neutral-400">
+            Description
+          </label>
+          <textarea
+            id="spell-description"
+            data-testid="spell-description-textarea"
+            className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
+              isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
             }`}
-            placeholder="Spell Name"
-            value={form.name}
-            onChange={(e) => handleChange("name", e.target.value)}
+            value={form.description}
+            onChange={(e) => handleChange("description", e.target.value)}
             required
           />
-          {isNameInvalid && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-name-required">
-              Name is required.
-            </p>
-          )}
-        </div>
-        <div>
-          <label htmlFor="spell-level" className="block text-sm text-neutral-400">
-            Level
-          </label>
-          <input
-            id="spell-level"
-            data-testid="spell-level-input"
-            className={`w-full bg-neutral-900 border p-2 rounded ${
-              isLevelInvalid ? "border-red-500" : "border-neutral-700"
-            }`}
-            type="number"
-            value={form.level}
-            onChange={(e) => {
-              const val = e.target.valueAsNumber;
-              const clamped = Math.max(0, Math.min(12, Number.isNaN(val) ? 0 : Math.floor(val)));
-              handleChange("level", clamped);
-              if (clamped !== 0) handleChange("isCantrip", 0);
-              if (clamped !== 8) handleChange("isQuestSpell", 0);
-            }}
-          />
-          <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">
-            {getLevelDisplay(form.level)}
-          </div>
-          <div className="flex gap-4 mt-2">
-            <label
-              className={`flex items-center gap-2 cursor-pointer group ${form.level !== 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              <input
-                type="checkbox"
-                data-testid="chk-cantrip"
-                disabled={form.level !== 0}
-                checked={form.isCantrip === 1}
-                onChange={(e) => handleChange("isCantrip", e.target.checked ? 1 : 0)}
-                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
-              />
-              <span className="text-sm text-neutral-400 group-hover:text-neutral-300">Cantrip</span>
-            </label>
-            <label
-              className={`flex items-center gap-2 cursor-pointer group ${form.level !== 8 ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              <input
-                type="checkbox"
-                data-testid="chk-quest"
-                disabled={form.level !== 8}
-                checked={form.isQuestSpell === 1}
-                onChange={(e) => handleChange("isQuestSpell", e.target.checked ? 1 : 0)}
-                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
-              />
-              <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
-                Quest Spell
-              </span>
-            </label>
-          </div>
-          {isLevelInvalid && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-level-range">
-              Level must be 0-12.
-            </p>
-          )}
-          {isEpicRestricted && (
-            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-epic-arcane">
-              Epic levels (10-12) are Arcane only.
-            </p>
-          )}
-          {isQuestRestricted && (
-            <p className="text-xs text-yellow-500 mt-1" data-testid="warning-quest-divine">
-              Quest spells are Divine only.
-            </p>
-          )}
-          {isConflictRestricted && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-epic-quest-conflict">
-              Cannot be both Epic and Quest spell.
+          {isDescriptionInvalid && (
+            <p className="text-xs text-red-400 mt-1" data-testid="error-description-required">
+              Description is required.
             </p>
           )}
         </div>
 
-        <div>
-          <label htmlFor="spell-tradition" className="block text-sm text-neutral-400">
-            Tradition
-          </label>
-          <select
-            id="spell-tradition"
-            data-testid="spell-tradition-select"
-            aria-label="Spell tradition"
-            value={tradition}
-            onChange={(e) => {
-              setTradition(e.target.value as Tradition);
-            }}
-            className={`w-full bg-neutral-900 border p-2 rounded ${hasTraditionConflict ? "border-amber-500" : "border-neutral-700"}`}
-          >
-            <option value="ARCANE">Arcane</option>
-            <option value="DIVINE">Divine</option>
-          </select>
-          {hasTraditionConflict && (
-            <div
-              className="mt-2 text-xs text-amber-500 border border-amber-500/30 bg-amber-500/10 p-2 rounded"
-              data-testid="error-tradition-conflict"
-            >
-              This spell has both a School and a Sphere set \u2014 school and sphere are mutually
-              exclusive. Remove one before saving.
+        {form.artifacts && form.artifacts.length > 0 && (
+          <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
+              <button
+                type="button"
+                data-testid="btn-reparse-artifact"
+                aria-label="Reparse spell from artifact"
+                onClick={async () => {
+                  if (!form.artifacts || form.artifacts.length === 0) return;
+                  const artifactId = form.artifacts[0].id;
+
+                  const confirmed = await modalConfirm(
+                    "Re-parse this spell from the original artifact file? This will overwrite manual changes.",
+                    "Reparse Spell",
+                  );
+                  if (!confirmed) return;
+
+                  try {
+                    setLoading(true);
+                    const updated = await invoke<SpellDetail>("reparse_artifact", { artifactId });
+                    setForm(updated);
+                    await modalAlert(
+                      "Spell re-parsed successfully!",
+                      "Reparse Complete",
+                      "success",
+                    );
+                  } catch (e) {
+                    await modalAlert(`Reparse failed: ${e}`, "Reparse Error", "error");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+              >
+                Reparse
+              </button>
             </div>
-          )}
-        </div>
-        <div>
-          <label htmlFor="spell-school" className="block text-sm text-neutral-400">
-            School
-          </label>
-          <input
-            id="spell-school"
-            data-testid="spell-school-input"
-            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.level >= 10 && !form.school) || isArcaneMissingSchool ? "border-red-500" : "border-neutral-700"}`}
-            value={form.school || ""}
-            onChange={(e) => handleChange("school", e.target.value)}
-          />
-          {form.level >= 10 && !form.school && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane">
-              School is required for Epic (Arcane) spells.
-            </p>
-          )}
-          {isArcaneMissingSchool && (
-            <p
-              className="text-xs text-red-400 mt-1"
-              data-testid="error-school-required-arcane-tradition"
-            >
-              School is required for Arcane tradition.
-            </p>
-          )}
-        </div>
-        <div>
-          <label htmlFor="spell-sphere" className="block text-sm text-neutral-400">
-            Sphere
-          </label>
-          <input
-            id="spell-sphere"
-            data-testid="spell-sphere-input"
-            className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.isQuestSpell === 1 && !form.sphere) || isDivineMissingSphere ? "border-red-500" : "border-neutral-700"}`}
-            value={form.sphere || ""}
-            onChange={(e) => handleChange("sphere", e.target.value)}
-          />
-          {form.isQuestSpell === 1 && !form.sphere && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine">
-              Sphere is required for Quest (Divine) spells.
-            </p>
-          )}
-          {isDivineMissingSphere && (
-            <p
-              className="text-xs text-red-400 mt-1"
-              data-testid="error-sphere-required-divine-tradition"
-            >
-              Sphere is required for Divine tradition.
-            </p>
-          )}
-        </div>
-        <div>
-          <label htmlFor="spell-classes" className="block text-sm text-neutral-400">
-            Classes (e.g. Mage, Cleric)
-          </label>
-          <input
-            id="spell-classes"
-            data-testid="spell-classes-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.classList || ""}
-            onChange={(e) => handleChange("classList", e.target.value)}
-          />
-        </div>
-        {/* Add more fields as needed for MVP */}
-        <div>
-          <label htmlFor="spell-source" className="block text-sm text-neutral-400">
-            Source
-          </label>
-          <input
-            id="spell-source"
-            data-testid="spell-source-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.source || ""}
-            onChange={(e) => handleChange("source", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="spell-edition" className="block text-sm text-neutral-400">
-            Edition
-          </label>
-          <input
-            id="spell-edition"
-            data-testid="spell-edition-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.edition || ""}
-            onChange={(e) => handleChange("edition", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="spell-author" className="block text-sm text-neutral-400">
-            Author
-          </label>
-          <input
-            id="spell-author"
-            data-testid="spell-author-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.author || ""}
-            onChange={(e) => handleChange("author", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="spell-license" className="block text-sm text-neutral-400">
-            License
-          </label>
-          <input
-            id="spell-license"
-            data-testid="spell-license-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-            value={form.license || ""}
-            onChange={(e) => handleChange("license", e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="spell-reversible"
-            data-testid="chk-reversible"
-            type="checkbox"
-            className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
-            checked={Boolean(form.reversible)}
-            onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
-          />
-          <label htmlFor="spell-reversible" className="text-sm text-neutral-400">
-            Reversible
-          </label>
-        </div>
-      </div>
-
-      <div>
-        <span className="block text-sm text-neutral-400">Details</span>
-        <div className="space-y-3 text-sm">
-          {DETAIL_FIELD_ORDER.map((field) => {
-            const label =
-              field === "area"
-                ? "Area of Effect"
-                : field === "castingTime"
-                  ? "Casting Time"
-                  : field === "savingThrow"
-                    ? "Saving Throw"
-                    : field === "magicResistance"
-                      ? "Magic Resistance"
-                      : field === "materialComponents"
-                        ? "Material Component"
-                        : field.charAt(0).toUpperCase() + field.slice(1);
-            const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-            const panelId = `detail-${kebabField}-panel`;
-            const inputId = `detail-${field}-input`;
-            const expandId = `detail-${field}-expand`;
-            const value = form[field] ?? "";
-            const isExpanded = expandedDetailField === field;
-            const isLoading = detailLoading === field;
-            const isSpecial =
-              (field === "range" && structuredRange?.kind === "special") ||
-              (field === "duration" && structuredDuration?.kind === "special") ||
-              (field === "castingTime" &&
-                (structuredCastingTime?.unit === "special" ||
-                  !!structuredCastingTime?.rawLegacyValue)) ||
-              (field === "area" && structuredArea?.kind === "special") ||
-              (field === "damage" && !!structuredDamage?.rawLegacyValue) ||
-              (field === "savingThrow" && structuredSavingThrow?.kind === "dm_adjudicated") ||
-              (field === "magicResistance" && structuredMagicResistance?.kind === "special") ||
-              (field === "materialComponents" && false); // Reserved: no "special" kind for material row today; shares component state
-
-            return (
-              <div key={field} className="flex flex-col gap-1">
-                <label htmlFor={inputId} className="text-xs text-neutral-500">
-                  {label}
-                </label>
-                <div className="flex flex-col gap-1">
-                  <input
-                    id={inputId}
-                    data-testid={`detail-${kebabField}-input`}
-                    type="text"
-                    aria-label={label}
-                    className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
-                    value={String(value)}
-                    onChange={(e) => handleChange(field, e.target.value)}
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      data-testid={`detail-${kebabField}-expand`}
-                      aria-expanded={isExpanded}
-                      aria-controls={isExpanded ? panelId : undefined}
-                      onClick={() =>
-                        isExpanded ? collapseExpandedField() : expandDetailField(field)
-                      }
-                      className="text-xs text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
-                    >
-                      {isExpanded ? "Collapse" : "Expand"}
-                    </button>
-                    {isSpecial && !isExpanded && (
-                      <span
-                        className="text-xs text-amber-500"
-                        title="Stored as text; not fully structured for hashing"
-                      >
-                        (special)
-                      </span>
-                    )}
-                  </div>
+            {form.artifacts?.map((art) => (
+              <div key={art.id} className="text-xs space-y-1 text-neutral-500">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-neutral-400">
+                    Type: {art.type.toUpperCase()}
+                  </span>
+                  <span>Imported: {new Date(art.importedAt).toLocaleString()}</span>
                 </div>
-                {isExpanded && (
-                  <section
-                    ref={expandedPanelRef}
-                    id={panelId}
-                    aria-label={`Structured ${label}`}
-                    tabIndex={-1}
-                    className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
-                  >
-                    {isLoading ? (
-                      <div
-                        className="text-sm text-neutral-500"
-                        data-testid={`detail-${kebabField}-loading`}
-                      >
-                        Loading…
-                      </div>
-                    ) : (
-                      <>
-                        {field === "range" && (
-                          <StructuredFieldInput
-                            fieldType="range"
-                            value={structuredRange ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredRange(spec as RangeSpec);
-                              setDetailDirtyFor("range");
-                            }}
-                          />
-                        )}
-                        {(field === "components" || field === "materialComponents") && (
-                          <ComponentCheckboxes
-                            components={structuredComponents}
-                            materialComponents={structuredMaterialComponents}
-                            onChange={(comp, mats) => {
-                              setStructuredComponents(comp);
-                              setStructuredMaterialComponents(mats);
-                              setDetailDirtyFor("components");
-                              setDetailDirtyFor("materialComponents");
-                            }}
-                            onUncheckMaterialConfirm={() =>
-                              modalConfirm("Clear all material component data?", "Uncheck Material")
-                            }
-                            variant="vsm"
-                          />
-                        )}
-                        {field === "duration" && (
-                          <StructuredFieldInput
-                            fieldType="duration"
-                            value={structuredDuration ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredDuration(spec as DurationSpec);
-                              setDetailDirtyFor("duration");
-                            }}
-                          />
-                        )}
-                        {field === "castingTime" && (
-                          <StructuredFieldInput
-                            fieldType="casting_time"
-                            value={structuredCastingTime ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredCastingTime(spec as SpellCastingTime);
-                              setDetailDirtyFor("castingTime");
-                            }}
-                          />
-                        )}
-                        {field === "area" && (
-                          <AreaForm
-                            value={structuredArea ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredArea(spec);
-                              setDetailDirtyFor("area");
-                            }}
-                          />
-                        )}
-                        {field === "savingThrow" && (
-                          <SavingThrowInput
-                            value={structuredSavingThrow ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredSavingThrow(spec);
-                              setDetailDirtyFor("savingThrow");
-                            }}
-                          />
-                        )}
-                        {field === "damage" && (
-                          <DamageForm
-                            value={structuredDamage ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredDamage(spec);
-                              setDetailDirtyFor("damage");
-                            }}
-                          />
-                        )}
-                        {field === "magicResistance" && (
-                          <MagicResistanceInput
-                            value={structuredMagicResistance ?? undefined}
-                            onChange={(spec) => {
-                              setStructuredMagicResistance(spec);
-                              setDetailDirtyFor("magicResistance");
-                            }}
-                          />
-                        )}
-                        {isSpecial && (
-                          <p
-                            className="mt-2 text-xs text-amber-500"
-                            data-testid={`detail-${kebabField}-special-hint`}
-                          >
-                            Could not be fully parsed; original text preserved.
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </section>
-                )}
+                <div className="truncate">Path: {art.path}</div>
+                <div className="font-mono text-[10px] opacity-70">SHA256: {art.hash}</div>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="spell-tags" className="block text-sm text-neutral-400">
-          Tags
-        </label>
-        <textarea
-          id="spell-tags"
-          data-testid="spell-tags-input"
-          className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
-          placeholder="Comma-separated tags"
-          value={form.tags || ""}
-          onChange={(e) => handleChange("tags", e.target.value)}
-        />
-      </div>
-
-      <div className="flex-1 flex flex-col">
-        <label htmlFor="spell-description" className="block text-sm text-neutral-400">
-          Description
-        </label>
-        <textarea
-          id="spell-description"
-          data-testid="spell-description-textarea"
-          className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
-            isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
-          }`}
-          value={form.description}
-          onChange={(e) => handleChange("description", e.target.value)}
-          required
-        />
-        {isDescriptionInvalid && (
-          <p className="text-xs text-red-400 mt-1" data-testid="error-description-required">
-            Description is required.
-          </p>
-        )}
-      </div>
-
-      {form.artifacts && form.artifacts.length > 0 && (
-        <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
-            <button
-              type="button"
-              data-testid="btn-reparse-artifact"
-              aria-label="Reparse spell from artifact"
-              onClick={async () => {
-                if (!form.artifacts || form.artifacts.length === 0) return;
-                const artifactId = form.artifacts[0].id;
-
-                const confirmed = await modalConfirm(
-                  "Re-parse this spell from the original artifact file? This will overwrite manual changes.",
-                  "Reparse Spell",
-                );
-                if (!confirmed) return;
-
-                try {
-                  setLoading(true);
-                  const updated = await invoke<SpellDetail>("reparse_artifact", { artifactId });
-                  setForm(updated);
-                  await modalAlert("Spell re-parsed successfully!", "Reparse Complete", "success");
-                } catch (e) {
-                  await modalAlert(`Reparse failed: ${e}`, "Reparse Error", "error");
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
-            >
-              Reparse
-            </button>
+            ))}
           </div>
-          {form.artifacts?.map((art) => (
-            <div key={art.id} className="text-xs space-y-1 text-neutral-500">
-              <div className="flex justify-between">
-                <span className="font-semibold text-neutral-400">
-                  Type: {art.type.toUpperCase()}
-                </span>
-                <span>Imported: {new Date(art.importedAt).toLocaleString()}</span>
-              </div>
-              <div className="truncate">Path: {art.path}</div>
-              <div className="font-mono text-[10px] opacity-70">SHA256: {art.hash}</div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </fieldset>
     </div>
   );
 }

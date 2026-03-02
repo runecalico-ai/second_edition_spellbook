@@ -146,19 +146,30 @@ pub struct SavingThrowSpec {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        alias = "dm_guidance"
+        alias = "raw_legacy_value"
     )]
-    pub dm_guidance: Option<String>,
+    pub raw_legacy_value: Option<String>,
+    #[serde(
+        default,
+        skip_serializing,
+        rename = "dm_guidance",
+        alias = "dmGuidance"
+    )]
+    pub legacy_dm_guidance: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
 }
 
 impl SavingThrowSpec {
     pub fn is_default(&self) -> bool {
+        // `legacy_dm_guidance` is intentionally omitted from this check. migrate_to_v2()
+        // (task 1.3) runs before pruning and always moves `dm_guidance` into `notes`.
+        // Including it here would prevent pruning a spec that is otherwise at default but
+        // still carries a pre-migration `dm_guidance` value.
         self.kind == SavingThrowKind::None
             && self.single.is_none()
             && self.multiple.is_none()
-            && self.dm_guidance.is_none()
+            && self.raw_legacy_value.is_none()
             && self.notes.is_none()
     }
 
@@ -166,12 +177,6 @@ impl SavingThrowSpec {
         if let Some(n) = &mut self.notes {
             *n = crate::models::canonical_spell::normalize_string(
                 n,
-                crate::models::canonical_spell::NormalizationMode::Textual,
-            );
-        }
-        if let Some(g) = &mut self.dm_guidance {
-            *g = crate::models::canonical_spell::normalize_string(
-                g,
                 crate::models::canonical_spell::NormalizationMode::Textual,
             );
         }
@@ -254,5 +259,26 @@ mod tests {
         let multiple = spec.multiple.as_ref().unwrap();
         assert_eq!(multiple[0].id.as_ref().unwrap(), "save_a");
         assert_eq!(multiple[1].id.as_ref().unwrap(), "save_b");
+    }
+
+    /// Priority D (TG3): raw_legacy_value passes through normalize() unchanged (stored as-is).
+    #[test]
+    fn test_raw_legacy_value_unchanged_by_normalize() {
+        let raw = "  Rod, Staff, or Wand  ";
+        let mut spec = SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            raw_legacy_value: Some(raw.to_string()),
+            single: Some(SingleSave {
+                id: Some("spell".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        spec.normalize();
+        assert_eq!(
+            spec.raw_legacy_value.as_deref(),
+            Some(raw),
+            "raw_legacy_value must not be normalized or modified"
+        );
     }
 }

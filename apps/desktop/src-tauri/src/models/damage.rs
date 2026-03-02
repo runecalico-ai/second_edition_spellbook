@@ -335,13 +335,15 @@ pub struct SpellDamageSpec {
     pub dm_guidance: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    /// When parsing fails or kind is DmAdjudicated, the original legacy string is stored here.
+    /// Original source text preserved as non-hashed metadata.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        alias = "raw_legacy_value"
+        alias = "source_text",
+        alias = "raw_legacy_value",
+        alias = "rawLegacyValue"
     )]
-    pub raw_legacy_value: Option<String>,
+    pub source_text: Option<String>,
 }
 
 impl SpellDamageSpec {
@@ -355,6 +357,12 @@ impl SpellDamageSpec {
         if let Some(g) = &mut self.dm_guidance {
             *g = crate::models::canonical_spell::normalize_string(
                 g,
+                crate::models::canonical_spell::NormalizationMode::Textual,
+            );
+        }
+        if let Some(s) = &mut self.source_text {
+            *s = crate::models::canonical_spell::normalize_string(
+                s,
                 crate::models::canonical_spell::NormalizationMode::Textual,
             );
         }
@@ -440,12 +448,62 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_damage_spec_alias_raw_legacy_value_reads_into_source_text() {
+        let from_source_text: SpellDamageSpec =
+            serde_json::from_str(r#"{"kind":"dm_adjudicated","source_text":"from source_text"}"#)
+                .expect("deserialize source_text variant");
+        assert_eq!(
+            from_source_text.source_text.as_deref(),
+            Some("from source_text")
+        );
+
+        let from_raw_legacy: SpellDamageSpec = serde_json::from_str(
+            r#"{"kind":"dm_adjudicated","raw_legacy_value":"from raw_legacy_value"}"#,
+        )
+        .expect("deserialize raw_legacy_value alias variant");
+        assert_eq!(
+            from_raw_legacy.source_text.as_deref(),
+            Some("from raw_legacy_value")
+        );
+
+        let from_raw_legacy_camel: SpellDamageSpec = serde_json::from_str(
+            r#"{"kind":"dm_adjudicated","rawLegacyValue":"from rawLegacyValue"}"#,
+        )
+        .expect("deserialize rawLegacyValue alias variant");
+        assert_eq!(
+            from_raw_legacy_camel.source_text.as_deref(),
+            Some("from rawLegacyValue")
+        );
+    }
+
+    #[test]
+    fn test_damage_spec_alias_coexistence_rejected_as_duplicate_field() {
+        let source_then_raw = serde_json::from_str::<SpellDamageSpec>(
+            r#"{"kind":"dm_adjudicated","source_text":"source first","raw_legacy_value":"raw last"}"#,
+        )
+        .expect_err("coexisting source_text + raw_legacy_value should be rejected");
+        assert!(
+            source_then_raw.to_string().contains("duplicate field"),
+            "expected duplicate-field error; got: {source_then_raw}"
+        );
+
+        let raw_then_source = serde_json::from_str::<SpellDamageSpec>(
+            r#"{"kind":"dm_adjudicated","raw_legacy_value":"raw first","source_text":"source last"}"#,
+        )
+        .expect_err("coexisting raw_legacy_value + source_text should be rejected");
+        assert!(
+            raw_then_source.to_string().contains("duplicate field"),
+            "expected duplicate-field error; got: {raw_then_source}"
+        );
+    }
+
+    #[test]
     fn test_dice_term_normalization_clamping() {
         // CONCERN-3: negative count and zero sides are clamped for canonical form.
         let mut spec = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sum,
-            raw_legacy_value: None,
+            source_text: None,
             parts: Some(vec![DamagePart {
                 id: "main".to_string(),
                 damage_type: DamageType::Fire,
@@ -483,7 +541,7 @@ mod tests {
         let mut spec = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sequence,
-            raw_legacy_value: None,
+            source_text: None,
             parts: Some(vec![
                 DamagePart {
                     id: "z_initial".to_string(),
@@ -550,7 +608,7 @@ mod tests {
         let mut spec = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sum, // Non-sequence mode
-            raw_legacy_value: None,
+            source_text: None,
             parts: Some(vec![
                 DamagePart {
                     id: "z_third".to_string(),
@@ -699,7 +757,7 @@ mod tests {
             let mut spec = SpellDamageSpec {
                 kind: DamageKind::Modeled,
                 combine_mode: mode,
-                raw_legacy_value: None,
+                source_text: None,
                 parts: Some(vec![
                     DamagePart {
                         id: "z".to_string(),
@@ -755,7 +813,7 @@ mod tests {
         let mut spec1 = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sequence,
-            raw_legacy_value: None,
+            source_text: None,
             parts: Some(vec![
                 DamagePart {
                     id: "first".to_string(),
@@ -795,7 +853,7 @@ mod tests {
         let mut spec2 = SpellDamageSpec {
             kind: DamageKind::Modeled,
             combine_mode: DamageCombineMode::Sequence,
-            raw_legacy_value: None,
+            source_text: None,
             parts: Some(vec![
                 DamagePart {
                     id: "second".to_string(), // Swapped order

@@ -3,6 +3,8 @@ use serde_json_canonicalizer::to_string as to_jcs_string;
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
+use crate::db::Pool;
+use crate::error::AppError;
 use crate::models::area_spec::*;
 use crate::models::damage::SpellDamageSpec;
 use crate::models::duration_spec::DurationSpec;
@@ -13,10 +15,16 @@ use crate::models::range_spec::*;
 use crate::models::saving_throw::SavingThrowSpec;
 use crate::models::scalar::SpellScalar;
 use crate::utils::spell_parser::SpellParser;
-use std::fmt::Write as FmtWrite;
+use chrono::Utc;
+use rusqlite::params;
+use std::fmt::Write as _;
+use std::sync::Arc;
+use tauri::{Emitter, State, Window};
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
-pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 0;
+pub const CURRENT_SCHEMA_VERSION: i64 = 2;
+/// Keep at 1 for v1→v2 migration compatibility: v1 spells are accepted and migrated,
+/// while version 0 records are expected to be materialized/migrated before validation.
+pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 1;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -45,10 +53,19 @@ pub enum CastingTimeUnit {
     Hour,
     #[serde(alias = "MINUTE", alias = "Minute")]
     Minute,
+    /// Deserialization-only: 5e unit removed from schema in v2. `migrate_to_v2()` (task 1.3)
+    /// remaps this to `Special` and preserves the original text in `raw_legacy_value`.
+    /// A pre-migration safety shim in `SpellCastingTime::normalize()` also remaps it.
     #[serde(alias = "ACTION", alias = "Action")]
     Action,
+    /// Deserialization-only: 5e unit removed from schema in v2. `migrate_to_v2()` (task 1.3)
+    /// remaps this to `Special` and preserves the original text in `raw_legacy_value`.
+    /// A pre-migration safety shim in `SpellCastingTime::normalize()` also remaps it.
     #[serde(alias = "BONUS_ACTION", alias = "BonusAction")]
     BonusAction,
+    /// Deserialization-only: 5e unit removed from schema in v2. `migrate_to_v2()` (task 1.3)
+    /// remaps this to `Special` and preserves the original text in `raw_legacy_value`.
+    /// A pre-migration safety shim in `SpellCastingTime::normalize()` also remaps it.
     #[serde(alias = "REACTION", alias = "Reaction")]
     Reaction,
     #[serde(alias = "SPECIAL", alias = "Special")]
@@ -69,7 +86,7 @@ pub struct SpellCastingTime {
     pub per_level: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none", alias = "level_divisor")]
     pub level_divisor: Option<f64>,
-    /// When parsing fails or unit is Special, the original legacy string is stored here.
+    /// Original legacy source text preserved as-is for auditability.
     #[serde(skip_serializing_if = "Option::is_none", alias = "raw_legacy_value")]
     pub raw_legacy_value: Option<String>,
 }
@@ -103,6 +120,9 @@ impl SpellCastingTime {
                 self.level_divisor = Some(clamped);
             }
         }
+
+        // Task 1.3: migrate_to_v2() now handles remapping Action/BonusAction/Reaction
+        // to Special before this normalize() call, so we no longer need the shim here.
     }
 }
 
@@ -227,8 +247,18 @@ fn default_version() -> String {
 fn default_zero_string() -> String {
     "0".into()
 }
+/// Returns [`CURRENT_SCHEMA_VERSION`] as the serde default for `schema_version`.
+///
+/// When a `canonical_data` JSON blob lacks a `schema_version` key, serde
+/// deserializes the field to this value. This assumes all serialization paths
+/// always include `schema_version` in the output, so the default only applies
+/// to manually-crafted or externally-imported JSON.
+///
+/// **Consequence:** a blob missing the key will be treated as already at the
+/// current version, and [`migrate_to_v2()`] (or any future migration) will be
+/// skipped silently.
 fn default_schema_version() -> i64 {
-    1
+    CURRENT_SCHEMA_VERSION
 }
 
 impl CanonicalSpell {
@@ -273,7 +303,13 @@ impl CanonicalSpell {
     pub fn to_canonical_json(&self) -> Result<String, String> {
         let mut clone = self.clone();
         // Heavy Normalization (includes sorting/deduplication of arrays and materialization of defaults)
-        clone.normalize();
+        let res = clone.normalize(None);
+        if res.notes_truncated {
+            return Err(
+                "Saving throw notes truncated during migration (exceeded 2048 characters)"
+                    .to_string(),
+            );
+        }
         clone.to_canonical_json_pre_normalized()
     }
 
@@ -322,6 +358,7 @@ fn prune_metadata_recursive(value: &mut serde_json::Value, is_root: bool) {
             obj.remove("artifacts");
             obj.remove("source_refs");
             obj.remove("source_text");
+            obj.remove("sourceText");
 
             // 3. Recurse into children first (so nested objects can become empty)
             for val in obj.values_mut() {
@@ -393,11 +430,112 @@ fn camel_to_snake(s: &str) -> String {
     result
 }
 
+pub(crate) fn normalize_structured_text_with_unit_aliases(s: &str) -> String {
+    let mut normalized = normalize_string(s, NormalizationMode::Structured);
+
+    for (from, to) in [
+        ("yards", "yd"),
+        ("yard", "yd"),
+        ("yd.", "yd"),
+        ("feet", "ft"),
+        ("foot", "ft"),
+        ("ft.", "ft"),
+        ("miles", "mi"),
+        ("mile", "mi"),
+        ("mi.", "mi"),
+        ("inches", "inch"),
+        ("inch", "inch"),
+        ("in.", "inch"),
+    ] {
+        normalized = replace_word_boundary_alias(&normalized, from, to);
+    }
+
+    normalized
+}
+
+fn replace_word_boundary_alias(input: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut index = 0usize;
+
+    while let Some((start, end)) = find_case_insensitive_alias_match(input, from, index) {
+        let prev_char = if start == 0 {
+            None
+        } else {
+            input[..start].chars().next_back()
+        };
+        let next_char = if end >= input.len() {
+            None
+        } else {
+            input[end..].chars().next()
+        };
+
+        let left_ok = prev_char.is_none_or(|c| !c.is_alphanumeric() && c != '_');
+        let right_ok = next_char.is_none_or(|c| !c.is_alphanumeric() && c != '_');
+
+        if left_ok && right_ok {
+            out.push_str(&input[index..start]);
+            out.push_str(to);
+            index = end;
+        } else {
+            out.push_str(&input[index..end]);
+            index = end;
+        }
+    }
+
+    out.push_str(&input[index..]);
+    out
+}
+
+fn find_case_insensitive_alias_match(
+    input: &str,
+    from: &str,
+    start_index: usize,
+) -> Option<(usize, usize)> {
+    for (offset, _) in input[start_index..].char_indices() {
+        let start = start_index + offset;
+        let end = start + from.len();
+
+        let Some(candidate) = input.get(start..end) else {
+            continue;
+        };
+
+        if !candidate.eq_ignore_ascii_case(from) {
+            continue;
+        }
+
+        let prev_char = if start == 0 {
+            None
+        } else {
+            input[..start].chars().next_back()
+        };
+        let next_char = if end >= input.len() {
+            None
+        } else {
+            input[end..].chars().next()
+        };
+
+        let left_ok = prev_char.is_none_or(|c| !c.is_alphanumeric() && c != '_');
+        let right_ok = next_char.is_none_or(|c| !c.is_alphanumeric() && c != '_');
+
+        if left_ok && right_ok {
+            return Some((start, end));
+        }
+    }
+
+    None
+}
+
 impl CanonicalSpell {
     /// See docs/architecture/canonical-serialization.md §4.1: validation runs on full JSON (including metadata).
     pub fn compute_hash(&self) -> Result<String, String> {
         let mut normalized_clone = self.clone();
-        normalized_clone.normalize();
+        let res = normalized_clone.normalize(None);
+        if res.notes_truncated {
+            return Err(
+                "Saving throw notes truncated during migration (exceeded 2048 characters)"
+                    .to_string(),
+            );
+        }
         normalized_clone.validate()?;
 
         let canonical_json = normalized_clone.to_canonical_json_pre_normalized()?;
@@ -452,7 +590,31 @@ impl CanonicalSpell {
 
         Ok(())
     }
+}
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct MigrationFailure {
+    /// Database row id of the spell (always set in bulk migration).
+    pub spell_id: i64,
+    pub spell_name: Option<String>,
+    pub error: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct MigrationResult {
+    pub total: u32,
+    pub migrated: u32,
+    pub skipped: u32,
+    pub failed: Vec<MigrationFailure>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MigrateV2Result {
+    pub notes_truncated: bool,
+    pub truncated_spell_id: Option<i64>,
+}
+
+impl CanonicalSpell {
     /// Recursively normalizes all string and number fields for deterministic hashing.
     /// Also sorts and deduplicates unordered arrays.
     ///
@@ -460,7 +622,78 @@ impl CanonicalSpell {
     /// string sanitization and sub-spec normalization; tradition-consistent clearing; default
     /// materialization and pruning; component materialization and pruning; schema version migration;
     /// array sort/dedup (subschools/descriptors with casing normalization).
-    pub fn normalize(&mut self) {
+    /// Migrates a spell from schema version 1 to 2.
+    /// See Task 1.3 and §6 of design.md.
+    /// `db_id` is optional; when provided (e.g. bulk migration), truncation sets `truncated_spell_id`.
+    fn migrate_to_v2(&mut self, db_id: Option<i64>) -> MigrateV2Result {
+        let mut result = MigrateV2Result::default();
+        if self.schema_version >= CURRENT_SCHEMA_VERSION {
+            return result;
+        }
+
+        // 1. Saving Throw: legacy_dm_guidance -> notes
+        if let Some(st) = &mut self.saving_throw {
+            if let Some(guidance) = st.legacy_dm_guidance.take() {
+                let current_notes = st.notes.clone().unwrap_or_default();
+                let next_notes = if current_notes.is_empty() {
+                    guidance
+                } else {
+                    format!("{}\n{}", current_notes, guidance)
+                };
+
+                if next_notes.chars().count() > 2048 {
+                    result.notes_truncated = true;
+                    result.truncated_spell_id = db_id;
+                    // Truncate to safety limit
+                    st.notes = Some(next_notes.chars().take(2048).collect());
+                } else {
+                    st.notes = Some(next_notes);
+                }
+            }
+        }
+
+        // 2. Casting Time: Remap 5e units to Special and preserve text in raw_legacy_value
+        if let Some(ct) = &mut self.casting_time {
+            if matches!(
+                ct.unit,
+                CastingTimeUnit::Action | CastingTimeUnit::BonusAction | CastingTimeUnit::Reaction
+            ) {
+                if ct.raw_legacy_value.is_none() {
+                    // Task 1.3: if text is empty/null, synthesize
+                    if ct.text.trim().is_empty() {
+                        let unit_str = match ct.unit {
+                            CastingTimeUnit::Action => "action",
+                            CastingTimeUnit::BonusAction => "bonus action",
+                            CastingTimeUnit::Reaction => "reaction",
+                            _ => "special",
+                        };
+                        ct.raw_legacy_value =
+                            Some(format!("{} {}", ct.base_value.unwrap_or(0.0), unit_str));
+                    } else {
+                        ct.raw_legacy_value = Some(ct.text.clone());
+                    }
+                }
+                ct.unit = CastingTimeUnit::Special;
+            }
+        }
+
+        // 3. Damage Spec: `raw_legacy_value` -> `source_text`.
+        // This move is performed at deserialization time via
+        // `SpellDamageSpec.source_text` alias = "raw_legacy_value" in models/damage.rs.
+        // By migration time, legacy values are already materialized in `source_text`.
+
+        self.schema_version = 2;
+        result
+    }
+
+    /// Normalize for hashing. Pass `db_id` in bulk migration so truncation can set `truncated_spell_id`.
+    pub fn normalize(&mut self, db_id: Option<i64>) -> MigrateV2Result {
+        let mut migrate_result = MigrateV2Result::default();
+        // Schema Migration: Run before heavy normalization so v1 fields can be preserved/moved.
+        if self.schema_version < CURRENT_SCHEMA_VERSION {
+            migrate_result = self.migrate_to_v2(db_id);
+        }
+
         self.name = normalize_string(&self.name, NormalizationMode::Structured);
         self.tradition =
             normalize_string(&self.tradition, NormalizationMode::Structured).to_uppercase();
@@ -483,10 +716,12 @@ impl CanonicalSpell {
 
         if let Some(dur) = &mut self.duration {
             dur.normalize();
+            dur.synthesize_text();
         }
 
         if let Some(area) = &mut self.area {
             area.normalize();
+            area.synthesize_text();
         }
 
         if let Some(damage) = &mut self.damage {
@@ -586,17 +821,14 @@ impl CanonicalSpell {
             }
         }
 
-        // Only migrate versions in [MIN_SUPPORTED, CURRENT); reject < MIN_SUPPORTED in validate()
-        if self.schema_version >= MIN_SUPPORTED_SCHEMA_VERSION {
-            if self.schema_version < CURRENT_SCHEMA_VERSION && self.schema_version != 0 {
-                eprintln!("WARNING: Spell '{}' uses an older schema version ({}). Migrating to version {} for hashing.",
-                     self.name, self.schema_version, CURRENT_SCHEMA_VERSION);
-            }
-
-            if self.schema_version == 0 || self.schema_version < CURRENT_SCHEMA_VERSION {
-                self.schema_version = CURRENT_SCHEMA_VERSION;
-            }
-        }
+        // migrate_to_v2() (called above) is the sole migration path and stamps schema_version
+        // = CURRENT_SCHEMA_VERSION on every spell that needed upgrading. Spells that arrived at
+        // >= CURRENT are left unchanged. Either way, the version must be >= CURRENT here.
+        debug_assert!(
+            self.schema_version >= CURRENT_SCHEMA_VERSION,
+            "schema_version should be current or newer after migrate_to_v2() (got {})",
+            self.schema_version
+        );
 
         self.class_list = self
             .class_list
@@ -629,6 +861,8 @@ impl CanonicalSpell {
         self.subschools.dedup();
         self.descriptors.sort();
         self.descriptors.dedup();
+
+        migrate_result
     }
 }
 
@@ -975,7 +1209,7 @@ mod tests {
         spell.school = Some("Abjuration".into()); // Required for validation
 
         // Normalize
-        spell.normalize();
+        spell.normalize(None);
 
         // Assert order preserved
         let mats = spell.material_components.as_ref().unwrap();
@@ -1326,8 +1560,8 @@ mod tests {
 
         let mut norm1 = spell1.clone();
         let mut norm2 = spell2.clone();
-        norm1.normalize();
-        norm2.normalize();
+        norm1.normalize(None);
+        norm2.normalize(None);
         assert_eq!(
             norm1.experience_cost, norm2.experience_cost,
             "After normalize both must prune default experience_cost"
@@ -1342,6 +1576,213 @@ mod tests {
         assert_eq!(
             hash1, hash2,
             "Hash must be identical when experience_cost is mechanically default but has source_text set"
+        );
+    }
+
+    /// Task 1.5: raw_legacy_value (hashed fields) must affect hash; changing it must produce different hash.
+    #[test]
+    fn test_raw_legacy_value_included_in_hash() {
+        use crate::models::duration_spec::{DurationKind, DurationSpec};
+
+        let mut spell1 = CanonicalSpell::new(
+            "Raw legacy hash".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell1.school = Some("Evocation".to_string());
+        spell1.class_list = vec!["Wizard".to_string()];
+        spell1.duration = Some(DurationSpec {
+            kind: DurationKind::Special,
+            raw_legacy_value: Some("See below".to_string()),
+            ..Default::default()
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.duration.as_mut().unwrap().raw_legacy_value = Some("See description".to_string());
+
+        assert_ne!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Changing duration raw_legacy_value must change canonical hash"
+        );
+    }
+
+    /// Task 1.5: After normalize(), Area/Duration .text must be synthesized; for kind=Special, .text from raw_legacy_value.
+    #[test]
+    fn test_normalize_area_duration_text_synthesis() {
+        use crate::models::area_spec::{AreaKind, AreaSpec};
+        use crate::models::duration_spec::{DurationKind, DurationSpec};
+
+        let mut spell = CanonicalSpell::new(
+            "Text synthesis".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+        spell.area = Some(AreaSpec {
+            kind: AreaKind::Special,
+            raw_legacy_value: Some("Custom area text".to_string()),
+            ..Default::default()
+        });
+        spell.duration = Some(DurationSpec {
+            kind: DurationKind::Special,
+            raw_legacy_value: Some("Custom duration text".to_string()),
+            ..Default::default()
+        });
+
+        let _ = spell.normalize(None);
+
+        let area = spell.area.as_ref().unwrap();
+        assert!(
+            area.text.is_some(),
+            "Area .text must be synthesized after normalize()"
+        );
+        assert_eq!(
+            area.text.as_deref(),
+            area.raw_legacy_value.as_deref(),
+            "Area kind=Special: .text must equal raw_legacy_value"
+        );
+
+        let dur = spell.duration.as_ref().unwrap();
+        assert!(
+            dur.text.is_some(),
+            "Duration .text must be synthesized after normalize()"
+        );
+        assert_eq!(
+            dur.raw_legacy_value.as_deref(),
+            Some("Custom duration text"),
+            "Duration raw_legacy_value preserved"
+        );
+        assert_eq!(
+            dur.text.as_deref(),
+            Some("Custom duration text"),
+            "Duration kind=Special: .text from raw_legacy_value (no unit alias change here)"
+        );
+    }
+
+    /// Task 1.5 Gap G1: verify text synthesis from structured (non-Special) fields.
+    #[test]
+    fn test_normalize_area_duration_text_synthesis_structured_fields() {
+        use crate::models::area_spec::{AreaKind, AreaShapeUnit, AreaSpec};
+        use crate::models::duration_spec::{DurationKind, DurationSpec, DurationUnit};
+        use crate::models::scalar::SpellScalar;
+
+        let mut spell = CanonicalSpell::new(
+            "Structured text synthesis".to_string(),
+            1,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell.school = Some("Evocation".to_string());
+        spell.class_list = vec!["Wizard".to_string()];
+        spell.area = Some(AreaSpec {
+            kind: AreaKind::RadiusCircle,
+            radius: Some(SpellScalar::fixed(20.0)),
+            shape_unit: Some(AreaShapeUnit::Ft),
+            ..Default::default()
+        });
+        spell.duration = Some(DurationSpec {
+            kind: DurationKind::Time,
+            duration: Some(SpellScalar::fixed(3.0)),
+            unit: Some(DurationUnit::Round),
+            ..Default::default()
+        });
+
+        let _ = spell.normalize(None);
+
+        assert_eq!(
+            spell.area.as_ref().and_then(|a| a.text.as_deref()),
+            Some("20 ft radius"),
+            "Area kind=RadiusCircle should synthesize canonical structured text"
+        );
+        assert_eq!(
+            spell.duration.as_ref().and_then(|d| d.text.as_deref()),
+            Some("3 round"),
+            "Duration kind=Time should synthesize canonical structured text"
+        );
+    }
+
+    #[test]
+    fn test_damage_source_text_excluded_from_hash() {
+        let mut spell1 = CanonicalSpell::new(
+            "Damage source text hash".to_string(),
+            3,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell1.school = Some("Evocation".to_string());
+        spell1.class_list = vec!["Wizard".to_string()];
+        spell1.damage = Some(crate::models::damage::SpellDamageSpec {
+            kind: crate::models::damage::DamageKind::DmAdjudicated,
+            dm_guidance: Some("DM adjudicates damage".to_string()),
+            source_text: Some("1d6+1 per level".to_string()),
+            ..Default::default()
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.damage.as_mut().unwrap().source_text = Some("different source text".to_string());
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Damage source_text/sourceText must be excluded from canonical hash"
+        );
+    }
+
+    #[test]
+    fn test_magic_resistance_source_text_excluded_from_hash() {
+        let mut spell1 = CanonicalSpell::new(
+            "MR source text hash".to_string(),
+            3,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell1.school = Some("Abjuration".to_string());
+        spell1.class_list = vec!["Wizard".to_string()];
+        spell1.magic_resistance = Some(crate::models::magic_resistance::MagicResistanceSpec {
+            kind: crate::models::magic_resistance::MagicResistanceKind::Normal,
+            source_text: Some("Yes".to_string()),
+            ..Default::default()
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.magic_resistance.as_mut().unwrap().source_text = Some("No".to_string());
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "MagicResistance source_text/sourceText must be excluded from canonical hash"
+        );
+    }
+
+    #[test]
+    fn test_experience_source_text_excluded_from_hash() {
+        let mut spell1 = CanonicalSpell::new(
+            "XP source text hash".to_string(),
+            3,
+            "ARCANE".to_string(),
+            "Desc".to_string(),
+        );
+        spell1.school = Some("Abjuration".to_string());
+        spell1.class_list = vec!["Wizard".to_string()];
+        spell1.experience_cost = Some(crate::models::experience::ExperienceComponentSpec {
+            kind: crate::models::experience::ExperienceKind::Fixed,
+            amount_xp: Some(100),
+            source_text: Some("100 XP".to_string()),
+            ..Default::default()
+        });
+
+        let mut spell2 = spell1.clone();
+        spell2.experience_cost.as_mut().unwrap().source_text =
+            Some("100 experience points".to_string());
+
+        assert_eq!(
+            spell1.compute_hash().unwrap(),
+            spell2.compute_hash().unwrap(),
+            "Experience source_text/sourceText must be excluded from canonical hash"
         );
     }
 
@@ -1777,6 +2218,7 @@ mod tests {
                 rounding: None,
             }),
             notes: Some("2".to_string()), // Preserving text as notes if needed, though not strictly required for this test
+            text: None,
             uses: None,
             condition: None,
             raw_legacy_value: None,
@@ -2022,7 +2464,7 @@ mod tests {
         // Verify it IS present in standard serialization
         let standard_json = serde_json::to_string(&spell).unwrap();
         assert!(
-            standard_json.contains("\"schema_version\":1"),
+            standard_json.contains(&format!("\"schema_version\":{}", CURRENT_SCHEMA_VERSION)),
             "schema_version must be PRESENT in standard JSON for export"
         );
     }
@@ -2031,7 +2473,7 @@ mod tests {
     fn test_issue_1_enum_normalization_casing() {
         let mut spell = CanonicalSpell::new("Test".into(), 1, "ARCANE".into(), "Desc".into());
         spell.school = Some("EVOCATION".into());
-        spell.normalize();
+        spell.normalize(None);
         assert_eq!(
             spell.school.as_deref(),
             Some("Evocation"),
@@ -2039,7 +2481,7 @@ mod tests {
         );
 
         spell.school = Some("aBjUrAtIoN".into());
-        spell.normalize();
+        spell.normalize(None);
         assert_eq!(
             spell.school.as_deref(),
             Some("Abjuration"),
@@ -2068,7 +2510,7 @@ mod tests {
             ..Default::default()
         });
 
-        spell.normalize();
+        spell.normalize(None);
 
         let json = serde_json::to_value(&spell).unwrap();
         let dur_json = json.get("duration").unwrap().get("duration").unwrap();
@@ -2331,15 +2773,15 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_schema_version_migration_allowed() {
+    fn test_validate_schema_version_zero_rejected() {
         let mut spell = CanonicalSpell::new("V0".into(), 1, "ARCANE".into(), "Desc".into());
         spell.school = Some("Abjuration".into());
         spell.class_list = vec!["Wizard".into()];
-        spell.schema_version = 0; // Historically incompatible, now allowed
+        spell.schema_version = 0;
         let result = spell.validate();
         assert!(
-            result.is_ok(),
-            "Schema version 0 should now be allowed for migration"
+            result.is_err(),
+            "Schema version 0 must be rejected by validate() when MIN_SUPPORTED_SCHEMA_VERSION=1"
         );
     }
 
@@ -2708,10 +3150,11 @@ mod tests {
         assert_eq!(a.radius.unwrap().value.unwrap(), 20.0);
         assert_eq!(a.unit.unwrap(), AreaUnit::Ft);
 
-        // Casting Time
+        // Casting Time — "1 action" is a 5e unit; parser remaps to Special at parse time
         let ct = spell.casting_time.unwrap();
         assert_eq!(ct.base_value.unwrap_or(1.0), 1.0);
-        assert_eq!(ct.unit, CastingTimeUnit::Action);
+        assert_eq!(ct.unit, CastingTimeUnit::Special);
+        assert_eq!(ct.raw_legacy_value.as_deref(), Some("1 action"));
 
         // Components
         let c = spell.components.unwrap();
@@ -3074,7 +3517,7 @@ mod tests {
             ..Default::default()
         });
 
-        spell.normalize();
+        spell.normalize(None);
 
         assert_eq!(
             spell.damage.as_ref().unwrap().parts.as_ref().unwrap()[0].id,
@@ -3108,7 +3551,7 @@ mod tests {
             ..Default::default()
         });
 
-        spell.normalize();
+        spell.normalize(None);
 
         // Structured (preserve case) + word-boundary unit alias (ft. -> ft when lowercase)
         assert_eq!(
@@ -3129,4 +3572,576 @@ mod tests {
             assert_eq!(res.text.unwrap(), input);
         }
     }
+
+    #[test]
+    fn test_migrate_v1_to_v2() {
+        use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
+        use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
+
+        let mut spell =
+            CanonicalSpell::new("Migration Test".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.schema_version = 1;
+
+        // 1. Saving Throw with legacy_dm_guidance
+        spell.saving_throw = Some(SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            legacy_dm_guidance: Some("Legacy Guidance".into()),
+            notes: Some("Original Notes".into()),
+            ..Default::default()
+        });
+
+        // 2. Casting Time with 5e unit
+        spell.casting_time = Some(SpellCastingTime {
+            unit: CastingTimeUnit::Action,
+            text: "1 action".into(),
+            ..Default::default()
+        });
+
+        spell.normalize(None); // Should trigger migrate_to_v2
+
+        assert_eq!(spell.schema_version, 2);
+
+        let st = spell.saving_throw.as_ref().unwrap();
+        assert!(st.legacy_dm_guidance.is_none());
+        assert_eq!(
+            st.notes.as_ref().unwrap(),
+            "Original Notes\nLegacy Guidance"
+        );
+
+        let ct = spell.casting_time.as_ref().unwrap();
+        assert_eq!(ct.unit, CastingTimeUnit::Special);
+        assert_eq!(ct.raw_legacy_value.as_ref().unwrap(), "1 action");
+    }
+
+    #[test]
+    fn test_migrate_v1_to_v2_notes_truncation_flag() {
+        use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
+
+        let mut spell = CanonicalSpell::new(
+            "Migration Truncate".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
+        spell.schema_version = 1;
+        spell.saving_throw = Some(SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            notes: Some("a".repeat(2047)),
+            legacy_dm_guidance: Some("bc".to_string()),
+            ..Default::default()
+        });
+
+        let res = spell.normalize(None);
+        assert!(res.notes_truncated, "truncation flag should be set");
+        assert_eq!(spell.schema_version, 2);
+        let notes_len = spell
+            .saving_throw
+            .as_ref()
+            .and_then(|st| st.notes.as_ref())
+            .map(|s| s.chars().count())
+            .unwrap_or_default();
+        assert!(notes_len <= 2048);
+    }
+
+    #[test]
+    fn test_compute_hash_and_canonical_json_error_when_notes_truncated() {
+        use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
+
+        let mut spell = CanonicalSpell::new(
+            "Migration Truncate Error".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
+        spell.schema_version = 1;
+        spell.saving_throw = Some(SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            notes: Some("a".repeat(2047)),
+            legacy_dm_guidance: Some("bc".to_string()),
+            ..Default::default()
+        });
+
+        let hash_err = spell
+            .compute_hash()
+            .expect_err("compute_hash() must fail when migration truncates notes");
+        assert!(
+            hash_err.contains("truncated"),
+            "error should mention truncation; got: {hash_err}"
+        );
+
+        let json_err = spell
+            .to_canonical_json()
+            .expect_err("to_canonical_json() must fail when migration truncates notes");
+        assert!(
+            json_err.contains("truncated"),
+            "error should mention truncation; got: {json_err}"
+        );
+    }
+
+    #[test]
+    fn test_migrate_v1_to_v2_casting_time_empty_text_synthesizes_raw() {
+        use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
+
+        let mut spell = CanonicalSpell::new(
+            "Migration Cast Empty".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
+        spell.schema_version = 1;
+        spell.casting_time = Some(SpellCastingTime {
+            unit: CastingTimeUnit::Action,
+            text: "   ".into(),
+            base_value: Some(0.0),
+            ..Default::default()
+        });
+
+        let _ = spell.normalize(None);
+        let ct = spell.casting_time.as_ref().unwrap();
+        assert_eq!(ct.unit, CastingTimeUnit::Special);
+        assert_eq!(ct.raw_legacy_value.as_deref(), Some("0 action"));
+    }
+
+    #[test]
+    fn test_migrate_v1_to_v2_casting_time_preserves_existing_raw() {
+        use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
+
+        let mut spell = CanonicalSpell::new(
+            "Migration Cast Preserve".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
+        spell.schema_version = 1;
+        spell.casting_time = Some(SpellCastingTime {
+            unit: CastingTimeUnit::Reaction,
+            text: "1 reaction".into(),
+            raw_legacy_value: Some("keep me".into()),
+            ..Default::default()
+        });
+
+        let _ = spell.normalize(None);
+        let ct = spell.casting_time.as_ref().unwrap();
+        assert_eq!(ct.unit, CastingTimeUnit::Special);
+        assert_eq!(ct.raw_legacy_value.as_deref(), Some("keep me"));
+    }
+
+    #[test]
+    fn test_migrate_v1_to_v2_schema_version_zero_to_two() {
+        let mut spell =
+            CanonicalSpell::new("Migration V0".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.schema_version = 0;
+
+        let _ = spell.normalize(None);
+        assert_eq!(spell.schema_version, 2);
+    }
+
+    #[test]
+    fn test_migrate_v1_to_v2_passthrough_for_v2_and_newer() {
+        use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
+
+        let mut spell = CanonicalSpell::new(
+            "Migration Passthrough".into(),
+            1,
+            "ARCANE".into(),
+            "Desc".into(),
+        );
+        spell.schema_version = 2;
+        spell.casting_time = Some(SpellCastingTime {
+            unit: CastingTimeUnit::Round,
+            text: "1 round".into(),
+            ..Default::default()
+        });
+
+        let res = spell.normalize(None);
+        assert!(!res.notes_truncated);
+        assert_eq!(res.truncated_spell_id, None);
+        assert_eq!(spell.schema_version, 2);
+        assert_eq!(
+            spell.casting_time.as_ref().unwrap().unit,
+            CastingTimeUnit::Round
+        );
+    }
+
+    /// Priority D (TG5): Future schema_version (e.g. 3) is passed through without migration.
+    #[test]
+    fn test_migrate_v1_to_v2_passthrough_future_schema_version() {
+        use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
+
+        let mut spell =
+            CanonicalSpell::new("Future Version".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.schema_version = 3;
+        spell.casting_time = Some(SpellCastingTime {
+            unit: CastingTimeUnit::Round,
+            text: "1 round".into(),
+            ..Default::default()
+        });
+
+        let res = spell.normalize(None);
+        assert!(!res.notes_truncated);
+        assert_eq!(res.truncated_spell_id, None);
+        assert_eq!(
+            spell.schema_version, 3,
+            "future schema_version must be preserved"
+        );
+        assert_eq!(
+            spell.casting_time.as_ref().unwrap().unit,
+            CastingTimeUnit::Round,
+            "casting time must be unchanged when schema_version >= CURRENT"
+        );
+    }
+
+    /// Priority D (TG4): Migration step (1) and step (2) both applied in one normalize() call.
+    #[test]
+    fn test_migrate_v1_to_v2_step_ordering_both_steps_in_single_normalize() {
+        use crate::models::canonical_spell::{CastingTimeUnit, SpellCastingTime};
+        use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
+
+        let mut spell = CanonicalSpell::new("Step Order".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.schema_version = 1;
+        spell.saving_throw = Some(SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            legacy_dm_guidance: Some("DM says be careful.".into()),
+            notes: Some("Existing.".into()),
+            ..Default::default()
+        });
+        spell.casting_time = Some(SpellCastingTime {
+            unit: CastingTimeUnit::BonusAction,
+            text: "1 bonus action".into(),
+            ..Default::default()
+        });
+
+        let _ = spell.normalize(None);
+
+        assert_eq!(spell.schema_version, 2);
+        // Step 1: dm_guidance moved to notes
+        let notes = spell
+            .saving_throw
+            .as_ref()
+            .and_then(|st| st.notes.as_ref())
+            .unwrap();
+        assert!(notes.contains("Existing."));
+        assert!(notes.contains("DM says be careful."));
+        assert!(spell
+            .saving_throw
+            .as_ref()
+            .unwrap()
+            .legacy_dm_guidance
+            .is_none());
+        // Step 2: 5e unit remapped to Special, raw preserved
+        let ct = spell.casting_time.as_ref().unwrap();
+        assert_eq!(ct.unit, CastingTimeUnit::Special);
+        assert_eq!(ct.raw_legacy_value.as_deref(), Some("1 bonus action"));
+    }
+
+    /// Priority C: Spell-level failure does not abort successful updates; other spells are still written.
+    #[test]
+    fn test_migration_batch_spell_level_failure_does_not_abort(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use rusqlite::Connection;
+
+        let db = Connection::open_in_memory()?;
+        db.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                canonical_data TEXT NOT NULL,
+                content_hash TEXT,
+                schema_version INTEGER,
+                updated_at TEXT
+            );
+            "#,
+        )?;
+
+        let good = {
+            let mut s = CanonicalSpell::new("Good".into(), 1, "ARCANE".into(), "Desc".into());
+            s.school = Some("Evocation".into());
+            s.class_list = vec!["Wizard".into()];
+            s.schema_version = 1;
+            serde_json::to_string(&s)?
+        };
+        db.execute(
+            "INSERT INTO spell (name, canonical_data, schema_version) VALUES (?1, ?2, 1)",
+            params!["Good", good],
+        )?;
+        db.execute(
+            "INSERT INTO spell (name, canonical_data, schema_version) VALUES (?1, ?2, 1)",
+            params!["Bad", "{ invalid json "],
+        )?;
+
+        let mut conn = db;
+        let tx = conn.transaction()?;
+        let result = run_migration_batch_impl(&tx, &mut |_, _| {})?;
+        tx.commit()?;
+
+        assert_eq!(result.total, 2);
+        assert_eq!(result.migrated, 1);
+        assert_eq!(result.failed.len(), 1);
+        assert!(result.failed[0].error.contains("Deserialization error"));
+
+        let schema_v2: i64 = conn.query_row(
+            "SELECT schema_version FROM spell WHERE name = 'Good'",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(
+            schema_v2, 2,
+            "Successful spell must be updated to schema_version 2"
+        );
+
+        let has_hash: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM spell WHERE name = 'Good' AND content_hash IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(has_hash, 1, "Successful spell must have content_hash set");
+
+        Ok(())
+    }
+
+    /// Priority C: DB-level failure (UNIQUE constraint on content_hash) triggers rollback; no rows updated.
+    #[test]
+    fn test_migration_batch_db_failure_rollback() -> Result<(), Box<dyn std::error::Error>> {
+        use rusqlite::Connection;
+
+        let db = Connection::open_in_memory()?;
+        db.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                canonical_data TEXT NOT NULL,
+                content_hash TEXT,
+                schema_version INTEGER,
+                updated_at TEXT
+            );
+            CREATE UNIQUE INDEX idx_spell_content_hash ON spell(content_hash) WHERE content_hash IS NOT NULL;
+            "#,
+        )?;
+
+        let same_canonical = {
+            let mut s = CanonicalSpell::new("Same".into(), 1, "ARCANE".into(), "Same desc".into());
+            s.school = Some("Evocation".into());
+            s.class_list = vec!["Wizard".into()];
+            s.schema_version = 1;
+            serde_json::to_string(&s)?
+        };
+        db.execute(
+            "INSERT INTO spell (name, canonical_data, schema_version) VALUES (?1, ?2, 1)",
+            params!["Spell A", same_canonical],
+        )?;
+        db.execute(
+            "INSERT INTO spell (name, canonical_data, schema_version) VALUES (?1, ?2, 1)",
+            params!["Spell B", same_canonical],
+        )?;
+
+        let mut conn = db;
+        let tx = conn.transaction()?;
+        let run_result = run_migration_batch_impl(&tx, &mut |_, _| {});
+        assert!(
+            run_result.is_err(),
+            "run_migration_batch_impl must fail when two spells produce same content_hash (UNIQUE on second UPDATE)"
+        );
+        drop(tx);
+
+        let with_hash: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM spell WHERE content_hash IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(
+            with_hash, 0,
+            "After failed batch (no commit), transaction rolls back; no rows should have content_hash set"
+        );
+
+        Ok(())
+    }
+
+    /// Priority D: progress callback must still emit when a spell hits an inner failure path.
+    #[test]
+    fn test_migration_batch_progress_emitted_on_truncation_failure(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
+        use rusqlite::Connection;
+
+        let db = Connection::open_in_memory()?;
+        db.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                canonical_data TEXT NOT NULL,
+                content_hash TEXT,
+                schema_version INTEGER,
+                updated_at TEXT
+            );
+            "#,
+        )?;
+
+        let mut spell = CanonicalSpell::new("Truncate".into(), 1, "ARCANE".into(), "Desc".into());
+        spell.schema_version = 1;
+        spell.saving_throw = Some(SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            notes: Some("a".repeat(2047)),
+            legacy_dm_guidance: Some("bc".to_string()),
+            ..Default::default()
+        });
+
+        db.execute(
+            "INSERT INTO spell (name, canonical_data, schema_version) VALUES (?1, ?2, 1)",
+            params!["Truncate", serde_json::to_string(&spell)?],
+        )?;
+
+        let mut conn = db;
+        let tx = conn.transaction()?;
+        let mut progress_events = Vec::new();
+        let result = run_migration_batch_impl(&tx, &mut |current, total| {
+            progress_events.push((current, total));
+        })?;
+
+        assert_eq!(result.total, 1);
+        assert_eq!(result.migrated, 0);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(
+            progress_events,
+            vec![(1, 1)],
+            "progress callback should emit final progress even on truncation failure"
+        );
+
+        Ok(())
+    }
+}
+
+/// Core migration batch logic over a transaction. Used by the Tauri command and by tests.
+pub(crate) fn run_migration_batch_impl(
+    tx: &rusqlite::Transaction<'_>,
+    progress: &mut impl FnMut(u32, u32),
+) -> Result<MigrationResult, AppError> {
+    let mut result = MigrationResult::default();
+    let mut updates = Vec::new();
+
+    {
+        let mut stmt = tx.prepare("SELECT id, name, canonical_data FROM spell")?;
+        let rows = stmt
+            .query_map([], |row| {
+                let id: i64 = row.get(0)?;
+                let name: String = row.get(1)?;
+                let data: String = row.get(2)?;
+                Ok((id, name, data))
+            })?
+            .collect::<Vec<_>>();
+
+        result.total = rows.len() as u32;
+
+        for (i, row) in rows.into_iter().enumerate() {
+            let (db_id, name, data) = row?;
+            match serde_json::from_str::<CanonicalSpell>(&data) {
+                Ok(mut spell) => {
+                    if spell.schema_version < 2 {
+                        let res = spell.normalize(Some(db_id));
+                        if res.notes_truncated {
+                            result.failed.push(MigrationFailure {
+                                spell_id: db_id,
+                                spell_name: Some(name.clone()),
+                                error: "Saving throw notes truncated (exceeded 2048 characters)"
+                                    .into(),
+                            });
+                        } else {
+                            // Spell already normalized above; use pre-normalized path to avoid
+                            // double normalization (compute_hash would clone and normalize again).
+                            match spell.validate() {
+                                Ok(()) => match spell.to_canonical_json_pre_normalized() {
+                                    Ok(canonical_json) => {
+                                        let hash =
+                                            hex::encode(Sha256::digest(canonical_json.as_bytes()));
+                                        spell.id = Some(hash.clone());
+                                        match serde_json::to_string(&spell) {
+                                            Ok(json) => {
+                                                updates.push((
+                                                    db_id,
+                                                    json,
+                                                    hash,
+                                                    spell.schema_version,
+                                                ));
+                                                result.migrated += 1;
+                                            }
+                                            Err(e) => {
+                                                result.failed.push(MigrationFailure {
+                                                    spell_id: db_id,
+                                                    spell_name: Some(name.clone()),
+                                                    error: format!("JSON error: {}", e),
+                                                });
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        result.failed.push(MigrationFailure {
+                                            spell_id: db_id,
+                                            spell_name: Some(name.clone()),
+                                            error: format!("Hash error: {}", e),
+                                        });
+                                    }
+                                },
+                                Err(e) => {
+                                    result.failed.push(MigrationFailure {
+                                        spell_id: db_id,
+                                        spell_name: Some(name.clone()),
+                                        error: format!("Hash error: {}", e),
+                                    });
+                                }
+                            }
+                        }
+                    } else {
+                        result.skipped += 1;
+                    }
+                }
+                Err(e) => {
+                    result.failed.push(MigrationFailure {
+                        spell_id: db_id,
+                        spell_name: Some(name),
+                        error: format!("Deserialization error: {}", e),
+                    });
+                }
+            }
+
+            if (i + 1) % 10 == 0 || (i + 1) == result.total as usize {
+                progress((i + 1) as u32, result.total);
+            }
+        }
+    }
+
+    {
+        let mut update_stmt = tx.prepare(
+            "UPDATE spell SET canonical_data = ?, content_hash = ?, schema_version = ?, updated_at = ? WHERE id = ?",
+        )?;
+
+        for (id, json, hash, version) in updates {
+            update_stmt.execute(params![json, hash, version, Utc::now().to_rfc3339(), id])?;
+        }
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn migrate_all_spells_to_v2(
+    window: Window,
+    state: State<'_, Arc<Pool>>,
+) -> Result<MigrationResult, AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get()?;
+        let tx = conn.transaction()?;
+        let result = run_migration_batch_impl(&tx, &mut |current, total| {
+            let _ = window.emit(
+                "migration-progress",
+                serde_json::json!({ "current": current, "total": total }),
+            );
+        })?;
+        tx.commit()?;
+        Ok::<MigrationResult, AppError>(result)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))?
 }

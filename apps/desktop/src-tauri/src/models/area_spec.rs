@@ -90,6 +90,25 @@ pub enum AreaUnit {
     Inch,
 }
 
+impl AreaUnit {
+    pub fn to_text(&self) -> &'static str {
+        match self {
+            AreaUnit::Ft => "ft",
+            AreaUnit::Yd => "yd",
+            AreaUnit::Mi => "mi",
+            AreaUnit::Inch => "inch",
+            AreaUnit::Ft2 => "ft2",
+            AreaUnit::Yd2 => "yd2",
+            AreaUnit::Square => "square",
+            AreaUnit::Ft3 => "ft3",
+            AreaUnit::Yd3 => "yd3",
+            AreaUnit::Hex => "hex",
+            AreaUnit::Room => "room",
+            AreaUnit::Floor => "floor",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum AreaShapeUnit {
@@ -101,6 +120,17 @@ pub enum AreaShapeUnit {
     Mi,
     #[serde(alias = "INCH", alias = "Inch", alias = "Inches")]
     Inch,
+}
+
+impl AreaShapeUnit {
+    pub fn to_text(&self) -> &'static str {
+        match self {
+            AreaShapeUnit::Ft => "ft",
+            AreaShapeUnit::Yd => "yd",
+            AreaShapeUnit::Mi => "mi",
+            AreaShapeUnit::Inch => "inch",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -116,8 +146,21 @@ pub enum CountSubject {
     Enemy,
     #[serde(alias = "OBJECT", alias = "Object")]
     Object,
-    #[serde(alias = "STRUCTURE", alias = "Structure")]
+    #[serde(alias = "STRUCTURE", alias = "Structure", alias = "Structures")]
     Structure,
+}
+
+impl CountSubject {
+    pub fn to_text(&self) -> &'static str {
+        match self {
+            CountSubject::Creature => "creature",
+            CountSubject::Undead => "undead",
+            CountSubject::Ally => "ally",
+            CountSubject::Enemy => "enemy",
+            CountSubject::Object => "object",
+            CountSubject::Structure => "structure",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -157,6 +200,29 @@ pub enum RegionUnit {
     Plane,
 }
 
+impl RegionUnit {
+    pub fn to_text(&self) -> &'static str {
+        match self {
+            RegionUnit::Object => "object",
+            RegionUnit::Structure => "structure",
+            RegionUnit::Building => "building",
+            RegionUnit::Bridge => "bridge",
+            RegionUnit::Ship => "ship",
+            RegionUnit::Fortress => "fortress",
+            RegionUnit::Clearing => "clearing",
+            RegionUnit::Grove => "grove",
+            RegionUnit::Field => "field",
+            RegionUnit::Waterbody => "water body",
+            RegionUnit::Cavesystem => "cave system",
+            RegionUnit::Valley => "valley",
+            RegionUnit::Region => "region",
+            RegionUnit::Domain => "domain",
+            RegionUnit::Demiplane => "demiplane",
+            RegionUnit::Plane => "plane",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScopeUnit {
@@ -180,6 +246,23 @@ pub enum ScopeUnit {
     DesecratedGround,
     #[serde(alias = "PORTFOLIO_DEFINED", alias = "PortfolioDefined")]
     PortfolioDefined,
+}
+
+impl ScopeUnit {
+    pub fn to_text(&self) -> &'static str {
+        match self {
+            ScopeUnit::Los => "los",
+            ScopeUnit::Loe => "loe",
+            ScopeUnit::WithinRange => "within range",
+            ScopeUnit::WithinSpellRange => "within spell range",
+            ScopeUnit::WithinSight => "within sight",
+            ScopeUnit::WithinHearing => "within hearing",
+            ScopeUnit::Aura => "aura",
+            ScopeUnit::SanctifiedGround => "sanctified ground",
+            ScopeUnit::DesecratedGround => "desecrated ground",
+            ScopeUnit::PortfolioDefined => "portfolio defined",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -206,6 +289,17 @@ pub enum TileUnit {
     Floor,
     #[serde(alias = "SQUARE", alias = "Square")]
     Square,
+}
+
+impl TileUnit {
+    pub fn to_text(&self) -> &'static str {
+        match self {
+            TileUnit::Hex => "hex",
+            TileUnit::Room => "room",
+            TileUnit::Floor => "floor",
+            TileUnit::Square => "square",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
@@ -265,7 +359,9 @@ pub struct AreaSpec {
     pub moves_with: Option<MovesWith>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    /// When parsing fails or falls back to Special, the original legacy string is stored here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Original legacy source text preserved as-is for auditability.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -281,6 +377,13 @@ impl AreaSpec {
                 n,
                 crate::models::canonical_spell::NormalizationMode::Textual,
             );
+        }
+        // Note: In the canonical pipeline, CanonicalSpell::normalize() calls
+        // synthesize_area_text() immediately after this method, which unconditionally
+        // overwrites `text`. This branch is only effective when AreaSpec::normalize()
+        // is called standalone (e.g. in unit tests).
+        if let Some(t) = &mut self.text {
+            *t = crate::models::canonical_spell::normalize_structured_text_with_unit_aliases(t);
         }
 
         crate::models::canonical_spell::normalize_scalar(&mut self.radius);
@@ -298,5 +401,139 @@ impl AreaSpec {
         if let Some(angle) = &mut self.angle_deg {
             *angle = crate::models::canonical_spell::clamp_precision(*angle);
         }
+    }
+
+    pub fn synthesize_text(&mut self) {
+        let shaped_linear =
+            |scalar: &Option<SpellScalar>, unit: Option<AreaShapeUnit>| -> Option<String> {
+                scalar.as_ref().map(|s| {
+                    format!(
+                        "{} {}",
+                        s.to_text(),
+                        unit.unwrap_or(AreaShapeUnit::Ft).to_text()
+                    )
+                })
+            };
+
+        let shaped_area =
+            |scalar: &Option<SpellScalar>, unit: Option<AreaUnit>| -> Option<String> {
+                scalar
+                    .as_ref()
+                    .map(|s| format!("{} {}", s.to_text(), unit.unwrap_or(AreaUnit::Ft).to_text()))
+            };
+
+        let synthesized = match self.kind {
+            AreaKind::Special => self.raw_legacy_value.clone(),
+            AreaKind::Point => Some("Point".to_string()),
+            AreaKind::RadiusCircle => {
+                shaped_linear(&self.radius, self.shape_unit).map(|v| format!("{} radius", v))
+            }
+            AreaKind::RadiusSphere => {
+                shaped_linear(&self.radius, self.shape_unit).map(|v| format!("{} radius sphere", v))
+            }
+            AreaKind::Cone => {
+                shaped_linear(&self.length, self.shape_unit).map(|v| format!("{} cone", v))
+            }
+            AreaKind::Line => {
+                shaped_linear(&self.length, self.shape_unit).map(|v| format!("{} line", v))
+            }
+            AreaKind::Rect => match (&self.length, &self.width, self.shape_unit) {
+                (Some(l), Some(w), Some(u)) => Some(format!(
+                    "{} x {} {} rect",
+                    l.to_text(),
+                    w.to_text(),
+                    u.to_text()
+                )),
+                _ => None,
+            },
+            AreaKind::RectPrism => match (&self.length, &self.width, &self.height, self.shape_unit)
+            {
+                (Some(l), Some(w), Some(h), Some(u)) => Some(format!(
+                    "{} x {} x {} {} prism",
+                    l.to_text(),
+                    w.to_text(),
+                    h.to_text(),
+                    u.to_text()
+                )),
+                _ => None,
+            },
+            AreaKind::Cylinder => match (&self.radius, &self.height, self.shape_unit) {
+                (Some(r), Some(h), Some(u)) => Some(format!(
+                    "{} {} radius, {} {} high",
+                    r.to_text(),
+                    u.to_text(),
+                    h.to_text(),
+                    u.to_text()
+                )),
+                _ => None,
+            },
+            AreaKind::Wall => match (&self.length, &self.height, self.shape_unit) {
+                (Some(l), Some(h), Some(u)) => Some(format!(
+                    "{} x {} {} wall",
+                    l.to_text(),
+                    h.to_text(),
+                    u.to_text()
+                )),
+                _ => None,
+            },
+            AreaKind::Cube => {
+                shaped_linear(&self.edge, self.shape_unit).map(|v| format!("{} cube", v))
+            }
+            AreaKind::Volume => shaped_area(&self.volume, self.unit),
+            AreaKind::Surface => shaped_area(&self.surface_area, self.unit),
+            AreaKind::Tiles => match (&self.tile_count, self.tile_unit) {
+                (Some(c), Some(u)) => Some(format!("{} {}", c.to_text(), u.to_text())),
+                _ => None,
+            },
+            AreaKind::Creatures | AreaKind::Objects => self.count.as_ref().map(|count| {
+                let count_text = count.to_text();
+                match self.count_subject {
+                    Some(subject) => format!("{} {}", count_text, subject.to_text()),
+                    None => count_text,
+                }
+            }),
+            AreaKind::Region => self.region_unit.map(|u| u.to_text().to_string()),
+            AreaKind::Scope => self.scope_unit.map(|u| u.to_text().to_string()),
+        };
+
+        if let Some(t) = synthesized {
+            self.text = Some(
+                crate::models::canonical_spell::normalize_structured_text_with_unit_aliases(&t),
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::scalar::SpellScalar;
+
+    #[test]
+    fn test_area_spec_synthesis_region_and_scope() {
+        let mut spec = AreaSpec {
+            kind: AreaKind::Region,
+            region_unit: Some(RegionUnit::Cavesystem),
+            ..Default::default()
+        };
+        spec.synthesize_text();
+        assert_eq!(spec.text.as_deref(), Some("cave system"));
+
+        let mut spec = AreaSpec {
+            kind: AreaKind::Scope,
+            scope_unit: Some(ScopeUnit::WithinSpellRange),
+            ..Default::default()
+        };
+        spec.synthesize_text();
+        assert_eq!(spec.text.as_deref(), Some("within spell range"));
+
+        let mut spec = AreaSpec {
+            kind: AreaKind::Tiles,
+            tile_count: Some(SpellScalar::fixed(5.0)),
+            tile_unit: Some(TileUnit::Square),
+            ..Default::default()
+        };
+        spec.synthesize_text();
+        assert_eq!(spec.text.as_deref(), Some("5 square"));
     }
 }

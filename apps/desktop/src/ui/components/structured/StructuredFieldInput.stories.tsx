@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { defaultCastingTime, defaultDurationSpec, defaultRangeSpec } from "../../../types/spell";
 import { StructuredFieldInput } from "./StructuredFieldInput";
 import { fn } from "./storybook-utils";
 
@@ -36,6 +35,7 @@ export const RangeDistance: Story = {
       kind: "distance",
       distance: { mode: "fixed", value: 10 },
       unit: "ft",
+      text: "10 ft",
     },
     onChange: fn(),
   },
@@ -99,6 +99,7 @@ export const DurationTime: Story = {
       kind: "time",
       unit: "round",
       duration: { mode: "fixed", value: 1 },
+      text: "1 round",
     },
     onChange: fn(),
   },
@@ -154,6 +155,7 @@ export const DurationSpecial: Story = {
     value: {
       kind: "special",
       rawLegacyValue: "Special duration description",
+      text: "Special duration description",
     },
     onChange: fn(),
   },
@@ -199,11 +201,11 @@ export const CastingTimeComplex: Story = {
   args: {
     fieldType: "casting_time",
     value: {
-      text: "1 action",
+      text: "1 minute",
       baseValue: 1,
       perLevel: 2,
       levelDivisor: 3,
-      unit: "action",
+      unit: "minute",
     },
     onChange: fn(),
   },

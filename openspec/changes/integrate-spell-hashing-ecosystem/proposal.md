@@ -12,7 +12,7 @@ Update all major application subsystems to use canonical hashes:
 1.  **Search**: Implement Full-Text Search (FTS) indexing on structured data.
 2.  **Vault**: Store spells in a content-addressable vault (filename = hash).
 3.  **Conflict Resolution**: Provide UI for users to resolve import conflicts (Keep/Replace/Both).
-4.  **Security**: rigorous validation and sanitization of all imported content.
+4.  **Security**: Rigorous validation and sanitization of all imported content.
 5.  **Integration**: Update Character and Spell List modules to reference spells by hash.
 
 ## Scope
@@ -40,3 +40,28 @@ Update all major application subsystems to use canonical hashes:
 -   **Spec #2: `add-spell-data-migration-infrastructure`**
     - Requires data to be migrated before indexing/integration can fully work.
 -   **Spec #3: `update-spell-editor-structured-data`** (Spell Editor UI) — out of scope for this change.
+
+### Dependency Diagram
+```
+┌──────────────────────────────┐
+│ Spec #1: Canonical Hashing   │ (foundation — archived)
+│  (schema, model, hash algo)  │
+└──────────────┬───────────────┘
+               │ requires
+┌──────────────▼───────────────┐
+│ Spec #2: Data Migration      │ (migration infrastructure)
+│  (backfill canonical_data    │
+│   and content_hash)          │
+└──────────────┬───────────────┘
+               │ requires
+┌──────────────▼───────────────┐
+│ THIS SPEC: Ecosystem         │
+│  Integration                 │
+│  (FTS, Vault, Import/Export, │
+│   Characters, Artifacts)     │
+└──────────────────────────────┘
+               │ out of scope
+┌──────────────▼───────────────┐
+│ Spec #3: Spell Editor UI     │
+└──────────────────────────────┘
+```

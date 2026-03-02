@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { defaultAreaSpec } from "../../../types/spell";
 import { AreaForm } from "./AreaForm";
 import { fn } from "./storybook-utils";
 
@@ -37,6 +36,7 @@ export const RadiusCircle: Story = {
       kind: "radius_circle",
       radius: { mode: "fixed", value: 10 },
       shapeUnit: "ft",
+      text: "10-ft radius",
     },
     onChange: fn(),
   },
@@ -216,6 +216,7 @@ export const Special: Story = {
     value: {
       kind: "special",
       rawLegacyValue: "Special area description",
+      text: "Special area description",
     },
     onChange: fn(),
   },

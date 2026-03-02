@@ -51,6 +51,51 @@ def test_import_markdown(tmp_path: Path):
     assert spells
     assert spells[0]["name"] == "Test Spell"
     assert spells[0]["level"] == 1
+    # Task 2.2: schema_version=2 stamp on all newly produced spells
+    assert spells[0].get("schema_version") == 2
+
+
+def test_import_spell_with_5e_casting_time_string_preserved(tmp_path: Path):
+    """Task 2.2: Sidecar passes casting time string; backend remaps 5e unit to special on parse."""
+    sample = tmp_path / "spell.md"
+    sample.write_text(
+        "---\nname: Bolt\nlevel: 1\ncasting_time: 1 action\n---\nDescription.",
+        encoding="utf-8",
+    )
+    response = _run_sidecar(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "import",
+            "params": {"files": [str(sample)]},
+        }
+    )
+    spells = response["result"]["spells"]
+    assert len(spells) == 1
+    assert spells[0]["casting_time"] == "1 action"
+    assert spells[0].get("schema_version") == 2
+
+
+def test_import_spell_empty_saving_throw_no_raw_legacy_value(tmp_path: Path):
+    """Task 2.2: When no saving throw source text, spell has saving_throw None/absent."""
+    sample = tmp_path / "spell.md"
+    sample.write_text(
+        "---\nname: No Save\nlevel: 1\n---\nNo saving throw.",
+        encoding="utf-8",
+    )
+    response = _run_sidecar(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "import",
+            "params": {"files": [str(sample)]},
+        }
+    )
+    spells = response["result"]["spells"]
+    assert len(spells) == 1
+    # Sidecar emits flat strings; no saving_throw key or None is correct (no raw_legacy_value when no source)
+    assert spells[0].get("saving_throw") is None
+    assert spells[0].get("schema_version") == 2
 
 
 def test_export_markdown(tmp_path: Path):

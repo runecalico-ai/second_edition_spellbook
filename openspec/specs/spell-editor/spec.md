@@ -136,73 +136,226 @@ The Spell Editor MUST provide dedicated input components for structured spell da
 - GIVEN the Spell Editor form
 - WHEN editing Range, Duration, or Casting Time
 - THEN the editor MUST render a `StructuredFieldInput` component with a `fieldType` (range | duration | casting_time)
-- AND the component MUST emit the **schema-native shape** for that type:
-  - **range** → RangeSpec (per `#/$defs/RangeSpec`, e.g. `kind`, `unit`, `distance: { mode, value, per_level }` where applicable)
-  - **duration** → DurationSpec (per `#/$defs/DurationSpec`, e.g. `kind`, `unit`, `duration` scalar where applicable)
-  - **casting_time** → flat object (`base_value`, `per_level`, `level_divisor`, `unit`, `text`)
-- AND the component MUST be internally modular, using a common scalar/unit input foundation but providing distinct layout or kind-selection logic for each `fieldType`.
+- AND the component MUST emit the **schema-native shape** for that type, using **camelCase field names** as defined in the TypeScript interfaces (IPC layer standard — see Casing Note below):
+  - **range** → `RangeSpec` (per `#/$defs/RangeSpec`): `kind`, `unit`, `distance: { mode, value, perLevel }` where applicable, `text`
+  - **duration** → `DurationSpec` (per `#/$defs/DurationSpec`): `kind`, `unit`, `duration` scalar where applicable, `text` *(new field introduced by this change — not present in existing schema or TypeScript types before implementation)*
+  - **casting_time** → `SpellCastingTime`: `baseValue`, `perLevel`, `levelDivisor`, `unit`, `text`
+- AND the component MUST be internally modular, using `ScalarInput` as the shared scalar/unit input primitive but providing distinct layout and kind-selection logic for each `fieldType`.
 - AND the component MUST initialize with a valid default state when created empty:
   - **Range**: `kind: "distance"`, `unit: "ft"`, `distance: { mode: "fixed", value: 0 }`
   - **Duration**: `kind: "instant"` (simplest valid state)
-  - **Casting Time**: `base_value: 1`, `unit: "action"`, `text: "1 action"` (editor default for blank state; canonical materialization uses unit "segment" when unit is omitted)
+  - **Casting Time**: `baseValue: 1`, `unit: "segment"`, `text: "1 segment"`
+    - `"action"`, `"bonus_action"`, and `"reaction"` are **not valid 2nd Edition units** and MUST be removed from the `CastingTimeUnit` type, the `CASTING_TIME_UNIT_LABELS` map, and the `defaultCastingTime()` factory in `src/types/spell.ts`.
 - AND the component MUST display a computed text preview in real-time.
+- AND when the user changes a `kind` that makes previously-visible sub-fields irrelevant, those sub-fields MUST be cleared from the emitted value (not merely hidden in the UI) — see Kind Transition Behaviour below.
+
+> **Casing Note:** Schema JSON and canonical storage use `snake_case` (e.g. `base_value`, `per_level`, `level_divisor`). The React component layer operates exclusively in `camelCase` (e.g. `baseValue`, `perLevel`, `levelDivisor`) per the IPC casing standard. The `onChange` handler MUST always emit camelCase values. Conversion to `snake_case` happens at the IPC/serialization boundary, not within the component.
+
+---
 
 **Default Values Clarification:**
-- **UI defaults** (editor initialization): Use user-friendly defaults optimized for UX (e.g. casting_time uses `unit: "action"` for clarity).
+- **UI defaults** (editor initialization): Use user-friendly defaults optimized for UX (e.g. casting_time uses `unit: "segment"` for clarity).
 - **Canonical materialization defaults** (backend storage): Use schema-defined defaults when fields are omitted (e.g. casting_time uses `unit: "segment"` when unit is omitted per schema).
-- **User clears field**: When user explicitly clears/deletes a field value in the editor, treat as empty state and reinitialize with UI defaults.
+- **User clears field**: When user explicitly clears/deletes a field value in the editor, treat as empty state and reinitialize with UI defaults. For numeric inputs this means an empty or non-parseable string is treated as `0`, **not** as a signal to reinitialize with the default (e.g. clearing `baseValue` yields `0`, not `1`). Full reinitialization only occurs when the entire field object is `undefined` or `null` on prop load.
 - **Field omitted from canonical_data**: When field is missing from `canonical_data` (undefined), initialize with UI defaults.
 
+---
+
 **Text Preview Computation:**
-- **Frontend computation**: The editor component computes `.text` in real-time for preview display as the user types.
+- **Frontend computation**: The editor component computes `.text` in real-time for preview display as the user types, and writes the computed value to the `.text` field of the emitted value for **all three field types** (Range, Duration, and Casting Time). This ensures the `onChange` payload always contains an up-to-date `.text` regardless of field type.
 - **Backend computation**: The backend computes `.text` during canonical serialization when saving (authoritative source of truth for storage).
 - **Consistency**: Both frontend and backend MUST produce the same `.text` value for identical input. The backend computation is authoritative.
+- **Kind-change staleness**: When the user switches `kind`, the emitted `.text` MUST reflect the new kind's computed preview immediately. Stale text from the previous kind MUST NOT be retained in the emitted value. Example: switching `duration.kind` from `"time"` (text: `"3 round"`) to `"instant"` MUST emit `text: "Instant"`. (`durationToText` produces bare unit strings — `"3 round"`, not `"3 rounds"`.)
+
+---
+
+**Kind Transition Behaviour:**
+
+When a `kind` selector changes, the component MUST clear sub-fields that are not relevant to the new kind from the emitted value. Preserved sub-fields (e.g. `notes`) persist across kind changes. The rules per field type are:
+
+**Range:**
+| New kind | `distance` | `unit` | `rawLegacyValue` |
+|---|---|---|---|
+| `distance` / `distance_los` / `distance_loe` | Initialize to `{ mode: "fixed", value: 0 }` if absent | Initialize to `"ft"` if absent | Clear |
+| Any kind-only (personal, touch, etc.) | Clear | Clear | Clear |
+| `special` | Clear | Clear | Preserve (user-editable) |
+
+**Duration:**
+| New kind | `unit` | `duration` | `condition` | `uses` | `rawLegacyValue` |
+|---|---|---|---|---|---|
+| `instant` / `permanent` / `until_dispelled` / `concentration` | Clear | Clear | Clear | Clear | Clear |
+| `time` | Initialize to `"round"` if absent | Initialize to `{ mode: "fixed", value: 1 }` if absent | Clear | Clear | Clear |
+| `conditional` / `until_triggered` / `planar` | Clear | Clear | Initialize to `""` if absent | Clear | Clear |
+| `usage_limited` | Clear | Clear | Clear | Initialize to `{ mode: "fixed", value: 1 }` if absent | Clear |
+| `special` | Clear | Clear | Clear | Clear | Preserve (user-editable) |
+
+> **Schema note:** The schema's `allOf` constraints for `DurationSpec` are:
+> - `instant` / `permanent`: prohibit `unit`, `duration`, and `uses`.
+> - `until_dispelled`: prohibit `unit` and `duration` only (`uses` is not prohibited by the schema, but the UI clears it as part of treating `until_dispelled` as kind-only).
+> - `conditional` / `until_triggered` / `planar`: require `condition`.
+> - `usage_limited`: require `uses`.
+  - `concentration`: **no `allOf` constraint at all in the schema.** The UI treats it as kind-only by convention, consistent with `until_dispelled` and the existing `DURATION_KIND_ONLY` constant. *Data-loss note:* A spell with `concentration + unit/duration` sub-fields (valid per schema) would lose those sub-fields when opened in this editor because the kind-only treatment clears them. This is an accepted trade-off — 2e `concentration` spells do not use time-bounded duration sub-fields in practice.
+
+---
 
 #### UI mapping to schema shapes
-- **Scalar shape**: Dimension and scalar fields use the schema scalar shape `{ mode: "fixed" | "per_level", value?, per_level?, ... }` per `#/$defs/scalar` in spell.schema.json.
-- **Range** (full support for all RangeSpec kinds): Distance-based kinds → kind + scalar + unit; Kind-only kinds → kind selector only; **Special** → kind + `raw_legacy_value` text field.
-- **Duration** (full support for all DurationSpec kinds): instant/permanent/until_dispelled/concentration → kind only; time → kind + unit + duration scalar; conditional/until_triggered/planar → kind + condition text; usage_limited → kind + uses scalar; special → kind + raw_legacy_value.
-- **Casting time**: The UI maps 1:1 to the flat casting_time object (base_value, per_level, level_divisor, unit, text).
+- **Scalar shape**: Dimension and scalar fields use the TypeScript `SpellScalar` shape (`{ mode: "fixed" | "per_level", value?, perLevel?, ... }` per `#/$defs/scalar`). The shared `ScalarInput` component handles both fixed and per-level modes.
+- **Range** (full support for all RangeSpec kinds):
+  - Distance-based kinds (`distance`, `distance_los`, `distance_loe`) → kind selector + `ScalarInput` (distance) + unit selector
+  - Kind-only kinds (personal, touch, los, loe, sight, hearing, voice, senses, same\_room, same\_structure, same\_dungeon\_level, wilderness, same\_plane, interplanar, anywhere\_on\_plane, domain, unlimited) → kind selector only
+  - **Special** → kind selector + `rawLegacyValue` text input (manually editable only when `kind === "special"`)
+  - **Notes** (`notes` field): rendered as a textarea for all kinds; persists across kind changes.
+  - **Out of scope for this component version**: `anchor`, `region_unit`, and `requires` fields defined in `RangeSpec` are not exposed in the UI. They may be populated by the parser/importer but are not editable here.
+- **Duration** (full support for all DurationSpec kinds):
+  - `instant` / `permanent` / `until_dispelled` / `concentration` → kind selector only
+  - `time` → kind selector + `ScalarInput` (duration) + unit selector
+  - `conditional` / `until_triggered` / `planar` → kind selector + condition text input
+  - `usage_limited` → kind selector + `ScalarInput` (uses)
+  - **Special** → kind selector + `rawLegacyValue` text input (manually editable only when `kind === "special"`)
+  - **`text`** *(new field)*: written to `spec.text` in the emitted value for all kinds via real-time computation (see Text Preview Computation above).
+  - **Notes** (`notes` field): rendered as a textarea for all kinds; persists across kind changes.
+- **Casting time**: Maps 1:1 to the flat `SpellCastingTime` object (`baseValue`, `perLevel`, `levelDivisor`, `unit`, `text`). The `rawLegacyValue` input is shown when `unit === "special"` OR when a pre-existing `rawLegacyValue` is present (e.g. loaded from legacy data with a non-special unit). The schema-required `text` field is always written via `castingTimeToText()` before emitting. *Data supersession note:* When the user changes `unit` (whether from `"special"` to a structured unit or from any non-special unit that happened to carry a pre-existing `rawLegacyValue`), `rawLegacyValue` is cleared and the legacy string is considered superseded by the new structured entry. This one-way transition is intentional — the importer-supplied legacy string is no longer needed once the user takes explicit control of the structured fields.
 
-#### Scenario: Legacy Data Loading
+> **`casting_time.text` is schema-required.** The schema marks `"required": ["text", "unit"]` on the `casting_time` object. The component MUST always emit a non-empty `text`. `DurationSpec.text` and `RangeSpec.text` are optional in the schema; the frontend MUST still populate them via computed preview, but an empty string is valid at save-time if the computed result is empty.
+
+---
+
+**Fields Emitted Per Kind (contract for tests and implementers):**
+
+**Range:**
+| Kind | Required output fields | Optional output fields |
+|---|---|---|
+| `distance` / `distance_los` / `distance_loe` | `kind`, `distance`, `unit` | `notes`, `text`, `rawLegacyValue` (never set by component for non-special) |
+| Kind-only (personal, touch, etc.) | `kind` | `notes`, `text` |
+| `special` | `kind` | `rawLegacyValue`, `notes`, `text` |
+
+**Duration:**
+| Kind | Required output fields | Optional output fields |
+|---|---|---|
+| `instant` | `kind` | `notes`, `text` |
+| `permanent` | `kind` | `notes`, `text` |
+| `until_dispelled` | `kind` | `notes`, `text` |
+| `concentration` | `kind` | `notes`, `text` |
+| `time` | `kind`, `unit`, `duration` | `notes`, `text`, `rawLegacyValue` (never set for non-special) |
+| `conditional` / `until_triggered` / `planar` | `kind`, `condition` | `notes`, `text`, `rawLegacyValue` (never set for non-special) |
+| `usage_limited` | `kind`, `uses` | `notes`, `text`, `rawLegacyValue` (never set for non-special) |
+| `special` | `kind` | `rawLegacyValue`, `notes`, `text` |
+
+---
+
+#### Additional Scenarios
+
+##### Scenario: Kind Transition Clears Irrelevant Sub-fields
+- GIVEN a Range component with `kind: "distance"`, `unit: "ft"`, `distance: { mode: "fixed", value: 30 }`
+- WHEN the user changes `kind` to `"personal"`
+- THEN the emitted value MUST NOT contain `distance` or `unit`
+- AND `notes` (if previously set) MUST be preserved in the emitted value
+
+##### Scenario: Duration Kind Transition — Time to Instant
+- GIVEN a Duration component with `kind: "time"`, `unit: "round"`, `duration: { mode: "fixed", value: 3 }`, computed `text: "3 round"`
+- WHEN the user changes `kind` to `"instant"`
+- THEN the emitted value MUST NOT contain `unit` or `duration`
+- AND the emitted `text` MUST equal `"Instant"` (not the stale `"3 round"`)
+
+##### Scenario: Duration Kind Transition — Instant to Time
+- GIVEN a Duration component with `kind: "instant"`
+- WHEN the user changes `kind` to `"time"`
+- THEN the emitted value MUST contain `unit: "round"` and `duration: { mode: "fixed", value: 1 }` (initialized defaults)
+
+##### Scenario: Duration Kind Transition — Any to Special
+- GIVEN a Duration component with any `kind` and any sub-fields set
+- WHEN the user changes `kind` to `"special"`
+- THEN `unit`, `duration`, `condition`, and `uses` MUST be cleared from the emitted value
+- AND `rawLegacyValue` MUST be preserved if previously entered, or empty otherwise
+
+##### Scenario: Casting Time Unit Switches to Special
+- GIVEN a Casting Time component with `unit: "segment"`, `baseValue: 3`
+- WHEN the user changes `unit` to `"special"`
+- THEN the `rawLegacyValue` input MUST become visible
+- AND `rawLegacyValue` MUST NOT be cleared if already populated
+
+##### Scenario: Casting Time Unit Switches Away from Special
+- GIVEN a Casting Time component with `unit: "special"`, `rawLegacyValue: "varies"`, `baseValue: 1`
+- WHEN the user changes `unit` to `"segment"`
+- THEN `rawLegacyValue` MUST be cleared from the emitted value
+- AND the `rawLegacyValue` input MUST no longer be visible
+- AND `.text` MUST be recomputed from `baseValue` and the new `unit` via `castingTimeToText()` (e.g., `"1 segment"`). Since `casting_time.text` is schema-required, the component MUST always emit a non-empty `.text` after this transition.
+
+##### Scenario: Usage-Limited Duration Round-Trip
+- GIVEN a Duration component with `kind: "usage_limited"` and `uses: { mode: "fixed", value: 2 }`
+- WHEN the user changes `kind` to `"instant"` and then back to `"usage_limited"`
+- THEN the `uses` scalar MUST be reinitialized to `{ mode: "fixed", value: 1 }` (not restored from the prior value — it was cleared on the first kind transition)
+
+### Requirement: Spell Editor Data Loading
+The Spell Editor MUST handle loading spell data from multiple sources with graceful fallbacks.
+
+#### Scenario: Canonical Data Loading
 - GIVEN a spell with `canonical_data` column populated
 - WHEN opening the spell in the editor
 - THEN the editor MUST load structured values from `canonical_data`
-- AND populate all `StructuredFieldInput` components with those values.
+- AND populate all structured input components with those values (`StructuredFieldInput` for Range, Duration, and Casting Time; `SavingThrowInput` and `MagicResistanceInput` for their respective fields).
 
 #### Scenario: Hybrid canonical_data (partial)
 - GIVEN a spell where `canonical_data` exists (is not null)
-- BUT a specific key (e.g. "range", "duration") is **missing** from the JSON object (undefined, not just null)
-- AND a legacy string exists for that field (e.g. from flat columns)
+- BUT a specific key (e.g. "range", "duration") is **absent or explicitly `null`** in the JSON object
+- AND a legacy string exists for that field (e.g. from flat columns), OR no data exists for that field at all
 - WHEN opening the spell in the editor
 - THEN the editor MUST parse that field via the Tauri parser commands and merge the parsed structured value into the editor state for that field.
+- AND for `savingThrow` and `magicResistance` keys absent or `null` in `canonical_data`, the editor MUST apply the same fallback mapping used in the Legacy String Parsing scenario (no parser command; map legacy text to structured state).
+- AND if any parsed field falls back to `kind: "special"`, the warning banner MUST be displayed (same rules as Legacy String Parsing).
+- AND while parser invocations are in flight, the editor MUST render the form in a loading/disabled state until all pending parser calls resolve.
 
 **Hybrid Loading Logic Details:**
 - **`canonical_data` exists**: JSON.parse succeeds and result is an object (not null). This includes empty objects `{}`.
-- **Missing field**: Field is `undefined` (not present in object). Check using `field === undefined` or `!(field in canonicalData)`.
-- **`null` field**: Field exists but value is `null`. Treat as missing for hybrid loading purposes (parse legacy string if available).
-- **Empty object `{}`**: All fields are missing, parse all legacy strings for all fields that have legacy string values.
+- **Missing field**: Field is absent or explicitly `null`. The canonical check MUST be: `canonicalData[field] == null` (loose equality), which covers both `undefined` (key absent) and `null` (key present with null value) in a single expression. Do NOT use strict `=== undefined` or the `in` operator separately — the loose equality check is the prescribed pattern to avoid subtle divergence.
+- **Empty object `{}`**: All fields are missing per the above check; parse all legacy strings for all fields that have legacy string values.
+- **No legacy string available**: If a field is missing from `canonical_data` AND no legacy string exists for it, initialize the field to its UI default state. See `spell-editor-structured-fields` for the authoritative UI-defaults contract per field type.
+- **Parallel parsing**: When multiple fields require parser commands simultaneously, all invocations MUST be dispatched in parallel (`Promise.all`). Sequential dispatch is not acceptable.
+- **savingThrow / magicResistance**: `canonicalData.savingThrow` and `canonicalData.magicResistance` are checked with the same `== null` predicate. When absent/null, apply fallback mapping from legacy text; do not invoke a parser command.
 
 #### Scenario: Legacy String Parsing
 - GIVEN a spell with null `canonical_data` and legacy string values
 - WHEN opening the spell in the editor
-- THEN the editor MUST call Tauri backend parser commands. Command names use `parse_spell_*` prefix: `parse_spell_range`, `parse_spell_duration`, `parse_spell_casting_time`, `parse_spell_area`, `parse_spell_damage`, and optionally `parse_spell_components` for legacy component strings. These commands wrap `SpellParser` in `src-tauri/src/utils/spell_parser.rs`. Each accepts a legacy string and returns the schema-native structured type.
-- AND `savingThrow` and `magicResistance` are handled without parser commands: when `canonical_data` is missing for those fields, the editor MUST use fallback mapping from legacy text to structured state.
-- AND populate structured inputs with parsed values
-- AND display a warning banner if parsing fell back to `kind: "special"`. The banner MUST appear as a single banner at the top of the form, listing the fields that fell back to special (e.g. "Range and Duration could not be fully parsed; original text preserved"). When kind is "special", the authoritative storage for the original legacy string is `raw_legacy_value`.
+- THEN the editor MUST call Tauri backend parser commands. Command names use `parse_spell_*` prefix: `parse_spell_range`, `parse_spell_duration`, `parse_spell_casting_time`, `parse_spell_area`, `parse_spell_damage`, and `parse_spell_components` when a legacy component string is present (i.e. a non-empty legacy component column value exists rather than structured `components.*` boolean flags). These commands wrap `SpellParser` in `src-tauri/src/utils/spell_parser.rs`. Each accepts a legacy string and returns the schema-native structured type.
+- AND all parser invocations MUST be dispatched in parallel (`Promise.all`). Sequential dispatch is not acceptable.
+- AND while parser invocations are in flight, the editor MUST render the form in a loading/disabled state until all pending parser calls resolve.
+- AND if a Tauri invocation itself fails (IPC error, command not found, serialization error), the affected field MUST be treated as a parser failure and handled as follows — log the error in all cases:
+  - **Fields with `kind: "special"`** (`RangeSpec`, `DurationSpec`, `AreaSpec`, `MagicResistanceSpec`): initialize to `kind: "special"` with the original legacy string in `raw_legacy_value`; include the field in the warning banner.
+  - **`casting_time`** (no `kind` field; uses `unit: "special"`): initialize to `unit: "special"` with the original legacy string in `raw_legacy_value`; include in the warning banner.
+  - **`SpellDamageSpec`** (kinds: `"none"`, `"modeled"`, `"dm_adjudicated"` — no `"special"` kind): initialize to `kind: "none"`, preserve the original legacy string in `source_text`. This does NOT trigger the warning banner since damage has no `kind: "special"` fallback.
+- AND `savingThrow` and `magicResistance` are handled without parser commands: when `canonical_data` is missing for those fields, the editor MUST use fallback mapping from legacy text to structured state. The fallback mapping for `savingThrow` resolves common 2e strings (e.g. "Save vs. Spell", "Save vs. Rod") to `save_type` + `save_vs` pairs per the AD&D 2e saving throw matrix; for `magicResistance`, the legacy value may be a percentage string (e.g. "20%"), "Yes", "No", or a descriptive string — map to the structured `MagicResistanceSpec` kind accordingly.
+- AND populate structured inputs with parsed values. If a field has no legacy string AND no `canonical_data` value, initialize it to its UI default (see `spell-editor-structured-fields`).
+- AND display a warning banner if any field's parsing fell back to `kind: "special"`. The banner MUST appear as a single banner at the top of the form, listing the fields that fell back to special (e.g. "Range and Duration could not be fully parsed; original text preserved"). Note: `raw_legacy_value` is unconditionally preserved for all kinds, but acts as the primary user-editable display text when kind is "special".
 
 **Warning Banner UX Details:**
 - **Placement**: Banner at the very top of the form, above all field inputs and labels.
 - **Dismissibility**: Banner is **non-dismissible** - user must either fix the data or accept the `kind: "special"` fallback by saving the spell.
-- **Persistence**: Banner persists until user edits affected field(s) to valid values, saves with kind=special, or navigates away.
+- **Persistence**: Banner persists until user edits affected field(s) to valid non-special values, or the spell is saved with `kind: 'special'` still active. The banner tracks active special-fallback fields individually: after a successful save, each field that is no longer `kind: 'special'` (because the user fixed it before saving) is removed from the banner independently. Fields that are saved with `kind: 'special'` still active are also dismissed from the banner — the fallback value is now durably stored and no unsaved changes remain for that field. The banner is fully dismissed only when no fields remain listed. After a failed save, the banner persists unchanged for all listed fields.
+- **Navigation guard**: This guard is a *specialized extension* of the general unsaved-changes guard. If the user attempts to navigate away while the warning banner is active AND the form has unsaved changes, the editor MUST show a confirmation dialog (e.g. "You have unparsed fields. Navigating away will discard your current editor state. Continue?"). If the form has no unsaved changes (i.e. the spell was loaded with special fallbacks but the user made no edits), navigation away is permitted without a prompt — the original data in the database is unchanged. If a general unsaved-changes guard already exists in the editor, this scenario MUST be handled within that same guard rather than as a separate interceptor.
 
 **Casing Standards for IPC and Storage:**
 - **Parser commands** return structured types using **`camelCase`** field names for IPC (via `#[serde(rename_all = "camelCase")]` on backend structs).
 - **Frontend state** MUST use `camelCase` to match IPC return values.
 - **Canonical storage** (`canonical_data` column) uses **`snake_case`** per the canonical serialization spec.
+- **Reading from `canonical_data`**: The stored JSON blob uses `snake_case` keys. When loading into frontend state, the editor MUST convert keys from `snake_case` to `camelCase` (e.g. `raw_legacy_value` → `rawLegacyValue`, `save_type` → `saveType`). This conversion MUST be applied consistently; do not access `canonical_data` fields by their `snake_case` key names directly in React component state.
 - **Conversion** from camelCase (frontend/IPC) to snake_case (canonical storage) happens when building `CanonicalSpell` for persistence.
 
-**Parser fallbacks:** SpellParser returns schema-valid structured types; on parse failure it returns fallbacks such as `kind: "special"` with `raw_legacy_value` preserved. The UI MUST handle parser errors defensively (show error, fall back to kind=special with raw string). Invalid parser output MUST be validated by the frontend; if validation fails, treat as parser failure and include in warning banner.
+**Parser fallbacks:** SpellParser returns schema-valid structured types and ALWAYS unconditionally preserves the original source string. For `RangeSpec`, `DurationSpec`, `AreaSpec`, `SavingThrowSpec`, and `casting_time`, this is stored in `raw_legacy_value` (hashed content). For `SpellDamageSpec`, this is stored in `source_text` (non-hashed metadata). On parse failure, the parser returns fallbacks such as `kind: "special"` where the preserved string is presented to the user. The UI MUST handle parser errors defensively (show error, fall back to kind=special with the original string). Invalid parser output MUST be validated by the frontend using a type guard or schema validator (e.g. Zod) against the expected structured type; if validation fails, treat as a parser failure and include the field in the warning banner.
+
+**v1-Shaped `canonical_data` Compatibility:**
+
+The backend's `migrate_to_v2()` runs lazily on `normalize()` (i.e., on save). Until a spell is re-saved, its `canonical_data` column may still contain schema version 1 JSON with the following v1-only shapes:
+- `SavingThrowSpec` may contain a `dm_guidance` field (deleted in v2).
+- `SpellDamageSpec` may contain `raw_legacy_value` (renamed to `source_text` in v2).
+
+The frontend MUST tolerate these v1-shaped fields without crashing or data loss:
+- `dm_guidance` read from `canonical_data`: MUST be remapped to `notes` client-side before populating editor state. If `notes` is already non-empty, append `dm_guidance` content after a newline (matching the backend migration logic). Do NOT bind UI components directly to `dm_guidance`.
+- `SpellDamageSpec.raw_legacy_value` read from `canonical_data`: MUST be treated as `source_text` (display as the original source annotation). Do NOT leave the field unread or treat it as an unknown field.
+- `SpellDamageSpec.source_text` and `SpellDamageSpec.raw_legacy_value` both present: prefer `source_text` (post-migration value); discard `raw_legacy_value`.
+
+*Implementation guidance:* A lightweight client-side normalization function that maps v1 → v2 field names on the parsed `canonical_data` object before dispatching to editor state is the cleanest approach. This function runs once on load and handles both migrated (v2) and un-migrated (v1) spells transparently.
+
+**Save path:** On save, the editor MUST always produce v2-shaped `canonical_data` (no `dm_guidance` on SavingThrowSpec, `source_text` on SpellDamageSpec). Backend `normalize()` and `migrate_to_v2()` remain authoritative for persisted data; any code path that serializes editor state to `canonical_data` must emit the v2 shape.
 
 ### Requirement: Component Input
 The Spell Editor MUST provide explicit controls for spell components.
@@ -294,9 +447,13 @@ The Spell Editor MUST provide specialized forms for complex fields.
 - WHEN editing Damage
 - THEN the editor MUST render a `DamageForm`
 - AND allow selecting kind (None, Modeled, DM Adjudicated) with human-readable labels; form value and serialization MUST use schema enums (`"none"`, `"modeled"`, `"dm_adjudicated"`)
-- AND if Modeled, allow adding multiple damage parts. Each DamagePart MUST satisfy schema required fields (id, damage_type, base, application, save). When adding a new part, the UI MUST provide default or schema-compliant values for application and save.
-- AND each DamagePart MUST be assigned a stable, unique ID upon creation matching schema pattern `^[a-z][a-z0-9_]{0,31}$`. Use the pattern: `part_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`. IDs MUST be assigned immediately upon part creation.
+- AND if Modeled, allow adding multiple damage parts. Each DamagePart MUST satisfy schema required fields (id, damage_type, base, application, save). When adding a new part, the UI MUST initialize `application` to `{ scope: "per_target" }` and `save` to `{ kind: "none" }` as schema-compliant defaults.
+- AND each DamagePart MUST be assigned a stable, unique ID upon creation matching schema pattern `^[a-z][a-z0-9_]{0,31}$`. Use the pattern: `part_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`. IDs MUST be assigned immediately upon part creation. No runtime uniqueness verification is required — the combined timestamp + 7-character base-36 suffix provides sufficient entropy for human-edited spells with a small number of parts.
 - AND allow configuring damage type, dice pool, and scaling for each part.
+- AND for `"modeled"` kind, a `notes` text area MUST also be provided (schema `allOf` requires either `parts` or `notes` for this kind; notes supports text-only modeled descriptions when no parts are defined).
+- AND if kind is `"dm_adjudicated"`, the form MUST show a `dm_guidance` text area (required by schema `allOf` conditional for this kind) and an optional `notes` text area. No damage parts sub-form is shown.
+- AND if kind is `"none"`, no damage parts sub-form or `dm_guidance` field is shown.
+- AND if `source_text` is populated (the original legacy string preserved by the importer, excluded from the canonical hash), the form MUST display it as a read-only labelled annotation (e.g., "Original source text") for all kinds. It MUST NOT be editable by the user.
 
 #### Scenario: Area Editing
 - GIVEN the Spell Editor form
@@ -304,23 +461,30 @@ The Spell Editor MUST provide specialized forms for complex fields.
 - THEN the editor MUST render an `AreaForm`
 - AND allow selecting kind (Cone, Cube, Sphere, etc.)
 - AND allow entering specific scalars (radius, length, etc.) based on kind. Geometric dimensions use `shape_unit` per `#/$defs/AreaSpec`; surface/volume kinds use the scalar plus `unit`.
+- AND when kind is NOT "special", the form MUST bind to the `.text` property of the `AreaSpec` for the computed canonical text preview (read-only or auto-recomputed).
+- AND when kind IS "special", the user-editable field MUST be `raw_legacy_value` (consistent with Range and Duration special handling). The `.text` property is NOT directly edited by the user in this case; it MUST be derived from `raw_legacy_value` when `raw_legacy_value` is non-empty (the same text, before normalization is applied on save), or set to `None` when `raw_legacy_value` is empty/absent. Do NOT emit an empty string for `.text` when there is nothing to derive from — `AreaSpec.text` is optional in the schema, so `None` is correct for the no-input state. See `spell-editor-structured-fields` for the real-time `.text` preview computation contract.
 
 #### Pattern: Enum selector + optional custom/special field
-For fields whose schema has a kind/enum and optional custom or special content (e.g. dm_guidance, raw_legacy_value), the editor MUST provide an enum-based selector for kind/options plus an optional custom or special field when the schema allows. SavingThrowInput and MagicResistanceInput follow this pattern.
+For fields whose schema has a kind/enum and optional custom or special content (e.g. notes, or a manually editable `raw_legacy_value` when kind is special), the editor MUST provide an enum-based selector for kind/options plus an optional custom or special field when the schema allows. SavingThrowInput and MagicResistanceInput follow this pattern.
 
 #### Scenario: Saving Throw and MR Editing
 - GIVEN the Spell Editor form
 - WHEN editing Saving Throw
 - THEN the editor MUST render `SavingThrowInput` per `#/$defs/SavingThrowSpec` (kind: none, single, multiple, dm_adjudicated)
-- AND when kind is single or multiple, MUST show SingleSave sub-form(s) (save_type, applies_to, on_success, on_failure).
+- AND when kind is `"single"` or `"multiple"`, MUST show SingleSave sub-form(s) (save_type, save_vs, applies_to, on_success, on_failure). `save_type` selects the saving throw matrix *category* (e.g. `"paralyzation_poison_death"`, `"rod_staff_wand"`); `save_vs` selects the *specific effect* being saved against (e.g. `"spell"`, `"poison"`, `"death_magic"`). Both MUST be rendered as enum selectors.
+- AND when kind is `"dm_adjudicated"`, no SingleSave sub-form is shown. The `notes` field (the sole narrative field after `dm_guidance` removal) MUST be surfaced as an editable text area.
+- AND when kind is `"none"`, no sub-form or additional fields are shown.
+- AND for all kinds: if `raw_legacy_value` is populated (new field — stored unconditionally per Decision 1), it MUST be shown as a read-only labelled annotation. The `notes` field (top-level on `SavingThrowSpec`, not scoped to any single kind) MUST be available as an editable text area for all kinds.
 - WHEN editing Magic Resistance
 - THEN the editor MUST render specific enum-based inputs (not generic strings)
 - AND the `applies_to` enum selector MUST be displayed for all kinds EXCEPT `unknown`. When kind is `unknown`, the `applies_to` selector MUST be hidden or disabled as it is not applicable per schema logic.
+- AND a `notes` text area MUST be shown for all kinds (it is optional per schema and applies across all MR kinds).
+- AND if `source_text` is populated (the original legacy descriptor preserved by the importer, excluded from the canonical hash), it MUST be displayed as a read-only labelled annotation. It MUST NOT be editable by the user.
 - UI labels MUST map to schema enum values: `whole_spell` → "Whole Spell"; `harmful_effects_only` → "Harmful Effects Only"; `beneficial_effects_only` → "Beneficial Effects Only"; `dm` → "DM Discretion".
 
 #### Scenario: Magic Resistance partial and special
 - GIVEN the Spell Editor form and Magic Resistance is being edited
 - WHEN kind is "partial"
-- THEN the editor MUST show the `applies_to` selector AND a sub-form for `#/$defs/MagicResistanceSpec`.partial: scope (required) and optional part_ids.
+- THEN the editor MUST show the `applies_to` selector AND a sub-form for `#/$defs/MagicResistanceSpec`.partial: scope (required enum: `damage_only`, `non_damage_only`, `primary_effect_only`, `secondary_effects_only`, `by_part_id`) and optional part_ids (array of strings referencing `DamagePart.id` values from the spell's damage model — only applicable when scope is `by_part_id`). If scope is `by_part_id` and the spell's `damage.kind` is not `"modeled"` (i.e., no `DamagePart` entries exist), the part_ids picker MUST be disabled and MUST display an informational message (e.g., "No modeled damage parts available — set Damage to Modeled first").
 - WHEN kind is "special"
 - THEN the editor MUST show the `applies_to` selector AND a field for special_rule (optional text, per schema).

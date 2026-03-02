@@ -49,9 +49,7 @@ const CASTING_TIME_UNITS: Set<string> = new Set([
   "turn",
   "hour",
   "minute",
-  "action",
-  "bonus_action",
-  "reaction",
+  // "action", "bonus_action", "reaction" removed in v2 schema (task 3.1)
   "special",
   "instantaneous",
 ]);
@@ -289,7 +287,8 @@ export function validateSpellDamageSpec(x: unknown): x is SpellDamageSpec {
   }
 
   if (kind === "dm_adjudicated") {
-    if (d.rawLegacyValue != null && typeof d.rawLegacyValue !== "string") return false;
+    // sourceText replaced rawLegacyValue on SpellDamageSpec in v2 schema (task 3.1)
+    if (d.sourceText != null && typeof d.sourceText !== "string") return false;
   }
 
   return true;

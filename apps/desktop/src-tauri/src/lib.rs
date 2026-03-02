@@ -94,6 +94,7 @@ pub fn run() {
             export_character_sheet,
             export_character_spellbook_pack,
             search_characters,
+            crate::models::canonical_spell::migrate_all_spells_to_v2,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

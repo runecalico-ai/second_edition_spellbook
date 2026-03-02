@@ -127,7 +127,7 @@ pub struct RangeSpec {
     pub region_unit: Option<crate::models::area_spec::RegionUnit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    /// When parsing fails or falls back to Special, the original legacy string is stored here.
+    /// Original legacy source text preserved as-is for auditability.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

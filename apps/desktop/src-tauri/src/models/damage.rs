@@ -340,7 +340,8 @@ pub struct SpellDamageSpec {
         default,
         skip_serializing_if = "Option::is_none",
         alias = "source_text",
-        alias = "raw_legacy_value"
+        alias = "raw_legacy_value",
+        alias = "rawLegacyValue"
     )]
     pub source_text: Option<String>,
 }
@@ -463,6 +464,15 @@ mod tests {
         assert_eq!(
             from_raw_legacy.source_text.as_deref(),
             Some("from raw_legacy_value")
+        );
+
+        let from_raw_legacy_camel: SpellDamageSpec = serde_json::from_str(
+            r#"{"kind":"dm_adjudicated","rawLegacyValue":"from rawLegacyValue"}"#,
+        )
+        .expect("deserialize rawLegacyValue alias variant");
+        assert_eq!(
+            from_raw_legacy_camel.source_text.as_deref(),
+            Some("from rawLegacyValue")
         );
     }
 

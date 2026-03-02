@@ -342,7 +342,12 @@ pub fn canonicalize_spell_detail(
     let mut canonical = CanonicalSpell::try_from(detail).map_err(AppError::Validation)?;
 
     // Normalize BEFORE hashing/serializing to ensure the stored data is clean
-    canonical.normalize(None);
+    let res = canonical.normalize(None);
+    if res.notes_truncated {
+        return Err(AppError::Validation(
+            "Saving throw notes truncated during migration (exceeded 2048 characters)".into(),
+        ));
+    }
 
     let hash = canonical
         .compute_hash()

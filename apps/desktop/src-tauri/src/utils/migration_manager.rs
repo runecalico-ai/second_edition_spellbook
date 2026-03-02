@@ -264,7 +264,19 @@ pub fn run_hash_backfill(
         }
 
         // Normalize BEFORE hashing/serializing to ensure the stored data is clean
-        canonical.normalize(None);
+        let res = canonical.normalize(detail.id);
+        if res.notes_truncated {
+            hash_fail_count += 1;
+            if let Some(log) = &mut log_file {
+                let _ = writeln!(
+                    log,
+                    "[{}] Spell {}: Normalization truncation error",
+                    Utc::now(),
+                    detail.id.unwrap_or_default()
+                );
+            }
+            continue;
+        }
 
         let hash_result = canonical.compute_hash();
         if let Ok(hash) = hash_result {
@@ -436,7 +448,16 @@ pub fn recompute_all_hashes(
         }
 
         // Normalize BEFORE hashing/serializing to ensure the stored data is clean
-        canonical.normalize(None);
+        let res = canonical.normalize(detail.id);
+        if res.notes_truncated {
+            writeln!(
+                log_file,
+                "[{}] Spell {}: Normalization truncation error during recompute",
+                Utc::now(),
+                detail.id.unwrap_or_default()
+            )?;
+            continue;
+        }
 
         if let Ok(new_hash) = canonical.compute_hash() {
             if Some(&new_hash) != old_hash.as_ref() {

@@ -1,24 +1,24 @@
 # Tasks: Integrate Spell Hashing into Ecosystem
 
 ## 0. Foundation
-- [ ] 0.1 Execute the v1->v2 Bulk Migration (`migrate_all_spells_to_v2`).
-    - [ ] Define or document the trigger for running the bulk migration (e.g. Settings, first launch after upgrade, or manual Tauri invocation); see design "Migration trigger".
-    - [ ] Treat this as a hard prerequisite gate for hash-reference migrations and hash-based import/export behavior.
-    - [ ] Ensure all `spell.content_hash` entries in the SQLite DB are recalculated according to the v2 serialization contract (including `raw_legacy_value`).
-    - [ ] Verify that the migration handles 5e unit remapping and `dm_guidance` cleanup.
+- [x] 0.1 Execute the v1->v2 Bulk Migration (`migrate_all_spells_to_v2`).
+    - [x] Define or document the trigger for running the bulk migration (e.g. Settings, first launch after upgrade, or manual Tauri invocation); see design "Migration trigger".
+    - [x] Treat this as a hard prerequisite gate for hash-reference migrations and hash-based import/export behavior.
+    - [x] Ensure all `spell.content_hash` entries in the SQLite DB are recalculated according to the v2 serialization contract (including `raw_legacy_value`).
+    - [x] Verify that the migration handles 5e unit remapping and `dm_guidance` cleanup.
 
 ## 1. Search Implementation
-- [ ] 1.1 Extend FTS5 for spell search (Migration 0014):
-    - [ ] DROP existing triggers: `spell_ai`, `spell_ad`, `spell_au`.
-    - [ ] DROP existing `spell_fts` virtual table.
-    - [ ] CREATE new `spell_fts` with columns: name, description, material_components, tags, source, author, canonical_range_text, canonical_duration_text, canonical_area_text, canonical_casting_time_text, canonical_saving_throw_text, canonical_damage_text, canonical_mr_text, canonical_xp_text.
-    - [ ] CREATE new triggers (`spell_ai`, `spell_ad`, `spell_au`) that extract canonical text fields from `canonical_data` via `json_extract()`. DELETE/UPDATE triggers must pass `old.*` values (including `json_extract(old.canonical_data, ...)`) in the FTS5 `'delete'` command — not empty strings.
-    - [ ] Repopulate FTS via explicit `INSERT INTO spell_fts(...) SELECT ... json_extract(canonical_data, ...) FROM spell` (NOT `VALUES('rebuild')` — rebuild reads content table columns by name but canonical text columns don't exist on the `spell` table).
-    - [ ] Index searchable fields: name, description, tags, plus text-bearing fields from RangeSpec, DurationSpec, AreaSpec, SpellCastingTime, SavingThrowSpec, SpellDamageSpec, MagicResistanceSpec, ExperienceComponentSpec in `canonical_data`.
-- [ ] 1.2 Update search query builders:
-    - [ ] Switch from `LIKE` queries to `MATCH`.
-    - [ ] Implement ranking by relevance.
-    - [ ] Implement two-tier search: basic mode (escape all, phrase search) and advanced mode (detect uppercase AND/OR/NOT, pass as operators; NEAR is always escaped; escape remaining special chars; reject malformed expressions and fall back to basic mode).
+- [x] 1.1 Extend FTS5 for spell search (Migration 0014):
+    - [x] DROP existing triggers: `spell_ai`, `spell_ad`, `spell_au`.
+    - [x] DROP existing `spell_fts` virtual table.
+    - [x] CREATE new `spell_fts` with columns: name, description, material_components, tags, source, author, canonical_range_text, canonical_duration_text, canonical_area_text, canonical_casting_time_text, canonical_saving_throw_text, canonical_damage_text, canonical_mr_text, canonical_xp_text.
+    - [x] CREATE new triggers (`spell_ai`, `spell_ad`, `spell_au`) that extract canonical text fields from `canonical_data` via `json_extract()`. DELETE/UPDATE triggers must pass `old.*` values (including `json_extract(old.canonical_data, ...)`) in the FTS5 `'delete'` command — not empty strings.
+    - [x] Repopulate FTS via explicit `INSERT INTO spell_fts(...) SELECT ... json_extract(canonical_data, ...) FROM spell` (NOT `VALUES('rebuild')` — rebuild reads content table columns by name but canonical text columns don't exist on the `spell` table).
+    - [x] Index searchable fields: name, description, tags, plus text-bearing fields from RangeSpec, DurationSpec, AreaSpec, SpellCastingTime, SavingThrowSpec, SpellDamageSpec, MagicResistanceSpec, ExperienceComponentSpec in `canonical_data`.
+- [x] 1.2 Update search query builders:
+    - [x] Switch from `LIKE` queries to `MATCH`.
+    - [x] Implement ranking by relevance.
+    - [x] Implement two-tier search: basic mode (escape all, phrase search) and advanced mode (detect uppercase AND/OR/NOT, pass as operators; NEAR is always escaped; escape remaining special chars; reject malformed expressions and fall back to basic mode).
 
 ## 2. Import/Export
 - [ ] 2.1 Implement Import Logic:

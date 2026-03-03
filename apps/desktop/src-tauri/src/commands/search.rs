@@ -10,6 +10,132 @@ use serde_json::json;
 use std::sync::Arc;
 use tauri::State;
 
+// ---------------------------------------------------------------------------
+// FTS5 query builder — two-tier search
+// ---------------------------------------------------------------------------
+
+/// Escapes the contents of a word for use inside an FTS5 quoted phrase (`"..."`).
+/// Only `"` needs to be doubled; all other characters are treated literally
+/// inside a quoted phrase.
+fn escape_fts_phrase_content(s: &str) -> String {
+    s.replace('"', "\"\"")
+}
+
+/// Wraps a string as a single FTS5 quoted phrase term.
+fn wrap_as_fts_phrase(s: &str) -> String {
+    format!("\"{}\"", escape_fts_phrase_content(s))
+}
+
+/// Returns true for binary FTS5 boolean operators that require an operand on
+/// both sides (`AND`, `OR`).
+fn is_fts_binary_operator(token: &str) -> bool {
+    matches!(token, "AND" | "OR")
+}
+
+/// Returns true for any of the three FTS5 boolean operators (`AND`, `OR`, `NOT`).
+fn is_fts_operator(token: &str) -> bool {
+    matches!(token, "AND" | "OR" | "NOT")
+}
+
+/// Attempts to build an advanced-mode FTS5 query from already-tokenised input.
+///
+/// Rules:
+/// - Cannot start with `AND` or `OR` (but `NOT` is allowed as a leading negation).
+/// - Cannot end with any operator.
+/// - `AND`/`OR` cannot be immediately followed by another `AND`/`OR` (but `AND NOT`
+///   is valid).
+/// - Must contain at least one non-operator (content) token.
+///
+/// Content tokens are wrapped individually as quoted phrases; `NEAR` therefore
+/// becomes `"NEAR"` — a literal word, never an FTS5 NEAR operator.
+///
+/// Returns `None` when the expression is malformed, which causes the caller to
+/// fall back to basic mode.
+fn try_build_advanced_fts_query(tokens: &[&str]) -> Option<String> {
+    if tokens.is_empty() {
+        return None;
+    }
+    // Cannot start with AND or OR (malformed: "AND fire", "OR fire").
+    if is_fts_binary_operator(tokens[0]) {
+        return None;
+    }
+    // Cannot end with any operator (malformed: "fire AND", "fire NOT").
+    if is_fts_operator(tokens[tokens.len() - 1]) {
+        return None;
+    }
+    // AND/OR cannot be immediately followed by AND/OR (malformed: "fire AND AND ice").
+    for window in tokens.windows(2) {
+        if is_fts_binary_operator(window[0]) && is_fts_binary_operator(window[1]) {
+            return None;
+        }
+    }
+    // Must have at least one content token.
+    if !tokens.iter().any(|t| !is_fts_operator(t)) {
+        return None;
+    }
+
+    // Build the FTS5 expression.  FTS5's NOT is an infix binary operator that
+    // already means "AND NOT", so `a AND NOT b` is invalid syntax — collapse
+    // "AND NOT" token pairs to just "NOT".
+    let mut parts: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let token = tokens[i];
+        if token == "AND" && i + 1 < tokens.len() && tokens[i + 1] == "NOT" {
+            // Skip the redundant AND; the NOT on the next iteration handles it.
+            i += 1;
+            continue;
+        }
+        if is_fts_operator(token) {
+            parts.push(token.to_string());
+        } else {
+            parts.push(wrap_as_fts_phrase(token));
+        }
+        i += 1;
+    }
+    Some(parts.join(" "))
+}
+
+/// Builds the FTS5 MATCH expression string for `raw_query`.
+///
+/// The returned string is always bound as a single `?` parameter — raw user
+/// input is never concatenated into SQL.
+///
+/// **Basic mode** (default):  
+///   The entire query is wrapped as a single quoted phrase.  All FTS5 special
+///   characters (`"`, `*`, `(`, `)`, `^`, `:`, `-`, `+`) are treated as
+///   literal text.  Boolean keywords typed in any case are not operators.
+///
+/// **Advanced mode** (opt-in):  
+///   Activated when the trimmed query contains at least one standalone uppercase
+///   boolean keyword (`AND`, `OR`, `NOT`) as a whitespace-delimited token.
+///   Matched operators are kept as FTS5 boolean operators; all other tokens are
+///   individually wrapped as quoted phrases.  `NEAR` is *always* escaped — even
+///   when other operators are present it becomes `"NEAR"`, never the FTS5 NEAR
+///   operator.  Falls back to basic mode on malformed operator expressions (e.g.
+///   trailing operator, leading `AND`/`OR`, consecutive binary operators).
+fn build_fts_query(raw_query: &str) -> String {
+    let trimmed = raw_query.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+
+    // Advanced-mode heuristic: any standalone AND, OR, or NOT token.
+    let has_boolean_operator = tokens.iter().any(|&t| is_fts_operator(t));
+    if has_boolean_operator {
+        if let Some(advanced) = try_build_advanced_fts_query(&tokens) {
+            return advanced;
+        }
+        // Malformed expression — fall through to basic mode.
+    }
+
+    // Basic mode: wrap the entire query as a single quoted phrase.
+    wrap_as_fts_phrase(trimmed)
+}
+
+// ---------------------------------------------------------------------------
+
 fn collect_facet_entries(conn: &Connection, sql: &str) -> Result<Vec<String>, AppError> {
     let mut stmt = conn.prepare(sql)?;
     let rows = stmt.query_map([], |row| row.get::<_, Option<String>>(0))?;
@@ -34,17 +160,27 @@ fn search_keyword_with_conn(
     query: &str,
     filters: Option<SearchFilters>,
 ) -> Result<Vec<SpellSummary>, AppError> {
-    let mut sql = "SELECT id, name, school, sphere, level, class_list, components, duration, source, is_quest_spell, is_cantrip, tags FROM spell WHERE 1=1".to_string();
+    let has_text_query = !query.trim().is_empty();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-    if !query.trim().is_empty() {
-        // Use FTS5 for full-text search across name, description, material_components, tags, source, author,
-        // and canonical text fields (range, duration, area, casting time, saving throw, damage, magic resistance, xp cost)
-        sql.push_str(" AND id IN (SELECT rowid FROM spell_fts WHERE spell_fts MATCH ?)");
-        // Escape special FTS5 characters and wrap in quotes for phrase matching
-        let escaped_query = query.replace('"', "\"\"");
-        params.push(Box::new(format!("\"{}\"", escaped_query)));
-    }
+    // When a text query is present we JOIN spell_fts so that bm25() is available
+    // for relevance ordering.  The `s.` prefix avoids ambiguity on columns that
+    // exist in both `spell` and `spell_fts` (e.g. `tags`, `source`).
+    let mut sql = if has_text_query {
+        params.push(Box::new(build_fts_query(query)));
+        "SELECT s.id, s.name, s.school, s.sphere, s.level, s.class_list, s.components, \
+         s.duration, s.source, s.is_quest_spell, s.is_cantrip, s.tags \
+         FROM spell s JOIN spell_fts ON spell_fts.rowid = s.id \
+         WHERE spell_fts MATCH ?"
+            .to_string()
+    } else {
+        "SELECT id, name, school, sphere, level, class_list, components, duration, source, \
+         is_quest_spell, is_cantrip, tags FROM spell WHERE 1=1"
+            .to_string()
+    };
+
+    // When JOINing with spell_fts, qualifier the spell columns to avoid ambiguity.
+    let col = if has_text_query { "s." } else { "" };
 
     if let Some(f) = filters {
         if let Some(schools) = f.schools {
@@ -54,7 +190,7 @@ fn search_keyword_with_conn(
                     if i > 0 {
                         sql.push_str(" OR ");
                     }
-                    sql.push_str("school LIKE ?");
+                    sql.push_str(&format!("{}school LIKE ?", col));
                     params.push(Box::new(format!("%{}%", school)));
                 }
                 sql.push(')');
@@ -68,7 +204,7 @@ fn search_keyword_with_conn(
                     if i > 0 {
                         sql.push_str(" OR ");
                     }
-                    sql.push_str("sphere LIKE ?");
+                    sql.push_str(&format!("{}sphere LIKE ?", col));
                     params.push(Box::new(format!("%{}%", sphere)));
                 }
                 sql.push(')');
@@ -76,57 +212,62 @@ fn search_keyword_with_conn(
         }
 
         if let Some(min) = f.level_min {
-            sql.push_str(" AND level >= ?");
+            sql.push_str(&format!(" AND {}level >= ?", col));
             params.push(Box::new(min));
         }
 
         if let Some(max) = f.level_max {
-            sql.push_str(" AND level <= ?");
+            sql.push_str(&format!(" AND {}level <= ?", col));
             params.push(Box::new(max));
         }
 
         if let Some(class) = f.class_list {
             if !class.is_empty() {
-                sql.push_str(" AND class_list LIKE ?");
+                sql.push_str(&format!(" AND {}class_list LIKE ?", col));
                 params.push(Box::new(format!("%{}%", class)));
             }
         }
 
         if let Some(source) = f.source {
             if !source.is_empty() {
-                sql.push_str(" AND source LIKE ?");
+                sql.push_str(&format!(" AND {}source LIKE ?", col));
                 params.push(Box::new(format!("%{}%", source)));
             }
         }
 
         if let Some(components) = f.components {
             if !components.is_empty() {
-                sql.push_str(" AND components LIKE ?");
+                sql.push_str(&format!(" AND {}components LIKE ?", col));
                 params.push(Box::new(format!("%{}%", components)));
             }
         }
 
         if let Some(tags) = f.tags {
             if !tags.is_empty() {
-                sql.push_str(" AND tags LIKE ?");
+                sql.push_str(&format!(" AND {}tags LIKE ?", col));
                 params.push(Box::new(format!("%{}%", tags)));
             }
         }
 
         if let Some(is_quest) = f.is_quest_spell {
             if is_quest {
-                sql.push_str(" AND is_quest_spell = 1");
+                sql.push_str(&format!(" AND {}is_quest_spell = 1", col));
             }
         }
 
         if let Some(is_cantrip) = f.is_cantrip {
             if is_cantrip {
-                sql.push_str(" AND is_cantrip = 1");
+                sql.push_str(&format!(" AND {}is_cantrip = 1", col));
             }
         }
     }
 
-    sql.push_str(" ORDER BY name ASC LIMIT 100");
+    // Relevance ranking via bm25 when a text query is present (lower = more relevant).
+    if has_text_query {
+        sql.push_str(" ORDER BY bm25(spell_fts) ASC LIMIT 100");
+    } else {
+        sql.push_str(" ORDER BY name ASC LIMIT 100");
+    }
 
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
@@ -522,6 +663,212 @@ mod tests {
         assert!(
             fts_rowids(&conn, "Nullspell").contains(&1),
             "name term should be indexed even when canonical_data is NULL"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // build_fts_query — unit tests for two-tier search logic
+    // -----------------------------------------------------------------------
+
+    use super::build_fts_query;
+
+    #[test]
+    fn test_basic_mode_lowercase_and_is_not_operator() {
+        // "fire and ice" — lowercase "and" must NOT trigger advanced mode.
+        // The whole query is wrapped as a single phrase.
+        assert_eq!(build_fts_query("fire and ice"), "\"fire and ice\"");
+    }
+
+    #[test]
+    fn test_basic_mode_near_is_not_operator() {
+        // NEAR is never a recognised boolean in the detection heuristic.
+        // "fire NEAR shield" stays in basic mode (single phrase).
+        assert_eq!(build_fts_query("fire NEAR shield"), "\"fire NEAR shield\"");
+    }
+
+    #[test]
+    fn test_advanced_mode_and_operator() {
+        // Uppercase AND triggers advanced mode; each word becomes its own phrase.
+        assert_eq!(build_fts_query("fire AND ice"), "\"fire\" AND \"ice\"");
+    }
+
+    #[test]
+    fn test_advanced_mode_and_not_operator() {
+        // FTS5's NOT is already an infix "AND NOT" operator, so "AND NOT" collapses
+        // to just "NOT" — `"fire" NOT "ice"` is the correct FTS5 syntax.
+        assert_eq!(
+            build_fts_query("fire AND NOT ice"),
+            "\"fire\" NOT \"ice\""
+        );
+    }
+
+    #[test]
+    fn test_advanced_mode_or_operator() {
+        assert_eq!(build_fts_query("fire OR ice"), "\"fire\" OR \"ice\"");
+    }
+
+    #[test]
+    fn test_advanced_mode_not_operator() {
+        // Leading NOT (negation) is valid in FTS5.
+        assert_eq!(build_fts_query("NOT ice"), "NOT \"ice\"");
+    }
+
+    #[test]
+    fn test_advanced_mode_near_always_escaped() {
+        // When AND is present the query enters advanced mode, but NEAR must still
+        // be wrapped as a quoted phrase (literal word), never treated as an operator.
+        assert_eq!(
+            build_fts_query("fire AND NEAR shield"),
+            "\"fire\" AND \"NEAR\" \"shield\""
+        );
+    }
+
+    #[test]
+    fn test_malformed_trailing_operator_falls_back_to_basic() {
+        // "fire AND" — trailing binary operator is malformed; fall back to phrase.
+        assert_eq!(build_fts_query("fire AND"), "\"fire AND\"");
+    }
+
+    #[test]
+    fn test_malformed_leading_binary_operator_falls_back_to_basic() {
+        // "AND fire" — starts with binary operator; fall back to phrase.
+        assert_eq!(build_fts_query("AND fire"), "\"AND fire\"");
+    }
+
+    #[test]
+    fn test_malformed_consecutive_and_falls_back_to_basic() {
+        // "fire AND AND ice" — consecutive binary operators; fall back to phrase.
+        assert_eq!(build_fts_query("fire AND AND ice"), "\"fire AND AND ice\"");
+    }
+
+    #[test]
+    fn test_malformed_operator_only_falls_back_to_basic() {
+        // A query that is only an operator token is malformed.
+        assert_eq!(build_fts_query("AND"), "\"AND\"");
+    }
+
+    #[test]
+    fn test_basic_mode_special_chars_escaped_in_phrase() {
+        // Double-quote inside user input must be escaped (doubled) inside the
+        // wrapping phrase so it doesn't break the FTS5 query syntax.
+        assert_eq!(build_fts_query("fire\"ball"), "\"fire\"\"ball\"");
+    }
+
+    #[test]
+    fn test_advanced_mode_special_chars_escaped_in_phrase() {
+        // Special chars inside content tokens in advanced mode must be escaped.
+        assert_eq!(
+            build_fts_query("fire\"ball AND ice"),
+            "\"fire\"\"ball\" AND \"ice\""
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Integration tests: build_fts_query + actual FTS5 search behaviour
+    // -----------------------------------------------------------------------
+
+    /// Creates an in-memory DB with the full `spell` table (all columns used by
+    /// `search_keyword_with_conn`) plus the migration-0014 FTS schema.
+    fn setup_search_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id               INTEGER PRIMARY KEY,
+                name             TEXT NOT NULL DEFAULT '',
+                description      TEXT NOT NULL DEFAULT '',
+                material_components TEXT DEFAULT '',
+                tags             TEXT DEFAULT '',
+                source           TEXT DEFAULT '',
+                author           TEXT DEFAULT '',
+                school           TEXT DEFAULT '',
+                sphere           TEXT DEFAULT '',
+                level            INTEGER DEFAULT 0,
+                class_list       TEXT DEFAULT '',
+                components       TEXT DEFAULT '',
+                duration         TEXT DEFAULT '',
+                is_quest_spell   INTEGER DEFAULT 0,
+                is_cantrip       INTEGER DEFAULT 0,
+                canonical_data   TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        let migration_sql =
+            include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
+        conn.execute_batch(migration_sql).unwrap();
+        conn
+    }
+
+    fn insert_spell(conn: &Connection, id: i64, name: &str, description: &str) {
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) VALUES (?, ?, ?, NULL)",
+            rusqlite::params![id, name, description],
+        )
+        .unwrap();
+    }
+
+    fn search_ids(conn: &Connection, query: &str) -> Vec<i64> {
+        use super::search_keyword_with_conn;
+        search_keyword_with_conn(conn, query, None)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.id)
+            .collect()
+    }
+
+    /// Searching with lowercase "and" activates basic mode (phrase search).
+    /// "Fire and Ice" should be returned because its description contains the
+    /// phrase "fire and ice".
+    #[test]
+    fn test_search_basic_mode_lowercase_and_matches_phrase() {
+        let conn = setup_search_db();
+        insert_spell(&conn, 1, "Fire and Ice", "A spell of fire and ice");
+        insert_spell(&conn, 2, "Fire Shield", "A shield wreathed in fire");
+
+        let ids = search_ids(&conn, "fire and ice");
+        assert!(
+            ids.contains(&1),
+            "'Fire and Ice' should match phrase 'fire and ice'"
+        );
+    }
+
+    /// Searching with uppercase "AND NOT" activates advanced mode.
+    /// "AND NOT" is collapsed to "NOT" (FTS5's NOT is already an infix AND-NOT operator).
+    /// "Fire Shield" contains "fire" but NOT "ice", so it should match.
+    /// "Fire and Ice" contains both "fire" and "ice", so it must NOT match.
+    #[test]
+    fn test_search_advanced_mode_and_not_excludes_term() {
+        let conn = setup_search_db();
+        insert_spell(&conn, 1, "Fire Shield", "A blazing shield of fire");
+        insert_spell(&conn, 2, "Fire and Ice", "A spell of fire and ice");
+
+        let ids = search_ids(&conn, "fire AND NOT ice");
+        assert!(
+            ids.contains(&1),
+            "'Fire Shield' should match 'fire AND NOT ice'"
+        );
+        assert!(
+            !ids.contains(&2),
+            "'Fire and Ice' must NOT match 'fire AND NOT ice' (contains 'ice')"
+        );
+    }
+
+    /// "fire NEAR shield" must activate basic mode (NEAR is not a recognised
+    /// boolean), so the entire string is treated as a single phrase search.
+    /// No spell has the literal adjacent phrase "fire NEAR shield" in its text,
+    /// so the result should be empty.
+    #[test]
+    fn test_search_near_always_basic_mode() {
+        let conn = setup_search_db();
+        insert_spell(&conn, 1, "Fire Shield", "A shield wreathed in fire");
+        insert_spell(&conn, 2, "Fireball", "An orb of fire near the enemy");
+
+        // The literal phrase "fire NEAR shield" appears in neither description.
+        let ids = search_ids(&conn, "fire NEAR shield");
+        assert!(
+            ids.is_empty(),
+            "NEAR should be treated as literal text (basic mode phrase), not an FTS5 operator"
         );
     }
 }

@@ -108,7 +108,14 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 13", [])?;
     }
 
-    info!(version = 13, "DB migration complete");
+    if version < 14 {
+        info!("Applying migration 0014");
+        let sql = include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 14", [])?;
+    }
+
+    info!(version = 14, "DB migration complete");
 
     Ok(())
 }

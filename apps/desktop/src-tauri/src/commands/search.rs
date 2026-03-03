@@ -332,6 +332,175 @@ pub async fn delete_saved_search(state: State<'_, Arc<Pool>>, id: i64) -> Result
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    /// Creates an in-memory database with the spell table and the migration-0014
+    /// FTS schema (virtual table + triggers).  Using include_str! means these
+    /// tests exercise the exact SQL that ships in production.
+    fn setup_fts_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id               INTEGER PRIMARY KEY,
+                name             TEXT NOT NULL DEFAULT '',
+                description      TEXT NOT NULL DEFAULT '',
+                material_components TEXT DEFAULT '',
+                tags             TEXT DEFAULT '',
+                source           TEXT DEFAULT '',
+                author           TEXT DEFAULT '',
+                canonical_data   TEXT NOT NULL DEFAULT '{}'
+            );
+            "#,
+        )
+        .unwrap();
+        let migration_sql =
+            include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
+        conn.execute_batch(migration_sql).unwrap();
+        conn
+    }
+
+    /// Returns the rowids from spell_fts that match the given FTS term.
+    fn fts_rowids(conn: &Connection, term: &str) -> Vec<i64> {
+        let mut stmt = conn
+            .prepare("SELECT rowid FROM spell_fts WHERE spell_fts MATCH ?")
+            .unwrap();
+        let rows = stmt.query_map([term], |row| row.get::<_, i64>(0)).unwrap();
+        rows.filter_map(|r| r.ok()).collect()
+    }
+
+    /// Verify that the INSERT trigger indexes both plain description text and
+    /// canonical_range_text extracted from canonical_data JSON.
+    #[test]
+    fn test_fts_insert_trigger() {
+        let conn = setup_fts_db();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (1, 'Fireball', 'A blazing orb of fire', \
+             '{\"range\":{\"text\":\"hundredyards\"}}')",
+            [],
+        )
+        .unwrap();
+
+        assert!(
+            fts_rowids(&conn, "blazing").contains(&1),
+            "description term 'blazing' should be indexed after INSERT"
+        );
+        assert!(
+            fts_rowids(&conn, "hundredyards").contains(&1),
+            "canonical_range_text term 'hundredyards' should be indexed after INSERT"
+        );
+    }
+
+    /// Verify that the UPDATE trigger removes the old description term and adds
+    /// the new one (basic sync behaviour).
+    #[test]
+    fn test_fts_update_trigger_sync() {
+        let conn = setup_fts_db();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (1, 'Missile Storm', 'Fires xyzoldterm projectiles', '{}')",
+            [],
+        )
+        .unwrap();
+
+        assert!(
+            fts_rowids(&conn, "xyzoldterm").contains(&1),
+            "old term should be present before update"
+        );
+
+        conn.execute(
+            "UPDATE spell SET description = 'Fires xyznewterm projectiles' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+
+        assert!(
+            !fts_rowids(&conn, "xyzoldterm").contains(&1),
+            "old term 'xyzoldterm' must not match after update"
+        );
+        assert!(
+            fts_rowids(&conn, "xyznewterm").contains(&1),
+            "new term 'xyznewterm' must match after update"
+        );
+    }
+
+    /// Verify that the UPDATE trigger passes old.canonical_data values correctly
+    /// so that stale canonical_range_text entries are removed from the FTS index.
+    #[test]
+    fn test_fts_update_trigger_no_stale_entries() {
+        let conn = setup_fts_db();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (1, 'Range Spell', 'A test spell', \
+             '{\"range\":{\"text\":\"oldrangetoken\"}}')",
+            [],
+        )
+        .unwrap();
+
+        assert!(
+            fts_rowids(&conn, "oldrangetoken").contains(&1),
+            "old canonical_range_text should be present before update"
+        );
+
+        conn.execute(
+            "UPDATE spell SET canonical_data = '{\"range\":{\"text\":\"newrangetoken\"}}' \
+             WHERE id = 1",
+            [],
+        )
+        .unwrap();
+
+        assert!(
+            !fts_rowids(&conn, "oldrangetoken").contains(&1),
+            "stale canonical_range_text must be removed after update (old.* trigger correctness)"
+        );
+        assert!(
+            fts_rowids(&conn, "newrangetoken").contains(&1),
+            "new canonical_range_text must be indexed after update"
+        );
+    }
+
+    /// Verify that the DELETE trigger removes both the description term and the
+    /// canonical_range_text term from the FTS index using old.* values.
+    #[test]
+    fn test_fts_delete_trigger_correctness() {
+        let conn = setup_fts_db();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (1, 'Vanishing Spell', 'Contains uniquedeletetoken term', \
+             '{\"range\":{\"text\":\"deleterangetoken\"}}')",
+            [],
+        )
+        .unwrap();
+
+        assert!(
+            fts_rowids(&conn, "uniquedeletetoken").contains(&1),
+            "description term should be present before delete"
+        );
+        assert!(
+            fts_rowids(&conn, "deleterangetoken").contains(&1),
+            "canonical_range_text term should be present before delete"
+        );
+
+        conn.execute("DELETE FROM spell WHERE id = 1", []).unwrap();
+
+        assert!(
+            !fts_rowids(&conn, "uniquedeletetoken").contains(&1),
+            "description term must be removed after spell deletion"
+        );
+        assert!(
+            !fts_rowids(&conn, "deleterangetoken").contains(&1),
+            "canonical_range_text term must be removed after spell deletion (old.* trigger correctness)"
+        );
+    }
+}
+
 #[tauri::command]
 pub async fn chat_answer(prompt: String) -> Result<ChatResponse, AppError> {
     let result = call_sidecar("chat", json!({"prompt": prompt})).await?;

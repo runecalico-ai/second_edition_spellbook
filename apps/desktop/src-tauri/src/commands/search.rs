@@ -63,9 +63,11 @@ fn try_build_advanced_fts_query(tokens: &[&str]) -> Option<String> {
     if is_fts_operator(tokens[tokens.len() - 1]) {
         return None;
     }
-    // AND/OR cannot be immediately followed by AND/OR (malformed: "fire AND AND ice").
+    // Any operator cannot be immediately followed by AND/OR (malformed: "fire AND AND
+    // ice", "fire NOT AND ice", "fire NOT OR ice").  AND NOT is still valid because
+    // is_fts_binary_operator("NOT") is false.
     for window in tokens.windows(2) {
-        if is_fts_binary_operator(window[0]) && is_fts_binary_operator(window[1]) {
+        if is_fts_operator(window[0]) && is_fts_binary_operator(window[1]) {
             return None;
         }
     }
@@ -179,7 +181,7 @@ fn search_keyword_with_conn(
             .to_string()
     };
 
-    // When JOINing with spell_fts, qualifier the spell columns to avoid ambiguity.
+    // When JOINing with spell_fts, qualify the spell columns to avoid ambiguity.
     let col = if has_text_query { "s." } else { "" };
 
     if let Some(f) = filters {
@@ -748,6 +750,18 @@ mod tests {
     }
 
     #[test]
+    fn test_malformed_not_and_falls_back_to_basic() {
+        // "NOT AND fire" — NOT followed by AND is malformed; fall back to phrase.
+        assert_eq!(build_fts_query("NOT AND fire"), "\"NOT AND fire\"");
+    }
+
+    #[test]
+    fn test_malformed_not_or_falls_back_to_basic() {
+        // "fire NOT OR ice" — NOT followed by OR is malformed; fall back to phrase.
+        assert_eq!(build_fts_query("fire NOT OR ice"), "\"fire NOT OR ice\"");
+    }
+
+    #[test]
     fn test_basic_mode_special_chars_escaped_in_phrase() {
         // Double-quote inside user input must be escaped (doubled) inside the
         // wrapping phrase so it doesn't break the FTS5 query syntax.
@@ -869,6 +883,58 @@ mod tests {
         assert!(
             ids.is_empty(),
             "NEAR should be treated as literal text (basic mode phrase), not an FTS5 operator"
+        );
+    }
+
+    /// Verify the FTS JOIN path works correctly when a school filter is applied
+    /// alongside a text query.  Only the spell that matches BOTH the text search
+    /// AND the school filter should be returned.
+    #[test]
+    fn test_search_fts_with_school_filter() {
+        use super::search_keyword_with_conn;
+        use crate::models::SearchFilters;
+
+        let conn = setup_search_db();
+
+        // Spell 1: matches text "fire" and is Evocation.
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, canonical_data) \
+             VALUES (1, 'Fireball', 'A blazing ball of fire', 'Evocation', NULL)",
+            [],
+        )
+        .unwrap();
+
+        // Spell 2: matches text "fire" but is Conjuration — should be excluded.
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, canonical_data) \
+             VALUES (2, 'Fire Summoning', 'Calls a creature of fire', 'Conjuration', NULL)",
+            [],
+        )
+        .unwrap();
+
+        let filters = SearchFilters {
+            schools: Some(vec!["Evocation".to_string()]),
+            spheres: None,
+            level_min: None,
+            level_max: None,
+            class_list: None,
+            source: None,
+            components: None,
+            tags: None,
+            is_quest_spell: None,
+            is_cantrip: None,
+        };
+
+        let results = search_keyword_with_conn(&conn, "fire", Some(filters)).unwrap();
+        let ids: Vec<i64> = results.into_iter().map(|s| s.id).collect();
+
+        assert!(
+            ids.contains(&1),
+            "Fireball (Evocation) should match both text 'fire' and school filter"
+        );
+        assert!(
+            !ids.contains(&2),
+            "Fire Summoning (Conjuration) should be excluded by the school filter"
         );
     }
 }

@@ -63,12 +63,18 @@ fn try_build_advanced_fts_query(tokens: &[&str]) -> Option<String> {
     if is_fts_operator(tokens[tokens.len() - 1]) {
         return None;
     }
-    // Any operator cannot be immediately followed by AND/OR (malformed: "fire AND AND
-    // ice", "fire NOT AND ice", "fire NOT OR ice").  AND NOT is still valid because
-    // is_fts_binary_operator("NOT") is false.
+    // Any operator immediately followed by another operator is malformed, except
+    // for "AND NOT" which collapses to FTS5's infix NOT later.
+    // The previous check `is_fts_binary_operator(window[1])` missed "NOT NOT"
+    // because is_fts_binary_operator("NOT") is false — fixed by checking both
+    // sides with is_fts_operator so "NOT NOT", "NOT OR", etc. are all rejected.
     for window in tokens.windows(2) {
-        if is_fts_operator(window[0]) && is_fts_binary_operator(window[1]) {
-            return None;
+        if is_fts_operator(window[0]) && is_fts_operator(window[1]) {
+            // AND NOT is the only valid consecutive pair (AND collapses to NOT later).
+            let is_and_not = window[0] == "AND" && window[1] == "NOT";
+            if !is_and_not {
+                return None;
+            }
         }
     }
     // Must have at least one content token.
@@ -181,7 +187,8 @@ fn search_keyword_with_conn(
             .to_string()
     };
 
-    // When JOINing with spell_fts, qualify the spell columns to avoid ambiguity.
+    // When joining with spell_fts, qualify all spell column references with "s."
+    // to avoid "ambiguous column name" errors. This applies to ALL filter branches below.
     let col = if has_text_query { "s." } else { "" };
 
     if let Some(f) = filters {
@@ -762,6 +769,20 @@ mod tests {
     }
 
     #[test]
+    fn test_malformed_double_not_falls_back_to_basic() {
+        // "NOT NOT fire" — consecutive NOT tokens are malformed (NOT NOT is not
+        // valid FTS5 syntax); fall back to basic phrase mode.
+        assert_eq!(build_fts_query("NOT NOT fire"), "\"NOT NOT fire\"");
+    }
+
+    #[test]
+    fn test_malformed_not_or_after_term_falls_back_to_basic() {
+        // "fire NOT OR ice" — NOT followed immediately by OR is malformed;
+        // fall back to basic phrase mode regardless of leading content token.
+        assert_eq!(build_fts_query("fire NOT OR ice"), "\"fire NOT OR ice\"");
+    }
+
+    #[test]
     fn test_basic_mode_special_chars_escaped_in_phrase() {
         // Double-quote inside user input must be escaped (doubled) inside the
         // wrapping phrase so it doesn't break the FTS5 query syntax.
@@ -844,6 +865,10 @@ mod tests {
         assert!(
             ids.contains(&1),
             "'Fire and Ice' should match phrase 'fire and ice'"
+        );
+        assert!(
+            !ids.contains(&2),
+            "'Fire Shield' must NOT appear: phrase 'fire and ice' should not match it"
         );
     }
 

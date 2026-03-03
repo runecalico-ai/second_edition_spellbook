@@ -38,9 +38,9 @@ INSERT INTO spell_fts(rowid, name, description, material_components, tags, sourc
     canonical_range_text, canonical_duration_text, canonical_area_text, canonical_casting_time_text,
     canonical_saving_throw_text, canonical_damage_text, canonical_mr_text, canonical_xp_text)
 SELECT id, name, description, material_components, tags, source, author,
-    json_extract(canonical_data, '$.range.text'),
-    json_extract(canonical_data, '$.duration.text'),
-    json_extract(canonical_data, '$.area.text'),
+    json_extract(canonical_data, '$.range.text'),        -- single value; NULL when absent
+    json_extract(canonical_data, '$.duration.text'),     -- single value; NULL when absent
+    json_extract(canonical_data, '$.area.text'),         -- single value; NULL when absent
     COALESCE(json_extract(canonical_data, '$.casting_time.text'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.casting_time.raw_legacy_value'), ''),
     COALESCE(json_extract(canonical_data, '$.saving_throw.raw_legacy_value'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.saving_throw.notes'), ''),
     COALESCE(json_extract(canonical_data, '$.damage.source_text'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.damage.notes'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.damage.dm_guidance'), ''),
@@ -48,14 +48,18 @@ SELECT id, name, description, material_components, tags, source, author,
     COALESCE(json_extract(canonical_data, '$.experience_cost.source_text'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.experience_cost.notes'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.experience_cost.dm_guidance'), '')
 FROM spell;
 
+-- MAINTENANCE: The canonical_* expressions below are intentionally duplicated
+-- across spell_ai, spell_ad, and spell_au (and the initial INSERT/SELECT above)
+-- because SQLite provides no trigger macros. When adding a new canonical field,
+-- update all four locations: the initial repopulation INSERT and all three triggers.
 CREATE TRIGGER spell_ai AFTER INSERT ON spell BEGIN
     INSERT INTO spell_fts(rowid, name, description, material_components, tags, source, author,
         canonical_range_text, canonical_duration_text, canonical_area_text, canonical_casting_time_text,
         canonical_saving_throw_text, canonical_damage_text, canonical_mr_text, canonical_xp_text)
     VALUES (new.id, new.name, new.description, new.material_components, new.tags, new.source, new.author,
-        json_extract(new.canonical_data, '$.range.text'),
-        json_extract(new.canonical_data, '$.duration.text'),
-        json_extract(new.canonical_data, '$.area.text'),
+        json_extract(new.canonical_data, '$.range.text'),        -- single value; NULL when absent
+        json_extract(new.canonical_data, '$.duration.text'),     -- single value; NULL when absent
+        json_extract(new.canonical_data, '$.area.text'),         -- single value; NULL when absent
         COALESCE(json_extract(new.canonical_data, '$.casting_time.text'), '') || ' ' || COALESCE(json_extract(new.canonical_data, '$.casting_time.raw_legacy_value'), ''),
         COALESCE(json_extract(new.canonical_data, '$.saving_throw.raw_legacy_value'), '') || ' ' || COALESCE(json_extract(new.canonical_data, '$.saving_throw.notes'), ''),
         COALESCE(json_extract(new.canonical_data, '$.damage.source_text'), '') || ' ' || COALESCE(json_extract(new.canonical_data, '$.damage.notes'), '') || ' ' || COALESCE(json_extract(new.canonical_data, '$.damage.dm_guidance'), ''),
@@ -68,9 +72,9 @@ CREATE TRIGGER spell_ad AFTER DELETE ON spell BEGIN
         canonical_range_text, canonical_duration_text, canonical_area_text, canonical_casting_time_text,
         canonical_saving_throw_text, canonical_damage_text, canonical_mr_text, canonical_xp_text)
     VALUES('delete', old.id, old.name, old.description, old.material_components, old.tags, old.source, old.author,
-        json_extract(old.canonical_data, '$.range.text'),
-        json_extract(old.canonical_data, '$.duration.text'),
-        json_extract(old.canonical_data, '$.area.text'),
+        json_extract(old.canonical_data, '$.range.text'),        -- single value; NULL when absent
+        json_extract(old.canonical_data, '$.duration.text'),     -- single value; NULL when absent
+        json_extract(old.canonical_data, '$.area.text'),         -- single value; NULL when absent
         COALESCE(json_extract(old.canonical_data, '$.casting_time.text'), '') || ' ' || COALESCE(json_extract(old.canonical_data, '$.casting_time.raw_legacy_value'), ''),
         COALESCE(json_extract(old.canonical_data, '$.saving_throw.raw_legacy_value'), '') || ' ' || COALESCE(json_extract(old.canonical_data, '$.saving_throw.notes'), ''),
         COALESCE(json_extract(old.canonical_data, '$.damage.source_text'), '') || ' ' || COALESCE(json_extract(old.canonical_data, '$.damage.notes'), '') || ' ' || COALESCE(json_extract(old.canonical_data, '$.damage.dm_guidance'), ''),
@@ -83,9 +87,9 @@ CREATE TRIGGER spell_au AFTER UPDATE ON spell BEGIN
         canonical_range_text, canonical_duration_text, canonical_area_text, canonical_casting_time_text,
         canonical_saving_throw_text, canonical_damage_text, canonical_mr_text, canonical_xp_text)
     VALUES('delete', old.id, old.name, old.description, old.material_components, old.tags, old.source, old.author,
-        json_extract(old.canonical_data, '$.range.text'),
-        json_extract(old.canonical_data, '$.duration.text'),
-        json_extract(old.canonical_data, '$.area.text'),
+        json_extract(old.canonical_data, '$.range.text'),        -- single value; NULL when absent
+        json_extract(old.canonical_data, '$.duration.text'),     -- single value; NULL when absent
+        json_extract(old.canonical_data, '$.area.text'),         -- single value; NULL when absent
         COALESCE(json_extract(old.canonical_data, '$.casting_time.text'), '') || ' ' || COALESCE(json_extract(old.canonical_data, '$.casting_time.raw_legacy_value'), ''),
         COALESCE(json_extract(old.canonical_data, '$.saving_throw.raw_legacy_value'), '') || ' ' || COALESCE(json_extract(old.canonical_data, '$.saving_throw.notes'), ''),
         COALESCE(json_extract(old.canonical_data, '$.damage.source_text'), '') || ' ' || COALESCE(json_extract(old.canonical_data, '$.damage.notes'), '') || ' ' || COALESCE(json_extract(old.canonical_data, '$.damage.dm_guidance'), ''),
@@ -95,9 +99,9 @@ CREATE TRIGGER spell_au AFTER UPDATE ON spell BEGIN
         canonical_range_text, canonical_duration_text, canonical_area_text, canonical_casting_time_text,
         canonical_saving_throw_text, canonical_damage_text, canonical_mr_text, canonical_xp_text)
     VALUES (new.id, new.name, new.description, new.material_components, new.tags, new.source, new.author,
-        json_extract(new.canonical_data, '$.range.text'),
-        json_extract(new.canonical_data, '$.duration.text'),
-        json_extract(new.canonical_data, '$.area.text'),
+        json_extract(new.canonical_data, '$.range.text'),        -- single value; NULL when absent
+        json_extract(new.canonical_data, '$.duration.text'),     -- single value; NULL when absent
+        json_extract(new.canonical_data, '$.area.text'),         -- single value; NULL when absent
         COALESCE(json_extract(new.canonical_data, '$.casting_time.text'), '') || ' ' || COALESCE(json_extract(new.canonical_data, '$.casting_time.raw_legacy_value'), ''),
         COALESCE(json_extract(new.canonical_data, '$.saving_throw.raw_legacy_value'), '') || ' ' || COALESCE(json_extract(new.canonical_data, '$.saving_throw.notes'), ''),
         COALESCE(json_extract(new.canonical_data, '$.damage.source_text'), '') || ' ' || COALESCE(json_extract(new.canonical_data, '$.damage.notes'), '') || ' ' || COALESCE(json_extract(new.canonical_data, '$.damage.dm_guidance'), ''),

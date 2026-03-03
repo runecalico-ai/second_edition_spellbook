@@ -7,7 +7,7 @@ This repository uses a structured documentation system for AI agents. Please ref
 ### Core Guides
 | Document | Purpose |
 |----------|---------|
-| [OpenSpec AGENTS.md](./openspec/AGENTS.md) | Change proposals and spec-driven development |
+| [OpenSpec Project Guide](./openspec/project.md) | Change proposals and spec-driven development |
 | [DEVELOPMENT.md](./docs/DEVELOPMENT.md) | Setup, repo layout, casing standards, linting/formatting |
 
 ### Architecture & Design
@@ -35,9 +35,6 @@ This repository uses a structured documentation system for AI agents. Please ref
 | `/format-codebase` | Format entire codebase using Biome, Rustfmt, Ruff |
 | `/lint-codebase` | Lint all components (frontend, backend, services) |
 | `/test-workflow` | Run tests for Backend, Python, and E2E |
-| `/openspec-proposal` | Scaffold a new OpenSpec change proposal |
-| `/openspec-apply` | Implement an approved OpenSpec change |
-| `/openspec-archive` | Archive a deployed OpenSpec change |
 | `/compliance-check` | Verify UI component best practices |
 
 ---

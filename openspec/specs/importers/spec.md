@@ -25,10 +25,14 @@ The application SHALL provide a user interface to review and resolve duplicates 
 - **AND** user selections for each conflict SHALL be preserved without overwriting
 
 ### Requirement: Deduplication
-The application SHALL detect and resolve duplicate spells during import using a canonical key (Name + Class + Level + Source).
+The application SHALL detect and resolve duplicate spells during import using canonical content hash (`content_hash`) as the primary identity key. Name collisions with different hashes SHALL be handled as user-resolved conflicts.
 #### Scenario: Skipping Existing Spell
-- **WHEN** the user attempts to import a spell that already exists in the library
+- **WHEN** the user attempts to import a spell whose `content_hash` already exists in the library
 - **THEN** the application should skip the duplicate or offer a merge option
+
+#### Scenario: Same Name, Different Hash
+- **WHEN** the user imports a spell with the same display name as an existing spell but a different `content_hash`
+- **THEN** the importer SHALL treat it as a conflict and require an explicit user resolution
 
 ### Requirement: Import Provenance Tracking
 The application SHALL track the origin of imported spells by storing the source file path, file type, and a unique content hash.

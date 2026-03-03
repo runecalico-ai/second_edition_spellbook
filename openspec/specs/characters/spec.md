@@ -139,7 +139,7 @@ And the system MUST persist "For combat" for the Prepared entry
 And the notes MUST NOT overwrite each other
 
 ### Requirement: Character Import and Export
-The application SHALL support importing and exporting character profiles as JSON or Markdown bundles, including identity, abilities, classes, and per-class spell lists. Spells SHALL be deduplicated by canonical key (name + level + source).
+The application SHALL support importing and exporting character profiles as JSON or Markdown bundles, including identity, abilities, classes, and per-class spell lists. Spells SHALL be deduplicated by `content_hash`.
 
 #### Scenario: Exporting Character as JSON
 - **WHEN** the user exports a character with 2 classes and 50 spells

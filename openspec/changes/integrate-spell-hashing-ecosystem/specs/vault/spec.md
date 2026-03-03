@@ -5,12 +5,12 @@
 ## MODIFIED Requirements
 
 ### Requirement: Canonical Filename Storage
-The Vault MUST support storing spell definitions using their canonical content hash.
+The Vault MUST support storing spell definitions using their canonical content hash. A vault spell file is retained if and only if its hash is referenced by at least one `spell` row or at least one `artifact.spell_content_hash`.
 
 #### Scenario: Collision Prevention
 - GIVEN two spells named "Fireball"
 - WHEN saved
-- THEN filenames MUST include the Content Hash (e.g., `spells/{hash}.json`).
+- THEN filenames MUST include the Content Hash at the specific path: `{vault_root}/spells/{content_hash}.json`.
 
 #### Scenario: Integrity Verification
 - GIVEN a spell file `spells/{hash}.json`
@@ -28,14 +28,18 @@ The Vault MUST support storing spell definitions using their canonical content h
 #### Scenario: GC with Deferred Cleanup
 - GIVEN a spell deleted from DB
 - WHEN vault GC runs
-- THEN file `spells/{hash}.json` MUST be removed if no spell row references that hash.
+- THEN file `spells/{hash}.json` MUST be removed if no `spell` row AND no `artifact.spell_content_hash` references that hash.
 
 #### Scenario: GC with Immediate Cleanup (alternative)
 - GIVEN a spell explicitly deleted by user
 - WHEN deletion completes
 - THEN file `spells/{hash}.json` MAY be removed immediately.
 
-Both GC approaches are valid; implementation may use either or both.
+#### Scenario: GC Triggers
+- THE system MUST support a manual "Optimize Vault" trigger in the UI.
+- AND the system SHOULD run vault GC automatically following every successful import of 1 or more spells (as part of post-import cleanup).
+
+Both GC approaches are valid; implementation may choose either or both.
 
 #### Scenario: GC Blocked During Import
 - GIVEN an import operation is in progress
@@ -44,7 +48,13 @@ Both GC approaches are valid; implementation may use either or both.
 - AND implementation MUST use either a mutex/lock or UI-level mutual exclusion (e.g., disable GC button during import).
 
 ### Requirement: Vault Integrity Recovery
-The Vault MUST detect and recover from missing files. The vault integrity check runs at implementation-defined times (e.g. on application startup when the vault is opened, on-demand from Settings, and/or before running GC).
+The Vault MUST detect and recover from missing files. The vault integrity check MUST run before every GC operation. Additional timing (e.g. on application startup when the vault is opened, on-demand from Settings) is configurable via a user-facing option. The application MUST provide a configuration option to enable/disable automatic integrity checks at vault open.
+
+#### Scenario: Configure Integrity Check on Vault Open
+- GIVEN application settings are available
+- WHEN the user toggles `vault.integrityCheckOnOpen`
+- THEN `true` MUST run integrity check automatically when the vault is opened
+- AND `false` MUST skip automatic integrity check on open (while still running integrity checks before GC).
 
 #### Scenario: Missing Vault File
 - GIVEN spell row exists with content_hash H
@@ -54,5 +64,6 @@ The Vault MUST detect and recover from missing files. The vault integrity check 
 - AND log if unrecoverable.
 
 ## Non-Functional Requirements
-- **Windows path length**: Full path to vault file MUST be < 260 characters. Log warning if exceeded.
+- **Windows path length**: Full path to vault file MUST be < 260 characters. Implementer MUST log a warning if the vault root selection would lead to a path > 240 characters for a typical hash-named file.
 - **Write latency**: Single spell write to vault SHOULD complete in < 100ms.
+- **GC throughput**: Garbage collection for 10,000 vault files SHOULD complete in < 30 seconds.

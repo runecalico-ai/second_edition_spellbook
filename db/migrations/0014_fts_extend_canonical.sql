@@ -26,6 +26,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS spell_fts USING fts5(
     content='spell',
     content_rowid='id'
 );
+-- NOTE: content='spell' enables rowid-based MATCH lookups against the spell table.
+-- However, SELECT * FROM spell_fts is NOT supported at runtime because the
+-- canonical_* columns (canonical_range_text, canonical_duration_text, etc.) do not
+-- exist on the spell table itself — they are derived via json_extract in triggers.
+-- Always query the FTS table using: SELECT rowid FROM spell_fts WHERE spell_fts MATCH ?
 
 -- Repopulate FTS from existing spells using explicit SELECT (not VALUES('rebuild'),
 -- which would fail because canonical_* columns do not exist on the spell table).

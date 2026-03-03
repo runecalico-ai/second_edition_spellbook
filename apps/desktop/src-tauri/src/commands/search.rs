@@ -38,7 +38,8 @@ fn search_keyword_with_conn(
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if !query.trim().is_empty() {
-        // Use FTS5 for full-text search across name, description, material_components, tags, source, author
+        // Use FTS5 for full-text search across name, description, material_components, tags, source, author,
+        // and canonical text fields (range, duration, area, casting time, saving throw, damage, magic resistance, xp cost)
         sql.push_str(" AND id IN (SELECT rowid FROM spell_fts WHERE spell_fts MATCH ?)");
         // Escape special FTS5 characters and wrap in quotes for phrase matching
         let escaped_query = query.replace('"', "\"\"");
@@ -351,7 +352,7 @@ mod tests {
                 tags             TEXT DEFAULT '',
                 source           TEXT DEFAULT '',
                 author           TEXT DEFAULT '',
-                canonical_data   TEXT NOT NULL DEFAULT '{}'
+                canonical_data   TEXT
             );
             "#,
         )
@@ -497,6 +498,30 @@ mod tests {
         assert!(
             !fts_rowids(&conn, "deleterangetoken").contains(&1),
             "canonical_range_text term must be removed after spell deletion (old.* trigger correctness)"
+        );
+    }
+
+    /// Verify that spells with NULL canonical_data are indexed without errors.
+    /// The json_extract + COALESCE in triggers must handle NULL gracefully so that
+    /// basic name/description terms are still searchable.
+    #[test]
+    fn test_fts_null_canonical_data() {
+        let conn = setup_fts_db();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (1, 'Nullspell', 'Contains nullcanonicaltoken text', NULL)",
+            [],
+        )
+        .unwrap();
+
+        assert!(
+            fts_rowids(&conn, "nullcanonicaltoken").contains(&1),
+            "description term should be indexed even when canonical_data is NULL"
+        );
+        assert!(
+            fts_rowids(&conn, "Nullspell").contains(&1),
+            "name term should be indexed even when canonical_data is NULL"
         );
     }
 }

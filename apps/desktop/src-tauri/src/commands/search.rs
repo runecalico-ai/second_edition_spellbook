@@ -15,8 +15,9 @@ use tauri::State;
 // ---------------------------------------------------------------------------
 
 /// Escapes the contents of a word for use inside an FTS5 quoted phrase (`"..."`).
-/// Only `"` needs to be doubled; all other characters are treated literally
-/// inside a quoted phrase.
+/// Only `"` needs to be doubled; all other FTS5 special characters (`*`, `(`, `)`,
+/// `^`, `:`, `-`, `+`) have no query-level meaning inside a quoted phrase and are
+/// passed literally to the tokenizer by FTS5 itself.
 fn escape_fts_phrase_content(s: &str) -> String {
     s.replace('"', "\"\"")
 }
@@ -139,6 +140,9 @@ fn build_fts_query(raw_query: &str) -> String {
 
 // ---------------------------------------------------------------------------
 
+/// Maximum number of search results returned per query.
+const SEARCH_RESULT_LIMIT: usize = 100;
+
 /// Escapes `\`, `%`, and `_` so they are treated as literals in a SQLite LIKE
 /// clause. The caller must append `ESCAPE '\'` to the SQL clause.
 fn escape_like_value(s: &str) -> String {
@@ -150,7 +154,7 @@ fn escape_like_value(s: &str) -> String {
 fn collect_facet_entries(conn: &Connection, sql: &str) -> Result<Vec<String>, AppError> {
     let mut stmt = conn.prepare(sql)?;
     let rows = stmt.query_map([], |row| row.get::<_, Option<String>>(0))?;
-    let mut all_entries = std::collections::HashSet::new();
+    let mut all_entries = std::collections::BTreeSet::new();
     for row in rows {
         if let Some(s) = row? {
             for part in s.split(',') {
@@ -161,9 +165,7 @@ fn collect_facet_entries(conn: &Connection, sql: &str) -> Result<Vec<String>, Ap
             }
         }
     }
-    let mut sorted: Vec<String> = all_entries.into_iter().collect();
-    sorted.sort();
-    Ok(sorted)
+    Ok(all_entries.into_iter().collect())
 }
 
 fn search_keyword_with_conn(
@@ -192,6 +194,9 @@ fn search_keyword_with_conn(
 
     // When joining with spell_fts, qualify all spell column references with "s."
     // to avoid "ambiguous column name" errors. This applies to ALL filter branches below.
+    // IMPORTANT: Every filter column reference must use the `col` prefix. A branch
+    // that omits `col` will compile but fail at runtime with "ambiguous column name"
+    // only when both a text query and that specific filter are active simultaneously.
     let col = if has_text_query { "s." } else { "" };
 
     if let Some(f) = filters {
@@ -276,9 +281,9 @@ fn search_keyword_with_conn(
 
     // Relevance ranking via bm25 when a text query is present (lower = more relevant).
     if has_text_query {
-        sql.push_str(" ORDER BY bm25(spell_fts) ASC LIMIT 100");
+        sql.push_str(&format!(" ORDER BY bm25(spell_fts) ASC LIMIT {SEARCH_RESULT_LIMIT}"));
     } else {
-        sql.push_str(" ORDER BY name ASC LIMIT 100");
+        sql.push_str(&format!(" ORDER BY name ASC LIMIT {SEARCH_RESULT_LIMIT}"));
     }
 
     let mut stmt = conn.prepare(&sql)?;

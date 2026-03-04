@@ -31,6 +31,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS spell_fts USING fts5(
 -- canonical_* columns (canonical_range_text, canonical_duration_text, etc.) do not
 -- exist on the spell table itself — they are derived via json_extract in triggers.
 -- Avoid SELECT * FROM spell_fts; always join or filter through spell_fts.rowid.
+-- NOTE: highlight() and snippet() auxiliary functions will also fail for
+-- canonical_* column indices (6–13) since those columns do not exist on
+-- the spell table. Use MATCH for search; join back to spell for display.
 
 -- Repopulate FTS from existing spells using explicit SELECT (not VALUES('rebuild'),
 -- which would fail because canonical_* columns do not exist on the spell table).
@@ -41,6 +44,7 @@ SELECT id, name, description, material_components, tags, source, author,
     json_extract(canonical_data, '$.range.text'),        -- single value; NULL when absent
     json_extract(canonical_data, '$.duration.text'),     -- single value; NULL when absent
     json_extract(canonical_data, '$.area.text'),         -- single value; NULL when absent
+    -- Multi-source columns below always produce a non-NULL string (COALESCE ensures '').
     COALESCE(json_extract(canonical_data, '$.casting_time.text'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.casting_time.raw_legacy_value'), ''),
     COALESCE(json_extract(canonical_data, '$.saving_throw.raw_legacy_value'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.saving_throw.notes'), ''),
     COALESCE(json_extract(canonical_data, '$.damage.source_text'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.damage.notes'), '') || ' ' || COALESCE(json_extract(canonical_data, '$.damage.dm_guidance'), ''),

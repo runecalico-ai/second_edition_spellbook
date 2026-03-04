@@ -26,12 +26,6 @@ fn wrap_as_fts_phrase(s: &str) -> String {
     format!("\"{}\"", escape_fts_phrase_content(s))
 }
 
-/// Returns true for binary FTS5 boolean operators that require an operand on
-/// both sides (`AND`, `OR`).
-fn is_fts_binary_operator(token: &str) -> bool {
-    matches!(token, "AND" | "OR")
-}
-
 /// Returns true for any of the three FTS5 boolean operators (`AND`, `OR`, `NOT`).
 fn is_fts_operator(token: &str) -> bool {
     matches!(token, "AND" | "OR" | "NOT")
@@ -67,9 +61,8 @@ fn try_build_advanced_fts_query(tokens: &[&str]) -> Option<String> {
     }
     // Any operator immediately followed by another operator is malformed, except
     // for "AND NOT" which collapses to FTS5's infix NOT later.
-    // The previous check `is_fts_binary_operator(window[1])` missed "NOT NOT"
-    // because is_fts_binary_operator("NOT") is false — fixed by checking both
-    // sides with is_fts_operator so "NOT NOT", "NOT OR", etc. are all rejected.
+    // Both sides are checked with is_fts_operator so "NOT NOT", "NOT OR", etc.
+    // are all correctly rejected.
     for window in tokens.windows(2) {
         if is_fts_operator(window[0]) && is_fts_operator(window[1]) {
             // AND NOT is the only valid consecutive pair (AND collapses to NOT later).

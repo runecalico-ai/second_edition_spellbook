@@ -975,7 +975,7 @@ mod tests {
         let conn = setup_search_db();
         insert_spell(&conn, 1, "Fireball", "A blazing orb of fire");
         let ids = search_ids(&conn, "");
-        assert!(ids.contains(&1), "empty query should return all spells via non-FTS path");
+        assert!(ids.contains(&1), "empty query should return spells via non-FTS path");
     }
 
     /// Verify the FTS JOIN path works correctly when a school filter is applied

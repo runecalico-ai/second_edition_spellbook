@@ -201,9 +201,10 @@ fn search_keyword_with_conn(
 
     if let Some(f) = filters {
         if let Some(schools) = f.schools {
-            if !schools.is_empty() {
+            let nonempty_schools: Vec<_> = schools.iter().filter(|s| !s.is_empty()).collect();
+            if !nonempty_schools.is_empty() {
                 sql.push_str(" AND (");
-                for (i, school) in schools.iter().enumerate() {
+                for (i, school) in nonempty_schools.iter().enumerate() {
                     if i > 0 {
                         sql.push_str(" OR ");
                     }
@@ -215,9 +216,10 @@ fn search_keyword_with_conn(
         }
 
         if let Some(spheres) = f.spheres {
-            if !spheres.is_empty() {
+            let nonempty_spheres: Vec<_> = spheres.iter().filter(|s| !s.is_empty()).collect();
+            if !nonempty_spheres.is_empty() {
                 sql.push_str(" AND (");
-                for (i, sphere) in spheres.iter().enumerate() {
+                for (i, sphere) in nonempty_spheres.iter().enumerate() {
                     if i > 0 {
                         sql.push_str(" OR ");
                     }

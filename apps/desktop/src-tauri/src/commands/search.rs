@@ -139,8 +139,8 @@ fn build_fts_query(raw_query: &str) -> String {
 
 // ---------------------------------------------------------------------------
 
-/// Escapes SQLite LIKE wildcard characters in a filter value.
-/// The escaped value must be used with `ESCAPE '\\'` in the SQL.
+/// Escapes `\`, `%`, and `_` so they are treated as literals in a SQLite LIKE
+/// clause. The caller must append `ESCAPE '\'` to the SQL clause.
 fn escape_like_value(s: &str) -> String {
     s.replace('\\', "\\\\")
      .replace('%', "\\%")
@@ -800,6 +800,37 @@ mod tests {
             build_fts_query("fire\"ball AND ice"),
             "\"fire\"\"ball\" AND \"ice\""
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // escape_like_value — unit tests
+    // -----------------------------------------------------------------------
+
+    use super::escape_like_value;
+
+    #[test]
+    fn test_escape_like_value_percent() {
+        assert_eq!(escape_like_value("100%"), "100\\%");
+    }
+
+    #[test]
+    fn test_escape_like_value_underscore() {
+        assert_eq!(escape_like_value("fire_ball"), "fire\\_ball");
+    }
+
+    #[test]
+    fn test_escape_like_value_backslash() {
+        assert_eq!(escape_like_value("C:\\path"), "C:\\\\path");
+    }
+
+    #[test]
+    fn test_escape_like_value_combined() {
+        assert_eq!(escape_like_value("50% off_sale\\deal"), "50\\% off\\_sale\\\\deal");
+    }
+
+    #[test]
+    fn test_escape_like_value_no_wildcards() {
+        assert_eq!(escape_like_value("Evocation"), "Evocation");
     }
 
     // -----------------------------------------------------------------------

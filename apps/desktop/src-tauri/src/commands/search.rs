@@ -139,8 +139,13 @@ fn build_fts_query(raw_query: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Search command utilities
+// ---------------------------------------------------------------------------
 
-/// Maximum number of search results returned per query.
+/// Maximum results per query. Applied to both BM25-ranked text results (where
+/// relevance justifies the cap) and filter-only alphabetical results (where the
+/// cap is an arbitrary completeness ceiling — silent truncation is possible for
+/// large result sets).
 const SEARCH_RESULT_LIMIT: usize = 100;
 
 /// Escapes `\`, `%`, and `_` so they are treated as literals in a SQLite LIKE
@@ -769,8 +774,9 @@ mod tests {
 
     #[test]
     fn test_malformed_or_not_after_term_falls_back_to_basic() {
-        // "fire OR NOT ice" — OR followed immediately by NOT is malformed
-        // (NOT is not a valid right operand for OR in FTS5); fall back to basic phrase mode.
+        // "fire OR NOT ice" — OR immediately followed by NOT is a consecutive-operator
+        // pair (other than AND NOT); rejected because NOT itself requires a left operand
+        // and cannot begin a sub-expression. Fall back to basic phrase mode.
         assert_eq!(build_fts_query("fire OR NOT ice"), "\"fire OR NOT ice\"");
     }
 
@@ -821,6 +827,8 @@ mod tests {
         assert_eq!(escape_like_value("C:\\path"), "C:\\\\path");
     }
 
+    /// Verifies that backslash is escaped before wildcards, preventing double-escaping:
+    /// e.g. `%` → `\%`, `_` → `\_`, `\` → `\\`.
     #[test]
     fn test_escape_like_value_combined() {
         assert_eq!(escape_like_value("50% off_sale\\deal"), "50\\% off\\_sale\\\\deal");

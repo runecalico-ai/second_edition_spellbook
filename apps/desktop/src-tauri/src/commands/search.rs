@@ -495,30 +495,11 @@ pub async fn delete_saved_search(state: State<'_, Arc<Pool>>, id: i64) -> Result
 mod tests {
     use rusqlite::Connection;
 
-    /// Creates an in-memory database with the spell table and the migration-0014
-    /// FTS schema (virtual table + triggers).  Using include_str! means these
-    /// tests exercise the exact SQL that ships in production.
+    /// Creates an in-memory database with the FTS schema.
+    /// Delegates to `setup_search_db`; the full schema is a superset and
+    /// the FTS trigger tests only query `spell_fts`.
     fn setup_fts_db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            r#"
-            CREATE TABLE spell (
-                id               INTEGER PRIMARY KEY,
-                name             TEXT NOT NULL DEFAULT '',
-                description      TEXT NOT NULL DEFAULT '',
-                material_components TEXT DEFAULT '',
-                tags             TEXT DEFAULT '',
-                source           TEXT DEFAULT '',
-                author           TEXT DEFAULT '',
-                canonical_data   TEXT
-            );
-            "#,
-        )
-        .unwrap();
-        let migration_sql =
-            include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
-        conn.execute_batch(migration_sql).unwrap();
-        conn
+        setup_search_db()
     }
 
     /// Returns the rowids from spell_fts that match the given FTS term.
@@ -661,7 +642,7 @@ mod tests {
 
     /// Verify that spells with NULL canonical_data are indexed without errors.
     /// The json_extract + COALESCE in triggers must handle NULL gracefully so that
-    /// basic name/description terms are still searchable.
+    /// both name and description terms are still searchable.
     #[test]
     fn test_fts_null_canonical_data() {
         let conn = setup_fts_db();

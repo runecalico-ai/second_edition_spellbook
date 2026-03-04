@@ -139,6 +139,14 @@ fn build_fts_query(raw_query: &str) -> String {
 
 // ---------------------------------------------------------------------------
 
+/// Escapes SQLite LIKE wildcard characters in a filter value.
+/// The escaped value must be used with `ESCAPE '\\'` in the SQL.
+fn escape_like_value(s: &str) -> String {
+    s.replace('\\', "\\\\")
+     .replace('%', "\\%")
+     .replace('_', "\\_")
+}
+
 fn collect_facet_entries(conn: &Connection, sql: &str) -> Result<Vec<String>, AppError> {
     let mut stmt = conn.prepare(sql)?;
     let rows = stmt.query_map([], |row| row.get::<_, Option<String>>(0))?;
@@ -194,8 +202,8 @@ fn search_keyword_with_conn(
                     if i > 0 {
                         sql.push_str(" OR ");
                     }
-                    sql.push_str(&format!("{}school LIKE ?", col));
-                    params.push(Box::new(format!("%{}%", school)));
+                    sql.push_str(&format!("{}school LIKE ? ESCAPE '\\'", col));
+                    params.push(Box::new(format!("%{}%", escape_like_value(school))));
                 }
                 sql.push(')');
             }
@@ -208,8 +216,8 @@ fn search_keyword_with_conn(
                     if i > 0 {
                         sql.push_str(" OR ");
                     }
-                    sql.push_str(&format!("{}sphere LIKE ?", col));
-                    params.push(Box::new(format!("%{}%", sphere)));
+                    sql.push_str(&format!("{}sphere LIKE ? ESCAPE '\\'", col));
+                    params.push(Box::new(format!("%{}%", escape_like_value(sphere))));
                 }
                 sql.push(')');
             }
@@ -227,29 +235,29 @@ fn search_keyword_with_conn(
 
         if let Some(class) = f.class_list {
             if !class.is_empty() {
-                sql.push_str(&format!(" AND {}class_list LIKE ?", col));
-                params.push(Box::new(format!("%{}%", class)));
+                sql.push_str(&format!(" AND {}class_list LIKE ? ESCAPE '\\'", col));
+                params.push(Box::new(format!("%{}%", escape_like_value(&class))));
             }
         }
 
         if let Some(source) = f.source {
             if !source.is_empty() {
-                sql.push_str(&format!(" AND {}source LIKE ?", col));
-                params.push(Box::new(format!("%{}%", source)));
+                sql.push_str(&format!(" AND {}source LIKE ? ESCAPE '\\'", col));
+                params.push(Box::new(format!("%{}%", escape_like_value(&source))));
             }
         }
 
         if let Some(components) = f.components {
             if !components.is_empty() {
-                sql.push_str(&format!(" AND {}components LIKE ?", col));
-                params.push(Box::new(format!("%{}%", components)));
+                sql.push_str(&format!(" AND {}components LIKE ? ESCAPE '\\'", col));
+                params.push(Box::new(format!("%{}%", escape_like_value(&components))));
             }
         }
 
         if let Some(tags) = f.tags {
             if !tags.is_empty() {
-                sql.push_str(&format!(" AND {}tags LIKE ?", col));
-                params.push(Box::new(format!("%{}%", tags)));
+                sql.push_str(&format!(" AND {}tags LIKE ? ESCAPE '\\'", col));
+                params.push(Box::new(format!("%{}%", escape_like_value(&tags))));
             }
         }
 

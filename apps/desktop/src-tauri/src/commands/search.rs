@@ -780,10 +780,10 @@ mod tests {
     }
 
     #[test]
-    fn test_malformed_not_or_after_term_falls_back_to_basic() {
-        // "fire NOT OR ice" — NOT followed immediately by OR is malformed;
-        // fall back to basic phrase mode regardless of leading content token.
-        assert_eq!(build_fts_query("fire NOT OR ice"), "\"fire NOT OR ice\"");
+    fn test_malformed_or_not_after_term_falls_back_to_basic() {
+        // "fire OR NOT ice" — OR followed immediately by NOT is malformed
+        // (NOT is not a valid right operand for OR in FTS5); fall back to basic phrase mode.
+        assert_eq!(build_fts_query("fire OR NOT ice"), "\"fire OR NOT ice\"");
     }
 
     #[test]
@@ -791,6 +791,16 @@ mod tests {
         // Double-quote inside user input must be escaped (doubled) inside the
         // wrapping phrase so it doesn't break the FTS5 query syntax.
         assert_eq!(build_fts_query("fire\"ball"), "\"fire\"\"ball\"");
+    }
+
+    #[test]
+    fn test_empty_query_returns_empty_string() {
+        assert_eq!(build_fts_query(""), "");
+    }
+
+    #[test]
+    fn test_whitespace_only_query_returns_empty_string() {
+        assert_eq!(build_fts_query("   "), "");
     }
 
     #[test]
@@ -887,6 +897,18 @@ mod tests {
             .collect()
     }
 
+    /// Verification plan test 2: a single-token query must match spells whose
+    /// name/description contains that token and NOT match unrelated spells.
+    #[test]
+    fn test_search_single_token_matches_relevant_spell() {
+        let conn = setup_search_db();
+        insert_spell(&conn, 1, "Fireball", "A blazing orb of fire");
+        insert_spell(&conn, 2, "Frostbolt", "A shard of ice and frost");
+        let ids = search_ids(&conn, "fire");
+        assert!(ids.contains(&1), "'Fireball' must match single-token query 'fire'");
+        assert!(!ids.contains(&2), "'Frostbolt' must NOT match single-token query 'fire'");
+    }
+
     /// Searching with lowercase "and" activates basic mode (phrase search).
     /// "Fire and Ice" should be returned because its description contains the
     /// phrase "fire and ice".
@@ -944,6 +966,16 @@ mod tests {
             ids.is_empty(),
             "NEAR should be treated as literal text (basic mode phrase), not an FTS5 operator"
         );
+    }
+
+    /// An empty query must skip the FTS JOIN path and return results from the
+    /// non-FTS SELECT (ordered by name). Verifies the `has_text_query` guard.
+    #[test]
+    fn test_search_empty_query_returns_results_without_fts() {
+        let conn = setup_search_db();
+        insert_spell(&conn, 1, "Fireball", "A blazing orb of fire");
+        let ids = search_ids(&conn, "");
+        assert!(ids.contains(&1), "empty query should return all spells via non-FTS path");
     }
 
     /// Verify the FTS JOIN path works correctly when a school filter is applied

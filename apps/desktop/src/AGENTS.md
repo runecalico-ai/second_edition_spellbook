@@ -44,7 +44,7 @@ await invoke("create_character", {
 
 ### 2. Use `data-testid` Attributes
 
-Add `data-testid` attributes to interactive elements and important containers. This is the **most reliable** way to locate elements in tests.
+See **[Locator Strategy & `data-testid` Conventions](../../../docs/LOCATOR_STRATEGY.md)** for the full priority hierarchy, naming conventions, mandatory rules, and verification snippets.
 
 **✅ Good:**
 ```tsx
@@ -101,34 +101,7 @@ Proper semantic HTML and ARIA labels make elements accessible to both users and 
 </div>
 ```
 
-### 3. Naming Conventions for `data-testid`
 
-Use descriptive, kebab-case names that clearly indicate what the element is:
-
-- **Buttons**: `{action}-button` (e.g., `save-button`, `delete-button`)
-- **Inputs**: `{field}-input` (e.g., `class-level-input`, `character-name-input`)
-- **Containers**: `{content}-row`, `{content}-section` (e.g., `class-row`, `abilities-section`)
-- **Modals/Dialogs**: `{name}-modal`, `{name}-dialog` (e.g., `confirm-modal`, `spell-picker`)
-
-### 4. When to Add `data-testid` (MANDATORY)
-
-> [!CRITICAL]
-> **ALL interactive elements MUST have `data-testid` attributes.** This is non-negotiable for automated testing.
-
-**ALWAYS add `data-testid` for:**
-
-- ✅ **ALL buttons** (save, delete, cancel, submit, etc.)
-- ✅ **ALL form inputs** (text, number, checkbox, select, etc.)
-- ✅ **ALL links** that trigger navigation or actions
-- ✅ **Dynamic content containers** (rows, cards, panels with changing data)
-- ✅ **Interactive list items** (selectable, clickable, draggable)
-- ✅ **Modals and dialogs** (the container and action buttons)
-
-**Only skip `data-testid` when:**
-
-- ❌ The element is purely decorative (no interaction, no assertions needed)
-- ❌ The element is a one-time static heading with unique text
-- ❌ Using semantic `role` + text is more stable (e.g., `<button>Save</button>` with unique text)
 
 ### 5. Input Validation and Testing
 
@@ -159,29 +132,7 @@ await expect(levelInput).toHaveValue("0"); // Clamped to 0
 
 ### 6. Locator Priority Hierarchy
 
-When writing Playwright tests, use locators in this priority order:
-
-| Priority | Method | Example | When to Use |
-|----------|--------|---------|-------------|
-| **1** | `getByTestId()` | `page.getByTestId('save-button')` | Interactive elements, dynamic content |
-| **2** | `getByRole()` | `page.getByRole('button', { name: 'Save' })` | Semantic HTML with clear roles |
-| **3** | `getByLabel()` | `page.getByLabel('Character Name')` | Form inputs with labels |
-| **4** | `getByPlaceholder()` | `page.getByPlaceholder('Search...')` | Inputs with placeholders |
-| **5** | `getByText()` | `page.getByText('Fireball')` | Unique static text |
-| **6** | `locator()` CSS | `page.locator('.modal')` | Last resort only |
-
-**❌ Avoid brittle CSS selectors:**
-```typescript
-page.locator('div').filter({ has: page.locator('input') }).first()
-page.locator('.flex.items-center.gap-4 > div:nth-child(2)')
-```
-
-**✅ Use robust, semantic locators:**
-```typescript
-page.getByTestId('class-row')
-page.getByLabel('Character Name')
-page.getByRole('button', { name: 'Save' })
-```
+See **[Locator Strategy & `data-testid` Conventions](../../../docs/LOCATOR_STRATEGY.md)** for the full locator priority table.
 
 ## Common Patterns
 

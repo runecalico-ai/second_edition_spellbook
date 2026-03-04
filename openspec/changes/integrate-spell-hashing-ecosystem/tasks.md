@@ -19,6 +19,12 @@
     - [x] Switch from `LIKE` queries to `MATCH`.
     - [x] Implement ranking by relevance.
     - [x] Implement two-tier search: basic mode (escape all, phrase search) and advanced mode (detect uppercase AND/OR/NOT, pass as operators; NEAR is always escaped; escape remaining special chars; reject malformed expressions and fall back to basic mode).
+- [x] 1.3 Address code review findings (review-task-1_2026_03_03_14_00):
+    - [x] Leading NOT → invalid FTS5 syntax (guard + test fix).
+    - [x] LIKE wildcard escaping in all 6 filter branches + unit tests.
+    - [x] Missing verification-plan test 2 (single-token Fireball vs Frostbolt).
+    - [x] Duplicate test fixed; empty-query tests added.
+    - [x] Minor: migration comments, doc comments, col-prefix guard, LIMIT constant, BTreeSet, setup_fts_db dedup, empty-string filter bypass. Three-pass re-review passed.
 
 ## 2. Import/Export
 - [ ] 2.1 Implement Import Logic:

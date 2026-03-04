@@ -89,26 +89,23 @@ npx playwright test
 ### Windows
 
 ```powershell
-cd apps/desktop
-npx biome lint tests/fixtures tests/page-objects tests/utils
-npx biome lint tests/e2e.spec.ts tests/batch_import.spec.ts tests/epic_and_quest_spells.spec.ts tests/epic_and_quest_spells_connected.spec.ts tests/milestone_2_5.spec.ts tests/milestone_3.spec.ts
+cd apps/desktop/tests
+npx biome lint .
 ```
 
 ### Linux/macOS
 
 ```bash
-cd apps/desktop
-npx biome lint tests/fixtures tests/page-objects tests/utils tests/*.spec.ts
+cd apps/desktop/tests
+npx biome lint .
 ```
 
 ## Developing New Tests
 ### 0. Data and Port Isolation
 The `launchTauriApp()` helper in `tauri-fixture.ts` handles isolation automatically:
-- **Port Isolation**: Each worker uses a unique Vite and CDP port (calculated as `BASE_PORT + workerIndex`).
+- **Port Isolation**: Each worker uses unique Vite (from 5173) and CDP (from 9333) ports, calculated as `BASE_PORT + workerIndex`. All loopback addresses use `127.0.0.1` to avoid IPv6 resolution issues.
 - **Concurrency Limit**: The suite is recommended to run with `workers: 1` on Windows to ensure maximum reliability and avoid port-binding race conditions.
-- **Port Isolation**: Each worker uses a unique Vite and CDP port (calculated as `BASE_PORT + workerIndex`). Standardizing on `127.0.0.1` for loopback addresses avoids IPv6 resolution issues.
 - **Data Isolation**: Each test run creates a unique `SPELLBOOK_DATA_DIR` to avoid database locks and state pollution.
-- **Network Ports**: Each worker uses unique ports for Vite and CDP (starting from 5173 and 9333 + workerIndex) to avoid collisions during parallel execution.
 - **sqlite-vec**: The fixture automatically ensures `vec0.dll` (or equivalent) is present in the test environment and copied to the isolated data directory.
 
 ```typescript
@@ -364,30 +361,7 @@ await page.waitForTimeout(300); // Settlement wait for modal close
 
 ### 6. Locator Strategy
 
-Follow this priority hierarchy when writing locators:
-
-| Priority | Method | Use Case | Example |
-|----------|--------|----------|----------|
-| **1** | `getByTestId()` | Interactive elements, dynamic content | `page.getByTestId('save-button')` |
-| **2** | `getByRole()` | Semantic HTML elements | `page.getByRole('button', { name: 'Save' })` |
-| **3** | `getByLabel()` | Form fields with labels | `page.getByLabel('Tags')` |
-| **4** | `getByPlaceholder()` | Inputs with placeholders | `page.getByPlaceholder('Components (V,S,M)')` |
-| **5** | `getByText()` | Unique static text | `page.getByText('Fireball')` |
-| **6** | `locator()` with CSS | Last resort only | `page.locator('.modal')` |
-
-**When new UI elements are added**, verify they can be located:
-
-```typescript
-// Verify element exists before writing tests
-const count = await page.getByTestId('new-element').count();
-console.log(`Found ${count} elements (should be 1)`);
-
-// List all available testids
-const testIds = await page.locator('[data-testid]').evaluateAll(
-  nodes => nodes.map(n => n.getAttribute('data-testid'))
-);
-console.log('Available testids:', testIds);
-```
+See **[Locator Strategy & `data-testid` Conventions](../../../docs/LOCATOR_STRATEGY.md)** for the full priority hierarchy, naming conventions, and verification snippets.
 
 ### 6.1 Settlement Waits
 After navigation or complex UI switches (like opening the Spell Editor), use a short settlement wait (e.g., 500ms) to ensure React state has settled before interaction:
@@ -475,15 +449,12 @@ In the HTML report:
 | `Navigation timeout` | App crashed or startup too slow | Check app logs, verify rebuild, increase timeout |
 | `Database is locked` | Previous test didn't clean up | Kill orphaned processes, check data isolation |
 
-### 5. Capture Debug Screenshots
+### 5. Ad-Hoc Debug Screenshots
 
-Add screenshots before failing assertions:
+For targeted debugging beyond the automatic failure screenshots (section 1), capture at specific points:
 
 ```typescript
-// Add this before the assertion
 await page.screenshot({ path: 'tests/screenshots/debug.png', fullPage: true });
-
-// Then the assertion
 await expect(element).toBeVisible();
 ```
 

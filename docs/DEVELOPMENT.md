@@ -136,4 +136,4 @@ We enforce strict formatting and type safety across all languages. Run these bef
 ---
 
 ## Specifications (OpenSpec)
-For detailed planning and architectural shifts, refer to the [OpenSpec Instructions](../openspec/AGENTS.md). All significant changes must follow the OpenSpec proposal workflow.
+For detailed planning and architectural shifts, refer to the [OpenSpec Project Guide](../openspec/project.md). All significant changes must follow the OpenSpec proposal workflow.

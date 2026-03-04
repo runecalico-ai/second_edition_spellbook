@@ -40,7 +40,8 @@ fn is_fts_operator(token: &str) -> bool {
 /// Attempts to build an advanced-mode FTS5 query from already-tokenised input.
 ///
 /// Rules:
-/// - Cannot start with `AND` or `OR` (but `NOT` is allowed as a leading negation).
+/// - Cannot start with any FTS5 operator (`AND`, `OR`, `NOT`); FTS5 boolean operators
+///   are all infix-only and require operands on both sides.
 /// - Cannot end with any operator.
 /// - `AND`/`OR` cannot be immediately followed by another `AND`/`OR` (but `AND NOT`
 ///   is valid).
@@ -55,8 +56,9 @@ fn try_build_advanced_fts_query(tokens: &[&str]) -> Option<String> {
     if tokens.is_empty() {
         return None;
     }
-    // Cannot start with AND or OR (malformed: "AND fire", "OR fire").
-    if is_fts_binary_operator(tokens[0]) {
+    // Cannot start with any FTS5 operator. NOT is also infix-only in FTS5
+    // (there is no unary prefix negation), so "NOT ice" is invalid syntax.
+    if is_fts_operator(tokens[0]) {
         return None;
     }
     // Cannot end with any operator (malformed: "fire AND", "fire NOT").
@@ -121,7 +123,7 @@ fn try_build_advanced_fts_query(tokens: &[&str]) -> Option<String> {
 ///   individually wrapped as quoted phrases.  `NEAR` is *always* escaped — even
 ///   when other operators are present it becomes `"NEAR"`, never the FTS5 NEAR
 ///   operator.  Falls back to basic mode on malformed operator expressions (e.g.
-///   trailing operator, leading `AND`/`OR`, consecutive binary operators).
+///   trailing operator, leading operator (`AND`/`OR`/`NOT`), consecutive operators).
 fn build_fts_query(raw_query: &str) -> String {
     let trimmed = raw_query.trim();
     if trimmed.is_empty() {
@@ -717,9 +719,10 @@ mod tests {
     }
 
     #[test]
-    fn test_advanced_mode_not_operator() {
-        // Leading NOT (negation) is valid in FTS5.
-        assert_eq!(build_fts_query("NOT ice"), "NOT \"ice\"");
+    fn test_leading_not_falls_back_to_basic() {
+        // FTS5's NOT is an infix binary operator — a leading NOT has no left operand
+        // and produces invalid FTS5 syntax. Fall back to basic (phrase) mode.
+        assert_eq!(build_fts_query("NOT ice"), "\"NOT ice\"");
     }
 
     #[test]

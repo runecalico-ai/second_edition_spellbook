@@ -2,6 +2,10 @@
 
 ## Purpose
 This specification defines character profile management for PCs and NPCs, including identity tracking (name, race, alignment), ability scores (including optional Comeliness), multi-class configurations with independent levels, and per-class spell management with separate "Known" and "Prepared" lists. It ensures characters can accurately represent AD&D 2e multi-class spellcasters with character-specific spell selections.
+
+> See [design.md Decision #5](../../design.md) for full context.
+>
+> **Merged Spec Note:** This specification covers both character profile management and per-class spell lists (known/prepared spells). Both are stored in the `character_class_spell` table. The former `spellbooks/spec.md` has been merged here.
 ## Requirements
 ### Requirement: Character Profile Data
 The application SHALL support rich character profiles for PCs and NPCs, including identity (name, type, race, alignment, notes), abilities (STR, DEX, CON, INT, WIS, CHA, and optional COM), and multi-class configurations with independent levels.
@@ -71,6 +75,56 @@ Each class instance on a specific character SHALL maintain separate "Known" and 
 #### Scenario: Removing Spell from List
 - **WHEN** the user removes "Magic Missile" from the Known list
 - **THEN** the link SHALL be deleted, but the spell SHALL remain in the global library
+
+### Requirement: Immutable Spell References
+Characters and Spell Lists MUST reference spells using the Canonical Spell Hash (`spell_content_hash`).
+
+#### Scenario: Versioning
+- GIVEN a character or list with "Fireball" (Hash A)
+- WHEN a new "Fireball" (Hash B) is imported and saved as a new distinct spell (e.g., via 'Keep Both')
+- THEN the character or list MUST still point to Hash A.
+
+#### Scenario: Missing Spell Handling
+- GIVEN a character or list with a spell reference to Hash H
+- AND spell H no longer exists in library
+- WHEN viewing character spellbook or spell list
+- THEN "Spell no longer in library" placeholder MUST appear
+- AND "Remove" action MUST be available.
+
+#### Scenario: Spell Replaced via Import
+- GIVEN a character or list with "Fireball" (Hash A)
+- AND user imports a new "Fireball" (Hash B) and selects "Replace with New"
+- WHEN the import replaces the spell
+- THEN the system MUST perform a cascading update
+- AND the character or list MUST now reference Hash B seamlessly without requiring manual intervention.
+
+#### Scenario: Explicit Upgrade
+- GIVEN a character or list with "Fireball" (Hash A)
+- AND "Fireball" (Hash B) exists in library
+- WHEN user explicitly chooses to upgrade
+- THEN character reference MUST update to Hash B.
+
+Upgrade is offered when the same display name has another spell row with a different `content_hash` (e.g. after importing an updated version of the same spell).
+
+#### Scenario: Spell List Portability
+- GIVEN a per-class spell set (e.g. known/prepared spells) containing "Fireball"
+- WHEN exported and imported on another machine
+- THEN the entry for "Fireball" MUST resolve using its Content Hash
+- AND MUST NOT depend on the local integer ID of "Fireball" on the source machine.
+
+#### Scenario: Migration from ID to Hash
+- GIVEN existing rows in `character_class_spell` with `spell_id` only
+- WHEN migration runs
+- THEN `spell_content_hash` MUST be backfilled from `spell.content_hash`
+- AND join to `spell` on hash MUST succeed.
+
+### Requirement: Migration Period Dual-Column Writes
+During the Migration 0015 transition period, both IDs and Hashes are used.
+
+#### Scenario: Dual-Column Write on Insert
+- GIVEN a new spell being added to a character or spell list
+- WHEN the insert occurs during the Migration 0015 transition period
+- THEN the system MUST populate BOTH `spell_id` and `spell_content_hash` on the new `character_class_spell` row (assuming the referenced spell has both).
 
 #### Scenario: Non-Spellcasting Class
 - **WHEN** the user adds a "Fighter" class to a character
@@ -184,6 +238,42 @@ The application SHALL support printing character sheets (identity + abilities + 
 - **WHEN** the user selects "Include COM" and "Include Notes" options
 - **THEN** the printed output SHALL include the COM ability and per-spell notes
 
+### Requirement: Printable Export
+The application SHALL generate printable PDF exports for single spells or entire character spellbooks.
+
+#### Scenario: Printing a Spellbook
+- **WHEN** the user select "Export to PDF" for a character with prepared spells
+- **THEN** a PDF must be generated containing the full stat blocks of those spells in a printer-friendly layout
+
+### Requirement: Layout Presets
+The exporter SHALL support different layout presets, such as "Compact", "Stat-Block", and "List".
+
+#### Scenario: Switching to Compact Layout
+- **WHEN** the user selects the "Compact" layout preset during export
+- **THEN** the resulting PDF should show more spells per page with reduced detail
+
+### Requirement: High-Level Terminology
+The application SHALL use appropriate terminology for high-level and quest magic in all displays and exports.
+- Levels 10, 11, and 12 SHALL be referred to as "10th Circle", "11th Circle", and "12th Circle" for Arcane spells to ensure the numeric level remains clear.
+- Quest spells SHALL display as "Quest" instead of a numeric level.
+- Spells flagged as `is_cantrip` SHALL be referred to as "Cantrips".
+
+#### Scenario: Displaying Quest Spell Terminology
+- **WHEN** viewing a Divine spell flagged as `is_quest_spell`
+- **THEN** the level display SHALL show "Quest"
+
+#### Scenario: Displaying Epic Circle Terminology
+- **WHEN** viewing a Level 10 Arcane spell
+- **THEN** the level display SHALL show "10th Circle"
+
+#### Scenario: Displaying Cantrip Terminology
+- **WHEN** viewing a Level 0 spell flagged as `is_cantrip`
+- **THEN** the level display SHALL show "Cantrip"
+
+#### Scenario: Displaying Level 0 (Non-Cantrip) Terminology
+- **WHEN** viewing a Level 0 spell NOT flagged as `is_cantrip`
+- **THEN** the level display SHALL show "Level 0"
+
 ### Requirement: Character Search and Filtering
 The application SHALL provide search and filtering for characters by name, type (PC/NPC), race, class, level range, and ability thresholds.
 
@@ -206,4 +296,8 @@ The application SHALL provide search and filtering for characters by name, type 
 #### Scenario: Search Performance
 - **WHEN** the user performs a search with multiple filters on a database with 100+ characters
 - **THEN** results SHALL be returned in under 150ms (P95)
+
+## Non-Functional Requirements
+- **Lookup performance**: Hash lookup MUST complete in < 10ms for libraries of 10k spells.
+- **Migration**: Backfill of 10k list entries SHOULD complete in < 60 seconds.
 

@@ -1,0 +1,294 @@
+/**
+ * E2E tests for JSON spell import conflict resolution UI.
+ *
+ * Tests cover the two main conflict resolution flows:
+ *   1. Per-conflict dialog (< 10 conflicts): Keep Existing, Replace with New,
+ *      Keep Both, and Apply to All.
+ *   2. Bulk summary dialog (≥ 10 conflicts): Skip All, Replace All, Keep All,
+ *      and Review Each (which falls through to per-conflict).
+ *
+ * Requires the Tauri app running on Windows (WebView2 CDP).
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import { TIMEOUTS } from "./fixtures/constants";
+import { expect, test } from "./fixtures/test-fixtures";
+import { generateRunId, getTestDirname } from "./fixtures/test-utils";
+import { SpellbookApp } from "./page-objects/SpellbookApp";
+
+const __dirname = getTestDirname(import.meta.url);
+
+// ---------------------------------------------------------------------------
+// Bundle helpers
+// ---------------------------------------------------------------------------
+
+/** Minimal CanonicalSpell JSON for use in test bundles. */
+function makeSpell(name: string, description: string, level = 3) {
+  return {
+    schema_version: 1,
+    name,
+    level,
+    description,
+    class_list: [],
+    tags: [],
+    source_refs: [],
+  };
+}
+
+/** Write a single-spell JSON bundle to `filePath` and return the path. */
+function writeSpellBundle(filePath: string, spells: ReturnType<typeof makeSpell>[]) {
+  const bundle = {
+    bundle_format_version: 1,
+    spells,
+  };
+  fs.writeFileSync(filePath, JSON.stringify(bundle, null, 2), "utf-8");
+  return filePath;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers shared across file — create + import an initial version of a spell
+// so a conflict exists on the second import.
+// ---------------------------------------------------------------------------
+
+async function seedSpellInDb(app: SpellbookApp, name: string, description: string, level = 3) {
+  await app.createSpell({ name, level: String(level), description });
+}
+
+// ---------------------------------------------------------------------------
+// Test suite
+// ---------------------------------------------------------------------------
+
+test.describe("JSON Import Conflict Resolution", () => {
+  test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
+  test.slow();
+
+  // ─── Test 1: Per-conflict — Keep Existing ──────────────────────────────
+  test("per-conflict: Keep Existing preserves original spell", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `ConflictKeepExisting_${runId}`;
+    const originalDesc = "Original description — should be kept.";
+    const incomingDesc = "Incoming description — should be discarded.";
+
+    await test.step("Seed spell in DB", async () => {
+      await seedSpellInDb(app, spellName, originalDesc);
+    });
+
+    await test.step("Import JSON with conflict", async () => {
+      const tmpDir = path.join(__dirname, `tmp/cke_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      writeSpellBundle(jsonPath, [makeSpell(spellName, incomingDesc)]);
+
+      await app.importJsonFile(jsonPath);
+    });
+
+    await test.step("Resolve: keep existing", async () => {
+      await expect(page.getByTestId("conflict-progress")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await app.resolveNextConflict("keep_existing");
+
+      // Result screen should appear
+      await expect(page.getByTestId("btn-import-more")).toBeVisible({
+        timeout: TIMEOUTS.long,
+      });
+    });
+
+    await test.step("Verify spell not changed in DB", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByText(originalDesc)).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+  });
+
+  // ─── Test 2: Per-conflict — Replace with New ───────────────────────────
+  test("per-conflict: Replace with New overwrites spell content", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `ConflictReplace_${runId}`;
+    const originalDesc = "Original — should be replaced.";
+    const incomingDesc = `Replacement content ${runId}`;
+
+    await test.step("Seed spell", async () => {
+      await seedSpellInDb(app, spellName, originalDesc);
+    });
+
+    await test.step("Import conflicting JSON", async () => {
+      const tmpDir = path.join(__dirname, `tmp/crep_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      writeSpellBundle(jsonPath, [makeSpell(spellName, incomingDesc)]);
+
+      await app.importJsonFile(jsonPath);
+    });
+
+    await test.step("Resolve: replace with new", async () => {
+      await expect(page.getByTestId("conflict-progress")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await app.resolveNextConflict("replace_with_new");
+
+      await expect(page.getByTestId("btn-import-more")).toBeVisible({
+        timeout: TIMEOUTS.long,
+      });
+    });
+
+    await test.step("Verify spell updated in DB", async () => {
+      await app.openSpell(spellName);
+      await expect(page.getByText(incomingDesc)).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+  });
+
+  // ─── Test 3: Per-conflict — Keep Both ──────────────────────────────────
+  test("per-conflict: Keep Both creates a suffixed copy", async ({ appContext, fileTracker }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `ConflictKeepBoth_${runId}`;
+    const originalDesc = "Original — keep this.";
+    const incomingDesc = `Incoming — add as new ${runId}`;
+
+    await test.step("Seed spell", async () => {
+      await seedSpellInDb(app, spellName, originalDesc);
+    });
+
+    await test.step("Import conflicting JSON", async () => {
+      const tmpDir = path.join(__dirname, `tmp/ckb_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      writeSpellBundle(jsonPath, [makeSpell(spellName, incomingDesc)]);
+
+      await app.importJsonFile(jsonPath);
+    });
+
+    await test.step("Resolve: keep both", async () => {
+      await expect(page.getByTestId("conflict-progress")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await app.resolveNextConflict("keep_both");
+
+      await expect(page.getByTestId("btn-import-more")).toBeVisible({
+        timeout: TIMEOUTS.long,
+      });
+    });
+
+    await test.step("Verify both spells exist in Library", async () => {
+      // Original should still be present
+      await app.openSpell(spellName);
+      await expect(page.getByText(originalDesc)).toBeVisible({ timeout: TIMEOUTS.medium });
+
+      // Suffixed copy "(1)" should also exist
+      await app.navigate("Library");
+      await page.getByPlaceholder(/Search spells/i).fill(spellName);
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+
+      // Both the original and "(1)" variant should appear in results
+      await expect(page.getByRole("link", { name: spellName, exact: true })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByRole("link", { name: `${spellName} (1)`, exact: false })).toBeVisible(
+        { timeout: TIMEOUTS.medium },
+      );
+    });
+  });
+
+  // ─── Test 4: Apply to All ───────────────────────────────────────────────
+  test("per-conflict: Apply to All resolves remaining conflicts in one click", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellNames = [`ATA_Alpha_${runId}`, `ATA_Beta_${runId}`, `ATA_Gamma_${runId}`];
+
+    await test.step("Seed 3 spells", async () => {
+      for (const name of spellNames) {
+        await seedSpellInDb(app, name, "Original content.");
+      }
+    });
+
+    await test.step("Import 3-spell bundle (all conflict)", async () => {
+      const tmpDir = path.join(__dirname, `tmp/ata_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      writeSpellBundle(
+        jsonPath,
+        spellNames.map((n) => makeSpell(n, `Updated ${runId} for ${n}`)),
+      );
+      await app.importJsonFile(jsonPath);
+    });
+
+    await test.step("Resolve: enable Apply to All, then click Keep Existing", async () => {
+      // Conflict 1 of 3
+      await expect(page.getByTestId("conflict-progress")).toHaveText("Conflict 1 of 3", {
+        timeout: TIMEOUTS.medium,
+      });
+
+      // Apply to All then resolve — should jump straight to result
+      await app.resolveNextConflict("keep_existing", /* applyToAll */ true);
+
+      await expect(page.getByTestId("btn-import-more")).toBeVisible({
+        timeout: TIMEOUTS.long,
+      });
+      // Conflict 2 / 3 dialogs should never have appeared
+      await expect(page.getByText("Conflict 2 of 3")).not.toBeVisible();
+    });
+  });
+
+  // ─── Test 5: Bulk summary dialog (≥ 10 conflicts) ──────────────────────
+  test("bulk dialog: shown for 10+ conflicts; Replace All resolves all", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const conflictCount = 10;
+
+    await test.step(`Seed ${conflictCount} spells`, async () => {
+      for (let i = 0; i < conflictCount; i++) {
+        await seedSpellInDb(app, `BulkSpell_${runId}_${i}`, "Original.");
+      }
+    });
+
+    await test.step(`Import ${conflictCount}-spell bundle (all conflict)`, async () => {
+      const tmpDir = path.join(__dirname, `tmp/bulk_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const spells = Array.from({ length: conflictCount }, (_, i) =>
+        makeSpell(`BulkSpell_${runId}_${i}`, `Updated ${runId} version`),
+      );
+      writeSpellBundle(jsonPath, spells);
+      await app.importJsonFile(jsonPath);
+    });
+
+    await test.step("Bulk summary dialog visible, not per-conflict dialog", async () => {
+      await expect(page.getByTestId("btn-bulk-replace-all")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      // Per-conflict dialog should NOT be shown
+      await expect(page.getByTestId("conflict-progress")).not.toBeVisible();
+      // Confirm conflict count displayed
+      await expect(page.getByText(`Found ${conflictCount} conflicts`)).toBeVisible();
+    });
+
+    await test.step("Click Replace All → result screen", async () => {
+      await page.getByTestId("btn-bulk-replace-all").click();
+      await expect(page.getByTestId("btn-import-more")).toBeVisible({
+        timeout: TIMEOUTS.long,
+      });
+      // Result should show conflicts resolved
+      await expect(page.getByText(/Conflicts resolved/i)).toBeVisible();
+    });
+  });
+});

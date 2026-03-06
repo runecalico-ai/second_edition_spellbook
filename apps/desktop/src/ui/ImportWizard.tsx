@@ -2,6 +2,16 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useModal } from "../store/useModal";
 import FieldMapper, { type ParsedSpell } from "./FieldMapper";
+import BulkConflictSummaryDialog from "./components/BulkConflictSummaryDialog";
+import SpellConflictDiffDialog from "./components/SpellConflictDiffDialog";
+import type {
+  BulkConflictAction,
+  ConflictAction,
+  HashConflictResolution,
+  HashImportConflict,
+  HashImportResult,
+  HashPreviewResult,
+} from "../types/import-types";
 
 type ImportFile = {
   name: string;
@@ -111,7 +121,15 @@ type PreviewResult = {
   conflicts: ImportConflict[];
 };
 
-type ImportStep = "select" | "preview" | "map" | "confirm" | "resolve" | "result";
+type ImportStep =
+  | "select"
+  | "preview"
+  | "map"
+  | "confirm"
+  | "resolve"
+  | "result"
+  | "json-preview"
+  | "resolve-json";
 
 const STEP_TITLES: Record<ImportStep, string> = {
   select: "1. Select Files",
@@ -120,6 +138,8 @@ const STEP_TITLES: Record<ImportStep, string> = {
   confirm: "4. Confirm",
   resolve: "5. Resolve Conflicts",
   result: "6. Complete",
+  "json-preview": "2. JSON Preview",
+  "resolve-json": "3. Resolve Conflicts",
 };
 
 type ConflictSelection = {
@@ -177,6 +197,16 @@ export default function ImportWizard() {
   const [resolveResult, setResolveResult] = useState<ResolveImportResult | null>(null);
   const [showHighLevelWarning, setShowHighLevelWarning] = useState(false);
   const [suppressWarning, setSuppressWarning] = useState(false);
+
+  // ── JSON import state ───────────────────────────────────────────────────
+  const [isJsonImport, setIsJsonImport] = useState(false);
+  const [jsonPayload, setJsonPayload] = useState<string>("");
+  const [jsonPreviewResult, setJsonPreviewResult] = useState<HashPreviewResult | null>(null);
+  const [jsonImportResult, setJsonImportResult] = useState<HashImportResult | null>(null);
+  const [jsonConflicts, setJsonConflicts] = useState<HashImportConflict[]>([]);
+  const [jsonConflictIndex, setJsonConflictIndex] = useState(0);
+  const [jsonResolutions, setJsonResolutions] = useState<HashConflictResolution[]>([]);
+  const [bulkAction, setBulkAction] = useState<BulkConflictAction | null>(null);
 
   const hasLowConfidence = (spells: ParsedSpell[]): boolean => {
     return spells.some((spell) => {
@@ -366,9 +396,150 @@ export default function ImportWizard() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+      const selectedFiles = Array.from(e.target.files);
+      setFiles(selectedFiles);
       setResult(null);
       setStep("select");
+      // Detect JSON import mode
+      const hasJson = selectedFiles.some((f) => f.name.toLowerCase().endsWith(".json"));
+      setIsJsonImport(hasJson);
+      // Reset JSON state on new selection
+      setJsonPayload("");
+      setJsonPreviewResult(null);
+      setJsonImportResult(null);
+      setJsonConflicts([]);
+      setJsonConflictIndex(0);
+      setJsonResolutions([]);
+      setBulkAction(null);
+    }
+  };
+
+  const goToJsonPreview = async () => {
+    if (files.length === 0) return;
+    setLoading(true);
+    try {
+      const jsonFile = files.find((f) => f.name.toLowerCase().endsWith(".json"));
+      if (!jsonFile) return;
+      const text = await jsonFile.text();
+      setJsonPayload(text);
+      const preview = await invoke<HashPreviewResult>("preview_import_spell_json", {
+        payload: text,
+      });
+      setJsonPreviewResult(preview);
+      setStep("json-preview");
+    } catch (e) {
+      console.error("JSON preview failed:", e);
+      await modalAlert(`JSON preview failed: ${e}`, "Preview Error", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doJsonImport = async () => {
+    setLoading(true);
+    try {
+      const result = await invoke<HashImportResult>("import_spell_json", {
+        payload: jsonPayload,
+      });
+      setJsonImportResult(result);
+      if (result.conflicts.length === 0) {
+        setStep("result");
+      } else {
+        setJsonConflicts(result.conflicts);
+        setJsonConflictIndex(0);
+        setJsonResolutions([]);
+        setBulkAction(null);
+        setStep("resolve-json");
+      }
+    } catch (e) {
+      console.error("JSON import failed:", e);
+      await modalAlert(`JSON import failed: ${e}`, "Import Error", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkAction = async (action: BulkConflictAction) => {
+    if (action === "review_each") {
+      // setState for 'review_each' is already set by the JSX onAction handler.
+      // Just reset conflict traversal state so per-conflict dialog starts at index 0.
+      setJsonConflictIndex(0);
+      setJsonResolutions([]);
+      return;
+    }
+    const conflictActionMap: Record<string, ConflictAction> = {
+      skip_all: "keep_existing",
+      replace_all: "replace_with_new",
+      keep_all: "keep_both",
+    };
+    const mappedAction = conflictActionMap[action];
+    if (!mappedAction) return;
+    setLoading(true);
+    try {
+      const resolutions: HashConflictResolution[] = jsonConflicts.map((c) => ({
+        existingId: c.existingId,
+        incomingContentHash: c.incomingContentHash,
+        action: mappedAction,
+      }));
+      const result = await invoke<HashImportResult>("resolve_import_spell_json", {
+        payload: jsonPayload,
+        resolveOptions: {
+          resolutions,
+          defaultAction: null,
+        },
+      });
+      setJsonImportResult(result);
+      setStep("result");
+    } catch (e) {
+      console.error("Bulk conflict resolution failed:", e);
+      await modalAlert(`Bulk resolution failed: ${e}`, "Resolution Error", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConflictResolve = async (
+    resolution: HashConflictResolution,
+    applyToAll: boolean,
+  ) => {
+    let allResolutions: HashConflictResolution[];
+    if (applyToAll) {
+      // Apply same action to current and all remaining conflicts
+      const remainingConflicts = jsonConflicts.slice(jsonConflictIndex);
+      allResolutions = [
+        ...jsonResolutions,
+        ...remainingConflicts.map((c) => ({
+          existingId: c.existingId,
+          incomingContentHash: c.incomingContentHash,
+          action: resolution.action,
+        })),
+      ];
+    } else {
+      allResolutions = [...jsonResolutions, resolution];
+      const nextIndex = jsonConflictIndex + 1;
+      if (nextIndex < jsonConflicts.length) {
+        setJsonResolutions(allResolutions);
+        setJsonConflictIndex(nextIndex);
+        return; // Wait for next conflict
+      }
+    }
+    // All conflicts resolved — submit
+    setLoading(true);
+    try {
+      const result = await invoke<HashImportResult>("resolve_import_spell_json", {
+        payload: jsonPayload,
+        resolveOptions: {
+          resolutions: allResolutions,
+          defaultAction: null,
+        },
+      });
+      setJsonImportResult(result);
+      setStep("result");
+    } catch (e) {
+      console.error("Conflict resolution failed:", e);
+      await modalAlert(`Conflict resolution failed: ${e}`, "Resolution Error", "error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -494,6 +665,15 @@ export default function ImportWizard() {
     setSpellConflicts([]);
     setConflictSelections({});
     setResolveResult(null);
+    // Reset JSON state
+    setIsJsonImport(false);
+    setJsonPayload("");
+    setJsonPreviewResult(null);
+    setJsonImportResult(null);
+    setJsonConflicts([]);
+    setJsonConflictIndex(0);
+    setJsonResolutions([]);
+    setBulkAction(null);
   };
 
   const previewParseConflicts = parseConflicts(previewConflicts);
@@ -502,18 +682,23 @@ export default function ImportWizard() {
 
   return (
     <div className="space-y-4">
-      {/* Step Indicator */}
-      <div className="flex gap-2 text-xs">
-        {(Object.keys(STEP_TITLES) as ImportStep[]).map((s) => (
-          <div
-            key={s}
-            className={`px-2 py-1 rounded ${
-              s === step ? "bg-blue-600 text-white" : "bg-neutral-800 text-neutral-500"
-            }`}
-          >
-            {STEP_TITLES[s]}
-          </div>
-        ))}
+      {/* Step Indicator — only show steps relevant to current import mode */}
+      <div className="flex gap-2 text-xs flex-wrap">
+        {(Object.keys(STEP_TITLES) as ImportStep[])
+          .filter((s) =>
+            isJsonImport
+              ? ["select", "json-preview", "resolve-json", "result"].includes(s)
+              : !["json-preview", "resolve-json"].includes(s),
+          )
+          .map((s) => (
+            <div
+              key={s}
+              className={`px-2 py-1 rounded ${s === step ? "bg-blue-600 text-white" : "bg-neutral-800 text-neutral-500"
+                }`}
+            >
+              {STEP_TITLES[s]}
+            </div>
+          ))}
       </div>
 
       {/* Step 1: Select Files */}
@@ -522,7 +707,7 @@ export default function ImportWizard() {
           <input
             type="file"
             multiple
-            accept=".md,.pdf,.docx"
+            accept=".md,.pdf,.docx,.json"
             data-testid="import-file-input"
             aria-label="Select files to import"
             onChange={handleFileChange}
@@ -542,7 +727,7 @@ export default function ImportWizard() {
               <button
                 type="button"
                 data-testid="btn-preview-import"
-                onClick={goToPreview}
+                onClick={isJsonImport ? goToJsonPreview : goToPreview}
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 disabled:opacity-50"
               >
@@ -553,7 +738,60 @@ export default function ImportWizard() {
         </div>
       )}
 
-      {/* Step 2: Preview */}
+      {/* Step JSON-2: JSON Preview (only for .json files) */}
+      {step === "json-preview" && (
+        <div className="space-y-4">
+          <div className="p-3 bg-neutral-900/50 border border-neutral-800 rounded">
+            <div className="text-sm font-semibold">
+              Found {jsonPreviewResult?.spells.length ?? 0} spell(s) in JSON
+            </div>
+            {jsonPreviewResult && jsonPreviewResult.failures.length > 0 && (
+              <div className="text-xs text-red-400 mt-1">
+                {jsonPreviewResult.failures.length} spell(s) failed validation
+              </div>
+            )}
+          </div>
+
+          {jsonPreviewResult && jsonPreviewResult.warnings.length > 0 && (
+            <div className="p-3 bg-yellow-900/20 border border-yellow-900 rounded text-yellow-400 text-sm">
+              ⚠️ {jsonPreviewResult.warnings.join("; ")}
+            </div>
+          )}
+
+          {jsonPreviewResult && jsonPreviewResult.failures.length > 0 && (
+            <div className="max-h-32 overflow-auto bg-neutral-950 border border-red-900/50 rounded p-2">
+              <div className="text-xs text-red-400 font-semibold mb-1">Validation failures:</div>
+              {jsonPreviewResult.failures.map((f, i) => (
+                <div key={`${i}-${f.spellName}`} className="text-xs text-red-300">
+                  <span className="font-medium">{f.spellName}</span>: {f.reason}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-testid="btn-back-to-select-json"
+              onClick={() => setStep("select")}
+              className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
+            >
+              ← Back
+            </button>
+            <button
+              type="button"
+              data-testid="btn-import-json"
+              onClick={doJsonImport}
+              disabled={loading || (jsonPreviewResult?.spells.length ?? 0) === 0}
+              className="px-4 py-2 bg-green-600 rounded hover:bg-green-500 disabled:opacity-50 font-semibold"
+            >
+              {loading ? "Importing…" : `Import ${jsonPreviewResult?.spells.length ?? 0} Spell(s)`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Preview (legacy – md/pdf/docx) */}
       {step === "preview" && (
         <div className="space-y-4">
           <div className="p-3 bg-neutral-900/50 border border-neutral-800 rounded">
@@ -597,13 +835,12 @@ export default function ImportWizard() {
                       <td className="p-1">{spell.source || "-"}</td>
                       <td className="p-1">
                         <span
-                          className={`px-1 rounded text-[10px] ${
-                            avgConf > 0.7
-                              ? "bg-green-900/50 text-green-400"
-                              : avgConf > 0.4
-                                ? "bg-yellow-900/50 text-yellow-400"
-                                : "bg-red-900/50 text-red-400"
-                          }`}
+                          className={`px-1 rounded text-[10px] ${avgConf > 0.7
+                            ? "bg-green-900/50 text-green-400"
+                            : avgConf > 0.4
+                              ? "bg-yellow-900/50 text-yellow-400"
+                              : "bg-red-900/50 text-red-400"
+                            }`}
                         >
                           {Math.round(avgConf * 100)}%
                         </span>
@@ -770,11 +1007,10 @@ export default function ImportWizard() {
                       type="button"
                       data-testid="btn-custom-merge"
                       onClick={() => setConflictAction(key, "merge")}
-                      className={`px-2 py-1 rounded border ${
-                        action === "merge"
-                          ? "border-blue-500 bg-blue-900/40 text-blue-200"
-                          : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
-                      }`}
+                      className={`px-2 py-1 rounded border ${action === "merge"
+                        ? "border-blue-500 bg-blue-900/40 text-blue-200"
+                        : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
+                        }`}
                     >
                       Custom Merge
                     </button>
@@ -782,11 +1018,10 @@ export default function ImportWizard() {
                       type="button"
                       data-testid="btn-use-incoming"
                       onClick={() => setConflictAction(key, "overwrite")}
-                      className={`px-2 py-1 rounded border ${
-                        action === "overwrite"
-                          ? "border-green-500 bg-green-900/40 text-green-200"
-                          : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
-                      }`}
+                      className={`px-2 py-1 rounded border ${action === "overwrite"
+                        ? "border-green-500 bg-green-900/40 text-green-200"
+                        : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
+                        }`}
                     >
                       Use Incoming
                     </button>
@@ -794,11 +1029,10 @@ export default function ImportWizard() {
                       type="button"
                       data-testid="btn-keep-existing"
                       onClick={() => setConflictAction(key, "skip")}
-                      className={`px-2 py-1 rounded border ${
-                        action === "skip"
-                          ? "border-red-500 bg-red-900/40 text-red-200"
-                          : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
-                      }`}
+                      className={`px-2 py-1 rounded border ${action === "skip"
+                        ? "border-red-500 bg-red-900/40 text-red-200"
+                        : "border-neutral-700 text-neutral-400 hover:bg-neutral-800"
+                        }`}
                     >
                       Keep Existing
                     </button>
@@ -897,8 +1131,94 @@ export default function ImportWizard() {
         </div>
       )}
 
-      {/* Step 6: Result */}
-      {step === "result" && result && (
+      {/* Step resolve-json: Hash-based conflict resolution */}
+      {step === "resolve-json" &&
+        (() => {
+          const BULK_THRESHOLD = 10;
+          const showBulk =
+            jsonConflicts.length >= BULK_THRESHOLD &&
+            bulkAction === null &&
+            jsonConflictIndex === 0 &&
+            jsonResolutions.length === 0;
+
+          if (showBulk) {
+            return (
+              <BulkConflictSummaryDialog
+                conflictCount={jsonConflicts.length}
+                onAction={(action) => {
+                  setBulkAction(action);
+                  void handleBulkAction(action);
+                }}
+              />
+            );
+          }
+
+          const currentConflict = jsonConflicts[jsonConflictIndex];
+          if (!currentConflict) return null;
+
+          return (
+            <SpellConflictDiffDialog
+              conflict={currentConflict}
+              conflictIndex={jsonConflictIndex}
+              totalConflicts={jsonConflicts.length}
+              onResolve={handleConflictResolve}
+            />
+          );
+        })()}
+
+      {/* Step 6a: Result — JSON import */}
+      {step === "result" && isJsonImport && jsonImportResult && (
+        <div className="space-y-4">
+          <div className="p-3 bg-green-900/20 border border-green-900 rounded">
+            <div className="text-sm font-semibold text-green-200">Import Complete</div>
+            <div className="text-xs text-neutral-400 mt-2 space-y-1">
+              <div>✅ Imported: {jsonImportResult.importedCount} spell(s)</div>
+              <div>
+                ⏭️ Duplicates skipped: {jsonImportResult.duplicatesSkipped.total}
+                {jsonImportResult.duplicatesSkipped.mergedCount > 0 &&
+                  ` (${jsonImportResult.duplicatesSkipped.mergedCount} with metadata merged)`}
+              </div>
+              {jsonImportResult.conflictsResolved && (
+                <div>
+                  🔀 Conflicts resolved:{" "}
+                  {jsonImportResult.conflictsResolved.keepExistingCount} kept,{" "}
+                  {jsonImportResult.conflictsResolved.replaceCount} replaced,{" "}
+                  {jsonImportResult.conflictsResolved.keepBothCount} kept both
+                </div>
+              )}
+              {jsonImportResult.failures.length > 0 && (
+                <div>❌ Failures: {jsonImportResult.failures.length}</div>
+              )}
+              {jsonImportResult.warnings.length > 0 && (
+                <div>⚠️ Warnings: {jsonImportResult.warnings.length}</div>
+              )}
+            </div>
+          </div>
+
+          {jsonImportResult.failures.length > 0 && (
+            <div className="max-h-32 overflow-auto bg-neutral-950 border border-red-900/50 rounded p-2">
+              <div className="text-xs text-red-400 font-semibold mb-1">Failures:</div>
+              {jsonImportResult.failures.map((f, i) => (
+                <div key={`${i}-${f.spellName}`} className="text-xs text-red-300">
+                  <span className="font-medium">{f.spellName}</span>: {f.reason}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            data-testid="btn-import-more"
+            onClick={reset}
+            className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500"
+          >
+            Import More Files
+          </button>
+        </div>
+      )}
+
+      {/* Step 6b: Result — legacy import (md/pdf/docx) */}
+      {step === "result" && !isJsonImport && result && (
         <div className="space-y-4">
           <div className="p-3 bg-green-900/20 border border-green-900 rounded text-green-400">
             Imported spells: {result.spells.length}

@@ -22,6 +22,11 @@ use std::sync::Arc;
 use tauri::{Emitter, State, Window};
 
 pub const CURRENT_SCHEMA_VERSION: i64 = 2;
+
+/// Format version for hash-based spell bundles (JSON import/export). Used by Task 2
+/// import/export to identify bundle structure; increment when the bundle envelope changes.
+pub const BUNDLE_FORMAT_VERSION: i64 = 1;
+
 /// Keep at 1 for v1→v2 migration compatibility: v1 spells are accepted and migrated,
 /// while version 0 records are expected to be materialized/migrated before validation.
 pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 1;
@@ -148,7 +153,7 @@ impl SpellDamage {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct SourceRef {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -158,16 +163,25 @@ pub struct SourceRef {
     pub page: Option<serde_json::Value>, // Can be string or int
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Optional URL for source; used as dedup key when both refs have non-empty url (e.g. import/export).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 fn default_one() -> f64 {
     1.0
 }
 
+/// Root spell type. Serializes as snake_case for canonical hashing (§2.6). Deserializes from
+/// both snake_case and camelCase (aliases below) for JSON import/export and frontend IPC.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct CanonicalSpell {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "content_hash",
+        alias = "contentHash"
+    )]
     pub id: Option<String>,
     pub name: String,
     pub tradition: String,
@@ -179,16 +193,16 @@ pub struct CanonicalSpell {
     pub descriptors: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sphere: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "classList")]
     pub class_list: Vec<String>,
     pub level: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<RangeSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub components: Option<SpellComponents>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "materialComponents")]
     pub material_components: Option<Vec<MaterialComponentSpec>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "castingTime")]
     pub casting_time: Option<SpellCastingTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<DurationSpec>,
@@ -196,11 +210,11 @@ pub struct CanonicalSpell {
     pub area: Option<AreaSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub damage: Option<SpellDamageSpec>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "magicResistance")]
     pub magic_resistance: Option<MagicResistanceSpec>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "savingThrow")]
     pub saving_throw: Option<SavingThrowSpec>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "experienceCost")]
     pub experience_cost: Option<ExperienceComponentSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reversible: Option<i64>, // 0 or 1
@@ -209,7 +223,7 @@ pub struct CanonicalSpell {
     pub tags: Vec<String>,
 
     // Metadata - Skipped when hashing to canonical JSON, but kept for database/export
-    #[serde(default)]
+    #[serde(default, alias = "sourceRefs")]
     pub source_refs: Vec<SourceRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edition: Option<String>,
@@ -220,18 +234,22 @@ pub struct CanonicalSpell {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
 
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "isQuestSpell"
+    )]
     pub is_quest_spell: Option<i64>, // 0 or 1
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "isCantrip")]
     pub is_cantrip: Option<i64>, // 0 or 1
 
-    #[serde(default = "default_schema_version")]
+    #[serde(default = "default_schema_version", alias = "schemaVersion")]
     pub schema_version: i64,
 
     // Temporal Metadata
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "createdAt")]
     pub created_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", alias = "updatedAt")]
     pub updated_at: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -657,7 +675,12 @@ impl CanonicalSpell {
                     result.notes_truncated = true;
                     result.truncated_spell_id = db_id;
                     // Truncate to safety limit
-                    st.notes = Some(next_notes.chars().take(SAVING_THROW_NOTES_MAX_CHARS).collect());
+                    st.notes = Some(
+                        next_notes
+                            .chars()
+                            .take(SAVING_THROW_NOTES_MAX_CHARS)
+                            .collect(),
+                    );
                 } else {
                     st.notes = Some(next_notes);
                 }
@@ -1171,6 +1194,7 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
                 book,
                 page: None,
                 note: None,
+                url: None,
             }];
         }
 
@@ -1571,6 +1595,7 @@ mod tests {
             book: "Test Book".to_string(),
             page: Some(serde_json::json!(123)),
             note: None,
+            url: None,
         }];
 
         let hash1 = spell1.compute_hash().unwrap();
@@ -4040,7 +4065,8 @@ mod tests {
     /// Priority D (Task 0.1, TG6): progress callback is invoked on a successful batch when there are
     /// at least PROGRESS_BATCH_SIZE spells (same callback site as truncation/deserialization paths).
     #[test]
-    fn test_migration_batch_progress_emitted_on_success() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_migration_batch_progress_emitted_on_success() -> Result<(), Box<dyn std::error::Error>>
+    {
         const PROGRESS_BATCH_SIZE: usize = 50;
         let db = setup_migration_db()?;
 
@@ -4080,8 +4106,8 @@ mod tests {
     /// (including raw_legacy_value). Running migration on a v1 spell updates the row's content_hash
     /// and the hash matches a recomputed v2 hash.
     #[test]
-    fn test_migration_batch_content_hash_is_v2_canonical(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_migration_batch_content_hash_is_v2_canonical() -> Result<(), Box<dyn std::error::Error>>
+    {
         let db = setup_migration_db()?;
 
         let v1_spell = {
@@ -4110,7 +4136,9 @@ mod tests {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let spell: CanonicalSpell = serde_json::from_str(&canonical_data)?;
-        let recomputed = spell.compute_hash().expect("recompute hash from migrated spell");
+        let recomputed = spell
+            .compute_hash()
+            .expect("recompute hash from migrated spell");
         assert_eq!(
             content_hash, recomputed,
             "stored content_hash must match recomputed v2 canonical hash"
@@ -4130,7 +4158,8 @@ mod tests {
         let db = setup_migration_db()?;
 
         let v1_spell = {
-            let mut s = CanonicalSpell::new("Action Spell".into(), 1, "ARCANE".into(), "Desc".into());
+            let mut s =
+                CanonicalSpell::new("Action Spell".into(), 1, "ARCANE".into(), "Desc".into());
             s.school = Some("Evocation".into());
             s.class_list = vec!["Wizard".into()];
             s.schema_version = 1;
@@ -4184,7 +4213,9 @@ mod tests {
             [],
             |r| r.get(0),
         )?;
-        let recomputed = spell.compute_hash().expect("recompute hash from migrated spell");
+        let recomputed = spell
+            .compute_hash()
+            .expect("recompute hash from migrated spell");
         assert_eq!(
             content_hash, recomputed,
             "stored content_hash must match recomputed v2 canonical hash (raw_legacy_value included)"
@@ -4197,8 +4228,7 @@ mod tests {
     /// populated has content moved to notes and dm_guidance cleared (not serialized). After migration
     /// canonical_data has no dm_guidance and notes contains the migrated content.
     #[test]
-    fn test_migration_batch_dm_guidance_cleanup_in_db(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_migration_batch_dm_guidance_cleanup_in_db() -> Result<(), Box<dyn std::error::Error>> {
         use crate::models::saving_throw::{SavingThrowKind, SavingThrowSpec};
 
         let db = setup_migration_db()?;
@@ -4207,8 +4237,12 @@ mod tests {
         // in SavingThrowSpec, so we must inject "dm_guidance" into the JSON for the migration
         // to see it and move it to notes.
         let v1_spell = {
-            let mut s =
-                CanonicalSpell::new("DM Guidance Spell".into(), 1, "ARCANE".into(), "Desc".into());
+            let mut s = CanonicalSpell::new(
+                "DM Guidance Spell".into(),
+                1,
+                "ARCANE".into(),
+                "Desc".into(),
+            );
             s.school = Some("Evocation".into());
             s.class_list = vec!["Wizard".into()];
             s.schema_version = 1;
@@ -4266,13 +4300,11 @@ mod tests {
     /// prior run or manual edit) must be backfilled by run_migration_batch_impl.
     /// It must NOT be silently skipped; after migration content_hash must be non-NULL and valid.
     #[test]
-    fn test_migration_batch_v2_null_hash_is_backfilled() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn test_migration_batch_v2_null_hash_is_backfilled() -> Result<(), Box<dyn std::error::Error>> {
         let db = setup_migration_db()?;
 
         let v2_spell = {
-            let mut s =
-                CanonicalSpell::new("V2 No Hash".into(), 1, "ARCANE".into(), "Desc".into());
+            let mut s = CanonicalSpell::new("V2 No Hash".into(), 1, "ARCANE".into(), "Desc".into());
             s.school = Some("Evocation".into());
             s.class_list = vec!["Wizard".into()];
             s.schema_version = 2;
@@ -4304,10 +4336,15 @@ mod tests {
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
-        assert!(!content_hash.is_empty(), "content_hash must be non-empty after backfill");
+        assert!(
+            !content_hash.is_empty(),
+            "content_hash must be non-empty after backfill"
+        );
 
         let spell: CanonicalSpell = serde_json::from_str(&canonical_data)?;
-        let recomputed = spell.compute_hash().expect("recompute hash from backfilled spell");
+        let recomputed = spell
+            .compute_hash()
+            .expect("recompute hash from backfilled spell");
         assert_eq!(
             content_hash, recomputed,
             "stored content_hash must match recomputed v2 canonical hash"

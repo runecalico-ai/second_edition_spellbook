@@ -27,52 +27,52 @@
     - [x] Minor: migration comments, doc comments, col-prefix guard, LIMIT constant, BTreeSet, setup_fts_db dedup, empty-string filter bypass. Three-pass re-review passed.
 
 ## 2. Import/Export
-- [ ] 2.1 Implement Import Logic:
-    - [ ] **Pipeline order (per spell):** Normalize/truncate metadata (tags ≤100, source_refs ≤50) → validate schema and bundle/schema version → run migration if needed (e.g. `migrate_to_v2()`) → compute content hash → deduplication and conflict detection.
-    - [ ] Parse imported JSON bundle.
-    - [ ] Normalize and truncate metadata cardinality limits before schema validation (`tags` max 100 unique alphabetically sorted; `source_refs` max 50 unique using SourceRef dedup policy).
-    - [ ] Validate `bundle_format_version` (required field if payload is a bundle object with a `spells` array; reject if missing or > supported version. Must not fail single-spell imports where `bundle_format_version` is correctly omitted).
-    - [ ] Validate schema version (Spec #1 logic; warn and continue best-effort if > app's current version, aligned with schema versioning policy).
-    - [ ] Execute migration pipeline for lower versions (e.g. `migrate_to_v2()`) and full re-normalization.
-    - [ ] Compute hash for each imported spell.
-    - [ ] Verify imported `content_hash` matches recomputed hash; warn user on mismatch (tampered import) and use recomputed hash.
-    - [ ] Check for existing hash in local DB (Deduplication).
-    - [ ] If new hash + new name => Insert.
-    - [ ] If existing hash => Skip insertion, but merge metadata (new tags, source_refs). **Deduplicate source_refs by key policy: by URL when both refs have URL, otherwise by `(system, book, page, note)`.** (Merge rules apply ONLY to skipped duplicates, not Replacements).
-    - [ ] If new hash + existing name => Prompt Conflict Resolution.
-    - [ ] Enforce tag merge limit: union of existing + imported, cap at 100 (alphabetically sorted).
-    - [ ] Enforce source_refs merge limit: existing first + new appended, cap at 50.
-    - [ ] Produce import result summary: imported count, duplicates skipped (with metadata merged), conflicts resolved, failures with spell name and error reason.
-    - [ ] Create `change_log` entries when "Replace with New" updates a spell row (record field-level changes by `spell_id`).
-- [ ] 2.2 Implement Export Logic:
-    - [ ] Export `CanonicalSpell` JSON structure.
-    - [ ] Set exported `id` to the spell's `content_hash`.
-    - [ ] Include required `schema_version` metadata in single-spell and bundle exports.
-    - [ ] Include required `bundle_format_version` in bundle exports.
-    - [ ] Ensure single-spell exports do not require or emit `bundle_format_version`.
-    - [ ] Support bundle export (multiple spells).
+- [x] 2.1 Implement Import Logic:
+    - [x] **Pipeline order (per spell):** Normalize/truncate metadata (tags ≤100, source_refs ≤50) → validate schema and bundle/schema version → run migration if needed (e.g. `migrate_to_v2()`) → compute content hash → deduplication and conflict detection.
+    - [x] Parse imported JSON bundle.
+    - [x] Normalize and truncate metadata cardinality limits before schema validation (`tags` max 100 unique alphabetically sorted; `source_refs` max 50 unique using SourceRef dedup policy).
+    - [x] Validate `bundle_format_version` (required field if payload is a bundle object with a `spells` array; reject if missing or > supported version. Must not fail single-spell imports where `bundle_format_version` is correctly omitted).
+    - [x] Validate schema version (Spec #1 logic; warn and continue best-effort if > app's current version, aligned with schema versioning policy).
+    - [x] Execute migration pipeline for lower versions (e.g. `migrate_to_v2()`) and full re-normalization.
+    - [x] Compute hash for each imported spell.
+    - [x] Verify imported `content_hash` matches recomputed hash; warn user on mismatch (tampered import) and use recomputed hash.
+    - [x] Check for existing hash in local DB (Deduplication).
+    - [x] If new hash + new name => Insert.
+    - [x] If existing hash => Skip insertion, but merge metadata (new tags, source_refs). **Deduplicate source_refs by key policy: by URL when both refs have URL, otherwise by `(system, book, page, note)`.** (Merge rules apply ONLY to skipped duplicates, not Replacements).
+    - [x] If new hash + existing name => Prompt Conflict Resolution.
+    - [x] Enforce tag merge limit: union of existing + imported, cap at 100 (alphabetically sorted).
+    - [x] Enforce source_refs merge limit: existing first + new appended, cap at 50.
+    - [x] Produce import result summary: imported count, duplicates skipped (with metadata merged), conflicts resolved, failures with spell name and error reason.
+    - [x] Create `change_log` entries when "Replace with New" updates a spell row (record field-level changes by `spell_id`).
+- [x] 2.2 Implement Export Logic:
+    - [x] Export `CanonicalSpell` JSON structure.
+    - [x] Set exported `id` to the spell's `content_hash`.
+    - [x] Include required `schema_version` metadata in single-spell and bundle exports.
+    - [x] Include required `bundle_format_version` in bundle exports.
+    - [x] Ensure single-spell exports do not require or emit `bundle_format_version`.
+    - [x] Support bundle export (multiple spells).
 
-- [ ] 2.3 Baseline capability alignment:
-    - [ ] Align `openspec/specs/importers/spec.md` deduplication semantics with hash-first identity and name-collision conflict handling.
+- [x] 2.3 Baseline capability alignment:
+    - [x] Align `openspec/specs/importers/spec.md` deduplication semantics with hash-first identity and name-collision conflict handling.
 
 ### 3. Import Conflict Resolution UI
-- [ ] 3.1 Design conflict resolution dialog:
-    - [ ] Show when importing spell with same name but different hash.
-    - [ ] Display spell comparison:
-        - [ ] Side-by-side diff view (old vs. new).
-        - [ ] Highlight changed fields (damage, range, description).
-        - [ ] Show both hashes for reference.
-    - [ ] Provide resolution options:
-        - [ ] "Keep Existing" - Skip import, retain current version.
-        - [ ] "Replace with New" - Overwrite with imported version. Perform a cascading update of `content_hash` in `character_class_spell` and `artifact` from old hash to new hash. Overwrite metadata strictly without merging.
-        - [ ] "Keep Both" - Import as separate spell (append numeric suffix to name: (1), (2), (3), ...).
-        - [ ] "Apply to All" - Use same choice for remaining conflicts.
-- [ ] 3.2 Implement bulk conflict resolution:
-    - [ ] When ≥ 10 conflicts detected, show summary dialog first:
-        - [ ] "Found 15 conflicts. Choose default action:".
-        - [ ] Options: Skip All, Replace All, Keep All, Review Each.
-    - [ ] If "Review Each", show conflict dialog for each spell.
-    - [ ] Progress indicator: "Conflict 3 of 15".
+- [x] 3.1 Design conflict resolution dialog:
+    - [x] Show when importing spell with same name but different hash.
+    - [x] Display spell comparison:
+        - [x] Side-by-side diff view (old vs. new).
+        - [-] Highlight changed fields (damage, range, description). _(Not applicable: `ImportSpellJsonConflict` only carries hashes + names; field-level diff unavailable via this command)_
+        - [x] Show both hashes for reference.
+    - [x] Provide resolution options:
+        - [x] "Keep Existing" - Skip import, retain current version.
+        - [x] "Replace with New" - Overwrite with imported version. Perform a cascading update of `content_hash` in `character_class_spell` and `artifact` from old hash to new hash. Overwrite metadata strictly without merging.
+        - [x] "Keep Both" - Import as separate spell (append numeric suffix to name: (1), (2), (3), ...).
+        - [x] "Apply to All" - Use same choice for remaining conflicts.
+- [x] 3.2 Implement bulk conflict resolution:
+    - [x] When ≥ 10 conflicts detected, show summary dialog first:
+        - [x] "Found 15 conflicts. Choose default action:".
+        - [x] Options: Skip All, Replace All, Keep All, Review Each.
+    - [x] If "Review Each", show conflict dialog for each spell.
+    - [x] Progress indicator: "Conflict 3 of 15".
 
 ## 4. Vault Implementation
 - [ ] 4.1 Update vault storage:

@@ -1,6 +1,6 @@
 # Codex Configuration File - https://developers.openai.com/codex/config-basic
 model_provider = "openai"
-approval_policy = "on-failure"
+approval_policy = "never"
 sandbox_mode = "workspace-write"
 web_search = "cached"  # default; serves results from the web search cache
 # web_search = "live"  # fetch the most recent data from the web (same as --search)

@@ -2,6 +2,25 @@
 
 ## Purpose
 This specification defines the spell import system for extracting and validating spell data from multiple file formats (PDF, Markdown, DOCX). It covers parsing logic, assisted field mapping, duplicate detection and merging, import provenance tracking, and validation of high-level magic during import. This enables users to quickly populate their library from existing spell collections while maintaining data integrity.
+
+> See [design.md Decisions #3, #4, #5](../../design.md) for full context.
+
+## SourceRef Schema
+
+A `SourceRef` has the following structure (aligned with `spell.schema.json` and backend `SourceRef` type; `page` is `Option<serde_json::Value>` in Rust to allow integer or string):
+```
+SourceRef: {
+	book: String (required),
+	system: String (optional),
+	page: Integer|String|null (optional),
+	note: String|null (optional),
+	url: String (optional; if present must be http:, https:, or mailto:)
+}
+```
+When two SourceRefs are merged, deduplication uses this key policy:
+- If both refs have non-empty `url`, deduplicate by `url`.
+- Otherwise deduplicate by `(system, book, page, note)`.
+When duplicate refs are merged, the existing ref's fields are preserved.
 ## Requirements
 ### Requirement: Multi-format Parsing
 The application SHALL support extracting spell data from `.pdf`, `.md`, and `.docx` files.
@@ -16,7 +35,6 @@ The UI SHALL provide a way for users to manually map unparsed or incorrectly ide
 - **THEN** the importer should apply this mapping to all spells in the current batch
 
 ### Requirement: Duplicate Merge Review
-
 The application SHALL provide a user interface to review and resolve duplicates by merging fields or skipping records. **Each conflict SHALL have a unique identifier even when multiple incoming files match the same existing spell.**
 
 #### Scenario: Resolving Multiple Conflicts for Same Spell
@@ -25,20 +43,196 @@ The application SHALL provide a user interface to review and resolve duplicates 
 - **AND** user selections for each conflict SHALL be preserved without overwriting
 
 ### Requirement: Deduplication
-The application SHALL detect and resolve duplicate spells during import using canonical content hash (`content_hash`) as the primary identity key. Name collisions with different hashes SHALL be handled as user-resolved conflicts.
-#### Scenario: Skipping Existing Spell
-- **WHEN** the user attempts to import a spell whose `content_hash` already exists in the library
-- **THEN** the application should skip the duplicate or offer a merge option
+The application SHALL detect and resolve duplicate spells during import using canonical content hash (`content_hash`) as the primary identity key. Duplicate detection SHALL use `content_hash` first; identity is content, not name. Name collisions with different hashes SHALL be handled as user-resolved conflicts (see Requirement: Import Conflict Resolution).
+
+Import MUST apply metadata normalization and cardinality truncation (`tags`, `source_refs`) before schema validation and hash/deduplication decisions.
+
+#### Scenario: Hash Match Skips Insert
+- **GIVEN** a spell with a given `content_hash` already exists in the library
+- **WHEN** the user imports a spell with the same `content_hash`
+- **THEN** the application SHALL NOT insert a new row
+- **AND** the application SHALL merge metadata (see Requirement: Metadata Merge on Deduplication)
 
 #### Scenario: Same Name, Different Hash
 - **WHEN** the user imports a spell with the same display name as an existing spell but a different `content_hash`
 - **THEN** the importer SHALL treat it as a conflict and require an explicit user resolution
 
+### Requirement: Import Conflict Resolution
+When a name collision occurs with a different `content_hash`, the application SHALL present a conflict resolution dialog and SHALL NOT overwrite or insert without explicit user choice. Resolution options SHALL include: **Keep Existing** (skip the incoming spell), **Replace with New** (update the existing row with the incoming content and cascade character/artifact references to the new hash), **Keep Both** (insert with a disambiguated name, e.g. "Spell Name (2)"), and **Apply to All** (apply the chosen action to remaining conflicts in the batch).
+
+#### Scenario: Conflict Resolution Dialog
+- GIVEN existing spell "Fireball" (Hash A)
+- WHEN importing "Fireball" (Hash B)
+- THEN conflict dialog MUST appear
+- AND options: Keep Existing, Replace, Keep Both, Apply to All.
+
+#### Scenario: Keep Both Collision Avoidance
+- GIVEN existing spells "Fireball" and "Fireball (1)"
+- WHEN importing new "Fireball" with different hash and user selects "Keep Both"
+- THEN new spell MUST be named "Fireball (2)" (increment until unique).
+
+#### Scenario: Replace with New Updates Existing Row
+- GIVEN existing spell "Fireball" (Hash A, integer id 42)
+- WHEN importing "Fireball" (Hash B) and user selects "Replace with New"
+- THEN spell row id 42 MUST be updated with Hash B content
+- AND content_hash MUST change from A to B
+- AND characters matching Hash A MUST be cascaded to Hash B automatically (no broken references).
+- AND the replace + cascade operation MUST execute atomically in one DB transaction.
+
+#### Scenario: Replace Rolls Back on Cascade Failure
+- GIVEN existing spell "Fireball" (Hash A, integer id 42)
+- AND replacing to Hash B requires cascading updates in `character_class_spell` or `artifact`
+- WHEN any required cascade update fails
+- THEN the Replace operation MUST fail and roll back entirely
+- AND spell row id 42 MUST remain unchanged (including Hash A)
+- AND no partial cascade updates MUST be committed.
+
+#### Scenario: Replace Hash Collision
+- GIVEN existing spell "Fireball" (Hash A, integer id 42) AND existing spell "Super Fireball" (Hash B)
+- WHEN importing a new "Fireball" (Hash B) and user selects "Replace with New"
+- THEN import MUST fail the Replace operation with a clear error
+- AND the spell row id 42 MUST NOT be modified.
+
+### Requirement: Metadata Merge on Deduplication
+When a duplicate is detected by `content_hash` (hash match, skip insert), the application SHALL merge metadata from the incoming spell into the existing record. This applies only to the deduplication (skip) flow, not to the Replace flow. Import results MUST distinguish: total duplicates skipped, of which N had metadata merged (tags or source_refs changed) and M had no changes.
+
+#### Scenario: Tag Merge on Deduplication
+- **GIVEN** an existing spell with tags `["fire", "damage"]`
+- **WHEN** importing the same spell (same `content_hash`) with tags `["fire", "homebrew"]`
+- **THEN** the resulting tags SHALL be the union: `["fire", "damage", "homebrew"]` (no duplicates)
+- **AND** if the merged tag count exceeds 100, the application SHALL retain the first 100 alphabetically sorted
+
+#### Scenario: source_refs Merge on Deduplication
+- **GIVEN** an existing spell with `source_refs` containing one ref (e.g. `{"book": "PHB", "url": "https://a.com"}`)
+- **WHEN** importing the same spell (same `content_hash`) with additional refs (e.g. `{"book": "Tome of Magic", "url": "https://b.com"}`)
+- **THEN** the resulting `source_refs` SHALL contain all unique refs (deduplicated by URL when present, else by `(system, book, page, note)`)
+- **AND** if the merged count exceeds 50, existing refs SHALL be kept first, then new refs appended up to the limit
+
+### Requirement: Interchange ID
+Exported spells MUST use their Content Hash as the ID. Export MUST always use the current app schema version (`CURRENT_SCHEMA_VERSION`).
+
+#### Scenario: Export Transformation
+- GIVEN a spell with Hash "abc"
+- WHEN exported
+- THEN `id` field MUST be "abc".
+
+#### Scenario: Bundle Format Version
+- GIVEN a bundle export
+- WHEN exported
+- THEN `schema_version` field MUST be present (required)
+- AND `bundle_format_version` field MUST be present (required).
+
+#### Scenario: Export Rejected for NULL Hash
+- GIVEN a spell with `content_hash` IS NULL (un-migrated)
+- WHEN export is attempted
+- THEN the system MUST reject the export for that spell
+- AND prompt the user to run migration first.
+
+### Requirement: Import Version Validation
+Import MUST validate schema and bundle format versions before processing.
+
+#### Scenario: Warn on Future Schema Version
+- GIVEN the app's current schema version
+- WHEN importing a spell with a schema version greater than the app's
+- THEN import MUST log/show a forward-compatibility warning.
+
+#### Scenario: Reject Future Bundle Format Version
+- GIVEN the app's supported bundle_format_version
+- WHEN importing a bundle with bundle_format_version greater than supported
+- THEN import MUST reject the entire bundle.
+
+#### Scenario: Accept Current or Lower Schema Version
+- GIVEN the app's current schema version
+- WHEN importing a spell with schema version equal to or lower than the app's
+- THEN import MUST accept the spell and process normally.
+
+#### Scenario: Bundle vs Single-Spell Detection
+- GIVEN an import JSON payload
+- WHEN the importer inspects the top-level structure
+- THEN if a top-level `spells` key exists and is an array, the payload MUST be treated as a bundle (require `bundle_format_version`)
+- AND if no top-level `spells` array exists, the payload MUST be treated as a single-spell export.
+
+#### Scenario: Tampered Import Hash
+- GIVEN imported spell with `content_hash` field "X"
+- WHEN recomputed hash from spell content is "Y" (X ≠ Y)
+- THEN import MUST warn user of integrity mismatch
+- AND the recomputed hash "Y" MUST be used for deduplication.
+
+### Requirement: Partial Import Failure Handling
+Import MUST handle mixed batches where some spells are valid and others fail validation.
+
+#### Scenario: Mixed Valid and Invalid Spells in Batch
+- GIVEN a bundle containing 5 spells: 3 valid and 2 with schema errors
+- WHEN importing the bundle
+- THEN the 3 valid spells MUST be committed to DB
+- AND the 2 invalid spells MUST be skipped
+- AND import summary MUST show: 3 imported, 2 validation failures.
+
+### Requirement: URL Security and Validation
+All `SourceRef` URLs MUST be validated upon import.
+
+#### Scenario: Protocol Allowlist
+- GIVEN a SourceRef with URL "javascript:alert(1)"
+- WHEN importing
+- THEN the system MUST apply configured URL policy
+- AND the default policy (`drop-ref`) MUST reject that SourceRef but continue importing the spell with a warning.
+- ALLOWED: `http:`, `https:`, `mailto:`.
+- REJECTED: `javascript:`, `data:`, `ipfs:`, and all other protocols.
+
+#### Scenario: Intra-Bundle Deduplication Order
+- GIVEN a bundle containing two spells with identical computed hash
+- WHEN importing
+- THEN spells MUST be processed in document order
+- AND the first spell MUST be inserted
+- AND the second spell MUST be treated as a duplicate of the first.
+
 ### Requirement: Import Provenance Tracking
 The application SHALL track the origin of imported spells by storing the source file path, file type, and a unique content hash.
+
 #### Scenario: Storing Artifact Metadata
 - **WHEN** a spell is successfully imported
 - **THEN** the application SHALL record the source file's path, type, and hash, linking them to the imported spell record
+
+### Requirement: Hash-Based Spell Reference
+Artifacts that reference spells MUST use the spell's canonical content hash for lookup.
+
+#### Scenario: Artifact Lookup by Spell Hash
+- GIVEN an artifact row with `spell_content_hash` H
+- WHEN resolving the artifact's associated spell
+- THEN the system MUST join on `spell.content_hash = artifact.spell_content_hash`
+- AND MUST NOT depend on `artifact.spell_id` for application reads.
+
+#### Scenario: Missing Spell Reference
+- GIVEN an artifact row with `spell_content_hash` H
+- AND the spell with hash H no longer exists in the `spell` table
+- WHEN the artifact is loaded
+- THEN the system MUST handle the missing reference gracefully.
+
+#### Scenario: Cascading Update on Replace
+- GIVEN an artifact row with `spell_content_hash` = Hash A
+- WHEN a "Replace with New" import changes the referenced spell from Hash A to Hash B
+- THEN `artifact.spell_content_hash` MUST be updated to Hash B via an application-level UPDATE.
+
+#### Scenario: GC Safety
+- GIVEN a spell deleted from the DB (hash H no longer referenced by any spell row)
+- WHEN vault GC runs
+- THEN GC MUST check `artifact.spell_content_hash` as well when determining whether a vault file is still referenced.
+
+### Requirement: Artifact Spell Hash Index
+The database MUST include an index on `artifact.spell_content_hash` to support fast lookups during Vault GC and cascading updates.
+
+### Requirement: Migration Period Dual-Column Coexistence
+During the Migration 0015 transition period, `spell_id` is retained alongside `spell_content_hash`.
+
+#### Scenario: Backfill
+- GIVEN existing `artifact` rows with `spell_id` set and `spell_content_hash` NULL
+- WHEN Migration 0015 runs
+- THEN `spell_content_hash` MUST be backfilled from `spell.content_hash`.
+
+#### Scenario: Dual-Column Write on Insert
+- GIVEN a new artifact being created that references a spell
+- WHEN the insert occurs during the Migration 0015 transition period
+- THEN the system MUST populate BOTH `spell_id` and `spell_content_hash` on the new `artifact` row.
 
 ### Requirement: Reparse from Artifact
 The application SHALL allow users to re-run the parsing logic on a previously imported artifact to update or correct spell records.
@@ -230,3 +424,8 @@ Spells produced by the importer pipeline (Python or Rust) after this change is d
 - **THEN** the spell MUST carry `schema_version = 2`
 - **AND** the importer MUST NOT emit 5e casting time units or `dm_guidance`; all output MUST already conform to the v2 schema shape
 - **AND** `migrate_to_v2()` MUST be idempotent for such spells (it will skip them because `schema_version >= 2`).
+## Non-Functional Requirements
+- **Import throughput**: 1000 spells SHOULD import in < 30 seconds.
+- **Tag limit**: Maximum 100 tags per spell. Truncate alphabetically if exceeded.
+- **source_refs limit**: Maximum 50 source_refs per spell. Truncate using dedup key policy if exceeded.
+- **Migration**: Backfill of artifact rows during Migration 0015 SHOULD complete in < 10 seconds.

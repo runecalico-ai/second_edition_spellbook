@@ -363,7 +363,7 @@ pub fn canonicalize_spell_detail(
     Ok((canonical, hash, json))
 }
 
-fn log_changes(
+pub(crate) fn log_changes(
     conn: &Connection,
     spell_id: i64,
     changes: Vec<(String, String, String)>,

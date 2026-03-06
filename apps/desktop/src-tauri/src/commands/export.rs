@@ -2,16 +2,27 @@ use crate::commands::spells::get_spell_from_conn;
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::{
+    canonical_spell::{CanonicalSpell, BUNDLE_FORMAT_VERSION, CURRENT_SCHEMA_VERSION},
     CharacterAbilities, CharacterClass, PrintableCharacter, PrintableSpellbookEntry,
 };
 use crate::sidecar::call_sidecar;
 use dirs::data_dir as system_data_dir;
 use rusqlite::OptionalExtension;
+use serde::Serialize;
 use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
+
+/// Envelope for bundle export. Keys are snake_case per canonical contract.
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+struct SpellBundleExport {
+    schema_version: i64,
+    bundle_format_version: i64,
+    spells: Vec<CanonicalSpell>,
+}
 
 fn app_data_dir() -> Result<PathBuf, AppError> {
     if let Ok(override_dir) = std::env::var("SPELLBOOK_DATA_DIR") {
@@ -58,6 +69,102 @@ pub async fn export_spells(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string())
+}
+
+#[tauri::command]
+pub async fn export_spell_as_json(
+    state: State<'_, Arc<Pool>>,
+    spell_id: i64,
+) -> Result<String, AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        export_spell_as_json_impl(&conn, spell_id)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))?
+}
+
+fn export_spell_as_json_impl(
+    conn: &rusqlite::Connection,
+    spell_id: i64,
+) -> Result<String, AppError> {
+    let spell = get_spell_from_conn(conn, spell_id)?
+        .ok_or_else(|| AppError::NotFound(format!("Spell id {} not found", spell_id)))?;
+    let content_hash = spell.content_hash.as_ref().ok_or_else(|| {
+        AppError::Export(
+            "Spell has no content hash. Run the migration to backfill hashes (e.g. restart the app or use the CLI).".to_string(),
+        )
+    })?;
+    let canonical_json = spell.canonical_data.as_ref().ok_or_else(|| {
+        AppError::Export(
+            "Spell has no canonical data; cannot export as CanonicalSpell JSON.".to_string(),
+        )
+    })?;
+    let mut canonical: CanonicalSpell = serde_json::from_str(canonical_json)
+        .map_err(|e| AppError::Export(format!("Invalid canonical_data for spell: {}", e)))?;
+    canonical.id = Some(content_hash.clone());
+    canonical.schema_version = CURRENT_SCHEMA_VERSION;
+    serde_json::to_string(&canonical).map_err(|e| AppError::Export(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn export_spell_bundle_json(
+    state: State<'_, Arc<Pool>>,
+    ids: Vec<i64>,
+) -> Result<String, AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        export_spell_bundle_json_impl(&conn, ids)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))?
+}
+
+fn export_spell_bundle_json_impl(
+    conn: &rusqlite::Connection,
+    ids: Vec<i64>,
+) -> Result<String, AppError> {
+    let mut spells: Vec<CanonicalSpell> = Vec::with_capacity(ids.len());
+    let mut missing_hashes: Vec<String> = vec![];
+    for id in ids {
+        let spell = match get_spell_from_conn(conn, id)? {
+            Some(s) => s,
+            None => return Err(AppError::NotFound(format!("Spell id {} not found", id))),
+        };
+        let Some(content_hash) = &spell.content_hash else {
+            missing_hashes.push(format!("{} (id {})", spell.name, spell.id.unwrap_or(id)));
+            continue;
+        };
+        let canonical_json = spell.canonical_data.as_ref().ok_or_else(|| {
+            AppError::Export(format!(
+                "Spell '{}' has no canonical data; cannot export.",
+                spell.name
+            ))
+        })?;
+        let mut canonical: CanonicalSpell = serde_json::from_str(canonical_json).map_err(|e| {
+            AppError::Export(format!(
+                "Invalid canonical_data for spell '{}': {}",
+                spell.name, e
+            ))
+        })?;
+        canonical.id = Some(content_hash.clone());
+        canonical.schema_version = CURRENT_SCHEMA_VERSION;
+        spells.push(canonical);
+    }
+    if !missing_hashes.is_empty() {
+        return Err(AppError::Export(format!(
+            "Spell(s) with no content hash (run migration to backfill): {}",
+            missing_hashes.join(", ")
+        )));
+    }
+    let envelope = SpellBundleExport {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        bundle_format_version: BUNDLE_FORMAT_VERSION,
+        spells,
+    };
+    serde_json::to_string(&envelope).map_err(|e| AppError::Export(e.to_string()))
 }
 
 #[tauri::command]
@@ -473,4 +580,138 @@ pub async fn export_character_spellbook_pack(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+
+    fn setup_test_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                level INTEGER NOT NULL,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                damage TEXT,
+                magic_resistance TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER,
+                is_cantrip INTEGER,
+                updated_at TEXT,
+                canonical_data TEXT,
+                content_hash TEXT,
+                schema_version INTEGER
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY,
+                spell_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_export_spell_as_json() {
+        let conn = setup_test_db();
+        let hash = "a".repeat(64);
+        let spell = CanonicalSpell {
+            name: "N1".into(),
+            tradition: "ARCANE".into(),
+            level: 1,
+            description: "D1".into(),
+            school: Some("Abjuration".into()),
+            version: "2.0.0".into(),
+            ..Default::default()
+        };
+        let canonical_data = serde_json::to_string(&spell).unwrap();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, school, canonical_data, content_hash, schema_version, is_quest_spell, is_cantrip, reversible)
+             VALUES (1, 'N1', 1, 'D1', 'Abjuration', ?, ?, 2, 0, 0, 0)",
+            params![canonical_data, hash],
+        )
+        .unwrap();
+
+        let json = export_spell_as_json_impl(&conn, 1).unwrap();
+        let exported: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(exported["id"], hash);
+        assert_eq!(exported["name"], "N1");
+        assert_eq!(exported["schema_version"], CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_export_spell_bundle_json() {
+        let conn = setup_test_db();
+        let hash1 = "a".repeat(64);
+        let hash2 = "b".repeat(64);
+
+        let s1 = CanonicalSpell {
+            name: "S1".into(),
+            tradition: "ARCANE".into(),
+            level: 1,
+            description: "D1".into(),
+            school: Some("Evocation".into()),
+            version: "2.0.0".into(),
+            ..Default::default()
+        };
+        let s2 = CanonicalSpell {
+            name: "S2".into(),
+            tradition: "DIVINE".into(),
+            level: 2,
+            description: "D2".into(),
+            sphere: Some("Combat".into()),
+            version: "2.0.0".into(),
+            ..Default::default()
+        };
+
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, school, canonical_data, content_hash, schema_version, is_quest_spell, is_cantrip, reversible)
+             VALUES (1, 'S1', 1, 'D1', 'Evocation', ?, ?, 2, 0, 0, 0)",
+            params![serde_json::to_string(&s1).unwrap(), hash1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, sphere, canonical_data, content_hash, schema_version, is_quest_spell, is_cantrip, reversible)
+             VALUES (2, 'S2', 2, 'D2', 'Combat', ?, ?, 2, 0, 0, 0)",
+            params![serde_json::to_string(&s2).unwrap(), hash2],
+        )
+        .unwrap();
+
+        let json = export_spell_bundle_json_impl(&conn, vec![1, 2]).unwrap();
+        let exported: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(exported["bundle_format_version"], BUNDLE_FORMAT_VERSION);
+        assert_eq!(exported["spells"].as_array().unwrap().len(), 2);
+        assert_eq!(exported["spells"][0]["id"], hash1);
+        assert_eq!(exported["spells"][1]["id"], hash2);
+    }
 }

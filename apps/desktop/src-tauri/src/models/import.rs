@@ -1,6 +1,5 @@
+use super::canonical_spell::CanonicalSpell;
 use super::spell::{SpellDetail, SpellUpdate};
-// No longer using direct imports here as they were unused or redundant with explicit paths in some places,
-// though clippy specifically complained about these being unused.
 
 use serde_json::Value;
 use std::collections::HashMap;
@@ -177,4 +176,121 @@ pub struct PreviewResult {
     pub spells: Vec<PreviewSpell>,
     pub artifacts: Vec<ImportArtifact>,
     pub conflicts: Vec<ImportConflict>,
+}
+
+// --- JSON spell import (Task 2: hash-based import/export) ---
+
+/// Bundle envelope for JSON import: top-level key `spells` (array) required; `bundle_format_version` required.
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SpellBundle {
+    pub bundle_format_version: i64,
+    pub spells: Vec<CanonicalSpell>,
+}
+
+/// One spell result from preview_import_spell_json: normalized spell, recomputed hash, and per-spell warnings.
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewSpellJsonItem {
+    pub spell: CanonicalSpell,
+    pub content_hash: String,
+    pub warnings: Vec<String>,
+}
+
+/// Result of preview_import_spell_json: no DB write; parsed spells with hashes, warnings, and failures.
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewImportSpellJsonResult {
+    pub spells: Vec<PreviewSpellJsonItem>,
+    pub warnings: Vec<String>,
+    /// Spells that failed validation/hash during preview (name + reason).
+    #[serde(default)]
+    pub failures: Vec<ImportSpellJsonFailure>,
+}
+
+// --- Apply-phase result (Task 2.1.4 / 2.1.5) ---
+
+/// Duplicate handling summary: total skipped, how many had metadata merged, how many unchanged.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicatesSkipped {
+    pub total: usize,
+    pub merged_count: usize,
+    pub no_change_count: usize,
+}
+
+/// Name collision: same name (and level) but different content_hash; user resolution required.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSpellJsonConflict {
+    pub existing_id: i64,
+    pub existing_name: String,
+    pub existing_content_hash: Option<String>,
+    pub incoming_name: String,
+    pub incoming_content_hash: String,
+}
+
+/// One resolution for a conflict: existing_id + incoming_content_hash identify the conflict; action says how to resolve.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSpellJsonConflictResolution {
+    pub existing_id: i64,
+    pub incoming_content_hash: String,
+    /// "keep_existing" | "replace_with_new" | "keep_both"
+    pub action: String,
+}
+
+/// Batch default for conflicts (e.g. when ≥10): apply this action to all conflicts when no per-conflict resolution is given.
+/// "skip_all" | "replace_all" | "keep_all" | "review_each" (review_each = require explicit resolution per conflict).
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSpellJsonResolveOptions {
+    /// Per-conflict resolutions (order can match conflict list).
+    #[serde(default)]
+    pub resolutions: Vec<ImportSpellJsonConflictResolution>,
+    /// Session-only default for remaining conflicts when resolutions don't cover all.
+    pub default_action: Option<String>,
+}
+
+/// Counts per resolution action (Task 2.1.7).
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictsResolved {
+    pub keep_existing_count: usize,
+    pub replace_count: usize,
+    pub keep_both_count: usize,
+}
+
+/// One failure: spell name + reason (validation, schema, or replace error).
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSpellJsonFailure {
+    pub spell_name: String,
+    pub reason: String,
+}
+
+/// Result of import_spell_json (apply phase): counts, conflict list or resolution counts, failures.
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSpellJsonResult {
+    pub imported_count: usize,
+    pub imported_spells: Vec<SpellDetail>,
+    pub duplicates_skipped: DuplicatesSkipped,
+    pub conflicts: Vec<ImportSpellJsonConflict>,
+    /// Counts per resolution action when conflicts were resolved in this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conflicts_resolved: Option<ConflictsResolved>,
+    /// Validation/schema/hash failures: spell name + reason.
+    #[serde(default)]
+    pub failures: Vec<ImportSpellJsonFailure>,
+    pub warnings: Vec<String>,
 }

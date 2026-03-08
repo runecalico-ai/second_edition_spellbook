@@ -81,7 +81,7 @@
     - [ ] Vault file content: write full CanonicalSpell JSON (with metadata); integrity check recomputes hash via canonical serialization contract (normalize → validate → strip metadata → JCS → SHA-256), not raw file bytes.
     - [ ] Implement vault housekeeping (Garbage Collection):
         - [ ] Find and remove vault spell files not referenced by any spell in DB (feature is required).
-        - [ ] Decide when GC runs: on-demand only, or also periodic/after import (implementation choice).
+        - [ ] Decide when GC runs: on-demand, and after import.
     - [ ] Implement GC/import concurrency guard:
         - [ ] Prevent GC from running during active imports (mutex/lock or UI mutual exclusion).
         - [ ] GC button disabled or blocked while import is in progress.

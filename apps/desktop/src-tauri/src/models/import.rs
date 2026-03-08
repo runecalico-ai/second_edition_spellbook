@@ -222,7 +222,7 @@ pub struct DuplicatesSkipped {
     pub no_change_count: usize,
 }
 
-/// Name collision: same name (and level) but different content_hash; user resolution required.
+/// Name collision: same spell name but different content_hash; user resolution required (name-only conflict identity).
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(crate = "serde")]
 #[serde(rename_all = "camelCase")]

@@ -30,6 +30,8 @@ function makeSpell(name: string, description: string, level = 3) {
     name,
     level,
     description,
+    tradition: "ARCANE",
+    school: "Evocation",
     class_list: [],
     tags: [],
     source_refs: [],
@@ -52,7 +54,7 @@ function writeSpellBundle(filePath: string, spells: ReturnType<typeof makeSpell>
 // ---------------------------------------------------------------------------
 
 async function seedSpellInDb(app: SpellbookApp, name: string, description: string, level = 3) {
-  await app.createSpell({ name, level: String(level), description });
+  await app.createSpell({ name, level: String(level), description, school: "Evocation" });
 }
 
 // ---------------------------------------------------------------------------
@@ -289,6 +291,174 @@ test.describe("JSON Import Conflict Resolution", () => {
       });
       // Result should show conflicts resolved
       await expect(page.getByText(/Conflicts resolved/i)).toBeVisible();
+    });
+  });
+
+  // ─── Test 6: Bulk Skip All ─────────────────────────────────────────────
+  test("bulk dialog: Skip All keeps existing content; library unchanged", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const conflictCount = 10;
+    const originalDesc = "Original content — Skip All must preserve.";
+    const sampleName = `BulkSkip_${runId}_0`;
+
+    await test.step(`Seed ${conflictCount} spells`, async () => {
+      for (let i = 0; i < conflictCount; i++) {
+        await seedSpellInDb(app, `BulkSkip_${runId}_${i}`, originalDesc);
+      }
+    });
+
+    await test.step(`Import ${conflictCount}-spell bundle (all conflict)`, async () => {
+      const tmpDir = path.join(__dirname, `tmp/skipall_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const spells = Array.from({ length: conflictCount }, (_, i) =>
+        makeSpell(`BulkSkip_${runId}_${i}`, `Incoming ${runId} — should be skipped`),
+      );
+      writeSpellBundle(jsonPath, spells);
+      await app.importJsonFile(jsonPath);
+    });
+
+    await test.step("Bulk summary visible; click Skip All", async () => {
+      await expect(page.getByTestId("btn-bulk-skip-all")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await page.getByTestId("btn-bulk-skip-all").click();
+      await expect(page.getByTestId("btn-import-more")).toBeVisible({
+        timeout: TIMEOUTS.long,
+      });
+    });
+
+    await test.step("Result screen shows conflicts resolved as kept", async () => {
+      await expect(page.getByText(/Conflicts resolved/i)).toBeVisible();
+      // Skip All maps to keep_existing: N kept, 0 replaced, 0 kept both
+      await expect(page.getByText(new RegExp(`${conflictCount} kept`))).toBeVisible();
+    });
+
+    await test.step("Verify library: original spell content unchanged", async () => {
+      await app.openSpell(sampleName);
+      await expect(page.getByText(originalDesc)).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+  });
+
+  // ─── Test 7: Bulk Keep All ─────────────────────────────────────────────
+  test("bulk dialog: Keep All adds suffixed copies; library has both", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const conflictCount = 10;
+    const originalDesc = "Original — keep this.";
+    const incomingDesc = `Incoming ${runId} — keep both copy.`;
+    const baseName = `BulkKeep_${runId}_0`;
+
+    await test.step(`Seed ${conflictCount} spells`, async () => {
+      for (let i = 0; i < conflictCount; i++) {
+        await seedSpellInDb(app, `BulkKeep_${runId}_${i}`, originalDesc);
+      }
+    });
+
+    await test.step(`Import ${conflictCount}-spell bundle (all conflict)`, async () => {
+      const tmpDir = path.join(__dirname, `tmp/keepall_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const spells = Array.from({ length: conflictCount }, (_, i) =>
+        makeSpell(`BulkKeep_${runId}_${i}`, incomingDesc),
+      );
+      writeSpellBundle(jsonPath, spells);
+      await app.importJsonFile(jsonPath);
+    });
+
+    await test.step("Bulk summary visible; click Keep All", async () => {
+      await expect(page.getByTestId("btn-bulk-keep-all")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await page.getByTestId("btn-bulk-keep-all").click();
+      await expect(page.getByTestId("btn-import-more")).toBeVisible({
+        timeout: TIMEOUTS.long,
+      });
+    });
+
+    await test.step("Result screen shows conflicts resolved as kept both", async () => {
+      await expect(page.getByText(/Conflicts resolved/i)).toBeVisible();
+      // Keep All maps to keep_both: 0 kept, 0 replaced, N kept both
+      await expect(page.getByText(new RegExp(`${conflictCount} kept both`))).toBeVisible();
+    });
+
+    await test.step("Verify library: original and suffixed copy exist", async () => {
+      await app.openSpell(baseName);
+      await expect(page.getByText(originalDesc)).toBeVisible({ timeout: TIMEOUTS.medium });
+
+      await app.navigate("Library");
+      await page.getByPlaceholder(/Search spells/i).fill(baseName);
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+
+      await expect(page.getByRole("link", { name: baseName, exact: true })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(
+        page.getByRole("link", { name: `${baseName} (1)`, exact: false }),
+      ).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+  });
+
+  // ─── Test 8: Bulk Review Each ───────────────────────────────────────────
+  test("bulk dialog: Review Each shows per-conflict dialog with progress", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const conflictCount = 10;
+
+    await test.step(`Seed ${conflictCount} spells`, async () => {
+      for (let i = 0; i < conflictCount; i++) {
+        await seedSpellInDb(app, `BulkReview_${runId}_${i}`, "Original.");
+      }
+    });
+
+    await test.step(`Import ${conflictCount}-spell bundle (all conflict)`, async () => {
+      const tmpDir = path.join(__dirname, `tmp/review_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const spells = Array.from({ length: conflictCount }, (_, i) =>
+        makeSpell(`BulkReview_${runId}_${i}`, `Updated ${runId}`),
+      );
+      writeSpellBundle(jsonPath, spells);
+      await app.importJsonFile(jsonPath);
+    });
+
+    await test.step("Bulk summary visible; click Review Each", async () => {
+      await expect(page.getByTestId("btn-bulk-review-each")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await page.getByTestId("btn-bulk-review-each").click();
+    });
+
+    await test.step("Per-conflict dialog appears with Conflict 1 of N", async () => {
+      await expect(page.getByTestId("conflict-progress")).toHaveText(
+        `Conflict 1 of ${conflictCount}`,
+        { timeout: TIMEOUTS.medium },
+      );
+      // Per-conflict action buttons visible
+      await expect(page.getByTestId("btn-keep-existing-json")).toBeVisible();
+    });
+
+    await test.step("Resolve first conflict (Keep Existing); flow continues", async () => {
+      await app.resolveNextConflict("keep_existing");
+      // Either next conflict (2 of N) or result screen if only one was left
+      await expect(
+        page
+          .getByTestId("conflict-progress")
+          .or(page.getByTestId("btn-import-more")),
+      ).toBeVisible({ timeout: TIMEOUTS.long });
     });
   });
 });

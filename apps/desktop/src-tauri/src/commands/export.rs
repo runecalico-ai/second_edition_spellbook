@@ -714,4 +714,103 @@ mod tests {
         assert_eq!(exported["spells"][0]["id"], hash1);
         assert_eq!(exported["spells"][1]["id"], hash2);
     }
+
+    #[test]
+    fn test_export_spell_as_json_rejects_null_content_hash() {
+        let conn = setup_test_db();
+        let spell = CanonicalSpell {
+            name: "NoHash".into(),
+            tradition: "ARCANE".into(),
+            level: 1,
+            description: "Missing hash".into(),
+            school: Some("Abjuration".into()),
+            version: "2.0.0".into(),
+            ..Default::default()
+        };
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, school, canonical_data, content_hash, schema_version, is_quest_spell, is_cantrip, reversible)
+             VALUES (10, 'NoHash', 1, 'Missing hash', 'Abjuration', ?, NULL, 2, 0, 0, 0)",
+            params![serde_json::to_string(&spell).unwrap()],
+        )
+        .unwrap();
+
+        let err = export_spell_as_json_impl(&conn, 10)
+            .expect_err("single export should fail when content_hash is NULL");
+        assert!(err.to_string().contains("no content hash"));
+    }
+
+    #[test]
+    fn test_export_spell_bundle_json_rejects_when_any_spell_has_null_content_hash() {
+        let conn = setup_test_db();
+        let hash_ok = "z".repeat(64);
+        let s1 = CanonicalSpell {
+            name: "HasHash".into(),
+            tradition: "ARCANE".into(),
+            level: 1,
+            description: "ok".into(),
+            school: Some("Evocation".into()),
+            version: "2.0.0".into(),
+            ..Default::default()
+        };
+        let s2 = CanonicalSpell {
+            name: "NoHashBundle".into(),
+            tradition: "DIVINE".into(),
+            level: 2,
+            description: "missing".into(),
+            sphere: Some("Combat".into()),
+            version: "2.0.0".into(),
+            ..Default::default()
+        };
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, school, canonical_data, content_hash, schema_version, is_quest_spell, is_cantrip, reversible)
+             VALUES (11, 'HasHash', 1, 'ok', 'Evocation', ?, ?, 2, 0, 0, 0)",
+            params![serde_json::to_string(&s1).unwrap(), hash_ok],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, sphere, canonical_data, content_hash, schema_version, is_quest_spell, is_cantrip, reversible)
+             VALUES (12, 'NoHashBundle', 2, 'missing', 'Combat', ?, NULL, 2, 0, 0, 0)",
+            params![serde_json::to_string(&s2).unwrap()],
+        )
+        .unwrap();
+
+        let err = export_spell_bundle_json_impl(&conn, vec![11, 12])
+            .expect_err("bundle export should fail when any spell hash is NULL");
+        let msg = err.to_string();
+        assert!(msg.contains("no content hash"));
+        assert!(msg.contains("NoHashBundle"));
+    }
+
+    #[test]
+    fn test_export_spell_as_json_rejects_invalid_canonical_data_json() {
+        let conn = setup_test_db();
+        let hash = "y".repeat(64);
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, school, canonical_data, content_hash, schema_version, is_quest_spell, is_cantrip, reversible)
+             VALUES (13, 'BadCanonicalSingle', 1, 'bad', 'Abjuration', ?, ?, 2, 0, 0, 0)",
+            params!["{not-valid-json", hash],
+        )
+        .unwrap();
+
+        let err = export_spell_as_json_impl(&conn, 13)
+            .expect_err("single export should fail on invalid canonical_data");
+        assert!(err.to_string().contains("Invalid canonical_data"));
+    }
+
+    #[test]
+    fn test_export_spell_bundle_json_rejects_invalid_canonical_data_json() {
+        let conn = setup_test_db();
+        let hash = "x".repeat(64);
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, school, canonical_data, content_hash, schema_version, is_quest_spell, is_cantrip, reversible)
+             VALUES (14, 'BadCanonicalBundle', 1, 'bad', 'Abjuration', ?, ?, 2, 0, 0, 0)",
+            params!["{not-valid-json", hash],
+        )
+        .unwrap();
+
+        let err = export_spell_bundle_json_impl(&conn, vec![14])
+            .expect_err("bundle export should fail on invalid canonical_data");
+        assert!(err.to_string().contains("Invalid canonical_data"));
+        assert!(err.to_string().contains("BadCanonicalBundle"));
+    }
 }

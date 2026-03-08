@@ -15,54 +15,25 @@ Scope: `apps/desktop/src-tauri/src/commands/import.rs`, `apps/desktop/src-tauri/
 
 ## Pass 1: Spec Compliance Findings
 
-### 1. [High] SourceRef dedup key policy does not implement "both have URL" condition
+### 1. [High] SourceRef dedup key policy does not implement "both have URL" condition — **COMPLETE**
 - Spec requirement: dedup by URL only when both refs have non-empty URL; otherwise dedup by `(system, book, page, note)`.
-- Current implementation always prefers URL when a ref has URL.
-- Evidence:
-  - Spec: `openspec/changes/integrate-spell-hashing-ecosystem/specs/import-export/spec.md:17-19`
-  - Code: `apps/desktop/src-tauri/src/commands/import.rs:86-102`
-- Impact:
-  - Wrong dedup behavior when one ref has URL and the other does not.
-  - Can produce duplicate logical refs and incorrect truncation outcomes near the 50 limit.
-- Implementation guidance:
-  - Replace single-ref key function with pair-aware comparison logic.
-  - For dedup loops, evaluate candidate against existing refs using:
-    - if both URLs present/non-empty -> compare URLs
-    - else compare tuple `(system, book, page, note)`
+- ~~Current implementation always prefers URL when a ref has URL.~~
+- **Fixed:** `is_duplicate_source_ref(a, b)` implements pair-aware logic: both non-empty URL → compare URLs; else compare `(system, book, page, note)`. Code: `import.rs:88-102`. Tests: `test_is_duplicate_source_ref` covers URL match, URL mismatch, mixed (one missing URL) → tuple, tuple mismatch. `import.rs:2346-2410`.
 
-### 2. [High] Tamper-hash input path only checks `id`, not `content_hash` field described in Task 2 text
-- Task text references imported `content_hash` mismatch warnings.
-- Current implementation reads imported hash from `spell.id` only.
-- Evidence:
-  - Task text: `openspec/changes/integrate-spell-hashing-ecosystem/tasks.md:38`
-  - Code: `apps/desktop/src-tauri/src/commands/import.rs:318-323`
-  - Schema accepts `id` but not `content_hash`: `apps/desktop/src-tauri/schemas/spell.schema.json:8`
-- Impact:
-  - Payloads using `content_hash` semantics (without `id`) cannot participate in tamper-warning flow as written in Task 2 wording.
-- Implementation guidance:
-  - Choose one and align code+spec consistently:
-    - Option A: treat `id` as canonical interchange hash and update task/spec wording to `id`.
-    - Option B: add import alias handling for `content_hash` in ingest path before canonical deserialization.
+### 2. [High] Tamper-hash input path only checks `id`, not `content_hash` field described in Task 2 text — **COMPLETE**
+- **Fixed:** `CanonicalSpell.id` has serde aliases `content_hash` and `contentHash` (`apps/desktop/src-tauri/src/models/canonical_spell.rs:180-185`). JSON with `content_hash` or `contentHash` deserializes into `spell.id`, so `process_spell` (which reads `spell.id` for the imported hash) correctly runs the tamper-warning flow for all three interchange shapes. `test_import_alias_support` asserts id/content_hash/contentHash all yield `spell.id` and pass preview. No code change needed; contract is aligned.
 
 ## Pass 2: Code Quality and Data Integrity Findings
 
-### 3. [High] Duplicate-hash metadata merge updates DB `tags` column but not `canonical_data.tags`
-- In duplicate skip path, merged tags are written to `spell.tags`, but canonical JSON is only merged for `source_refs`.
-- Evidence:
-  - Merge update path: `apps/desktop/src-tauri/src/commands/import.rs:860-879`
-  - Canonical merge helper only handles source refs: `apps/desktop/src-tauri/src/commands/import.rs:138-167`
-- Impact:
-  - `spell.tags` and `canonical_data.tags` diverge.
-  - JSON export reads from canonical_data and can miss merged tags.
-- Implementation guidance:
-  - Add canonical metadata merge for tags (and keep both representations in sync in same update statement).
-  - Add a small helper: merge canonical JSON tags using same cap/sort/dedup rules as flat tags.
+### 3. [High] Duplicate-hash metadata merge updates DB `tags` column but not `canonical_data.tags` — **COMPLETE**
+- ~~In duplicate skip path, merged tags are written to `spell.tags`, but canonical JSON is only merged for `source_refs`.~~
+- **Fixed:** `merge_canonical_metadata` merges both tags and source_refs into canonical JSON (cap/sort/dedup for tags). Apply path updates `tags` and `canonical_data` in the same `UPDATE spell SET tags = ?, canonical_data = ?, ...`. Code: `import.rs:109-165` (helper), `876-897` and `914-930` (both dedup paths).
 
 ### 4. [Medium] Replace-failure handling aborts whole batch transaction, not just the replace operation
 - Replace errors are escalated as hard error via `?` while all items are in one transaction.
 - Evidence:
-  - One transaction for all items: `apps/desktop/src-tauri/src/commands/import.rs:811`
-  - Replace error propagation: `apps/desktop/src-tauri/src/commands/import.rs:909-916`
+  - One transaction for all items: `apps/desktop/src-tauri/src/commands/import.rs:865`
+  - Replace error propagation: `apps/desktop/src-tauri/src/commands/import.rs:961-967` (`replace_with_new_impl(...)?`)
 - Impact:
   - One failing replace can roll back unrelated successful imports in the same batch.
   - Could conflict with user expectations of mixed-result imports.
@@ -72,32 +43,21 @@ Scope: `apps/desktop/src-tauri/src/commands/import.rs`, `apps/desktop/src-tauri/
 
 ## Pass 3: Test Adequacy and Implementation Readiness
 
-### 5. [Medium] Task 2 apply/export behavior lacks focused unit/integration tests
-- Current `import.rs` tests are mostly parse/normalize/url-policy preview tests.
-- No `export.rs` command tests found.
-- Evidence:
-  - Import tests block starts: `apps/desktop/src-tauri/src/commands/import.rs:2060`
-  - No `mod tests` in export command file: `apps/desktop/src-tauri/src/commands/export.rs`
-  - Verification checklist still has unchecked Task 2 tests: `openspec/changes/integrate-spell-hashing-ecosystem/verification.md:405-469`
-- Gaps to add immediately:
-  - Apply-phase duplicate merge test asserting both `spell.tags` and `canonical_data.tags` update together.
-  - SourceRef dedup matrix tests for "both URL" vs "only one URL" cases.
-  - Export single/bundle tests for `id`, `schema_version`, `bundle_format_version`, NULL-hash rejection.
-  - Tampered hash warning test verifying dedup uses recomputed hash.
+### 5. [Medium] Task 2 apply/export behavior lacks focused unit/integration tests — **PARTIALLY COMPLETE**
+- **Done:** Export tests added in `export.rs` (`#[cfg(test)] mod tests`): `test_export_spell_as_json` (id, schema_version), `test_export_spell_bundle_json` (bundle_format_version), `test_export_spell_as_json_rejects_null_content_hash`, `test_export_spell_bundle_json_rejects_when_any_spell_has_null_content_hash`, plus invalid canonical_data tests. SourceRef dedup: `test_is_duplicate_source_ref` covers "both URL" and "only one URL" (tuple fallback). Apply merge: `test_merge_canonical_metadata`, `test_apply_import_same_hash_dedups_before_name_conflict`, `test_apply_import_dedup_counters_track_merged_vs_no_change`.
+- **Remaining (optional):** Apply-phase test that explicitly asserts `canonical_data.tags` contains merged tags after duplicate merge; tamper-warning test that verifies warning text and that dedup uses recomputed hash.
 
 ## Overall Assessment
 
-- Status: Not ready for implementation sign-off for Task 2.
-- Primary blockers:
-  - SourceRef dedup policy mismatch (spec violation).
-  - Canonical metadata drift in duplicate-tag merge path.
-- Secondary work:
-  - Resolve `id` vs `content_hash` contract ambiguity.
-  - Close test gaps for apply/export paths before final verification sign-off.
+- Status: Findings 1, 2, 3 **resolved**. Finding 4 (replace-failure batch behavior) and optional test gaps (Finding 5) remain.
+- ~~Primary blockers: SourceRef dedup; canonical tag merge; tamper-hash field.~~ **Done (1, 2, 3).**
+- Remaining:
+  - Replace-failure batch behavior: clarify spec or implement savepoints (Finding 4).
+  - Optional: apply test asserting `canonical_data.tags` after merge; tamper-warning test (Finding 5).
 
 ## Recommended Fix Order
 
-1. Fix SourceRef dedup policy logic (spec-critical).
-2. Fix canonical_data tag merge synchronization in duplicate path.
-3. Align tamper-hash field contract (`id` vs `content_hash`) across spec and code.
-4. Add apply/export tests covering verification checklist items 405-469.
+1. ~~Fix SourceRef dedup policy logic (spec-critical).~~ **Complete.**
+2. ~~Fix canonical_data tag merge synchronization in duplicate path.~~ **Complete.**
+3. ~~Align tamper-hash field contract (`id` vs `content_hash`).~~ **Complete** (serde aliases on `CanonicalSpell.id`).
+4. ~~Add apply/export tests covering verification checklist items 405-469.~~ **Largely complete;** optional gaps noted in Finding 5.

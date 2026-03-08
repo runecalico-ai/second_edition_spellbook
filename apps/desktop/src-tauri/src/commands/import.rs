@@ -646,20 +646,19 @@ fn escape_like(s: &str) -> String {
     out
 }
 
-/// Find a unique name for "Keep Both": base name (e.g. "Fireball") + level; returns "Fireball (1)" or "Fireball (2)" etc.
-/// Considers existing DB rows and names already inserted in this batch for same base+level.
+/// Find a unique name for "Keep Both": base name (e.g. "Fireball"); returns "Fireball (1)" or "Fireball (2)" etc.
+/// Uniqueness is name-global: all spells with `name = base` or `name LIKE 'base (%)'` are considered,
+/// regardless of level, so that e.g. "Fireball (1)" at another level forces the next suffix to "(2)".
+/// Considers existing DB rows and names already inserted in this batch for the same base name.
 fn find_unique_name_for_keep_both(
     conn: &rusqlite::Connection,
     base_name: &str,
-    level: i64,
     batch_inserted_names: &HashSet<String>,
 ) -> Result<String, AppError> {
     let pattern = format!("{} (%", escape_like(base_name));
     let existing: Vec<String> = conn
-        .prepare(
-            "SELECT name FROM spell WHERE level = ? AND (name = ? OR name LIKE ? ESCAPE '\\')",
-        )?
-        .query_map(params![level, base_name, pattern], |row| row.get(0))?
+        .prepare("SELECT name FROM spell WHERE name = ? OR name LIKE ? ESCAPE '\\'")?
+        .query_map(params![base_name, pattern], |row| row.get(0))?
         .filter_map(Result::ok)
         .collect();
     let mut max_n = 0i64;
@@ -707,17 +706,18 @@ fn replace_with_new_impl(
             "replace_with_new: invalid existing_id".into(),
         ));
     }
-    let other_id: Option<i64> = tx
+    let conflicting_row: Option<(i64, String)> = tx
         .query_row(
-            "SELECT id FROM spell WHERE content_hash = ? AND id != ?",
+            "SELECT id, name FROM spell WHERE content_hash = ? AND id != ?",
             params![new_hash, existing_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    if other_id.is_some() {
-        return Err(AppError::Import(
-            "Replace with New failed: the incoming content hash already exists as another spell row.".into(),
-        ));
+    if let Some((conflicting_id, conflicting_name)) = conflicting_row {
+        return Err(AppError::Import(format!(
+            "Replace with New failed: incoming content hash '{}' already exists on spell '{}' (id {}). This imported version already exists. Choose Keep Existing to keep the current spell, or Keep Both to import it as a separate copy.",
+            new_hash, conflicting_name, conflicting_id
+        )));
     }
     let old_spell = get_spell_from_conn(tx, existing_id)?
         .ok_or_else(|| AppError::Import("replace_with_new: existing spell not found".into()))?;
@@ -866,7 +866,6 @@ fn apply_import_spell_json_impl(
     for item in items {
         let content_hash = item.content_hash.clone();
         let name = item.spell.name.clone();
-        let level = item.spell.level;
 
         let res = (|| -> Result<(), AppError> {
             let sp = tx.savepoint().map_err(AppError::Database)?;
@@ -933,11 +932,11 @@ fn apply_import_spell_json_impl(
                 return Ok(());
             }
 
-            // 3) Hash not found: check name (+ level) for conflict.
+            // 3) Hash not found: check name-only for conflict (deterministic row selection).
             let existing_by_name: Option<(i64, Option<String>)> = sp
                 .query_row(
-                    "SELECT id, content_hash FROM spell WHERE name = ? AND level = ?",
-                    params![name, level],
+                    "SELECT id, content_hash FROM spell WHERE name = ? ORDER BY id ASC LIMIT 1",
+                    params![name],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .optional()?;
@@ -975,7 +974,6 @@ fn apply_import_spell_json_impl(
                                 let unique_name = find_unique_name_for_keep_both(
                                     &sp,
                                     &name,
-                                    level,
                                     &keep_both_names,
                                 )?;
                                 keep_both_names.insert(unique_name.clone());
@@ -2023,12 +2021,128 @@ pub async fn reparse_artifact(
 mod tests {
     use super::*;
     use crate::models::canonical_spell::{CanonicalSpell, SourceRef};
+    use rusqlite::{params, Connection};
 
     fn minimal_spell_json(name: &str) -> String {
         format!(
             r#"{{"name":"{}","tradition":"ARCANE","level":1,"description":"X","school":"Abjuration"}}"#,
             name
         )
+    }
+
+    fn setup_import_apply_test_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute(
+            "CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                level INTEGER NOT NULL,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                damage TEXT,
+                magic_resistance TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER,
+                is_cantrip INTEGER,
+                updated_at TEXT,
+                canonical_data TEXT,
+                content_hash TEXT,
+                schema_version INTEGER
+            )",
+            [],
+        )
+        .expect("create spell table");
+        conn
+    }
+
+    fn create_change_log_table(conn: &Connection) {
+        conn.execute(
+            "CREATE TABLE change_log (
+                id INTEGER PRIMARY KEY,
+                spell_id INTEGER NOT NULL,
+                field TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT
+            )",
+            [],
+        )
+        .expect("create change_log table");
+    }
+
+    fn create_hash_reference_tables(conn: &Connection) {
+        conn.execute(
+            "CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY,
+                spell_id INTEGER,
+                spell_content_hash TEXT UNIQUE
+            )",
+            [],
+        )
+        .expect("create character_class_spell table");
+        conn.execute(
+            "CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY,
+                spell_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL,
+                spell_content_hash TEXT
+            )",
+            [],
+        )
+        .expect("create artifact table");
+    }
+
+    fn test_spell(name: &str, level: i64, description: &str) -> CanonicalSpell {
+        let mut spell = CanonicalSpell::new(
+            name.to_string(),
+            level,
+            "ARCANE".to_string(),
+            description.to_string(),
+        );
+        spell.school = Some("Abjuration".to_string());
+        spell.version = "2.0.0".to_string();
+        spell
+    }
+
+    fn insert_spell_for_apply_test(
+        conn: &Connection,
+        id: i64,
+        spell: &CanonicalSpell,
+        content_hash: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO spell (
+                id, name, level, description, school, canonical_data, content_hash, schema_version,
+                is_quest_spell, is_cantrip, reversible
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0)",
+            params![
+                id,
+                spell.name,
+                spell.level,
+                spell.description,
+                spell.school,
+                serde_json::to_string(spell).expect("serialize canonical spell"),
+                content_hash,
+                CURRENT_SCHEMA_VERSION
+            ],
+        )
+        .expect("insert seed spell");
     }
 
     #[test]
@@ -2381,5 +2495,459 @@ mod tests {
         assert_eq!(res_id.spells[0].spell.id, Some(h1.clone()));
         assert_eq!(res_hash.spells[0].spell.id, Some(h1.clone()));
         assert_eq!(res_camel.spells[0].spell.id, Some(h1.clone()));
+    }
+
+    #[test]
+    fn test_apply_import_conflict_same_name_different_level_different_hash() {
+        let conn = setup_import_apply_test_db();
+        let existing_spell = test_spell("Mirror Veil", 1, "Existing spell");
+        let incoming_spell = test_spell("Mirror Veil", 5, "Incoming spell with different content");
+        let existing_hash = "a".repeat(64);
+        let incoming_hash = "b".repeat(64);
+
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &existing_hash);
+
+        let result = apply_import_spell_json_impl(
+            &conn,
+            vec![PreviewSpellJsonItem {
+                spell: incoming_spell.clone(),
+                content_hash: incoming_hash.clone(),
+                warnings: vec![],
+            }],
+            None,
+        )
+        .expect("apply import should succeed");
+
+        assert_eq!(result.imported_count, 0, "conflict should block insert");
+        assert_eq!(result.conflicts.len(), 1, "one conflict should be emitted");
+        assert_eq!(result.conflicts[0].existing_id, 1);
+        assert_eq!(result.conflicts[0].incoming_name, incoming_spell.name);
+        assert_eq!(
+            result.conflicts[0].incoming_content_hash, incoming_hash,
+            "conflict should track incoming hash"
+        );
+    }
+
+    #[test]
+    fn test_apply_import_same_hash_dedups_before_name_conflict() {
+        let conn = setup_import_apply_test_db();
+        let existing_spell = test_spell("Storm Cage", 1, "Existing spell");
+        let mut incoming_spell = test_spell("Storm Cage", 3, "Incoming variant");
+        incoming_spell.tags = vec!["arcane".to_string()];
+        let shared_hash = "c".repeat(64);
+
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &shared_hash);
+
+        let result = apply_import_spell_json_impl(
+            &conn,
+            vec![PreviewSpellJsonItem {
+                spell: incoming_spell,
+                content_hash: shared_hash,
+                warnings: vec![],
+            }],
+            None,
+        )
+        .expect("apply import should succeed");
+
+        assert!(
+            result.conflicts.is_empty(),
+            "hash match should dedup before conflict detection"
+        );
+        assert_eq!(result.imported_count, 0, "no new rows should be inserted");
+        assert_eq!(
+            result.duplicates_skipped.total, 1,
+            "existing hash should be counted as duplicate handling"
+        );
+        let spell_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("count spells");
+        assert_eq!(spell_count, 1, "dedup should keep only one spell row");
+    }
+
+    #[test]
+    fn test_apply_import_dedup_counters_track_merged_vs_no_change() {
+        let conn = setup_import_apply_test_db();
+        let existing_spell = test_spell("Echo Ward", 2, "Existing spell");
+        let shared_hash = "g".repeat(64);
+
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &shared_hash);
+
+        let mut first_incoming = test_spell("Echo Ward", 2, "Existing spell");
+        first_incoming.tags = vec!["new-tag".to_string()];
+        let mut second_incoming = test_spell("Echo Ward", 2, "Existing spell");
+        second_incoming.tags = vec!["new-tag".to_string()];
+
+        let result = apply_import_spell_json_impl(
+            &conn,
+            vec![
+                PreviewSpellJsonItem {
+                    spell: first_incoming,
+                    content_hash: shared_hash.clone(),
+                    warnings: vec![],
+                },
+                PreviewSpellJsonItem {
+                    spell: second_incoming,
+                    content_hash: shared_hash,
+                    warnings: vec![],
+                },
+            ],
+            None,
+        )
+        .expect("apply import should succeed");
+
+        assert_eq!(result.imported_count, 0, "dedup path should not insert rows");
+        assert_eq!(result.duplicates_skipped.total, 2);
+        assert_eq!(result.duplicates_skipped.merged_count, 1);
+        assert_eq!(result.duplicates_skipped.no_change_count, 1);
+    }
+
+    #[test]
+    fn test_apply_import_conflict_resolution_branches_keep_replace_keep_both() {
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        let keep_existing_spell = test_spell("Aegis Shell", 1, "Keep me");
+        let replace_existing_spell = test_spell("Moon Lance", 3, "Old replace target");
+        let keep_both_existing_spell = test_spell("Twin Flame", 4, "Original twin");
+        let keep_existing_hash = "h".repeat(64);
+        let replace_old_hash = "i".repeat(64);
+        let keep_both_existing_hash = "j".repeat(64);
+
+        insert_spell_for_apply_test(&conn, 1, &keep_existing_spell, &keep_existing_hash);
+        insert_spell_for_apply_test(&conn, 2, &replace_existing_spell, &replace_old_hash);
+        insert_spell_for_apply_test(&conn, 3, &keep_both_existing_spell, &keep_both_existing_hash);
+        conn.execute(
+            "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (1, 2, ?)",
+            params![replace_old_hash],
+        )
+        .expect("seed character_class_spell hash reference");
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, type, path, hash, imported_at, spell_content_hash)
+             VALUES (1, 2, 'pdf', 'moon-lance.pdf', 'artifact-hash', '2026-01-01T00:00:00Z', ?)",
+            params![replace_old_hash],
+        )
+        .expect("seed artifact hash reference");
+
+        let keep_existing_incoming = test_spell("Aegis Shell", 1, "Incoming but skipped");
+        let replace_incoming = test_spell("Moon Lance", 3, "Replacement description");
+        let keep_both_incoming = test_spell("Twin Flame", 4, "Imported twin");
+        let replace_new_hash = "k".repeat(64);
+        let keep_both_new_hash = "l".repeat(64);
+
+        let resolve_options = ImportSpellJsonResolveOptions {
+            resolutions: vec![
+                ImportSpellJsonConflictResolution {
+                    existing_id: 1,
+                    incoming_content_hash: "m".repeat(64),
+                    action: "keep_existing".to_string(),
+                },
+                ImportSpellJsonConflictResolution {
+                    existing_id: 2,
+                    incoming_content_hash: replace_new_hash.clone(),
+                    action: "replace_with_new".to_string(),
+                },
+                ImportSpellJsonConflictResolution {
+                    existing_id: 3,
+                    incoming_content_hash: keep_both_new_hash.clone(),
+                    action: "keep_both".to_string(),
+                },
+            ],
+            default_action: None,
+        };
+
+        let result = apply_import_spell_json_impl(
+            &conn,
+            vec![
+                PreviewSpellJsonItem {
+                    spell: keep_existing_incoming,
+                    content_hash: "m".repeat(64),
+                    warnings: vec![],
+                },
+                PreviewSpellJsonItem {
+                    spell: replace_incoming,
+                    content_hash: replace_new_hash.clone(),
+                    warnings: vec![],
+                },
+                PreviewSpellJsonItem {
+                    spell: keep_both_incoming,
+                    content_hash: keep_both_new_hash.clone(),
+                    warnings: vec![],
+                },
+            ],
+            Some(resolve_options),
+        )
+        .expect("apply import should succeed");
+
+        assert!(result.conflicts.is_empty(), "all conflicts should be resolved");
+        assert_eq!(result.imported_count, 1, "keep_both should insert one row");
+
+        let resolved = result
+            .conflicts_resolved
+            .expect("resolution counters should be present");
+        assert_eq!(resolved.keep_existing_count, 1);
+        assert_eq!(resolved.replace_count, 1);
+        assert_eq!(resolved.keep_both_count, 1);
+
+        let kept_hash: String = conn
+            .query_row("SELECT content_hash FROM spell WHERE id = 1", [], |row| row.get(0))
+            .expect("query keep_existing hash");
+        assert_eq!(kept_hash, keep_existing_hash, "keep_existing should not mutate row");
+
+        let (replaced_hash, replaced_description): (String, String) = conn
+            .query_row(
+                "SELECT content_hash, description FROM spell WHERE id = 2",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query replaced row");
+        assert_eq!(replaced_hash, replace_new_hash);
+        assert_eq!(replaced_description, "Replacement description");
+        let ccs_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query character_class_spell hash after replace");
+        assert_eq!(ccs_hash, replace_new_hash);
+        let artifact_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query artifact hash after replace");
+        assert_eq!(artifact_hash, replace_new_hash);
+
+        let keep_both_name: String = conn
+            .query_row(
+                "SELECT name FROM spell WHERE content_hash = ?",
+                params![keep_both_new_hash],
+                |row| row.get(0),
+            )
+            .expect("query keep_both row");
+        assert_eq!(keep_both_name, "Twin Flame (1)");
+    }
+
+    #[test]
+    fn test_keep_both_suffix_is_name_global_across_levels() {
+        let conn = setup_import_apply_test_db();
+
+        let base_spell = test_spell("Cross Fire", 1, "Original");
+        let existing_suffixed_other_level = test_spell("Cross Fire (1)", 9, "Higher level variant");
+        insert_spell_for_apply_test(&conn, 1, &base_spell, &"r".repeat(64));
+        insert_spell_for_apply_test(&conn, 2, &existing_suffixed_other_level, &"s".repeat(64));
+
+        let incoming = test_spell("Cross Fire", 3, "Incoming variant");
+        let new_hash = "t".repeat(64);
+        let resolve_options = ImportSpellJsonResolveOptions {
+            resolutions: vec![ImportSpellJsonConflictResolution {
+                existing_id: 1,
+                incoming_content_hash: new_hash.clone(),
+                action: "keep_both".to_string(),
+            }],
+            default_action: None,
+        };
+
+        let result = apply_import_spell_json_impl(
+            &conn,
+            vec![PreviewSpellJsonItem {
+                spell: incoming,
+                content_hash: new_hash.clone(),
+                warnings: vec![],
+            }],
+            Some(resolve_options),
+        )
+        .expect("apply import should succeed");
+
+        assert_eq!(result.imported_count, 1, "keep_both should insert one row");
+        let inserted_name: String = conn
+            .query_row(
+                "SELECT name FROM spell WHERE content_hash = ?",
+                params![new_hash],
+                |row| row.get(0),
+            )
+            .expect("query inserted keep_both spell");
+        assert_eq!(
+            inserted_name, "Cross Fire (2)",
+            "suffix should increment globally by name even when (1) exists at another level"
+        );
+    }
+
+    #[test]
+    fn test_apply_import_replace_failure_rolls_back_item_and_keeps_other_rows() {
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        let replace_existing_spell = test_spell("Rune Chain", 5, "Old rune chain");
+        let keep_both_existing_spell = test_spell("Solar Knot", 2, "Original knot");
+        let replace_old_hash = "n".repeat(64);
+        let keep_both_old_hash = "o".repeat(64);
+        let replace_new_hash = "p".repeat(64);
+        let keep_both_new_hash = "q".repeat(64);
+
+        insert_spell_for_apply_test(&conn, 1, &replace_existing_spell, &replace_old_hash);
+        insert_spell_for_apply_test(&conn, 2, &keep_both_existing_spell, &keep_both_old_hash);
+        conn.execute(
+            "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (1, 1, ?)",
+            params![replace_old_hash],
+        )
+        .expect("seed old character_class_spell hash reference");
+        conn.execute(
+            "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (2, 99, ?)",
+            params!["p".repeat(64)],
+        )
+        .expect("seed conflicting character_class_spell hash reference");
+
+        let replace_incoming = test_spell("Rune Chain", 5, "Incoming replace should rollback");
+        let keep_both_incoming = test_spell("Solar Knot", 2, "Incoming keep both");
+
+        let resolve_options = ImportSpellJsonResolveOptions {
+            resolutions: vec![
+                ImportSpellJsonConflictResolution {
+                    existing_id: 2,
+                    incoming_content_hash: keep_both_new_hash.clone(),
+                    action: "keep_both".to_string(),
+                },
+                ImportSpellJsonConflictResolution {
+                    existing_id: 1,
+                    incoming_content_hash: replace_new_hash.clone(),
+                    action: "replace_with_new".to_string(),
+                },
+            ],
+            default_action: None,
+        };
+
+        let result = apply_import_spell_json_impl(
+            &conn,
+            vec![
+                PreviewSpellJsonItem {
+                    spell: keep_both_incoming,
+                    content_hash: keep_both_new_hash.clone(),
+                    warnings: vec![],
+                },
+                PreviewSpellJsonItem {
+                    spell: replace_incoming,
+                    content_hash: replace_new_hash,
+                    warnings: vec![],
+                },
+            ],
+            Some(resolve_options),
+        )
+        .expect("apply import should return per-item failures, not top-level error");
+
+        assert_eq!(result.imported_count, 1, "keep_both should still commit");
+        assert_eq!(result.failures.len(), 1, "replace item should fail");
+        assert_eq!(result.failures[0].spell_name, "Rune Chain");
+
+        let (final_hash, final_description): (String, String) = conn
+            .query_row(
+                "SELECT content_hash, description FROM spell WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query replace row after failure");
+        assert_eq!(final_hash, replace_old_hash, "failed replace must rollback hash");
+        assert_eq!(
+            final_description, "Old rune chain",
+            "failed replace must rollback updated fields"
+        );
+        let ccs_rolled_back_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query character_class_spell hash after rollback");
+        assert_eq!(
+            ccs_rolled_back_hash, replace_old_hash,
+            "failed replace must rollback cascaded character_class_spell hash update"
+        );
+
+        let keep_both_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM spell WHERE name = 'Solar Knot (1)'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query keep_both inserted row");
+        assert_eq!(keep_both_count, 1, "other savepoint commits should remain");
+    }
+
+    #[test]
+    fn test_apply_import_conflict_deterministic_when_name_has_multiple_rows() {
+        let conn = setup_import_apply_test_db();
+        let existing_a = test_spell("Twin Sigil", 1, "Existing row A");
+        let existing_b = test_spell("Twin Sigil", 4, "Existing row B");
+        let incoming_spell = test_spell("Twin Sigil", 7, "Incoming row");
+        let hash_a = "d".repeat(64);
+        let hash_b = "e".repeat(64);
+        let incoming_hash = "f".repeat(64);
+
+        insert_spell_for_apply_test(&conn, 1, &existing_a, &hash_a);
+        insert_spell_for_apply_test(&conn, 2, &existing_b, &hash_b);
+
+        let result = apply_import_spell_json_impl(
+            &conn,
+            vec![PreviewSpellJsonItem {
+                spell: incoming_spell,
+                content_hash: incoming_hash,
+                warnings: vec![],
+            }],
+            None,
+        )
+        .expect("apply import should succeed");
+
+        assert_eq!(result.imported_count, 0, "conflict should block insert");
+        assert_eq!(result.conflicts.len(), 1, "one conflict should be emitted");
+        assert_eq!(
+            result.conflicts[0].existing_id, 1,
+            "name-only conflict should deterministically select the lowest id row"
+        );
+    }
+
+    #[test]
+    fn test_replace_with_new_collision_error_includes_conflicting_spell_name_and_hash() {
+        let conn = setup_import_apply_test_db();
+        let existing_spell = test_spell("Mirror Ward", 2, "Existing target spell");
+        let conflicting_spell = test_spell("Prismatic Net", 6, "Spell already using incoming hash");
+        let incoming_spell = test_spell("Mirror Ward", 2, "Incoming replacement spell");
+        let old_hash = "0".repeat(64);
+        let collision_hash = "1".repeat(64);
+
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &old_hash);
+        insert_spell_for_apply_test(&conn, 2, &conflicting_spell, &collision_hash);
+
+        let item = PreviewSpellJsonItem {
+            spell: incoming_spell,
+            content_hash: collision_hash.clone(),
+            warnings: vec![],
+        };
+
+        let err = replace_with_new_impl(&conn, 1, Some(&old_hash), &collision_hash, &item)
+            .expect_err("replace should fail when incoming hash belongs to another spell row");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Prismatic Net"),
+            "error should include conflicting spell name, got: {msg}"
+        );
+        assert!(
+            msg.contains(&collision_hash),
+            "error should include conflicting hash, got: {msg}"
+        );
+        assert!(
+            msg.contains("This imported version already exists"),
+            "error should include explicit already-exists guidance, got: {msg}"
+        );
+        assert!(
+            msg.contains("Keep Existing"),
+            "error should suggest Keep Existing action, got: {msg}"
+        );
+        assert!(
+            msg.contains("Keep Both"),
+            "error should suggest Keep Both action, got: {msg}"
+        );
     }
 }

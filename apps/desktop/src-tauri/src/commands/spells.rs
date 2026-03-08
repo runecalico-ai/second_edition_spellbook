@@ -1,3 +1,4 @@
+use crate::commands::vault::export_spell_to_vault_by_hash;
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
@@ -475,6 +476,7 @@ pub fn apply_spell_update_with_conn(
     )?;
 
     migration_manager::sync_check_spell(conn, spell.id);
+    export_spell_to_vault_by_hash(conn, &hash)?;
     Ok(spell.id)
 }
 
@@ -756,7 +758,9 @@ pub async fn create_spell(
                 canonical.schema_version,
             ],
         )?;
-        Ok::<i64, AppError>(conn.last_insert_rowid())
+        let spell_id = conn.last_insert_rowid();
+        export_spell_to_vault_by_hash(&conn, &hash)?;
+        Ok::<i64, AppError>(spell_id)
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -852,6 +856,7 @@ pub async fn upsert_spell(
                     id,
                 ],
             )?;
+            export_spell_to_vault_by_hash(&conn, &hash)?;
             id
         } else {
             conn.execute(
@@ -890,7 +895,9 @@ pub async fn upsert_spell(
                     canonical.schema_version,
                 ],
             )?;
-            conn.last_insert_rowid()
+            let id = conn.last_insert_rowid();
+            export_spell_to_vault_by_hash(&conn, &hash)?;
+            id
         };
         migration_manager::sync_check_spell(&conn, spell_id);
         Ok::<i64, AppError>(spell_id)
@@ -904,6 +911,8 @@ pub async fn upsert_spell(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::Connection;
+    use std::sync::{Mutex, OnceLock};
 
     #[test]
     fn test_validate_cantrip_level() {
@@ -937,5 +946,131 @@ mod tests {
         assert!(validate_epic_and_quest_spells(10, &Some("Wizard".into()), false, false).is_ok());
         assert!(validate_epic_and_quest_spells(10, &Some("Mage".into()), false, false).is_ok());
         assert!(validate_epic_and_quest_spells(10, &Some("Priest".into()), false, false).is_err());
+    }
+
+    fn vault_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn setup_spell_update_test_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                level INTEGER NOT NULL,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER NOT NULL DEFAULT 0,
+                is_cantrip INTEGER NOT NULL DEFAULT 0,
+                damage TEXT,
+                magic_resistance TEXT,
+                schema_version INTEGER,
+                canonical_data TEXT,
+                content_hash TEXT
+            );
+            CREATE TABLE change_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER NOT NULL,
+                field TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .expect("create spell test schema");
+        conn
+    }
+
+    #[test]
+    fn test_apply_spell_update_with_conn_persists_vault_file() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
+        let conn = setup_spell_update_test_db();
+        let initial_detail = SpellDetail {
+            id: Some(1),
+            name: "Vaulted Spell".to_string(),
+            level: 3,
+            description: "Original description".to_string(),
+            school: Some("Abjuration".to_string()),
+            ..Default::default()
+        };
+        let (canonical, hash, json) =
+            canonicalize_spell_detail(initial_detail.clone()).expect("canonicalize initial spell");
+        conn.execute(
+            "INSERT INTO spell (
+                id, name, school, sphere, class_list, level, range, components, material_components,
+                casting_time, duration, area, saving_throw, reversible, description, tags, source,
+                edition, author, license, is_quest_spell, is_cantrip, damage, magic_resistance,
+                schema_version, canonical_data, content_hash
+             ) VALUES (
+                1, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, NULL, NULL,
+                NULL, NULL, NULL, 0, 0, NULL, NULL, ?, ?, ?
+             )",
+            rusqlite::params![
+                initial_detail.name,
+                initial_detail.school,
+                initial_detail.level,
+                initial_detail.description,
+                canonical.schema_version,
+                json,
+                hash,
+            ],
+        )
+        .expect("seed spell row");
+
+        let update = SpellUpdate {
+            id: 1,
+            name: "Vaulted Spell".to_string(),
+            level: 3,
+            description: "Updated description".to_string(),
+            school: Some("Abjuration".to_string()),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            ..Default::default()
+        };
+
+        apply_spell_update_with_conn(&conn, &update).expect("update spell");
+
+        let updated_hash: String = conn
+            .query_row("SELECT content_hash FROM spell WHERE id = 1", [], |row| row.get(0))
+            .expect("query updated hash");
+        let vault_file = temp_dir
+            .path()
+            .join("spells")
+            .join(format!("{updated_hash}.json"));
+        assert!(
+            vault_file.exists(),
+            "spell update should materialize the corresponding vault file"
+        );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 }

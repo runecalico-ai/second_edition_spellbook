@@ -1,6 +1,9 @@
 use crate::commands::spells::{
     apply_spell_update_with_conn, canonicalize_spell_detail, get_spell_from_conn, log_changes,
 };
+use crate::commands::vault::{
+    export_spell_to_vault_by_hash, optimize_vault_with_root, VaultMaintenanceState,
+};
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::{
@@ -860,6 +863,7 @@ fn apply_import_spell_json_impl(
     let mut seen_hash_in_batch: HashMap<String, i64> = HashMap::new();
     // For Keep Both: track names we insert in this batch (base name or "Name (N)") so we pick unique N.
     let mut keep_both_names: HashSet<String> = HashSet::new();
+    let mut vault_hashes_to_refresh: HashSet<String> = HashSet::new();
 
     let mut tx = conn.unchecked_transaction().map_err(AppError::Database)?;
 
@@ -894,6 +898,7 @@ fn apply_import_spell_json_impl(
                         params![merged_tags, merged_canonical, Utc::now().to_rfc3339(), spell_id],
                     )?;
                     merged_count += 1;
+                    vault_hashes_to_refresh.insert(content_hash.clone());
                 }
                 sp.commit().map_err(AppError::Database)?;
                 return Ok(());
@@ -927,6 +932,7 @@ fn apply_import_spell_json_impl(
                         params![merged_tags, merged_canonical, Utc::now().to_rfc3339(), spell_id],
                     )?;
                     merged_count += 1;
+                    vault_hashes_to_refresh.insert(content_hash.clone());
                 }
                 sp.commit().map_err(AppError::Database)?;
                 return Ok(());
@@ -965,6 +971,7 @@ fn apply_import_spell_json_impl(
                                 )?;
                                 seen_hash_in_batch.insert(content_hash.clone(), existing_id);
                                 conflicts_resolved.replace_count += 1;
+                                vault_hashes_to_refresh.insert(content_hash.clone());
                                 migration_manager::sync_check_spell(&sp, existing_id);
                                 if let Ok(Some(detail)) = get_spell_from_conn(&sp, existing_id) {
                                     imported_spells.push(detail);
@@ -1000,6 +1007,7 @@ fn apply_import_spell_json_impl(
                                 seen_hash_in_batch.insert(content_hash, new_id);
                                 conflicts_resolved.keep_both_count += 1;
                                 imported_count += 1;
+                                vault_hashes_to_refresh.insert(item.content_hash.clone());
                                 migration_manager::sync_check_spell(&sp, new_id);
                                 if let Ok(Some(detail)) = get_spell_from_conn(&sp, new_id) {
                                     imported_spells.push(detail);
@@ -1050,6 +1058,7 @@ fn apply_import_spell_json_impl(
             let new_id = sp.last_insert_rowid();
             seen_hash_in_batch.insert(content_hash.clone(), new_id);
             imported_count += 1;
+            vault_hashes_to_refresh.insert(content_hash.clone());
 
             migration_manager::sync_check_spell(&sp, new_id);
 
@@ -1074,6 +1083,9 @@ fn apply_import_spell_json_impl(
     }
 
     tx.commit().map_err(AppError::Database)?;
+    for content_hash in &vault_hashes_to_refresh {
+        export_spell_to_vault_by_hash(conn, content_hash)?;
+    }
 
     Ok(ImportSpellJsonResult {
         imported_count,
@@ -1098,9 +1110,25 @@ fn apply_import_spell_json_impl(
     })
 }
 
+fn apply_import_spell_json_with_maintenance(
+    conn: &rusqlite::Connection,
+    root: &std::path::Path,
+    maintenance_state: &VaultMaintenanceState,
+    items: Vec<PreviewSpellJsonItem>,
+    resolve_options: Option<ImportSpellJsonResolveOptions>,
+) -> Result<ImportSpellJsonResult, AppError> {
+    let _import_guard = maintenance_state.start_import()?;
+    let result = apply_import_spell_json_impl(conn, items, resolve_options)?;
+    if result.imported_count > 0 {
+        let _ = optimize_vault_with_root(conn, root, None)?;
+    }
+    Ok(result)
+}
+
 #[tauri::command]
 pub async fn import_spell_json(
     state: State<'_, Arc<Pool>>,
+    maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     payload: String,
     source_ref_url_policy: Option<String>,
 ) -> Result<ImportSpellJsonResult, AppError> {
@@ -1118,10 +1146,18 @@ pub async fn import_spell_json(
     }
 
     let pool = state.inner().clone();
+    let maintenance_state = maintenance_state.inner().clone();
     let items = preview.spells;
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        apply_import_spell_json_impl(&conn, items, None)
+        let root = app_data_dir()?;
+        apply_import_spell_json_with_maintenance(
+            &conn,
+            &root,
+            maintenance_state.as_ref(),
+            items,
+            None,
+        )
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -1137,6 +1173,7 @@ pub async fn import_spell_json(
 #[tauri::command]
 pub async fn resolve_import_spell_json(
     state: State<'_, Arc<Pool>>,
+    maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     payload: String,
     resolve_options: ImportSpellJsonResolveOptions,
     source_ref_url_policy: Option<String>,
@@ -1155,11 +1192,19 @@ pub async fn resolve_import_spell_json(
     }
 
     let pool = state.inner().clone();
+    let maintenance_state = maintenance_state.inner().clone();
     let items = preview.spells;
     let options = resolve_options;
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        apply_import_spell_json_impl(&conn, items, Some(options))
+        let root = app_data_dir()?;
+        apply_import_spell_json_with_maintenance(
+            &conn,
+            &root,
+            maintenance_state.as_ref(),
+            items,
+            Some(options),
+        )
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -2020,8 +2065,10 @@ pub async fn reparse_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::vault::{optimize_vault_with_root, VaultMaintenanceState};
     use crate::models::canonical_spell::{CanonicalSpell, SourceRef};
     use rusqlite::{params, Connection};
+    use std::sync::{Mutex, OnceLock};
 
     fn minimal_spell_json(name: &str) -> String {
         format!(
@@ -2067,6 +2114,11 @@ mod tests {
         )
         .expect("create spell table");
         conn
+    }
+
+    fn vault_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn create_change_log_table(conn: &Connection) {
@@ -2526,6 +2578,140 @@ mod tests {
             result.conflicts[0].incoming_content_hash, incoming_hash,
             "conflict should track incoming hash"
         );
+    }
+
+    #[test]
+    fn test_apply_import_materializes_vault_file_after_commit() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
+        let conn = setup_import_apply_test_db();
+        let incoming_spell = test_spell("Vault Import", 4, "Imported into vault storage");
+        let incoming_hash = "v".repeat(64);
+
+        let result = apply_import_spell_json_impl(
+            &conn,
+            vec![PreviewSpellJsonItem {
+                spell: incoming_spell,
+                content_hash: incoming_hash.clone(),
+                warnings: vec![],
+            }],
+            None,
+        )
+        .expect("apply import should succeed");
+
+        assert_eq!(result.imported_count, 1, "spell should be inserted");
+        assert!(
+            temp_dir
+                .path()
+                .join("spells")
+                .join(format!("{incoming_hash}.json"))
+                .exists(),
+            "json import should write the canonical spell file into the vault"
+        );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
+    }
+
+    #[test]
+    fn test_manual_gc_is_blocked_while_import_guard_is_active() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_import_apply_test_db();
+        let maintenance_state = VaultMaintenanceState::default();
+        let _guard = maintenance_state
+            .start_import()
+            .expect("import guard should be acquired");
+
+        let err = optimize_vault_with_root(&conn, temp_dir.path(), Some(&maintenance_state))
+            .expect_err("manual gc should be rejected during active import");
+        assert!(
+            err.to_string().contains("import"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_successful_import_triggers_post_import_gc() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
+        let conn = setup_import_apply_test_db();
+        let maintenance_state = VaultMaintenanceState::default();
+        let orphan_hash = "y".repeat(64);
+        let spells_dir = temp_dir.path().join("spells");
+        std::fs::create_dir_all(&spells_dir).expect("create spells dir");
+        std::fs::write(
+            spells_dir.join(format!("{orphan_hash}.json")),
+            r#"{"name":"Orphan","tradition":"ARCANE","level":1,"description":"Orphan","school":"Abjuration"}"#,
+        )
+        .expect("write orphan file");
+
+        let result = apply_import_spell_json_with_maintenance(
+            &conn,
+            temp_dir.path(),
+            &maintenance_state,
+            vec![PreviewSpellJsonItem {
+                spell: test_spell("GC Trigger", 2, "Should trigger GC"),
+                content_hash: "z".repeat(64),
+                warnings: vec![],
+            }],
+            None,
+        )
+        .expect("import should succeed");
+
+        assert_eq!(result.imported_count, 1);
+        assert!(
+            !spells_dir.join(format!("{orphan_hash}.json")).exists(),
+            "post-import gc should remove orphaned spell files"
+        );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
+    }
+
+    #[test]
+    fn test_import_conflict_does_not_trigger_post_import_gc() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
+        let conn = setup_import_apply_test_db();
+        let maintenance_state = VaultMaintenanceState::default();
+        let existing_spell = test_spell("Conflict Spell", 1, "Existing");
+        let existing_hash = "1".repeat(64);
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &existing_hash);
+
+        let orphan_hash = "2".repeat(64);
+        let spells_dir = temp_dir.path().join("spells");
+        std::fs::create_dir_all(&spells_dir).expect("create spells dir");
+        std::fs::write(
+            spells_dir.join(format!("{orphan_hash}.json")),
+            r#"{"name":"Orphan","tradition":"ARCANE","level":1,"description":"Orphan","school":"Abjuration"}"#,
+        )
+        .expect("write orphan file");
+
+        let result = apply_import_spell_json_with_maintenance(
+            &conn,
+            temp_dir.path(),
+            &maintenance_state,
+            vec![PreviewSpellJsonItem {
+                spell: test_spell("Conflict Spell", 3, "Incoming conflict"),
+                content_hash: "3".repeat(64),
+                warnings: vec![],
+            }],
+            None,
+        )
+        .expect("conflict-only import should return result");
+
+        assert_eq!(result.imported_count, 0);
+        assert_eq!(result.conflicts.len(), 1);
+        assert!(
+            spells_dir.join(format!("{orphan_hash}.json")).exists(),
+            "conflict-only import should not trigger post-import gc"
+        );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]

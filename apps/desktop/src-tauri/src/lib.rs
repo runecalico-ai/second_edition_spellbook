@@ -6,6 +6,7 @@ pub mod sidecar;
 pub mod utils;
 
 use commands::*;
+use commands::vault::VaultMaintenanceState;
 use db::init_db;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,6 +34,7 @@ pub fn run() {
             let pool = init_db(resource_dir.as_deref(), true)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
             app.manage(Arc::new(pool));
+            app.manage(Arc::new(VaultMaintenanceState::default()));
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())
@@ -91,6 +93,8 @@ pub fn run() {
             print_spellbook,
             backup_vault,
             restore_vault,
+            run_vault_integrity_check,
+            optimize_vault,
             export_character_bundle,
             export_character_markdown_zip,
             import_character_bundle,

@@ -1,0 +1,37 @@
+# Codex Configuration File - https://developers.openai.com/codex/config-basic
+model_provider = "openai"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+# web_search = "cached"  # default; serves results from the web search cache
+web_search = "live"  # fetch the most recent data from the web (same as --search)
+# web_search = "disabled"
+
+
+[shell_environment_policy]
+include_only = ["PATH", "HOME"]
+
+[features]
+shell_snapshot = true
+
+[profiles.deep_review]
+model = "gpt-5.4"
+model_reasoning_effort = "high"
+approval_policy = "never"
+
+################################################################################
+# Sandbox settings (tables)
+################################################################################
+
+# Extra settings used only when sandbox_mode = "workspace-write".
+[sandbox_workspace_write]
+# Additional writable roots beyond the workspace (cwd). Default: []
+writable_roots = [
+    "C:\\Users\\vitki\\.rustup",
+    "C:\\Users\\vitki\\.cargo"
+]
+# Allow outbound network access inside the sandbox. Default: false
+network_access = true
+# Exclude $TMPDIR from writable roots. Default: false
+exclude_tmpdir_env_var = false
+# Exclude /tmp from writable roots. Default: false
+exclude_slash_tmp = false

@@ -1,0 +1,218 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.com/schemas/SavingThrowSpec.schema.json",
+    "title": "SavingThrowSpec",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "kind"
+    ],
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": [
+                "none",
+                "single",
+                "multiple",
+                "dm_adjudicated"
+            ]
+        },
+        "single": {
+            "$ref": "#/$defs/SingleSave"
+        },
+        "multiple": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "$ref": "#/$defs/SingleSave"
+            },
+            "description": "Ordered list. Use when a spell explicitly calls for more than one save or different saves for different sub-effects."
+        },
+        "dm_guidance": {
+            "type": "string",
+            "maxLength": 2048
+        },
+        "notes": {
+            "type": "string",
+            "maxLength": 2048
+        }
+    },
+    "allOf": [
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "none"
+                    }
+                }
+            },
+            "then": {
+                "not": {
+                    "anyOf": [
+                        {
+                            "required": [
+                                "single"
+                            ]
+                        },
+                        {
+                            "required": [
+                                "multiple"
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "single"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "single"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "multiple"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "multiple"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "dm_adjudicated"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "dm_guidance"
+                ]
+            }
+        }
+    ],
+    "$defs": {
+        "SingleSave": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "save_type",
+                "applies_to",
+                "on_success",
+                "on_failure"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$",
+                    "description": "Stable identifier if referenced by other effect specs."
+                },
+                "save_type": {
+                    "type": "string",
+                    "enum": [
+                        "paralyzation_poison_death",
+                        "rod_staff_wand",
+                        "petrification_polymorph",
+                        "breath_weapon",
+                        "spell",
+                        "special"
+                    ]
+                },
+                "save_vs": {
+                    "type": "string",
+                    "enum": [
+                        "spell",
+                        "poison",
+                        "death_magic",
+                        "polymorph",
+                        "petrification",
+                        "breath",
+                        "weapon",
+                        "other"
+                    ],
+                    "default": "spell",
+                    "description": "Optional refinement when the spell text is more specific than the 5-category table."
+                },
+                "modifier": {
+                    "type": "integer",
+                    "minimum": -20,
+                    "maximum": 20,
+                    "default": 0,
+                    "description": "E.g., 'save at -2'."
+                },
+                "applies_to": {
+                    "type": "string",
+                    "enum": [
+                        "each_target",
+                        "each_round",
+                        "each_application",
+                        "once_per_cast",
+                        "special"
+                    ],
+                    "default": "each_target"
+                },
+                "timing": {
+                    "type": "string",
+                    "enum": [
+                        "on_hit",
+                        "on_contact",
+                        "on_entry",
+                        "end_of_round",
+                        "on_effect",
+                        "special"
+                    ],
+                    "default": "on_effect"
+                },
+                "on_success": {
+                    "$ref": "#/$defs/SaveOutcomeEffect"
+                },
+                "on_failure": {
+                    "$ref": "#/$defs/SaveOutcomeEffect"
+                },
+                "notes": {
+                    "type": "string",
+                    "maxLength": 1024
+                }
+            }
+        },
+        "SaveOutcomeEffect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "result"
+            ],
+            "properties": {
+                "result": {
+                    "type": "string",
+                    "enum": [
+                        "no_effect",
+                        "reduced_effect",
+                        "full_effect",
+                        "partial_damage_only",
+                        "partial_non_damage_only",
+                        "special"
+                    ]
+                },
+                "notes": {
+                    "type": "string",
+                    "maxLength": 1024
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,366 @@
+
+# AD&D 2nd Edition – Normalized RangeSpec Enum & Parameter Schema
+
+This document defines a **canonical, normalized RangeSpec** suitable for spell
+schemas, validators, and resolved spell snapshots. It mirrors `AreaSpec` and
+`DurationSpec` in structure and philosophy.
+
+---
+
+## 1. Core Enums
+
+### 1.1 DistanceUnit
+
+```json
+["ft", "yd", "mi"]
+```
+
+### 1.2 RangeKind
+
+```json
+[
+  "personal",
+  "touch",
+  "distance",
+  "distance_los",
+  "distance_loe",
+  "los",
+  "loe",
+  "sight",
+  "hearing",
+  "voice",
+  "senses",
+  "same_room",
+  "same_structure",
+  "same_dungeon_level",
+  "wilderness",
+  "same_plane",
+  "interplanar",
+  "anywhere_on_plane",
+  "domain",
+  "unlimited",
+  "special"
+]
+```
+
+---
+
+## 2. Scalar Model
+
+Same scalar model used by AreaSpec and DurationSpec:
+
+- fixed
+- per_level
+- optional caps
+- rounding rules
+
+---
+
+## 3. JSON Schema (draft 2020-12)
+
+```json
+{
+    "$id": "https://example.invalid/schemas/common/range-spec.schema.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "RangeSpec",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "kind"
+    ],
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": [
+                "personal",
+                "touch",
+                "distance",
+                "distance_los",
+                "distance_loe",
+                "los",
+                "loe",
+                "sight",
+                "hearing",
+                "voice",
+                "senses",
+                "same_room",
+                "same_structure",
+                "same_dungeon_level",
+                "wilderness",
+                "same_plane",
+                "interplanar",
+                "anywhere_on_plane",
+                "domain",
+                "unlimited",
+                "special"
+            ]
+        },
+        "unit": {
+            "type": "string",
+            "enum": [
+                "ft",
+                "yd",
+                "mi",
+                "inches"
+            ],
+            "description": "Linear unit for numeric ranges."
+        },
+        "distance": {
+            "$ref": "#/$defs/scalar"
+        },
+        "requires": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": [
+                    "los",
+                    "loe"
+                ]
+            },
+            "uniqueItems": true,
+            "description": "Additional hard constraints."
+        },
+        "anchor": {
+            "type": "string",
+            "enum": [
+                "caster",
+                "target",
+                "object",
+                "fixed"
+            ],
+            "description": "If range is relative to something other than the caster."
+        },
+        "region_unit": {
+            "type": "string",
+            "enum": [
+                "structure",
+                "building",
+                "bridge",
+                "ship",
+                "fortress",
+                "region",
+                "domain",
+                "demiplane",
+                "plane"
+            ],
+            "description": "When kind=domain or similar, optional explicit qualifier."
+        },
+        "notes": {
+            "type": "string"
+        }
+    },
+    "allOf": [
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "enum": [
+                            "distance",
+                            "distance_los",
+                            "distance_loe"
+                        ]
+                    }
+                },
+                "required": [
+                    "kind"
+                ]
+            },
+            "then": {
+                "required": [
+                    "distance",
+                    "unit"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "personal"
+                    }
+                },
+                "required": [
+                    "kind"
+                ]
+            },
+            "then": {
+                "not": {
+                    "anyOf": [
+                        {
+                            "required": [
+                                "distance"
+                            ]
+                        },
+                        {
+                            "required": [
+                                "unit"
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "touch"
+                    }
+                },
+                "required": [
+                    "kind"
+                ]
+            },
+            "then": {
+                "not": {
+                    "anyOf": [
+                        {
+                            "required": [
+                                "distance"
+                            ]
+                        },
+                        {
+                            "required": [
+                                "unit"
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "distance_los"
+                    }
+                },
+                "required": [
+                    "kind"
+                ]
+            },
+            "then": {
+                "properties": {
+                    "requires": {
+                        "contains": {
+                            "const": "los"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "distance_loe"
+                    }
+                },
+                "required": [
+                    "kind"
+                ]
+            },
+            "then": {
+                "properties": {
+                    "requires": {
+                        "contains": {
+                            "const": "loe"
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "$defs": {
+        "scalar": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "mode"
+            ],
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "fixed",
+                        "per_level"
+                    ]
+                },
+                "value": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "per_level": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "min_level": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "max_level": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "cap_value": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "cap_level": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "rounding": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "floor",
+                        "ceil",
+                        "nearest"
+                    ]
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "mode": {
+                                "const": "fixed"
+                            }
+                        },
+                        "required": [
+                            "mode"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "value"
+                        ]
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "mode": {
+                                "const": "per_level"
+                            }
+                        },
+                        "required": [
+                            "mode"
+                        ]
+                    },
+                    "then": {
+                        "required": [
+                            "per_level"
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+}
+```
+
+---
+
+End of document.

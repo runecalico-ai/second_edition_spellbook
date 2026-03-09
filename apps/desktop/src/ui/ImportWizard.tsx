@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useImportActivity } from "../store/useImportActivity";
 import { useModal } from "../store/useModal";
 import FieldMapper, { type ParsedSpell } from "./FieldMapper";
 import BulkConflictSummaryDialog from "./components/BulkConflictSummaryDialog";
@@ -178,6 +179,15 @@ const conflictFieldLabels: Record<string, string> = {
 const getConflictKey = (conflict: SpellConflict, index: number) =>
   conflict.existing.id ? `${conflict.existing.id}-${index}` : `${conflict.incoming.name}-${index}`;
 
+export async function runWithImportActivity<T>(work: () => Promise<T>): Promise<T> {
+  useImportActivity.getState().beginImportActivity();
+  try {
+    return await work();
+  } finally {
+    useImportActivity.getState().endImportActivity();
+  }
+}
+
 export default function ImportWizard() {
   const { alert: modalAlert } = useModal();
   const [step, setStep] = useState<ImportStep>("select");
@@ -207,6 +217,7 @@ export default function ImportWizard() {
   const [jsonConflictIndex, setJsonConflictIndex] = useState(0);
   const [jsonResolutions, setJsonResolutions] = useState<HashConflictResolution[]>([]);
   const [bulkAction, setBulkAction] = useState<BulkConflictAction | null>(null);
+  const loadingRef = useRef(false);
 
   const hasLowConfidence = (spells: ParsedSpell[]): boolean => {
     return spells.some((spell) => {
@@ -414,48 +425,65 @@ export default function ImportWizard() {
     }
   };
 
-  const goToJsonPreview = async () => {
-    if (files.length === 0) return;
+  const withLoadingGuard = async (work: () => Promise<void>) => {
+    if (loadingRef.current) {
+      return;
+    }
+
+    loadingRef.current = true;
     setLoading(true);
     try {
-      const jsonFile = files.find((f) => f.name.toLowerCase().endsWith(".json"));
-      if (!jsonFile) return;
-      const text = await jsonFile.text();
-      setJsonPayload(text);
-      const preview = await invoke<HashPreviewResult>("preview_import_spell_json", {
-        payload: text,
-      });
-      setJsonPreviewResult(preview);
-      setStep("json-preview");
-    } catch (e) {
-      console.error("JSON preview failed:", e);
-      await modalAlert(`JSON preview failed: ${e}`, "Preview Error", "error");
+      await work();
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
 
-  const doJsonImport = async () => {
-    setLoading(true);
+  const goToJsonPreview = async () => {
+    if (files.length === 0) return;
     try {
-      const result = await invoke<HashImportResult>("import_spell_json", {
-        payload: jsonPayload,
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const jsonFile = files.find((f) => f.name.toLowerCase().endsWith(".json"));
+          if (!jsonFile) return;
+          const text = await jsonFile.text();
+          setJsonPayload(text);
+          const preview = await invoke<HashPreviewResult>("preview_import_spell_json", {
+            payload: text,
+          });
+          setJsonPreviewResult(preview);
+          setStep("json-preview");
+        });
       });
-      setJsonImportResult(result);
-      if (result.conflicts.length === 0) {
-        setStep("result");
-      } else {
-        setJsonConflicts(result.conflicts);
-        setJsonConflictIndex(0);
-        setJsonResolutions([]);
-        setBulkAction(null);
-        setStep("resolve-json");
-      }
+    } catch (e) {
+      console.error("JSON preview failed:", e);
+      await modalAlert(`JSON preview failed: ${e}`, "Preview Error", "error");
+    }
+  };
+
+  const doJsonImport = async () => {
+    try {
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const result = await invoke<HashImportResult>("import_spell_json", {
+            payload: jsonPayload,
+          });
+          setJsonImportResult(result);
+          if (result.conflicts.length === 0) {
+            setStep("result");
+          } else {
+            setJsonConflicts(result.conflicts);
+            setJsonConflictIndex(0);
+            setJsonResolutions([]);
+            setBulkAction(null);
+            setStep("resolve-json");
+          }
+        });
+      });
     } catch (e) {
       console.error("JSON import failed:", e);
       await modalAlert(`JSON import failed: ${e}`, "Import Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -474,27 +502,28 @@ export default function ImportWizard() {
     };
     const mappedAction = conflictActionMap[action];
     if (!mappedAction) return;
-    setLoading(true);
     try {
-      const resolutions: HashConflictResolution[] = jsonConflicts.map((c) => ({
-        existingId: c.existingId,
-        incomingContentHash: c.incomingContentHash,
-        action: mappedAction,
-      }));
-      const result = await invoke<HashImportResult>("resolve_import_spell_json", {
-        payload: jsonPayload,
-        resolveOptions: {
-          resolutions,
-          defaultAction: null,
-        },
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const resolutions: HashConflictResolution[] = jsonConflicts.map((c) => ({
+            existingId: c.existingId,
+            incomingContentHash: c.incomingContentHash,
+            action: mappedAction,
+          }));
+          const result = await invoke<HashImportResult>("resolve_import_spell_json", {
+            payload: jsonPayload,
+            resolveOptions: {
+              resolutions,
+              defaultAction: null,
+            },
+          });
+          setJsonImportResult(result);
+          setStep("result");
+        });
       });
-      setJsonImportResult(result);
-      setStep("result");
     } catch (e) {
       console.error("Bulk conflict resolution failed:", e);
       await modalAlert(`Bulk resolution failed: ${e}`, "Resolution Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -521,53 +550,55 @@ export default function ImportWizard() {
       }
     }
     // All conflicts resolved — submit
-    setLoading(true);
     try {
-      const result = await invoke<HashImportResult>("resolve_import_spell_json", {
-        payload: jsonPayload,
-        resolveOptions: {
-          resolutions: allResolutions,
-          defaultAction: null,
-        },
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const result = await invoke<HashImportResult>("resolve_import_spell_json", {
+            payload: jsonPayload,
+            resolveOptions: {
+              resolutions: allResolutions,
+              defaultAction: null,
+            },
+          });
+          setJsonImportResult(result);
+          setStep("result");
+        });
       });
-      setJsonImportResult(result);
-      setStep("result");
     } catch (e) {
       console.error("Conflict resolution failed:", e);
       await modalAlert(`Conflict resolution failed: ${e}`, "Resolution Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
   const goToPreview = async () => {
     if (files.length === 0) return;
-    setLoading(true);
     try {
-      const payloads = await Promise.all(
-        files.map(async (f) => {
-          const buf = await f.arrayBuffer();
-          return { name: f.name, content: Array.from(new Uint8Array(buf)) };
-        }),
-      );
-      setFilePayloads(payloads);
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const payloads = await Promise.all(
+            files.map(async (f) => {
+              const buf = await f.arrayBuffer();
+              return { name: f.name, content: Array.from(new Uint8Array(buf)) };
+            }),
+          );
+          setFilePayloads(payloads);
 
-      const response = await invoke<PreviewResult>("preview_import", { files: payloads });
-      setPreviewSpells(response.spells);
-      setPreviewArtifacts(response.artifacts);
-      setPreviewConflicts(response.conflicts);
+          const response = await invoke<PreviewResult>("preview_import", { files: payloads });
+          setPreviewSpells(response.spells);
+          setPreviewArtifacts(response.artifacts);
+          setPreviewConflicts(response.conflicts);
 
-      const hasHighLevel = response.spells.some((s) => (s.level || 0) >= 10 || s.isQuestSpell);
-      if (hasHighLevel && !suppressWarning) {
-        setShowHighLevelWarning(true);
-      }
+          const hasHighLevel = response.spells.some((s) => (s.level || 0) >= 10 || s.isQuestSpell);
+          if (hasHighLevel && !suppressWarning) {
+            setShowHighLevelWarning(true);
+          }
 
-      setStep("preview");
+          setStep("preview");
+        });
+      });
     } catch (e) {
       console.error("Preview failed:", e);
       await modalAlert(`Preview failed: ${e}`, "Preview Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -586,67 +617,69 @@ export default function ImportWizard() {
   };
 
   const doImport = async () => {
-    setLoading(true);
     try {
-      setResolveResult(null);
-      const response = await invoke<ImportResult>("import_files", {
-        files: filePayloads,
-        allowOverwrite,
-        spells: mappedSpells,
-        artifacts: previewArtifacts,
-        conflicts: previewConflicts,
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          setResolveResult(null);
+          const response = await invoke<ImportResult>("import_files", {
+            files: filePayloads,
+            allowOverwrite,
+            spells: mappedSpells,
+            artifacts: previewArtifacts,
+            conflicts: previewConflicts,
+          });
+          setResult(response);
+          const conflicts = spellConflictsOnly(response.conflicts);
+          setSpellConflicts(conflicts);
+          if (conflicts.length > 0) {
+            setStep("resolve");
+          } else {
+            setStep("result");
+          }
+        });
       });
-      setResult(response);
-      const conflicts = spellConflictsOnly(response.conflicts);
-      setSpellConflicts(conflicts);
-      if (conflicts.length > 0) {
-        setStep("resolve");
-      } else {
-        setStep("result");
-      }
     } catch (e) {
       console.error("Import failed:", e);
       await modalAlert(`Import failed: ${e}`, "Import Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
   const resolveConflicts = async () => {
-    setLoading(true);
     try {
-      const resolutions = spellConflicts.map((conflict, index) => {
-        const key = getConflictKey(conflict, index);
-        const selection = conflictSelections[key];
-        const existingId = conflict.existing.id;
-        if (!existingId) {
-          throw new Error("Missing existing spell id.");
-        }
-        if (!selection || selection.action === "skip") {
-          return { action: "skip", existingId: existingId };
-        }
-        const resolvedSpell =
-          selection.action === "overwrite"
-            ? spellDetailToUpdate(conflict.incoming, existingId)
-            : mergeConflictSpell(conflict, selection);
-        return {
-          action: selection.action,
-          existingId: existingId,
-          spell: resolvedSpell,
-          artifact: conflict.artifact,
-        };
-      });
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const resolutions = spellConflicts.map((conflict, index) => {
+            const key = getConflictKey(conflict, index);
+            const selection = conflictSelections[key];
+            const existingId = conflict.existing.id;
+            if (!existingId) {
+              throw new Error("Missing existing spell id.");
+            }
+            if (!selection || selection.action === "skip") {
+              return { action: "skip", existingId: existingId };
+            }
+            const resolvedSpell =
+              selection.action === "overwrite"
+                ? spellDetailToUpdate(conflict.incoming, existingId)
+                : mergeConflictSpell(conflict, selection);
+            return {
+              action: selection.action,
+              existingId: existingId,
+              spell: resolvedSpell,
+              artifact: conflict.artifact,
+            };
+          });
 
-      const response = await invoke<ResolveImportResult>("resolve_import_conflicts", {
-        resolutions,
+          const response = await invoke<ResolveImportResult>("resolve_import_conflicts", {
+            resolutions,
+          });
+          setResolveResult(response);
+          setStep("result");
+        });
       });
-      setResolveResult(response);
-      setStep("result");
     } catch (e) {
       console.error("Conflict resolution failed:", e);
       await modalAlert(`Conflict resolution failed: ${e}`, "Resolution Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -709,6 +742,7 @@ export default function ImportWizard() {
             data-testid="import-file-input"
             aria-label="Select files to import"
             onChange={handleFileChange}
+            disabled={loading}
             className="block w-full text-sm text-neutral-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-neutral-800 file:text-neutral-300 hover:file:bg-neutral-700"
           />
           {files.length > 0 && (
@@ -772,6 +806,7 @@ export default function ImportWizard() {
               type="button"
               data-testid="btn-back-to-select-json"
               onClick={() => setStep("select")}
+              disabled={loading}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
               ← Back
@@ -863,6 +898,7 @@ export default function ImportWizard() {
               type="button"
               data-testid="btn-back-to-select"
               onClick={() => setStep("select")}
+              disabled={loading}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
               ← Back
@@ -959,6 +995,7 @@ export default function ImportWizard() {
               type="button"
               data-testid="btn-back-to-preview"
               onClick={() => setStep("preview")}
+              disabled={loading}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
               ← Back
@@ -1116,6 +1153,7 @@ export default function ImportWizard() {
             <button
               type="button"
               onClick={() => setStep("confirm")}
+              disabled={loading}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
               ← Back
@@ -1147,6 +1185,7 @@ export default function ImportWizard() {
             return (
               <BulkConflictSummaryDialog
                 conflictCount={jsonConflicts.length}
+                disabled={loading}
                 onAction={(action) => {
                   setBulkAction(action);
                   void handleBulkAction(action);
@@ -1163,6 +1202,7 @@ export default function ImportWizard() {
               conflict={currentConflict}
               conflictIndex={jsonConflictIndex}
               totalConflicts={jsonConflicts.length}
+              disabled={loading}
               onResolve={handleConflictResolve}
             />
           );

@@ -1,0 +1,95 @@
+
+Running 1 test using 1 worker
+
+Tauri binary: C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\src-tauri\target\debug\spellbook-desktop.exe
+CDP port: 9000
+Data directory: C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\tests\tmp\data-w0-1771677813184
+Ensuring ports 5173 and 9000 are free...
+Starting Vite dev server on port 5173...
+Waiting for server on port 5173...
+Server ready on port 5173
+(node:22284) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+VITE ERR: npm warn Unknown env config "verify-deps-before-run". This will stop working in the next major version of npm.
+VITE: [32m[1mVITE[22m v7.3.0[39m  [2mready in [0m[1m383[22m[2m[0m ms[22m
+
+  [32mΓ₧£[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+Launching Tauri app...
+Waiting for CDP endpoint on port 9000...
+CDP not ready yet (0s)
+APP: [2m2026-02-21T12:43:41.012218Z[0m [32m INFO[0m [2mspellbook_desktop::db::pool[0m[2m:[0m sqlite-vec: loaded extension [3mpath[0m[2m=[0mC:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\tests\tmp\data-w0-1771677813184\vec0.dll
+APP: [2m2026-02-21T12:43:41.012512Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m DB migration start [3mversion[0m[2m=[0m0
+CDP connected! Found 1 context(s), 1 page(s)
+Connecting to CDP...
+Waiting for app to load...
+APP: [2m2026-02-21T12:43:41.181225Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m Applying migration 0006
+APP: [2m2026-02-21T12:43:41.188942Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m Applying migration 0007
+APP: [2m2026-02-21T12:43:41.251613Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m Applying migration 0008
+APP: [2m2026-02-21T12:43:41.263862Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m Applying migration 0009
+APP: [2m2026-02-21T12:43:41.295538Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m Applying migration 0010
+APP: [2m2026-02-21T12:43:41.358205Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m Applying migration 0011
+APP: [2m2026-02-21T12:43:41.365262Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m Applying migration 0012
+APP: [2m2026-02-21T12:43:41.381662Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m Applying migration 0013
+APP: [2m2026-02-21T12:43:41.394519Z[0m [32m INFO[0m [2mspellbook_desktop::db::migrations[0m[2m:[0m DB migration complete [3mversion[0m[2m=[0m13
+App loaded at: http://127.0.0.1:5173/
+Connected to page: "Spellbook" at http://127.0.0.1:5173/
+Importing file(s): C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\tests\tmp\conflicted-1771677830401-1771677830405.md
+Resetting import wizard...
+Navigating to: Import
+APP ERR: [sync_check] spell_id=1: flat vs canonical mismatch: ["casting_time"]
+Opening spell: Conflicted Record 1771677830401
+Navigating to: Library
+APP ERR: [sync_check] spell_id=1: flat vs canonical mismatch: ["casting_time", "components"]
+Closing Playwright browser...
+Cleaning up Tauri app (PID: 26996)...
+Cleaning up Vite dev server (PID: 21344)...
+Cleaning up data directory: C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\tests\tmp\data-w0-1771677813184
+Tauri app (PID: 26996) exited with code 1 and signal null
+Tauri app exited with error code 1
+Successfully removed data directory: C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\tests\tmp\data-w0-1771677813184
+  Γ£ÿ  1 tests\spell_editor_structured_data.spec.ts:294:3 ΓÇ║ Spell Editor structured data and hash display ΓÇ║ Tradition validation: conflicted record blocks save until cleared (34.3s)
+
+
+  1) tests\spell_editor_structured_data.spec.ts:294:3 ΓÇ║ Spell Editor structured data and hash display ΓÇ║ Tradition validation: conflicted record blocks save until cleared ΓÇ║ Change tradition to ARCANE, banner disappears, save blocked 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('heading', { name: 'Edit Spell' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByRole('heading', { name: 'Edit Spell' })[22m
+
+
+      352 |         // Modal might not appear if it's not a generic error.
+      353 |       }
+    > 354 |       await expect(page.getByRole("heading", { name: "Edit Spell" })).toBeVisible();
+          |                                                                       ^
+      355 |     });
+      356 |
+      357 |     await test.step("Clear sphere field, save succeeds", async () => {
+        at C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\tests\spell_editor_structured_data.spec.ts:354:71
+        at C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\tests\spell_editor_structured_data.spec.ts:339:5
+
+    attachment #1: screenshot (image/png) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\spell_editor_structured_da-62ef9-d-blocks-save-until-cleared\test-failed-1.png
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    attachment #3: trace (application/zip) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    test-results\spell_editor_structured_da-62ef9-d-blocks-save-until-cleared\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results\spell_editor_structured_da-62ef9-d-blocks-save-until-cleared\trace.zip
+
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  1 failed
+    tests\spell_editor_structured_data.spec.ts:294:3 ΓÇ║ Spell Editor structured data and hash display ΓÇ║ Tradition validation: conflicted record blocks save until cleared 
+
+To open last HTML report run:
+[36m[39m
+[36m  pnpm exec playwright show-report[39m
+[36m[39m

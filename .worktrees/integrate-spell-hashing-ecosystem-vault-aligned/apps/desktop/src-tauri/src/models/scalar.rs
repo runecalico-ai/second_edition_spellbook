@@ -1,0 +1,106 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScalarMode {
+    #[serde(alias = "FIXED", alias = "Fixed")]
+    Fixed,
+    #[serde(alias = "PER_LEVEL", alias = "PerLevel")]
+    PerLevel,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScalarRounding {
+    #[serde(alias = "NONE", alias = "None")]
+    None,
+    #[serde(alias = "FLOOR", alias = "Floor")]
+    Floor,
+    #[serde(alias = "CEIL", alias = "Ceil")]
+    Ceil,
+    #[serde(alias = "NEAREST", alias = "Nearest")]
+    Nearest,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct SpellScalar {
+    pub mode: ScalarMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "per_level")]
+    pub per_level: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "min_level")]
+    pub min_level: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_level")]
+    pub max_level: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "cap_value")]
+    pub cap_value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "cap_level")]
+    pub cap_level: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rounding: Option<ScalarRounding>,
+}
+
+impl Default for SpellScalar {
+    fn default() -> Self {
+        Self {
+            mode: ScalarMode::Fixed,
+            value: None,
+            per_level: None,
+            min_level: None,
+            max_level: None,
+            cap_value: None,
+            cap_level: None,
+            rounding: None,
+        }
+    }
+}
+
+impl SpellScalar {
+    pub fn fixed(value: f64) -> Self {
+        Self {
+            mode: ScalarMode::Fixed,
+            value: Some(value),
+            ..Default::default()
+        }
+    }
+
+    pub fn per_level(per_level: f64) -> Self {
+        Self {
+            mode: ScalarMode::PerLevel,
+            per_level: Some(per_level),
+            ..Default::default()
+        }
+    }
+
+    pub fn to_text(&self) -> String {
+        let value = self.value.unwrap_or(0.0);
+        match self.mode {
+            ScalarMode::Fixed => format_numeric(value),
+            ScalarMode::PerLevel => {
+                let per_level = self.per_level.unwrap_or(0.0);
+                if value == 0.0 {
+                    format!("{}/level", format_numeric(per_level))
+                } else {
+                    format!(
+                        "{}+{}/level",
+                        format_numeric(value),
+                        format_numeric(per_level)
+                    )
+                }
+            }
+        }
+    }
+}
+
+pub fn format_numeric(value: f64) -> String {
+    if value.fract() == 0.0 {
+        format!("{}", value as i64)
+    } else {
+        format!("{}", value)
+    }
+}
+
+// SpellScalar represents a scalable numerical value (fixed or per-level).

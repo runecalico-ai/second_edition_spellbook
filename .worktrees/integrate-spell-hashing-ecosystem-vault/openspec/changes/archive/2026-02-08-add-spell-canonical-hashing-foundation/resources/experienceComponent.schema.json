@@ -1,0 +1,350 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.com/schemas/ExperienceComponentSpec.schema.json",
+    "title": "ExperienceComponentSpec",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "kind"
+    ],
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": [
+                "none",
+                "fixed",
+                "per_unit",
+                "formula",
+                "tiered",
+                "dm_adjudicated"
+            ]
+        },
+        "payer": {
+            "type": "string",
+            "enum": [
+                "caster",
+                "primary_caster",
+                "participant",
+                "recipient",
+                "item",
+                "other"
+            ],
+            "default": "caster",
+            "description": "Who pays the XP cost. 'recipient' is used for effects like Restoration variants; 'item' is for item-enchanting workflows where XP is embedded in an item-creation act."
+        },
+        "payment_timing": {
+            "type": "string",
+            "enum": [
+                "on_start",
+                "on_completion",
+                "on_effect",
+                "on_success",
+                "on_failure",
+                "on_both",
+                "dm"
+            ],
+            "default": "on_completion",
+            "description": "When XP is deducted relative to casting. Use 'dm' if source text is unclear."
+        },
+        "payment_semantics": {
+            "type": "string",
+            "enum": [
+                "spend",
+                "loss",
+                "drain",
+                "sacrifice"
+            ],
+            "default": "spend",
+            "description": "spend=resource-like; loss=removed from XP total; drain=level-drain style; sacrifice=explicit narrative cost (still represented in XP)."
+        },
+        "can_reduce_level": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether the rules text implies level reduction is possible/allowed. If unknown, set true and add notes."
+        },
+        "recoverability": {
+            "type": "string",
+            "enum": [
+                "normal_earning",
+                "not_recoverable",
+                "special_only",
+                "dm"
+            ],
+            "default": "normal_earning",
+            "description": "Whether the XP can be regained by earning XP normally, or if it is described as permanently lost."
+        },
+        "amount_xp": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "For kind=fixed. Expressed in XP."
+        },
+        "per_unit": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "xp_per_unit",
+                "unit_kind"
+            ],
+            "properties": {
+                "xp_per_unit": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "unit_kind": {
+                    "type": "string",
+                    "enum": [
+                        "gp_value_1000",
+                        "spell_level",
+                        "recipient_level",
+                        "hit_die",
+                        "creature",
+                        "day",
+                        "charge",
+                        "other"
+                    ]
+                },
+                "unit_label": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "Required if unit_kind=other. Human label for the unit."
+                },
+                "rounding": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "floor",
+                        "ceil",
+                        "nearest"
+                    ],
+                    "default": "none"
+                },
+                "min_xp": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "max_xp": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "formula": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "expr",
+                "vars"
+            ],
+            "properties": {
+                "expr": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "description": "A small pure expression language. Must be deterministic and side-effect free."
+                },
+                "vars": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                            "name",
+                            "var_kind"
+                        ],
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                            },
+                            "var_kind": {
+                                "type": "string",
+                                "enum": [
+                                    "gp_value",
+                                    "spell_level",
+                                    "caster_level",
+                                    "recipient_level",
+                                    "hit_dice",
+                                    "count",
+                                    "other"
+                                ]
+                            },
+                            "label": {
+                                "type": "string",
+                                "maxLength": 64
+                            }
+                        }
+                    }
+                },
+                "rounding": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "floor",
+                        "ceil",
+                        "nearest"
+                    ],
+                    "default": "none"
+                },
+                "min_xp": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "max_xp": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "tiered": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "when",
+                    "amount_xp"
+                ],
+                "properties": {
+                    "when": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "description": "Deterministic predicate in your condition DSL. E.g., 'effect == \"infravision\"' or 'wish_scope == \"major\"'."
+                    },
+                    "amount_xp": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "notes": {
+                        "type": "string",
+                        "maxLength": 1024
+                    }
+                }
+            },
+            "description": "Used when XP varies by chosen effect (e.g., Permanency)."
+        },
+        "dm_guidance": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Free text guidance for kind=dm_adjudicated, or to clarify ambiguous sources."
+        },
+        "source_text": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Optional: quoted/paraphrased component line from the source spell."
+        },
+        "notes": {
+            "type": "string",
+            "maxLength": 2048
+        }
+    },
+    "allOf": [
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "none"
+                    }
+                }
+            },
+            "then": {
+                "not": {
+                    "anyOf": [
+                        {
+                            "required": [
+                                "amount_xp"
+                            ]
+                        },
+                        {
+                            "required": [
+                                "per_unit"
+                            ]
+                        },
+                        {
+                            "required": [
+                                "formula"
+                            ]
+                        },
+                        {
+                            "required": [
+                                "tiered"
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "fixed"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "amount_xp"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "per_unit"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "per_unit"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "formula"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "formula"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "tiered"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "tiered"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "dm_adjudicated"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "dm_guidance"
+                ]
+            }
+        }
+    ]
+}

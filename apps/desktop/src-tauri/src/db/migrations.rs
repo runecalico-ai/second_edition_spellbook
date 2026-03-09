@@ -2,6 +2,30 @@ use crate::error::AppError;
 use rusqlite::Connection;
 use tracing::{info, warn};
 
+fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    let sql = format!(
+        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
+        table.replace('\'', "''")
+    );
+    conn.query_row(&sql, [column], |_| Ok(())).is_ok()
+}
+
+fn apply_hash_reference_columns_migration(conn: &Connection) -> Result<(), AppError> {
+    if !has_column(conn, "character_class_spell", "spell_content_hash") {
+        conn.execute(
+            "ALTER TABLE character_class_spell ADD COLUMN spell_content_hash TEXT",
+            [],
+        )?;
+    }
+    if !has_column(conn, "artifact", "spell_content_hash") {
+        conn.execute("ALTER TABLE artifact ADD COLUMN spell_content_hash TEXT", [])?;
+    }
+
+    let sql = include_str!("../../../../../db/migrations/0015_add_hash_reference_columns.sql");
+    conn.execute_batch(sql)?;
+    Ok(())
+}
+
 pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
     let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     info!(version, "DB migration start");
@@ -115,7 +139,134 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 14", [])?;
     }
 
-    info!(version = 14, "DB migration complete");
+    if version < 15 {
+        info!("Applying migration 0015");
+        apply_hash_reference_columns_migration(conn)?;
+        conn.execute("PRAGMA user_version = 15", [])?;
+    }
+
+    info!(version = 15, "DB migration complete");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_migrations_adds_hash_reference_columns() {
+        let conn = Connection::open_in_memory().expect("open db");
+
+        load_migrations(&conn).expect("load migrations");
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("query user_version");
+
+        assert_eq!(version, 15);
+        assert!(has_column(&conn, "character_class_spell", "spell_content_hash"));
+        assert!(has_column(&conn, "artifact", "spell_content_hash"));
+    }
+
+    #[test]
+    fn test_migration_0015_backfills_existing_hash_references() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_hash TEXT
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            PRAGMA user_version = 14;
+
+            INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes)
+            VALUES (7, 1, 'KNOWN', NULL);
+            INSERT INTO artifact (type, hash, spell_id, path, metadata, imported_at)
+            VALUES ('source', 'artifact-hash', 1, 'spell.md', NULL, '2026-03-08T00:00:00Z');
+            "#,
+        )
+        .expect("seed version 14 schema");
+
+        load_migrations(&conn).expect("apply migration 0015");
+
+        let character_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query character hash");
+        let artifact_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query artifact hash");
+
+        assert_eq!(character_hash, "hash-1");
+        assert_eq!(artifact_hash, "hash-1");
+    }
+
+    #[test]
+    fn test_migration_0015_is_idempotent_when_columns_already_exist() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_hash TEXT
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                spell_content_hash TEXT
+            );
+            PRAGMA user_version = 14;
+            "#,
+        )
+        .expect("seed version 14 schema with hash columns");
+
+        load_migrations(&conn).expect("apply idempotent migration 0015");
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("query user_version");
+        assert_eq!(version, 15);
+        assert!(has_column(&conn, "character_class_spell", "spell_content_hash"));
+        assert!(has_column(&conn, "artifact", "spell_content_hash"));
+    }
 }

@@ -1,0 +1,185 @@
+   Compiling spellbook-desktop v0.1.0 (C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\src-tauri)
+error[E0308]: mismatched types
+   --> src\commands\import.rs:900:41
+    |
+900 |         .map_err(|e| AppError::Database(e.to_string()))?;
+    |                      ------------------ ^^^^^^^^^^^^^ expected `Error`, found `String`
+    |                      |
+    |                      arguments to this enum variant are incorrect
+    |
+note: tuple variant defined here
+   --> src\error.rs:8:5
+    |
+  8 |     Database(#[from] rusqlite::Error),
+    |     ^^^^^^^^
+help: try removing the method call
+    |
+900 -         .map_err(|e| AppError::Database(e.to_string()))?;
+900 +         .map_err(|e| AppError::Database(e))?;
+    |
+
+error[E0308]: mismatched types
+   --> src\commands\import.rs:910:49
+    |
+910 |                 .map_err(|e| AppError::Database(e.to_string()))?;
+    |                              ------------------ ^^^^^^^^^^^^^ expected `Error`, found `String`
+    |                              |
+    |                              arguments to this enum variant are incorrect
+    |
+note: tuple variant defined here
+   --> src\error.rs:8:5
+    |
+  8 |     Database(#[from] rusqlite::Error),
+    |     ^^^^^^^^
+help: try removing the method call
+    |
+910 -                 .map_err(|e| AppError::Database(e.to_string()))?;
+910 +                 .map_err(|e| AppError::Database(e))?;
+    |
+
+error[E0308]: mismatched types
+   --> src\commands\import.rs:937:60
+    |
+937 |                 sp.commit().map_err(|e| AppError::Database(e.to_string()))?;
+    |                                         ------------------ ^^^^^^^^^^^^^ expected `Error`, found `String`
+    |                                         |
+    |                                         arguments to this enum variant are incorrect
+    |
+note: tuple variant defined here
+   --> src\error.rs:8:5
+    |
+  8 |     Database(#[from] rusqlite::Error),
+    |     ^^^^^^^^
+help: try removing the method call
+    |
+937 -                 sp.commit().map_err(|e| AppError::Database(e.to_string()))?;
+937 +                 sp.commit().map_err(|e| AppError::Database(e))?;
+    |
+
+error[E0308]: mismatched types
+   --> src\commands\import.rs:970:60
+    |
+970 |                 sp.commit().map_err(|e| AppError::Database(e.to_string()))?;
+    |                                         ------------------ ^^^^^^^^^^^^^ expected `Error`, found `String`
+    |                                         |
+    |                                         arguments to this enum variant are incorrect
+    |
+note: tuple variant defined here
+   --> src\error.rs:8:5
+    |
+  8 |     Database(#[from] rusqlite::Error),
+    |     ^^^^^^^^
+help: try removing the method call
+    |
+970 -                 sp.commit().map_err(|e| AppError::Database(e.to_string()))?;
+970 +                 sp.commit().map_err(|e| AppError::Database(e))?;
+    |
+
+error[E0308]: mismatched types
+   --> src\commands\import.rs:999:37
+    |
+998 | ...                   replace_with_new_impl(
+    |                       --------------------- arguments to this function are incorrect
+999 | ...                       &sp,
+    |                           ^^^ expected `&Transaction<'_>`, found `&Savepoint<'_>`
+    |
+    = note: expected reference `&Transaction<'_>`
+               found reference `&Savepoint<'_>`
+note: function defined here
+   --> src\commands\import.rs:732:4
+    |
+732 | fn replace_with_new_impl(
+    |    ^^^^^^^^^^^^^^^^^^^^^
+733 |     tx: &rusqlite::Transaction,
+    |     --------------------------
+
+error[E0308]: mismatched types
+    --> src\commands\import.rs:1052:60
+     |
+1052 |   ...                   existing_content_hash: existing_hash
+     |  ______________________________________________^
+1053 | | ...                       .clone()
+1054 | | ...                       .unwrap_or_default(),
+     | |______________________________________________^ expected `Option<String>`, found `String`
+     |
+     = note: expected enum `std::option::Option<std::string::String>`
+              found struct `std::string::String`
+help: try wrapping the expression in `Some`
+     |
+1052 ~                                     existing_content_hash: Some(existing_hash
+1053 |                                         .clone()
+1054 ~                                         .unwrap_or_default()),
+     |
+
+error[E0308]: mismatched types
+    --> src\commands\import.rs:1064:52
+     |
+1064 | ...                   existing_content_hash: existing_hash.clone().unwrap_or_default(),
+     |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Option<String>`, found `String`
+     |
+     = note: expected enum `std::option::Option<std::string::String>`
+              found struct `std::string::String`
+help: try wrapping the expression in `Some`
+     |
+1064 |                             existing_content_hash: Some(existing_hash.clone().unwrap_or_default()),
+     |                                                    +++++                                         +
+
+error[E0308]: mismatched types
+    --> src\commands\import.rs:1069:64
+     |
+1069 |                     sp.commit().map_err(|e| AppError::Database(e.to_string()))?;
+     |                                             ------------------ ^^^^^^^^^^^^^ expected `Error`, found `String`
+     |                                             |
+     |                                             arguments to this enum variant are incorrect
+     |
+note: tuple variant defined here
+    --> src\error.rs:8:5
+     |
+   8 |     Database(#[from] rusqlite::Error),
+     |     ^^^^^^^^
+help: try removing the method call
+     |
+1069 -                     sp.commit().map_err(|e| AppError::Database(e.to_string()))?;
+1069 +                     sp.commit().map_err(|e| AppError::Database(e))?;
+     |
+
+error[E0308]: mismatched types
+    --> src\commands\import.rs:1106:56
+     |
+1106 |             sp.commit().map_err(|e| AppError::Database(e.to_string()))?;
+     |                                     ------------------ ^^^^^^^^^^^^^ expected `Error`, found `String`
+     |                                     |
+     |                                     arguments to this enum variant are incorrect
+     |
+note: tuple variant defined here
+    --> src\error.rs:8:5
+     |
+   8 |     Database(#[from] rusqlite::Error),
+     |     ^^^^^^^^
+help: try removing the method call
+     |
+1106 -             sp.commit().map_err(|e| AppError::Database(e.to_string()))?;
+1106 +             sp.commit().map_err(|e| AppError::Database(e))?;
+     |
+
+error[E0308]: mismatched types
+    --> src\commands\import.rs:1118:48
+     |
+1118 |     tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
+     |                             ------------------ ^^^^^^^^^^^^^ expected `Error`, found `String`
+     |                             |
+     |                             arguments to this enum variant are incorrect
+     |
+note: tuple variant defined here
+    --> src\error.rs:8:5
+     |
+   8 |     Database(#[from] rusqlite::Error),
+     |     ^^^^^^^^
+help: try removing the method call
+     |
+1118 -     tx.commit().map_err(|e| AppError::Database(e.to_string()))?;
+1118 +     tx.commit().map_err(|e| AppError::Database(e))?;
+     |
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `spellbook-desktop` (lib) due to 10 previous errors

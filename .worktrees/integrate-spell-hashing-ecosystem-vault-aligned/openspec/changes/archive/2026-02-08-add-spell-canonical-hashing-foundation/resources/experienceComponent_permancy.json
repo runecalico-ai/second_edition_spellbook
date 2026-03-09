@@ -1,0 +1,22 @@
+{
+    "kind": "tiered",
+    "payer": "caster",
+    "payment_timing": "on_effect",
+    "payment_semantics": "spend",
+    "tiered": [
+        {
+            "when": "effect == \"infravision\"",
+            "amount_xp": 1000
+        },
+        {
+            "when": "effect == \"telepathy\"",
+            "amount_xp": 5000
+        },
+        {
+            "when": "effect == \"other\"",
+            "amount_xp": 9000,
+            "notes": "DM must assign per source table."
+        }
+    ],
+    "notes": "This is the normalized representation; map your spell’s effect catalog to 'effect' values."
+}

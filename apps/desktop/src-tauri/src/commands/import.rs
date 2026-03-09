@@ -1,8 +1,9 @@
 use crate::commands::spells::{
-    apply_spell_update_with_conn, canonicalize_spell_detail, get_spell_from_conn, log_changes,
+    apply_spell_update_with_conn, canonicalize_spell_detail, diff_spells, get_spell_from_conn,
+    log_changes,
 };
 use crate::commands::vault::{
-    export_spell_to_vault_by_hash, optimize_vault_with_root, VaultMaintenanceState,
+    run_vault_gc_with_root, write_spell_json_atomically, VaultMaintenanceState,
 };
 use crate::db::Pool;
 use crate::error::AppError;
@@ -322,11 +323,7 @@ fn process_spell(spell: &mut CanonicalSpell) -> Result<(String, Vec<String>), Ap
     let mut warnings = Vec::new();
     check_schema_version_warn(spell, &mut warnings);
 
-    let imported_hash: Option<String> = spell
-        .id
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .map(String::from);
+    let imported_hash = spell.id.take().filter(|s| !s.is_empty());
     let res = spell.normalize(None);
     if res.notes_truncated {
         return Err(AppError::Import(
@@ -344,6 +341,7 @@ fn process_spell(spell: &mut CanonicalSpell) -> Result<(String, Vec<String>), Ap
             ));
         }
     }
+    spell.id = Some(hash.clone());
     Ok((hash, warnings))
 }
 
@@ -863,7 +861,7 @@ fn apply_import_spell_json_impl(
     let mut seen_hash_in_batch: HashMap<String, i64> = HashMap::new();
     // For Keep Both: track names we insert in this batch (base name or "Name (N)") so we pick unique N.
     let mut keep_both_names: HashSet<String> = HashSet::new();
-    let mut vault_hashes_to_refresh: HashSet<String> = HashSet::new();
+    let mut vault_spell_json_to_refresh: HashMap<String, String> = HashMap::new();
 
     let mut tx = conn.unchecked_transaction().map_err(AppError::Database)?;
 
@@ -898,7 +896,8 @@ fn apply_import_spell_json_impl(
                         params![merged_tags, merged_canonical, Utc::now().to_rfc3339(), spell_id],
                     )?;
                     merged_count += 1;
-                    vault_hashes_to_refresh.insert(content_hash.clone());
+                    vault_spell_json_to_refresh
+                        .insert(content_hash.clone(), merged_canonical.clone());
                 }
                 sp.commit().map_err(AppError::Database)?;
                 return Ok(());
@@ -932,7 +931,8 @@ fn apply_import_spell_json_impl(
                         params![merged_tags, merged_canonical, Utc::now().to_rfc3339(), spell_id],
                     )?;
                     merged_count += 1;
-                    vault_hashes_to_refresh.insert(content_hash.clone());
+                    vault_spell_json_to_refresh
+                        .insert(content_hash.clone(), merged_canonical.clone());
                 }
                 sp.commit().map_err(AppError::Database)?;
                 return Ok(());
@@ -971,7 +971,10 @@ fn apply_import_spell_json_impl(
                                 )?;
                                 seen_hash_in_batch.insert(content_hash.clone(), existing_id);
                                 conflicts_resolved.replace_count += 1;
-                                vault_hashes_to_refresh.insert(content_hash.clone());
+                                let canonical_json = serde_json::to_string(&item.spell)
+                                    .map_err(|e| AppError::Import(e.to_string()))?;
+                                vault_spell_json_to_refresh
+                                    .insert(content_hash.clone(), canonical_json);
                                 migration_manager::sync_check_spell(&sp, existing_id);
                                 if let Ok(Some(detail)) = get_spell_from_conn(&sp, existing_id) {
                                     imported_spells.push(detail);
@@ -986,6 +989,10 @@ fn apply_import_spell_json_impl(
                                 keep_both_names.insert(unique_name.clone());
                                 let mut spell_clone = item.spell.clone();
                                 spell_clone.name = unique_name;
+                                let keep_both_hash = spell_clone
+                                    .compute_hash()
+                                    .map_err(|e| AppError::Import(format!("Hash/validation: {}", e)))?;
+                                spell_clone.id = Some(keep_both_hash.clone());
                                 let canon_json = serde_json::to_string(&spell_clone)
                                     .map_err(|e| AppError::Import(e.to_string()))?;
                                 let row = canonical_spell_to_flat_row(&spell_clone);
@@ -1000,14 +1007,15 @@ fn apply_import_spell_json_impl(
                                         row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7,
                                         row.8, row.9, row.10, row.11, row.12, row.13, row.14,
                                         row.15, row.16, row.17, row.18, row.19, row.20, row.21,
-                                        row.22, canon_json, content_hash.clone(), row.23,
+                                        row.22, canon_json, keep_both_hash.clone(), row.23,
                                     ],
                                 )?;
                                 let new_id = sp.last_insert_rowid();
-                                seen_hash_in_batch.insert(content_hash, new_id);
+                                seen_hash_in_batch.insert(keep_both_hash.clone(), new_id);
                                 conflicts_resolved.keep_both_count += 1;
                                 imported_count += 1;
-                                vault_hashes_to_refresh.insert(item.content_hash.clone());
+                                vault_spell_json_to_refresh
+                                    .insert(keep_both_hash, canon_json.clone());
                                 migration_manager::sync_check_spell(&sp, new_id);
                                 if let Ok(Some(detail)) = get_spell_from_conn(&sp, new_id) {
                                     imported_spells.push(detail);
@@ -1058,7 +1066,7 @@ fn apply_import_spell_json_impl(
             let new_id = sp.last_insert_rowid();
             seen_hash_in_batch.insert(content_hash.clone(), new_id);
             imported_count += 1;
-            vault_hashes_to_refresh.insert(content_hash.clone());
+            vault_spell_json_to_refresh.insert(content_hash.clone(), canon_json.clone());
 
             migration_manager::sync_check_spell(&sp, new_id);
 
@@ -1082,9 +1090,16 @@ fn apply_import_spell_json_impl(
         }
     }
 
-    tx.commit().map_err(AppError::Database)?;
-    for content_hash in &vault_hashes_to_refresh {
-        export_spell_to_vault_by_hash(conn, content_hash)?;
+    let root = app_data_dir()?;
+    let written_paths = write_pending_vault_files(
+        &root,
+        vault_spell_json_to_refresh
+            .iter()
+            .map(|(content_hash, canonical_json)| (content_hash.as_str(), canonical_json.as_str())),
+    )?;
+    if let Err(err) = tx.commit().map_err(AppError::Database) {
+        cleanup_written_vault_files(&written_paths);
+        return Err(err);
     }
 
     Ok(ImportSpellJsonResult {
@@ -1117,12 +1132,405 @@ fn apply_import_spell_json_with_maintenance(
     items: Vec<PreviewSpellJsonItem>,
     resolve_options: Option<ImportSpellJsonResolveOptions>,
 ) -> Result<ImportSpellJsonResult, AppError> {
-    let _import_guard = maintenance_state.start_import()?;
+    let import_guard = maintenance_state.start_import()?;
     let result = apply_import_spell_json_impl(conn, items, resolve_options)?;
-    if result.imported_count > 0 {
-        let _ = optimize_vault_with_root(conn, root, None)?;
+    let changed_count = result.imported_count
+        + result.duplicates_skipped.merged_count
+        + result
+            .conflicts_resolved
+            .as_ref()
+            .map_or(0, |resolved| resolved.replace_count);
+    if changed_count == 0 {
+        drop(import_guard);
+        return Ok(result);
     }
+
+    let _gc_guard = import_guard.into_gc_guard()?;
+    run_post_import_gc_if_needed(conn, root, changed_count)?;
     Ok(result)
+}
+
+fn run_post_import_gc_if_needed(
+    conn: &rusqlite::Connection,
+    root: &std::path::Path,
+    changed_count: usize,
+) -> Result<(), AppError> {
+    if changed_count == 0 {
+        return Ok(());
+    }
+
+    let _ = run_vault_gc_with_root(conn, root)?;
+    Ok(())
+}
+
+fn cleanup_written_vault_files(paths: &[PathBuf]) {
+    for path in paths {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn write_pending_vault_files<I, H, J>(root: &std::path::Path, entries: I) -> Result<Vec<PathBuf>, AppError>
+where
+    I: IntoIterator<Item = (H, J)>,
+    H: AsRef<str>,
+    J: AsRef<str>,
+{
+    let mut written_paths = Vec::new();
+    for (content_hash, canonical_json) in entries {
+        match write_spell_json_atomically(root, content_hash.as_ref(), canonical_json.as_ref()) {
+            Ok(path) => written_paths.push(path),
+            Err(err) => {
+                cleanup_written_vault_files(&written_paths);
+                return Err(err);
+            }
+        }
+    }
+    Ok(written_paths)
+}
+
+#[cfg(test)]
+fn run_legacy_import_chunk_transaction<T>(
+    conn: &rusqlite::Connection,
+    operation: impl FnOnce(&rusqlite::Connection) -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    conn.execute_batch("BEGIN IMMEDIATE TRANSACTION")
+        .map_err(AppError::Database)?;
+
+    match operation(conn) {
+        Ok(value) => {
+            conn.execute_batch("COMMIT").map_err(AppError::Database)?;
+            Ok(value)
+        }
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(err)
+        }
+    }
+}
+
+fn run_legacy_import_chunk_with_vault_writes<T>(
+    conn: &rusqlite::Connection,
+    root: &std::path::Path,
+    operation: impl FnOnce(&rusqlite::Connection) -> Result<(T, Vec<PendingVaultSpellWrite>), AppError>,
+) -> Result<T, AppError> {
+    conn.execute_batch("BEGIN IMMEDIATE TRANSACTION")
+        .map_err(AppError::Database)?;
+
+    match operation(conn) {
+        Ok((value, pending_vault_writes)) => {
+            let written_paths = match write_pending_vault_files(
+                root,
+                pending_vault_writes
+                    .iter()
+                    .map(|pending| (pending.content_hash.as_str(), pending.canonical_json.as_str())),
+            ) {
+                Ok(paths) => paths,
+                Err(err) => {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    return Err(err);
+                }
+            };
+
+            if let Err(err) = conn.execute_batch("COMMIT").map_err(AppError::Database) {
+                cleanup_written_vault_files(&written_paths);
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(err);
+            }
+
+            Ok(value)
+        }
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(err)
+        }
+    }
+}
+
+struct PendingVaultSpellWrite {
+    content_hash: String,
+    canonical_json: String,
+}
+
+fn spell_update_from_import_spell(id: i64, spell: &ImportSpell) -> SpellUpdate {
+    SpellUpdate {
+        id,
+        name: spell.name.clone(),
+        school: spell.school.clone(),
+        sphere: spell.sphere.clone(),
+        class_list: spell.class_list.clone(),
+        level: spell.level,
+        range: spell.range.clone(),
+        components: spell.components.clone(),
+        material_components: spell.material_components.clone(),
+        casting_time: spell.casting_time.clone(),
+        duration: spell.duration.clone(),
+        area: spell.area.clone(),
+        saving_throw: spell.saving_throw.clone(),
+        damage: spell.damage.clone(),
+        magic_resistance: spell.magic_resistance.clone(),
+        reversible: spell.reversible,
+        description: spell.description.clone(),
+        tags: spell.tags.clone(),
+        source: spell.source.clone(),
+        edition: spell.edition.clone(),
+        author: spell.author.clone(),
+        license: spell.license.clone(),
+        is_quest_spell: spell.is_quest_spell,
+        is_cantrip: spell.is_cantrip,
+        ..Default::default()
+    }
+}
+
+fn upsert_import_artifact(
+    conn: &rusqlite::Connection,
+    spell_id: i64,
+    spell_content_hash: &str,
+    artifact: &ImportArtifact,
+) -> Result<(), AppError> {
+    if table_has_column(conn, "artifact", "spell_content_hash") {
+        let updated = conn.execute(
+            "UPDATE artifact
+             SET type = ?, hash = ?, imported_at = ?, spell_content_hash = ?
+             WHERE spell_id = ? AND path = ?",
+            params![
+                artifact.r#type,
+                artifact.hash,
+                artifact.imported_at,
+                spell_content_hash,
+                spell_id,
+                artifact.path
+            ],
+        )?;
+        if updated == 0 {
+            conn.execute(
+                "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+                params![
+                    spell_id,
+                    artifact.r#type,
+                    artifact.path,
+                    artifact.hash,
+                    artifact.imported_at,
+                    spell_content_hash
+                ],
+            )?;
+        }
+        return Ok(());
+    }
+
+    let updated = conn.execute(
+        "UPDATE artifact
+         SET type = ?, hash = ?, imported_at = ?
+         WHERE spell_id = ? AND path = ?",
+        params![
+            artifact.r#type,
+            artifact.hash,
+            artifact.imported_at,
+            spell_id,
+            artifact.path
+        ],
+    )?;
+    if updated == 0 {
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)",
+            params![
+                spell_id,
+                artifact.r#type,
+                artifact.path,
+                artifact.hash,
+                artifact.imported_at
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+fn apply_legacy_conflict_resolution_update(
+    conn: &rusqlite::Connection,
+    spell: &SpellUpdate,
+) -> Result<PendingVaultSpellWrite, AppError> {
+    let old_spell = get_spell_from_conn(conn, spell.id)?
+        .ok_or_else(|| AppError::Validation("conflict resolution spell not found".into()))?;
+    let old_hash = old_spell.content_hash.clone();
+    let changes = diff_spells(&old_spell, spell);
+
+    let detail = SpellDetail {
+        id: Some(spell.id),
+        name: spell.name.clone(),
+        school: spell.school.clone(),
+        sphere: spell.sphere.clone(),
+        class_list: spell.class_list.clone(),
+        level: spell.level,
+        range: spell.range.clone(),
+        components: spell.components.clone(),
+        material_components: spell.material_components.clone(),
+        casting_time: spell.casting_time.clone(),
+        duration: spell.duration.clone(),
+        area: spell.area.clone(),
+        saving_throw: spell.saving_throw.clone(),
+        damage: spell.damage.clone(),
+        magic_resistance: spell.magic_resistance.clone(),
+        reversible: spell.reversible,
+        description: spell.description.clone(),
+        tags: spell.tags.clone(),
+        source: spell.source.clone(),
+        edition: spell.edition.clone(),
+        author: spell.author.clone(),
+        license: spell.license.clone(),
+        is_quest_spell: spell.is_quest_spell,
+        is_cantrip: spell.is_cantrip,
+        schema_version: None,
+        artifacts: None,
+        canonical_data: None,
+        content_hash: None,
+        range_spec: spell.range_spec.clone(),
+        components_spec: spell.components_spec.clone(),
+        material_components_spec: spell.material_components_spec.clone(),
+        casting_time_spec: spell.casting_time_spec.clone(),
+        duration_spec: spell.duration_spec.clone(),
+        area_spec: spell.area_spec.clone(),
+        saving_throw_spec: spell.saving_throw_spec.clone(),
+        damage_spec: spell.damage_spec.clone(),
+        magic_resistance_spec: spell.magic_resistance_spec.clone(),
+    };
+    let (canonical, new_hash, canonical_json) = canonicalize_spell_detail(detail)?;
+
+    conn.execute(
+        "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
+         components=?, material_components=?, casting_time=?, duration=?, area=?,
+         saving_throw=?, damage=?, magic_resistance=?, reversible=?, description=?,
+         tags=?, source=?, edition=?, author=?, license=?, is_quest_spell=?,
+         is_cantrip=?, updated_at=?, canonical_data=?, content_hash=?,
+         schema_version=? WHERE id=?",
+        params![
+            spell.name,
+            spell.school,
+            spell.sphere,
+            spell.class_list,
+            spell.level,
+            spell.range,
+            spell.components,
+            spell.material_components,
+            spell.casting_time,
+            spell.duration,
+            spell.area,
+            spell.saving_throw,
+            spell.damage,
+            spell.magic_resistance,
+            spell.reversible.unwrap_or(0),
+            spell.description,
+            spell.tags,
+            spell.source,
+            spell.edition,
+            spell.author,
+            spell.license,
+            spell.is_quest_spell,
+            spell.is_cantrip,
+            Utc::now().to_rfc3339(),
+            canonical_json.clone(),
+            new_hash.clone(),
+            canonical.schema_version,
+            spell.id,
+        ],
+    )?;
+
+    if let Some(old_hash) = old_hash.as_deref() {
+        if old_hash != new_hash {
+            if table_has_column(conn, "character_class_spell", "spell_content_hash") {
+                conn.execute(
+                    "UPDATE character_class_spell SET spell_content_hash = ? WHERE spell_content_hash = ?",
+                    params![new_hash, old_hash],
+                )?;
+            }
+            if table_has_column(conn, "artifact", "spell_content_hash") {
+                conn.execute(
+                    "UPDATE artifact SET spell_content_hash = ? WHERE spell_content_hash = ?",
+                    params![new_hash, old_hash],
+                )?;
+            }
+        }
+    }
+
+    log_changes(conn, spell.id, changes)?;
+    migration_manager::sync_check_spell(conn, spell.id);
+
+    Ok(PendingVaultSpellWrite {
+        content_hash: new_hash,
+        canonical_json,
+    })
+}
+
+fn resolve_import_conflicts_with_conn_and_root(
+    conn: &rusqlite::Connection,
+    root: &std::path::Path,
+    resolutions: Vec<ImportConflictResolution>,
+) -> Result<ResolveImportResult, AppError> {
+    run_legacy_import_chunk_with_vault_writes(conn, root, |tx| {
+        let mut resolved = Vec::new();
+        let mut skipped = Vec::new();
+        let warnings = Vec::new();
+        let mut pending_vault_writes = Vec::new();
+
+            for resolution in resolutions {
+                let step = match resolution.action.as_str() {
+                    "skip" => {
+                        if let Some(existing_spell) = get_spell_from_conn(tx, resolution.existing_id)? {
+                            skipped.push(existing_spell.name);
+                        }
+                        Ok(())
+                    }
+                    "overwrite" | "merge" => {
+                        let spell = resolution.spell.ok_or_else(|| {
+                            AppError::Validation("missing spell for conflict resolution".into())
+                        })?;
+                        if spell.id != resolution.existing_id {
+                            return Err(AppError::Validation("conflict resolution id mismatch".into()));
+                        }
+
+                        let vault_write = apply_legacy_conflict_resolution_update(tx, &spell)?;
+                        pending_vault_writes.push(vault_write);
+                        resolved.push(spell.name.clone());
+
+                        if let Some(artifact) = resolution.artifact {
+                            upsert_import_artifact(
+                                tx,
+                                spell.id,
+                                &pending_vault_writes
+                                    .last()
+                                    .expect("pending vault write for resolved spell")
+                                    .content_hash,
+                                &artifact,
+                            )?;
+                        }
+                        Ok(())
+                    }
+                    _ => Err(AppError::Validation(format!(
+                        "Unknown conflict resolution action: {}",
+                        resolution.action
+                    ))),
+                };
+
+                step?;
+            }
+
+        Ok((
+            ResolveImportResult {
+                resolved,
+                skipped,
+                warnings,
+            },
+            pending_vault_writes,
+        ))
+    })
+}
+
+#[cfg(test)]
+fn run_with_import_maintenance<T>(
+    maintenance_state: &VaultMaintenanceState,
+    operation: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    let _import_guard = maintenance_state.start_import()?;
+    operation()
 }
 
 #[tauri::command]
@@ -1438,69 +1846,76 @@ pub async fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, App
 #[tauri::command]
 pub async fn import_files(
     state: State<'_, Arc<Pool>>,
+    maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     files: Vec<ImportFile>,
     allow_overwrite: bool,
     spells: Option<Vec<ImportSpell>>,
     artifacts: Option<Vec<ImportArtifact>>,
     conflicts: Option<Vec<ImportConflict>>,
 ) -> Result<ImportResult, AppError> {
-    let dir = app_data_dir()?.join("imports");
-    fs::create_dir_all(&dir)?;
+    let pool = state.inner().clone();
+    let gc_pool = pool.clone();
+    let maintenance_state = maintenance_state.inner().clone();
+    let import_guard = maintenance_state.start_import()?;
+    let result = async move {
+        let dir = app_data_dir()?.join("imports");
+        fs::create_dir_all(&dir)?;
 
-    // BATCH SIZE CONFIGURATION
-    const BATCH_SIZE: usize = 10;
+        // BATCH SIZE CONFIGURATION
+        const BATCH_SIZE: usize = 10;
 
-    let mut all_imported_spells = vec![];
-    let mut all_artifacts = vec![];
-    let mut all_conflicts = vec![];
-    let mut all_warnings = vec![];
-    let mut all_skipped = vec![];
+        let mut all_imported_spells = vec![];
+        let mut all_artifacts = vec![];
+        let mut all_conflicts = vec![];
+        let mut all_warnings = vec![];
+        let mut all_skipped = vec![];
+        let mut mutated_spell_count = 0usize;
 
-    // Pre-save all files to disk (keep this fast and simple)
-    let mut file_paths_map = HashMap::new();
-    let mut seen_names = HashMap::new();
+        // Pre-save all files to disk (keep this fast and simple)
+        let mut file_paths_map = HashMap::new();
+        let mut seen_names = HashMap::new();
 
-    for file in &files {
-        let (safe_name, changed) = sanitize_import_filename(&file.name);
+        for file in &files {
+            let (safe_name, changed) = sanitize_import_filename(&file.name);
 
-        if let Some(original) = seen_names.get(&safe_name) {
-            return Err(AppError::Validation(format!(
-                "Filename collision: '{}' and '{}' both sanitize to '{}'",
-                original, file.name, safe_name
-            )));
-        }
-        seen_names.insert(safe_name.clone(), file.name.clone());
-
-        if changed {
-            all_warnings.push(format!(
-                "Sanitized import file name '{}' to '{}'.",
-                file.name, safe_name
-            ));
-        }
-        let path = dir.join(&safe_name);
-        fs::write(&path, &file.content)?;
-        file_paths_map.insert(file.name.clone(), path);
-    }
-
-    // Branch Process:
-    // 1. Initial Import (needs_parsing=true): Chunk files -> Sidecar -> DB
-    // 2. Confirmation (needs_parsing=false): Chunk spells (overrides) -> DB
-
-    let needs_parsing = spells.is_none();
-
-    if needs_parsing {
-        // --- PATH A: INITIAL IMPORT (Sidecar -> DB) ---
-        for chunk in files.chunks(BATCH_SIZE) {
-            let chunk_paths: Vec<PathBuf> = chunk
-                .iter()
-                .filter_map(|f| file_paths_map.get(&f.name).cloned())
-                .collect();
-
-            if chunk_paths.is_empty() {
-                continue;
+            if let Some(original) = seen_names.get(&safe_name) {
+                return Err(AppError::Validation(format!(
+                    "Filename collision: '{}' and '{}' both sanitize to '{}'",
+                    original, file.name, safe_name
+                )));
             }
+            seen_names.insert(safe_name.clone(), file.name.clone());
 
-            let result = call_sidecar("import", json!({"files": chunk_paths})).await?;
+            if changed {
+                all_warnings.push(format!(
+                    "Sanitized import file name '{}' to '{}'.",
+                    file.name, safe_name
+                ));
+            }
+            let path = dir.join(&safe_name);
+            fs::write(&path, &file.content)?;
+            file_paths_map.insert(file.name.clone(), path);
+        }
+
+        // Branch Process:
+        // 1. Initial Import (needs_parsing=true): Chunk files -> Sidecar -> DB
+        // 2. Confirmation (needs_parsing=false): Chunk spells (overrides) -> DB
+
+        let needs_parsing = spells.is_none();
+
+        if needs_parsing {
+            // --- PATH A: INITIAL IMPORT (Sidecar -> DB) ---
+            for chunk in files.chunks(BATCH_SIZE) {
+                let chunk_paths: Vec<PathBuf> = chunk
+                    .iter()
+                    .filter_map(|f| file_paths_map.get(&f.name).cloned())
+                    .collect();
+
+                if chunk_paths.is_empty() {
+                    continue;
+                }
+
+                let result = call_sidecar("import", json!({"files": chunk_paths})).await?;
 
             // Parse Sidecar Result
             let parsed_spells: Vec<ImportSpell> =
@@ -1522,438 +1937,481 @@ pub async fn import_files(
                 .collect();
 
             // DB Transaction
-            let pool = state.inner().clone();
+            let pool = pool.clone();
             let allow_overwrite_clone = allow_overwrite;
 
             let result = tokio::task::spawn_blocking(move || {
                 let conn = pool.get()?;
-                let mut local_skipped = vec![];
-                let mut local_imported = vec![];
-                let mut artifacts_by_path = HashMap::new();
+                let root = app_data_dir()?;
+                run_legacy_import_chunk_with_vault_writes(&conn, &root, |conn| {
+                    let mut local_skipped = vec![];
+                    let mut local_imported = vec![];
+                    let mut local_vault_refresh = HashMap::new();
+                    let mut artifacts_by_path = HashMap::new();
 
-                for artifact in &parsed_artifacts {
-                    artifacts_by_path.insert(normalize_key(&artifact.path), artifact.clone());
-                }
-
-                let spell_sources: Vec<Option<String>> = parsed_artifacts
-                    .iter()
-                    .map(|artifact| Some(normalize_key(&artifact.path)))
-                    .collect();
-
-                let mut local_conflicts = batch_conflicts;
-
-                for (i, spell) in parsed_spells.iter().enumerate() {
-
-                    let detail = SpellDetail {
-                        id: None,
-                        name: spell.name.clone(),
-                        school: spell.school.clone(),
-                        sphere: spell.sphere.clone(),
-                        class_list: spell.class_list.clone(),
-                        level: spell.level,
-                        range: spell.range.clone(),
-                        components: spell.components.clone(),
-                        material_components: spell.material_components.clone(),
-                        casting_time: spell.casting_time.clone(),
-                        duration: spell.duration.clone(),
-                        area: spell.area.clone(),
-                        saving_throw: spell.saving_throw.clone(),
-                        damage: spell.damage.clone(),
-                        magic_resistance: spell.magic_resistance.clone(),
-                        reversible: spell.reversible,
-                        description: spell.description.clone(),
-                        tags: spell.tags.clone(),
-                        source: spell.source.clone(),
-                        edition: spell.edition.clone(),
-                        author: spell.author.clone(),
-                        license: spell.license.clone(),
-                        is_quest_spell: spell.is_quest_spell,
-                        is_cantrip: spell.is_cantrip,
-                        schema_version: spell.schema_version,
-                        artifacts: None,
-                        canonical_data: None,
-                        content_hash: None,
-                        ..Default::default()
-                    };
-                    let (canonical, hash, json) = canonicalize_spell_detail(detail.clone())?;
-
-                    let existing_id: Option<i64> = conn.query_row(
-                        "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
-                        params![spell.name, spell.level, spell.source],
-                        |row| row.get(0),
-                    ).optional()?;
-
-                    let spell_id = if let Some(id) = existing_id {
-                        if !allow_overwrite_clone {
-                            let existing_spell = get_spell_from_conn(&conn, id)?
-                                .ok_or_else(|| AppError::NotFound("Failed to fetch existing spell".into()))?;
-
-                            let source_path = spell.source_file.clone();
-                            let artifact_opt = source_path
-                                .as_ref()
-                                .map(|p| normalize_key(p))
-                                .and_then(|p| artifacts_by_path.get(&p).cloned())
-                                .or_else(|| {
-                                     spell_sources.get(i).and_then(|s| s.as_ref()).and_then(|p| artifacts_by_path.get(p).cloned())
-                                });
-
-                            let fields = build_conflict_fields(&existing_spell, spell);
-                            if fields.is_empty() {
-                                local_skipped.push(spell.name.clone());
-                            } else {
-                                local_conflicts.push(ImportConflict::Spell {
-                                    existing: Box::new(existing_spell),
-                                    incoming: Box::new(detail),
-                                    fields,
-                                    artifact: artifact_opt,
-                                });
-                            }
-                            continue;
-                        }
-
-                        conn.execute(
-                            "UPDATE spell SET name=?, level=?, source=?, school=?, sphere=?, class_list=?, range=?, components=?,
-                            material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
-                            damage=?, magic_resistance=?, reversible=?, description=?, tags=?, edition=?, author=?, license=?,
-                            is_quest_spell=?, is_cantrip=?, updated_at=?,
-                            canonical_data=?, content_hash=?, schema_version=? WHERE id=?",
-                            params![
-                                spell.name, spell.level, spell.source,
-                                spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
-                                spell.damage, spell.magic_resistance,
-                                spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
-                                spell.is_quest_spell, spell.is_cantrip, Utc::now().to_rfc3339(),
-                                json, hash, canonical.schema_version, id
-                            ],
-                        )?;
-                        id
-                    } else {
-                        conn.execute(
-                            "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
-                            material_components, casting_time, duration, area, saving_throw, damage,
-                            magic_resistance, reversible, description, tags, source, edition, author,
-                            license, is_quest_spell, is_cantrip, canonical_data, content_hash,
-                            schema_version)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            params![
-                                spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
-                                spell.damage, spell.magic_resistance,
-                                spell.reversible.unwrap_or(0),
-                                spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell, spell.is_cantrip,
-                                json, hash, canonical.schema_version
-                            ],
-                        )?;
-                        conn.last_insert_rowid()
-                    };
-
-                    migration_manager::sync_check_spell(&conn, spell_id);
-                    local_imported.push(SpellDetail {
-                        id: Some(spell_id),
-                        name: spell.name.clone(),
-                        school: spell.school.clone(),
-                        level: spell.level,
-                        description: spell.description.clone(),
-                        source: spell.source.clone(),
-                        sphere: spell.sphere.clone(), class_list: spell.class_list.clone(), range: spell.range.clone(), components: spell.components.clone(),
-                        material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(),
-                        area: spell.area.clone(), saving_throw: spell.saving_throw.clone(),
-                        damage: spell.damage.clone(),
-                        magic_resistance: spell.magic_resistance.clone(),
-                        reversible: spell.reversible, tags: spell.tags.clone(),
-                        edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
-                        is_cantrip: spell.is_cantrip,
-                        schema_version: spell.schema_version,
-                        artifacts: None,
-                        canonical_data: None,
-                        content_hash: None,
-                        ..Default::default()
-                    });
-
-                     let source_path = spell.source_file.clone();
-                     let artifact_val = source_path
-                        .as_ref()
-                        .map(|p| normalize_key(p))
-                        .and_then(|p| artifacts_by_path.get(&p))
-                        .or_else(|| artifacts_by_path.get(&spell_sources.get(i).cloned().flatten().unwrap_or_default()));
-
-                    if let Some(artifact_val) = artifact_val {
-                        let _ = conn.execute(
-                            "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
-                            ON CONFLICT(spell_id, path) WHERE spell_id IS NOT NULL DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
-                            params![spell_id, artifact_val.r#type, artifact_val.path, artifact_val.hash, artifact_val.imported_at],
-                        );
+                    for artifact in &parsed_artifacts {
+                        artifacts_by_path.insert(normalize_key(&artifact.path), artifact.clone());
                     }
 
-                }
+                    let spell_sources: Vec<Option<String>> = parsed_artifacts
+                        .iter()
+                        .map(|artifact| Some(normalize_key(&artifact.path)))
+                        .collect();
 
-                Ok::<ImportResult, AppError>(ImportResult {
-                    spells: local_imported,
-                    artifacts: serde_json::to_value(&parsed_artifacts).unwrap_or_default().as_array().cloned().unwrap_or_default(),
-                    conflicts: local_conflicts,
-                    warnings: vec![],
-                    skipped: local_skipped
-                })
-            }).await.map_err(|e| AppError::Unknown(e.to_string()))??;
+                    let mut local_conflicts = batch_conflicts;
 
-            all_imported_spells.extend(result.spells);
-            all_conflicts.extend(result.conflicts);
-            all_skipped.extend(result.skipped);
-            all_artifacts.extend(result.artifacts);
-        }
-    } else {
-        // --- PATH B: CONFIRMATION (Offsets provided) ---
-        let override_spells = spells.unwrap();
-        let override_artifacts = artifacts.unwrap_or_default();
-        let override_conflicts = conflicts.unwrap_or_default();
+                    for (i, spell) in parsed_spells.iter().enumerate() {
+                        let detail = SpellDetail {
+                            id: None,
+                            name: spell.name.clone(),
+                            school: spell.school.clone(),
+                            sphere: spell.sphere.clone(),
+                            class_list: spell.class_list.clone(),
+                            level: spell.level,
+                            range: spell.range.clone(),
+                            components: spell.components.clone(),
+                            material_components: spell.material_components.clone(),
+                            casting_time: spell.casting_time.clone(),
+                            duration: spell.duration.clone(),
+                            area: spell.area.clone(),
+                            saving_throw: spell.saving_throw.clone(),
+                            damage: spell.damage.clone(),
+                            magic_resistance: spell.magic_resistance.clone(),
+                            reversible: spell.reversible,
+                            description: spell.description.clone(),
+                            tags: spell.tags.clone(),
+                            source: spell.source.clone(),
+                            edition: spell.edition.clone(),
+                            author: spell.author.clone(),
+                            license: spell.license.clone(),
+                            is_quest_spell: spell.is_quest_spell,
+                            is_cantrip: spell.is_cantrip,
+                            schema_version: spell.schema_version,
+                            artifacts: None,
+                            canonical_data: None,
+                            content_hash: None,
+                            ..Default::default()
+                        };
+                        let (canonical, hash, json) = canonicalize_spell_detail(detail.clone())?;
+                        let vault_hash = hash.clone();
+                        let vault_json = json.clone();
 
-        // Lookup Setup
-        let mut artifacts_by_path = HashMap::new();
-        for artifact in &override_artifacts {
-            artifacts_by_path.insert(normalize_key(&artifact.path), artifact.clone());
-        }
+                        let existing_id: Option<i64> = conn.query_row(
+                            "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
+                            params![spell.name, spell.level, spell.source],
+                            |row| row.get(0),
+                        ).optional()?;
 
-        all_conflicts = override_conflicts;
+                        let (spell_id, current_content_hash) = if let Some(id) = existing_id {
+                            if !allow_overwrite_clone {
+                                let existing_spell = get_spell_from_conn(conn, id)?.ok_or_else(|| {
+                                    AppError::NotFound("Failed to fetch existing spell".into())
+                                })?;
 
-        // Batch the spells
-        for chunk in override_spells.chunks(BATCH_SIZE) {
-            let pool = state.inner().clone();
-            let chunk_spells = chunk.to_vec();
-            let allow_overwrite_clone = allow_overwrite;
-            let artifacts_map_clone = artifacts_by_path.clone();
-
-            let result = tokio::task::spawn_blocking(move || {
-                let conn = pool.get()?;
-                let mut local_imported = vec![];
-                let mut local_skipped = vec![];
-                let mut local_conflicts = vec![];
-
-                for spell in chunk_spells {
-                    let detail = SpellDetail {
-                        id: None,
-                        name: spell.name.clone(),
-                        school: spell.school.clone(),
-                        sphere: spell.sphere.clone(),
-                        class_list: spell.class_list.clone(),
-                        level: spell.level,
-                        range: spell.range.clone(),
-                        components: spell.components.clone(),
-                        material_components: spell.material_components.clone(),
-                        casting_time: spell.casting_time.clone(),
-                        duration: spell.duration.clone(),
-                        area: spell.area.clone(),
-                        saving_throw: spell.saving_throw.clone(),
-                        damage: spell.damage.clone(),
-                        magic_resistance: spell.magic_resistance.clone(),
-                        reversible: spell.reversible,
-                        description: spell.description.clone(),
-                        tags: spell.tags.clone(),
-                        source: spell.source.clone(),
-                        edition: spell.edition.clone(),
-                        author: spell.author.clone(),
-                        license: spell.license.clone(),
-                        is_quest_spell: spell.is_quest_spell,
-                        is_cantrip: spell.is_cantrip,
-                        schema_version: spell.schema_version,
-                        artifacts: None,
-                        canonical_data: None,
-                        content_hash: None,
-                        ..Default::default()
-                    };
-                    let (canonical, hash, json) = canonicalize_spell_detail(detail.clone())?;
-
-                     let existing_id: Option<i64> = conn.query_row(
-                        "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
-                        params![spell.name, spell.level, spell.source],
-                        |row| row.get(0),
-                    ).optional()?;
-
-                    let spell_id = if let Some(id) = existing_id {
-                         if !allow_overwrite_clone {
-                             let existing_spell = get_spell_from_conn(&conn, id)?.ok_or_else(|| AppError::NotFound("Ex".into()))?;
-                             let fields = build_conflict_fields(&existing_spell, &spell);
-                             if fields.is_empty() {
-                                 local_skipped.push(spell.name.clone());
-                             } else {
-                                 let source_path = spell.source_file.clone();
-                                 let artifact_opt = source_path
+                                let source_path = spell.source_file.clone();
+                                let artifact_opt = source_path
                                     .as_ref()
                                     .map(|p| normalize_key(p))
-                                    .and_then(|p| artifacts_map_clone.get(&p).cloned());
-                                 local_conflicts.push(ImportConflict::Spell {
-                                     existing: Box::new(existing_spell),
-                                     incoming: Box::new(detail),
-                                     fields,
-                                     artifact: artifact_opt
-                                  });
-                             }
-                             continue;
-                         }
+                                    .and_then(|p| artifacts_by_path.get(&p).cloned())
+                                    .or_else(|| {
+                                        spell_sources
+                                            .get(i)
+                                            .and_then(|s| s.as_ref())
+                                            .and_then(|p| artifacts_by_path.get(p).cloned())
+                                    });
 
-                         conn.execute(
-                             "UPDATE spell SET name=?, level=?, source=?, school=?, sphere=?, class_list=?, range=?, components=?,
-                             material_components=?, casting_time=?, duration=?, area=?, saving_throw=?,
-                             damage=?, magic_resistance=?, reversible=?, description=?, tags=?, edition=?, author=?, license=?,
-                             is_quest_spell=?, is_cantrip=?, updated_at=?,
-                             canonical_data=?, content_hash=?, schema_version=? WHERE id=?",
-                             params![
-                                 spell.name, spell.level, spell.source,
-                                 spell.school, spell.sphere, spell.class_list, spell.range, spell.components,
-                                 spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
-                                 spell.damage, spell.magic_resistance,
-                                 spell.reversible.unwrap_or(0), spell.description, spell.tags, spell.edition, spell.author, spell.license,
-                                 spell.is_quest_spell, spell.is_cantrip, Utc::now().to_rfc3339(),
-                                 json, hash, canonical.schema_version, id
-                             ],
-                         )?;
-                        id
-                    } else {
-                        conn.execute(
-                            "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
-                            material_components, casting_time, duration, area, saving_throw, damage,
-                            magic_resistance, reversible, description, tags, source, edition, author,
-                            license, is_quest_spell, is_cantrip, canonical_data, content_hash,
-                            schema_version)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            params![
-                                spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
-                                spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
-                                spell.damage, spell.magic_resistance,
-                                spell.reversible.unwrap_or(0),
-                                spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell, spell.is_cantrip,
-                                json, hash, canonical.schema_version
-                            ],
-                        )?;
-                        conn.last_insert_rowid()
-                    };
+                                let fields = build_conflict_fields(&existing_spell, spell);
+                                if fields.is_empty() {
+                                    local_skipped.push(spell.name.clone());
+                                } else {
+                                    local_conflicts.push(ImportConflict::Spell {
+                                        existing: Box::new(existing_spell),
+                                        incoming: Box::new(detail),
+                                        fields,
+                                        artifact: artifact_opt,
+                                    });
+                                }
+                                continue;
+                            }
 
-                    migration_manager::sync_check_spell(&conn, spell_id);
-                    local_imported.push(SpellDetail {
-                        id: Some(spell_id),
-                        name: spell.name.clone(),
-                        school: spell.school.clone(),
-                        level: spell.level,
-                        description: spell.description.clone(),
-                        source: spell.source.clone(),
-                        sphere: spell.sphere.clone(), class_list: spell.class_list.clone(), range: spell.range.clone(), components: spell.components.clone(),
-                        material_components: spell.material_components.clone(), casting_time: spell.casting_time.clone(), duration: spell.duration.clone(),
-                        area: spell.area.clone(), saving_throw: spell.saving_throw.clone(),
-                        damage: spell.damage.clone(),
-                        magic_resistance: spell.magic_resistance.clone(),
-                        reversible: spell.reversible, tags: spell.tags.clone(),
-                        edition: spell.edition.clone(), author: spell.author.clone(), license: spell.license.clone(), is_quest_spell: spell.is_quest_spell,
-                        is_cantrip: spell.is_cantrip,
-                        schema_version: spell.schema_version,
-                        artifacts: None,
-                        canonical_data: None,
-                        content_hash: None,
-                        ..Default::default()
-                    });
-
-                     let source_path = spell.source_file.clone();
-                     if let Some(p) = source_path {
-                         if let Some(artifact_val) = artifacts_map_clone.get(&normalize_key(&p)) {
-                            let _ = conn.execute(
-                                "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
-                                ON CONFLICT(spell_id, path) WHERE spell_id IS NOT NULL DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
-                                params![spell_id, artifact_val.r#type, artifact_val.path, artifact_val.hash, artifact_val.imported_at],
+                            let update = spell_update_from_import_spell(id, spell);
+                            let pending_write =
+                                apply_legacy_conflict_resolution_update(conn, &update)?;
+                            local_vault_refresh.insert(
+                                pending_write.content_hash.clone(),
+                                pending_write.canonical_json.clone(),
                             );
-                         }
-                     }
-                }
+                            (id, pending_write.content_hash)
+                        } else {
+                            conn.execute(
+                                "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
+                                material_components, casting_time, duration, area, saving_throw, damage,
+                                magic_resistance, reversible, description, tags, source, edition, author,
+                                license, is_quest_spell, is_cantrip, canonical_data, content_hash,
+                                schema_version)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                params![
+                                    spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
+                                    spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                    spell.damage, spell.magic_resistance,
+                                    spell.reversible.unwrap_or(0),
+                                    spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell, spell.is_cantrip,
+                                    json, hash, canonical.schema_version
+                                ],
+                            )?;
+                            let spell_id = conn.last_insert_rowid();
+                            local_vault_refresh.insert(vault_hash.clone(), vault_json.clone());
+                            (spell_id, vault_hash.clone())
+                        };
 
+                        migration_manager::sync_check_spell(conn, spell_id);
+                        local_imported.push(SpellDetail {
+                            id: Some(spell_id),
+                            name: spell.name.clone(),
+                            school: spell.school.clone(),
+                            level: spell.level,
+                            description: spell.description.clone(),
+                            source: spell.source.clone(),
+                            sphere: spell.sphere.clone(),
+                            class_list: spell.class_list.clone(),
+                            range: spell.range.clone(),
+                            components: spell.components.clone(),
+                            material_components: spell.material_components.clone(),
+                            casting_time: spell.casting_time.clone(),
+                            duration: spell.duration.clone(),
+                            area: spell.area.clone(),
+                            saving_throw: spell.saving_throw.clone(),
+                            damage: spell.damage.clone(),
+                            magic_resistance: spell.magic_resistance.clone(),
+                            reversible: spell.reversible,
+                            tags: spell.tags.clone(),
+                            edition: spell.edition.clone(),
+                            author: spell.author.clone(),
+                            license: spell.license.clone(),
+                            is_quest_spell: spell.is_quest_spell,
+                            is_cantrip: spell.is_cantrip,
+                            schema_version: spell.schema_version,
+                            artifacts: None,
+                            canonical_data: None,
+                            content_hash: None,
+                            ..Default::default()
+                        });
 
+                        let source_path = spell.source_file.clone();
+                        let artifact_val = source_path
+                            .as_ref()
+                            .map(|p| normalize_key(p))
+                            .and_then(|p| artifacts_by_path.get(&p))
+                            .or_else(|| {
+                                artifacts_by_path
+                                    .get(&spell_sources.get(i).cloned().flatten().unwrap_or_default())
+                            });
 
-                Ok::<ImportResult, AppError>(ImportResult {
-                    spells: local_imported,
-                    artifacts: vec![],
-                    conflicts: local_conflicts,
-                    warnings: vec![],
-                    skipped: local_skipped
+                        if let Some(artifact_val) = artifact_val {
+                            upsert_import_artifact(
+                                conn,
+                                spell_id,
+                                &current_content_hash,
+                                artifact_val,
+                            )?;
+                        }
+                    }
+
+                    Ok::<(ImportResult, Vec<PendingVaultSpellWrite>), AppError>((
+                        ImportResult {
+                            spells: local_imported,
+                            artifacts: serde_json::to_value(&parsed_artifacts)
+                                .unwrap_or_default()
+                                .as_array()
+                                .cloned()
+                                .unwrap_or_default(),
+                            conflicts: local_conflicts,
+                            warnings: vec![],
+                            skipped: local_skipped,
+                        },
+                        local_vault_refresh
+                            .into_iter()
+                            .map(|(content_hash, canonical_json)| PendingVaultSpellWrite {
+                                content_hash,
+                                canonical_json,
+                            })
+                            .collect(),
+                    ))
                 })
+                
             }).await.map_err(|e| AppError::Unknown(e.to_string()))??;
 
-            all_imported_spells.extend(result.spells);
-            all_conflicts.extend(result.conflicts);
-            all_skipped.extend(result.skipped);
+                mutated_spell_count += result.spells.len();
+                all_imported_spells.extend(result.spells);
+                all_conflicts.extend(result.conflicts);
+                all_skipped.extend(result.skipped);
+                all_artifacts.extend(result.artifacts);
+            }
+        } else {
+            // --- PATH B: CONFIRMATION (Offsets provided) ---
+            let override_spells = spells.unwrap_or_default();
+            let override_artifacts = artifacts.unwrap_or_default();
+            let override_conflicts = conflicts.unwrap_or_default();
+
+            // Lookup Setup
+            let mut artifacts_by_path = HashMap::new();
+            for artifact in &override_artifacts {
+                artifacts_by_path.insert(normalize_key(&artifact.path), artifact.clone());
+            }
+
+            all_conflicts = override_conflicts;
+
+            // Batch the spells
+            for chunk in override_spells.chunks(BATCH_SIZE) {
+                let pool = pool.clone();
+                let chunk_spells = chunk.to_vec();
+                let allow_overwrite_clone = allow_overwrite;
+                let artifacts_map_clone = artifacts_by_path.clone();
+
+                let result = tokio::task::spawn_blocking(move || {
+                let conn = pool.get()?;
+                let root = app_data_dir()?;
+                run_legacy_import_chunk_with_vault_writes(&conn, &root, |conn| {
+                    let mut local_imported = vec![];
+                    let mut local_skipped = vec![];
+                    let mut local_conflicts = vec![];
+                    let mut local_vault_refresh = HashMap::new();
+
+                    for spell in chunk_spells {
+                        let detail = SpellDetail {
+                            id: None,
+                            name: spell.name.clone(),
+                            school: spell.school.clone(),
+                            sphere: spell.sphere.clone(),
+                            class_list: spell.class_list.clone(),
+                            level: spell.level,
+                            range: spell.range.clone(),
+                            components: spell.components.clone(),
+                            material_components: spell.material_components.clone(),
+                            casting_time: spell.casting_time.clone(),
+                            duration: spell.duration.clone(),
+                            area: spell.area.clone(),
+                            saving_throw: spell.saving_throw.clone(),
+                            damage: spell.damage.clone(),
+                            magic_resistance: spell.magic_resistance.clone(),
+                            reversible: spell.reversible,
+                            description: spell.description.clone(),
+                            tags: spell.tags.clone(),
+                            source: spell.source.clone(),
+                            edition: spell.edition.clone(),
+                            author: spell.author.clone(),
+                            license: spell.license.clone(),
+                            is_quest_spell: spell.is_quest_spell,
+                            is_cantrip: spell.is_cantrip,
+                            schema_version: spell.schema_version,
+                            artifacts: None,
+                            canonical_data: None,
+                            content_hash: None,
+                            ..Default::default()
+                        };
+                        let (canonical, hash, json) = canonicalize_spell_detail(detail.clone())?;
+                        let vault_hash = hash.clone();
+                        let vault_json = json.clone();
+
+                        let existing_id: Option<i64> = conn.query_row(
+                            "SELECT id FROM spell WHERE name = ? AND level = ? AND source IS ?",
+                            params![spell.name, spell.level, spell.source],
+                            |row| row.get(0),
+                        ).optional()?;
+
+                        let (spell_id, current_content_hash) = if let Some(id) = existing_id {
+                            if !allow_overwrite_clone {
+                                let existing_spell = get_spell_from_conn(conn, id)?
+                                    .ok_or_else(|| AppError::NotFound("Ex".into()))?;
+                                let fields = build_conflict_fields(&existing_spell, &spell);
+                                if fields.is_empty() {
+                                    local_skipped.push(spell.name.clone());
+                                } else {
+                                    let source_path = spell.source_file.clone();
+                                    let artifact_opt = source_path
+                                        .as_ref()
+                                        .map(|p| normalize_key(p))
+                                        .and_then(|p| artifacts_map_clone.get(&p).cloned());
+                                    local_conflicts.push(ImportConflict::Spell {
+                                        existing: Box::new(existing_spell),
+                                        incoming: Box::new(detail),
+                                        fields,
+                                        artifact: artifact_opt,
+                                    });
+                                }
+                                continue;
+                            }
+
+                            let update = spell_update_from_import_spell(id, &spell);
+                            let pending_write =
+                                apply_legacy_conflict_resolution_update(conn, &update)?;
+                            local_vault_refresh.insert(
+                                pending_write.content_hash.clone(),
+                                pending_write.canonical_json.clone(),
+                            );
+                            (id, pending_write.content_hash)
+                        } else {
+                            conn.execute(
+                                "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
+                                material_components, casting_time, duration, area, saving_throw, damage,
+                                magic_resistance, reversible, description, tags, source, edition, author,
+                                license, is_quest_spell, is_cantrip, canonical_data, content_hash,
+                                schema_version)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                params![
+                                    spell.name, spell.school, spell.sphere, spell.class_list, spell.level, spell.range, spell.components,
+                                    spell.material_components, spell.casting_time, spell.duration, spell.area, spell.saving_throw,
+                                    spell.damage, spell.magic_resistance,
+                                    spell.reversible.unwrap_or(0),
+                                    spell.description, spell.tags, spell.source, spell.edition, spell.author, spell.license, spell.is_quest_spell, spell.is_cantrip,
+                                    json, hash, canonical.schema_version
+                                ],
+                            )?;
+                            let spell_id = conn.last_insert_rowid();
+                            local_vault_refresh.insert(vault_hash.clone(), vault_json.clone());
+                            (spell_id, vault_hash.clone())
+                        };
+
+                        migration_manager::sync_check_spell(conn, spell_id);
+                        local_imported.push(SpellDetail {
+                            id: Some(spell_id),
+                            name: spell.name.clone(),
+                            school: spell.school.clone(),
+                            level: spell.level,
+                            description: spell.description.clone(),
+                            source: spell.source.clone(),
+                            sphere: spell.sphere.clone(),
+                            class_list: spell.class_list.clone(),
+                            range: spell.range.clone(),
+                            components: spell.components.clone(),
+                            material_components: spell.material_components.clone(),
+                            casting_time: spell.casting_time.clone(),
+                            duration: spell.duration.clone(),
+                            area: spell.area.clone(),
+                            saving_throw: spell.saving_throw.clone(),
+                            damage: spell.damage.clone(),
+                            magic_resistance: spell.magic_resistance.clone(),
+                            reversible: spell.reversible,
+                            tags: spell.tags.clone(),
+                            edition: spell.edition.clone(),
+                            author: spell.author.clone(),
+                            license: spell.license.clone(),
+                            is_quest_spell: spell.is_quest_spell,
+                            is_cantrip: spell.is_cantrip,
+                            schema_version: spell.schema_version,
+                            artifacts: None,
+                            canonical_data: None,
+                            content_hash: None,
+                            ..Default::default()
+                        });
+
+                        let source_path = spell.source_file.clone();
+                        if let Some(p) = source_path {
+                            if let Some(artifact_val) = artifacts_map_clone.get(&normalize_key(&p)) {
+                                upsert_import_artifact(
+                                    conn,
+                                    spell_id,
+                                    &current_content_hash,
+                                    artifact_val,
+                                )?;
+                            }
+                        }
+                    }
+
+                    Ok::<(ImportResult, Vec<PendingVaultSpellWrite>), AppError>((
+                        ImportResult {
+                            spells: local_imported,
+                            artifacts: vec![],
+                            conflicts: local_conflicts,
+                            warnings: vec![],
+                            skipped: local_skipped,
+                        },
+                        local_vault_refresh
+                            .into_iter()
+                            .map(|(content_hash, canonical_json)| PendingVaultSpellWrite {
+                                content_hash,
+                                canonical_json,
+                            })
+                            .collect(),
+                    ))
+                })
+                
+                }).await.map_err(|e| AppError::Unknown(e.to_string()))??;
+
+                mutated_spell_count += result.spells.len();
+                all_imported_spells.extend(result.spells);
+                all_conflicts.extend(result.conflicts);
+                all_skipped.extend(result.skipped);
+            }
+
+            all_artifacts = serde_json::to_value(override_artifacts)
+                .unwrap_or_default()
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
         }
 
-        all_artifacts = serde_json::to_value(override_artifacts)
-            .unwrap_or_default()
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
+        Ok((ImportResult {
+            spells: all_imported_spells,
+            artifacts: all_artifacts,
+            conflicts: all_conflicts,
+            warnings: all_warnings,
+            skipped: all_skipped,
+        }, mutated_spell_count))
+    }
+    .await;
+
+    let (result, changed_count) = match result {
+        Ok(value) => value,
+        Err(err) => return Err(err),
+    };
+
+    if changed_count == 0 {
+        drop(import_guard);
+        return Ok(result);
     }
 
-    Ok(ImportResult {
-        spells: all_imported_spells,
-        artifacts: all_artifacts,
-        conflicts: all_conflicts,
-        warnings: all_warnings,
-        skipped: all_skipped,
+    let _gc_guard = import_guard.into_gc_guard()?;
+    tokio::task::spawn_blocking(move || {
+        let conn = gc_pool.get()?;
+        let root = app_data_dir()?;
+        run_post_import_gc_if_needed(&conn, &root, changed_count)
     })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn resolve_import_conflicts(
     state: State<'_, Arc<Pool>>,
+    maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     resolutions: Vec<ImportConflictResolution>,
 ) -> Result<ResolveImportResult, AppError> {
     let pool = state.inner().clone();
+    let gc_pool = pool.clone();
+    let maintenance_state = maintenance_state.inner().clone();
+    let import_guard = maintenance_state.start_import()?;
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let mut resolved = Vec::new();
-        let mut skipped = Vec::new();
-        let mut warnings = Vec::new();
+        let root = app_data_dir()?;
+        resolve_import_conflicts_with_conn_and_root(&conn, &root, resolutions)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
 
-        for resolution in resolutions {
-            match resolution.action.as_str() {
-                "skip" => {
-                    if let Some(existing_spell) = get_spell_from_conn(&conn, resolution.existing_id)? {
-                        skipped.push(existing_spell.name);
-                    }
-                }
-                "overwrite" | "merge" => {
-                    let spell = resolution
-                        .spell
-                        .ok_or_else(|| AppError::Validation("missing spell for conflict resolution".into()))?;
-                    if spell.id != resolution.existing_id {
-                        return Err(AppError::Validation("conflict resolution id mismatch".into()));
-                    }
-                    apply_spell_update_with_conn(&conn, &spell)?;
-                    resolved.push(spell.name.clone());
+    if result.resolved.is_empty() {
+        drop(import_guard);
+        return Ok(result);
+    }
 
-                    if let Some(artifact) = resolution.artifact {
-                        if let Err(e) = conn.execute(
-                            "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (?, ?, ?, ?, ?)
-                             ON CONFLICT(spell_id, path) WHERE spell_id IS NOT NULL DO UPDATE SET hash=excluded.hash, imported_at=excluded.imported_at",
-                            params![
-                                spell.id,
-                                artifact.r#type,
-                                artifact.path,
-                                artifact.hash,
-                                artifact.imported_at
-                            ],
-                        ) {
-                            warnings.push(format!("Artifact error for {}: {}", spell.name, e));
-                        }
-                    }
-                }
-                _ => {
-                    return Err(AppError::Validation(format!(
-                        "Unknown conflict resolution action: {}",
-                        resolution.action
-                    )));
-                }
-            }
-        }
-
-        Ok::<ResolveImportResult, AppError>(ResolveImportResult {
-            resolved,
-            skipped,
-            warnings,
-        })
+    let changed_count = result.resolved.len();
+    let _gc_guard = import_guard.into_gc_guard()?;
+    tokio::task::spawn_blocking(move || {
+        let conn = gc_pool.get()?;
+        let root = app_data_dir()?;
+        run_post_import_gc_if_needed(&conn, &root, changed_count)
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -2065,10 +2523,9 @@ pub async fn reparse_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::vault::{optimize_vault_with_root, VaultMaintenanceState};
+    use crate::commands::vault::{optimize_vault_with_root, vault_env_lock, VaultMaintenanceState};
     use crate::models::canonical_spell::{CanonicalSpell, SourceRef};
     use rusqlite::{params, Connection};
-    use std::sync::{Mutex, OnceLock};
 
     fn minimal_spell_json(name: &str) -> String {
         format!(
@@ -2114,11 +2571,6 @@ mod tests {
         )
         .expect("create spell table");
         conn
-    }
-
-    fn vault_env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn create_change_log_table(conn: &Connection) {
@@ -2172,12 +2624,63 @@ mod tests {
         spell
     }
 
+    fn test_hash(spell: &CanonicalSpell) -> String {
+        let mut spell = spell.clone();
+        normalize_truncate_metadata(&mut spell);
+        let (hash, _warnings) = process_spell(&mut spell).expect("process spell");
+        hash
+    }
+
+    fn spell_update_for_test(id: i64, spell: &CanonicalSpell) -> SpellUpdate {
+        SpellUpdate {
+            id,
+            name: spell.name.clone(),
+            school: spell.school.clone(),
+            sphere: None,
+            class_list: None,
+            level: spell.level,
+            range: None,
+            components: None,
+            material_components: None,
+            casting_time: None,
+            duration: None,
+            area: None,
+            saving_throw: None,
+            damage: None,
+            magic_resistance: None,
+            reversible: Some(spell.reversible.unwrap_or(0)),
+            description: spell.description.clone(),
+            tags: None,
+            source: None,
+            edition: None,
+            author: None,
+            license: None,
+            is_quest_spell: spell.is_quest_spell.unwrap_or(0),
+            is_cantrip: spell.is_cantrip.unwrap_or(0),
+            ..Default::default()
+        }
+    }
+
+    fn preview_item_for_test(mut spell: CanonicalSpell) -> PreviewSpellJsonItem {
+        normalize_truncate_metadata(&mut spell);
+        let (content_hash, warnings) = process_spell(&mut spell).expect("process spell");
+        PreviewSpellJsonItem {
+            spell,
+            content_hash,
+            warnings,
+        }
+    }
+
     fn insert_spell_for_apply_test(
         conn: &Connection,
         id: i64,
         spell: &CanonicalSpell,
         content_hash: &str,
     ) {
+        let mut spell = spell.clone();
+        normalize_truncate_metadata(&mut spell);
+        let (computed_hash, _warnings) = process_spell(&mut spell).expect("process spell");
+        assert_eq!(computed_hash, content_hash, "seed spell hash must match canonical_data");
         conn.execute(
             "INSERT INTO spell (
                 id, name, level, description, school, canonical_data, content_hash, schema_version,
@@ -2189,7 +2692,7 @@ mod tests {
                 spell.level,
                 spell.description,
                 spell.school,
-                serde_json::to_string(spell).expect("serialize canonical spell"),
+                serde_json::to_string(&spell).expect("serialize canonical spell"),
                 content_hash,
                 CURRENT_SCHEMA_VERSION
             ],
@@ -2544,9 +3047,15 @@ mod tests {
             res_camel.failures
         );
 
-        assert_eq!(res_id.spells[0].spell.id, Some(h1.clone()));
-        assert_eq!(res_hash.spells[0].spell.id, Some(h1.clone()));
-        assert_eq!(res_camel.spells[0].spell.id, Some(h1.clone()));
+        assert_eq!(res_id.spells[0].spell.id, Some(res_id.spells[0].content_hash.clone()));
+        assert_eq!(
+            res_hash.spells[0].spell.id,
+            Some(res_hash.spells[0].content_hash.clone())
+        );
+        assert_eq!(
+            res_camel.spells[0].spell.id,
+            Some(res_camel.spells[0].content_hash.clone())
+        );
     }
 
     #[test]
@@ -2554,18 +3063,14 @@ mod tests {
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Mirror Veil", 1, "Existing spell");
         let incoming_spell = test_spell("Mirror Veil", 5, "Incoming spell with different content");
-        let existing_hash = "a".repeat(64);
-        let incoming_hash = "b".repeat(64);
+        let existing_hash = test_hash(&existing_spell);
+        let incoming_hash = test_hash(&incoming_spell);
 
         insert_spell_for_apply_test(&conn, 1, &existing_spell, &existing_hash);
 
         let result = apply_import_spell_json_impl(
             &conn,
-            vec![PreviewSpellJsonItem {
-                spell: incoming_spell.clone(),
-                content_hash: incoming_hash.clone(),
-                warnings: vec![],
-            }],
+            vec![preview_item_for_test(incoming_spell.clone())],
             None,
         )
         .expect("apply import should succeed");
@@ -2587,16 +3092,16 @@ mod tests {
         std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
 
         let conn = setup_import_apply_test_db();
-        let incoming_spell = test_spell("Vault Import", 4, "Imported into vault storage");
-        let incoming_hash = "v".repeat(64);
+        let incoming_item = preview_item_for_test(test_spell(
+            "Vault Import",
+            4,
+            "Imported into vault storage",
+        ));
+        let incoming_hash = incoming_item.content_hash.clone();
 
         let result = apply_import_spell_json_impl(
             &conn,
-            vec![PreviewSpellJsonItem {
-                spell: incoming_spell,
-                content_hash: incoming_hash.clone(),
-                warnings: vec![],
-            }],
+            vec![incoming_item],
             None,
         )
         .expect("apply import should succeed");
@@ -2610,6 +3115,33 @@ mod tests {
                 .exists(),
             "json import should write the canonical spell file into the vault"
         );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
+    }
+
+    #[test]
+    fn test_apply_import_rolls_back_when_vault_write_fails() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let long_root = std::env::temp_dir()
+            .join("spellbook-import")
+            .join("a".repeat(240));
+        std::env::set_var("SPELLBOOK_DATA_DIR", &long_root);
+
+        let conn = setup_import_apply_test_db();
+        let incoming_item = preview_item_for_test(test_spell(
+            "Vault Import Failure",
+            4,
+            "Should not commit when vault write fails",
+        ));
+
+        let err = apply_import_spell_json_impl(&conn, vec![incoming_item], None)
+            .expect_err("vault write failure should roll back json import");
+        assert!(err.to_string().contains("Windows path length"));
+
+        let spell_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("query spell count");
+        assert_eq!(spell_count, 0, "json import should roll back the DB row");
 
         std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
@@ -2632,6 +3164,373 @@ mod tests {
     }
 
     #[test]
+    fn test_run_with_import_maintenance_blocks_manual_gc_for_legacy_flows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_import_apply_test_db();
+        let maintenance_state = VaultMaintenanceState::default();
+
+        let err = run_with_import_maintenance(&maintenance_state, || {
+            let _ = optimize_vault_with_root(&conn, temp_dir.path(), Some(&maintenance_state))?;
+            Ok::<(), AppError>(())
+        })
+        .expect_err("legacy import wrapper should block manual gc during active import");
+
+        assert!(
+            err.to_string().contains("import"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_run_post_import_gc_if_needed_removes_orphans_for_legacy_imports() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_import_apply_test_db();
+        let live_spell = test_spell("Legacy Import Live", 2, "Live spell");
+        let live_hash = test_hash(&live_spell);
+        insert_spell_for_apply_test(&conn, 1, &live_spell, &live_hash);
+
+        let orphan_hash = "l".repeat(64);
+        let spells_dir = temp_dir.path().join("spells");
+        std::fs::create_dir_all(&spells_dir).expect("create spells dir");
+        std::fs::write(
+            spells_dir.join(format!("{live_hash}.json")),
+            serde_json::to_string(&live_spell).expect("serialize live spell"),
+        )
+        .expect("write live spell file");
+        std::fs::write(
+            spells_dir.join(format!("{orphan_hash}.json")),
+            r#"{"name":"Orphan","tradition":"ARCANE","level":1,"description":"Orphan","school":"Abjuration"}"#,
+        )
+        .expect("write orphan file");
+
+        run_post_import_gc_if_needed(&conn, temp_dir.path(), 1).expect("post-import gc should run");
+
+        assert!(spells_dir.join(format!("{live_hash}.json")).exists());
+        assert!(!spells_dir.join(format!("{orphan_hash}.json")).exists());
+    }
+
+    #[test]
+    fn test_run_post_import_gc_if_needed_skips_gc_when_no_legacy_mutation() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_import_apply_test_db();
+        let orphan_hash = "m".repeat(64);
+        let spells_dir = temp_dir.path().join("spells");
+        std::fs::create_dir_all(&spells_dir).expect("create spells dir");
+        std::fs::write(
+            spells_dir.join(format!("{orphan_hash}.json")),
+            r#"{"name":"Orphan","tradition":"ARCANE","level":1,"description":"Orphan","school":"Abjuration"}"#,
+        )
+        .expect("write orphan file");
+
+        run_post_import_gc_if_needed(&conn, temp_dir.path(), 0)
+            .expect("post-import gc should be skipped cleanly");
+
+        assert!(
+            spells_dir.join(format!("{orphan_hash}.json")).exists(),
+            "gc should not run when no legacy mutations were applied"
+        );
+    }
+
+    #[test]
+    fn test_resolve_import_conflicts_with_conn_and_root_overwrite_cascades_hash_references() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        let existing_spell = test_spell("Legacy Resolve", 2, "Original description");
+        let updated_spell = test_spell("Legacy Resolve", 2, "Updated description");
+        let old_hash = test_hash(&existing_spell);
+        let new_hash = test_hash(&updated_spell);
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &old_hash);
+        conn.execute(
+            "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (1, 1, ?)",
+            params![old_hash.clone()],
+        )
+        .expect("seed character_class_spell hash reference");
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, type, path, hash, imported_at, spell_content_hash)
+             VALUES (1, 1, 'pdf', 'legacy-resolve.pdf', 'artifact-hash', '2026-01-01T00:00:00Z', ?)",
+            params![old_hash.clone()],
+        )
+        .expect("seed artifact hash reference");
+
+        let spells_dir = temp_dir.path().join("spells");
+        std::fs::create_dir_all(&spells_dir).expect("create spells dir");
+        std::fs::write(
+            spells_dir.join(format!("{old_hash}.json")),
+            serde_json::to_string(&existing_spell).expect("serialize existing spell"),
+        )
+        .expect("write existing spell file");
+
+        let result = resolve_import_conflicts_with_conn_and_root(
+            &conn,
+            temp_dir.path(),
+            vec![ImportConflictResolution {
+                action: "overwrite".to_string(),
+                existing_id: 1,
+                spell: Some(spell_update_for_test(1, &updated_spell)),
+                artifact: None,
+            }],
+        )
+        .expect("conflict resolution should succeed");
+
+        assert_eq!(result.resolved.len(), 1);
+        let ccs_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query character_class_spell hash");
+        assert_eq!(
+            ccs_hash, new_hash,
+            "legacy overwrite should cascade hash references in character_class_spell"
+        );
+        let artifact_hash: String = conn
+            .query_row("SELECT spell_content_hash FROM artifact WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query artifact hash");
+        assert_eq!(
+            artifact_hash, new_hash,
+            "legacy overwrite should cascade hash references in artifact rows"
+        );
+        assert!(
+            spells_dir.join(format!("{new_hash}.json")).exists(),
+            "updated spell should still have a live vault file"
+        );
+        assert!(
+            spells_dir.join(format!("{old_hash}.json")).exists(),
+            "helper-level resolution should leave old hash cleanup to the command-level post-import GC"
+        );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
+    }
+
+    #[test]
+    fn test_upsert_import_artifact_persists_spell_content_hash_when_available() {
+        let conn = setup_import_apply_test_db();
+        create_hash_reference_tables(&conn);
+        let expected_hash = "a".repeat(64);
+
+        upsert_import_artifact(
+            &conn,
+            1,
+            &expected_hash,
+            &ImportArtifact {
+                r#type: "pdf".to_string(),
+                path: "spell.pdf".to_string(),
+                hash: "artifact-hash".to_string(),
+                imported_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        )
+        .expect("upsert artifact");
+
+        let stored_hash: String = conn
+            .query_row("SELECT spell_content_hash FROM artifact WHERE spell_id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query artifact spell_content_hash");
+        assert_eq!(stored_hash, expected_hash);
+    }
+
+    #[test]
+    fn test_resolve_import_conflicts_with_conn_and_root_rolls_back_batch_on_error() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        let existing_spell = test_spell("Legacy Partial Resolve", 4, "Original description");
+        let updated_spell = test_spell("Legacy Partial Resolve", 4, "Updated description");
+        let old_hash = test_hash(&existing_spell);
+        let new_hash = test_hash(&updated_spell);
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &old_hash);
+        conn.execute(
+            "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (1, 1, ?)",
+            params![old_hash.clone()],
+        )
+        .expect("seed character_class_spell hash reference");
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, type, path, hash, imported_at, spell_content_hash)
+             VALUES (1, 1, 'pdf', 'legacy-partial.pdf', 'artifact-hash', '2026-01-01T00:00:00Z', ?)",
+            params![old_hash.clone()],
+        )
+        .expect("seed artifact hash reference");
+
+        let spells_dir = temp_dir.path().join("spells");
+        std::fs::create_dir_all(&spells_dir).expect("create spells dir");
+        std::fs::write(
+            spells_dir.join(format!("{old_hash}.json")),
+            serde_json::to_string(&existing_spell).expect("serialize existing spell"),
+        )
+        .expect("write existing spell file");
+
+        let err = resolve_import_conflicts_with_conn_and_root(
+            &conn,
+            temp_dir.path(),
+            vec![
+                ImportConflictResolution {
+                    action: "overwrite".to_string(),
+                    existing_id: 1,
+                    spell: Some(spell_update_for_test(1, &updated_spell)),
+                    artifact: None,
+                },
+                ImportConflictResolution {
+                    action: "bogus".to_string(),
+                    existing_id: 1,
+                    spell: None,
+                    artifact: None,
+                },
+            ],
+        )
+        .expect_err("helper should still return the later validation error");
+
+        assert!(
+            err.to_string().contains("Unknown conflict resolution action"),
+            "unexpected error: {err}"
+        );
+        let stored_hash: String = conn
+            .query_row("SELECT content_hash FROM spell WHERE id = 1", [], |row| row.get(0))
+            .expect("query stored spell hash");
+        assert_eq!(
+            stored_hash, old_hash,
+            "failed legacy resolution batch must roll back spell row mutations"
+        );
+        let ccs_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query character_class_spell hash after rollback");
+        assert_eq!(
+            ccs_hash, old_hash,
+            "failed legacy resolution batch must roll back character_class_spell cascades"
+        );
+        let artifact_hash: String = conn
+            .query_row("SELECT spell_content_hash FROM artifact WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query artifact hash after rollback");
+        assert_eq!(
+            artifact_hash, old_hash,
+            "failed legacy resolution batch must roll back artifact cascades"
+        );
+        assert!(
+            !spells_dir.join(format!("{new_hash}.json")).exists(),
+            "failed legacy resolution batch must not materialize a new vault file"
+        );
+        assert!(
+            spells_dir.join(format!("{old_hash}.json")).exists(),
+            "helper-level resolution should leave old hash cleanup to the command-level post-import GC"
+        );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
+    }
+
+    #[test]
+    fn test_resolve_import_conflicts_with_conn_and_root_rolls_back_when_vault_write_fails() {
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        let existing_spell = test_spell("Legacy Resolve Failure", 4, "Original description");
+        let updated_spell = test_spell("Legacy Resolve Failure", 4, "Updated description");
+        let old_hash = test_hash(&existing_spell);
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &old_hash);
+        conn.execute(
+            "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (1, 1, ?)",
+            params![old_hash.clone()],
+        )
+        .expect("seed character_class_spell hash reference");
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, type, path, hash, imported_at, spell_content_hash)
+             VALUES (1, 1, 'pdf', 'legacy-resolve-failure.pdf', 'artifact-hash', '2026-01-01T00:00:00Z', ?)",
+            params![old_hash.clone()],
+        )
+        .expect("seed artifact hash reference");
+
+        let long_root = std::env::temp_dir()
+            .join("spellbook-legacy-import")
+            .join("b".repeat(240));
+        let err = resolve_import_conflicts_with_conn_and_root(
+            &conn,
+            &long_root,
+            vec![ImportConflictResolution {
+                action: "overwrite".to_string(),
+                existing_id: 1,
+                spell: Some(spell_update_for_test(1, &updated_spell)),
+                artifact: None,
+            }],
+        )
+        .expect_err("vault write failure should roll back conflict resolution");
+        assert!(err.to_string().contains("Windows path length"));
+
+        let stored_description: String = conn
+            .query_row("SELECT description FROM spell WHERE id = 1", [], |row| row.get(0))
+            .expect("query spell description");
+        let stored_hash: String = conn
+            .query_row("SELECT content_hash FROM spell WHERE id = 1", [], |row| row.get(0))
+            .expect("query spell hash");
+        let class_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query character_class_spell hash");
+        let artifact_hash: String = conn
+            .query_row("SELECT spell_content_hash FROM artifact WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query artifact hash");
+
+        assert_eq!(stored_description, "Original description");
+        assert_eq!(stored_hash, old_hash);
+        assert_eq!(class_hash, old_hash);
+        assert_eq!(artifact_hash, old_hash);
+    }
+
+    #[test]
+    fn test_run_legacy_import_chunk_transaction_rolls_back_partial_mutations() {
+        let conn = setup_import_apply_test_db();
+        let existing_spell = test_spell("Legacy Chunk Rollback", 3, "Original description");
+        let existing_hash = test_hash(&existing_spell);
+        let updated_spell = test_spell("Legacy Chunk Rollback", 3, "Updated description");
+        let updated_hash = test_hash(&updated_spell);
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &existing_hash);
+
+        let err = run_legacy_import_chunk_transaction(&conn, |conn| {
+            conn.execute(
+                "UPDATE spell SET description = ?, canonical_data = ?, content_hash = ? WHERE id = 1",
+                params![
+                    updated_spell.description,
+                    serde_json::to_string(&updated_spell).expect("serialize updated spell"),
+                    updated_hash
+                ],
+            )?;
+            Err::<(), AppError>(AppError::Validation("boom".to_string()))
+        })
+        .expect_err("transaction helper should return the operation error");
+
+        assert!(err.to_string().contains("boom"), "unexpected error: {err}");
+
+        let stored_hash: String = conn
+            .query_row("SELECT content_hash FROM spell WHERE id = 1", [], |row| row.get(0))
+            .expect("query stored hash");
+        assert_eq!(
+            stored_hash, existing_hash,
+            "failed chunk should roll back to the original live hash"
+        );
+    }
+
+    #[test]
     fn test_successful_import_triggers_post_import_gc() {
         let _guard = vault_env_lock().lock().expect("lock vault env");
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -2647,16 +3546,13 @@ mod tests {
             r#"{"name":"Orphan","tradition":"ARCANE","level":1,"description":"Orphan","school":"Abjuration"}"#,
         )
         .expect("write orphan file");
+        let imported_item = preview_item_for_test(test_spell("GC Trigger", 2, "Should trigger GC"));
 
         let result = apply_import_spell_json_with_maintenance(
             &conn,
             temp_dir.path(),
             &maintenance_state,
-            vec![PreviewSpellJsonItem {
-                spell: test_spell("GC Trigger", 2, "Should trigger GC"),
-                content_hash: "z".repeat(64),
-                warnings: vec![],
-            }],
+            vec![imported_item],
             None,
         )
         .expect("import should succeed");
@@ -2679,7 +3575,7 @@ mod tests {
         let conn = setup_import_apply_test_db();
         let maintenance_state = VaultMaintenanceState::default();
         let existing_spell = test_spell("Conflict Spell", 1, "Existing");
-        let existing_hash = "1".repeat(64);
+        let existing_hash = test_hash(&existing_spell);
         insert_spell_for_apply_test(&conn, 1, &existing_spell, &existing_hash);
 
         let orphan_hash = "2".repeat(64);
@@ -2690,16 +3586,17 @@ mod tests {
             r#"{"name":"Orphan","tradition":"ARCANE","level":1,"description":"Orphan","school":"Abjuration"}"#,
         )
         .expect("write orphan file");
+        let incoming_item = preview_item_for_test(test_spell(
+            "Conflict Spell",
+            3,
+            "Incoming conflict",
+        ));
 
         let result = apply_import_spell_json_with_maintenance(
             &conn,
             temp_dir.path(),
             &maintenance_state,
-            vec![PreviewSpellJsonItem {
-                spell: test_spell("Conflict Spell", 3, "Incoming conflict"),
-                content_hash: "3".repeat(64),
-                warnings: vec![],
-            }],
+            vec![incoming_item],
             None,
         )
         .expect("conflict-only import should return result");
@@ -2715,22 +3612,107 @@ mod tests {
     }
 
     #[test]
+    fn test_replace_only_import_triggers_post_import_gc() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
+        let conn = setup_import_apply_test_db();
+        let maintenance_state = VaultMaintenanceState::default();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        let existing_spell = test_spell("Replace GC", 4, "Original description");
+        let existing_hash = test_hash(&existing_spell);
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &existing_hash);
+
+        let spells_dir = temp_dir.path().join("spells");
+        std::fs::create_dir_all(&spells_dir).expect("create spells dir");
+        std::fs::write(
+            spells_dir.join(format!("{existing_hash}.json")),
+            serde_json::to_string(&existing_spell).expect("serialize existing spell"),
+        )
+        .expect("write existing spell file");
+
+        let incoming_item = preview_item_for_test(test_spell("Replace GC", 4, "Updated description"));
+        let new_hash = incoming_item.content_hash.clone();
+        let resolve_options = ImportSpellJsonResolveOptions {
+            resolutions: vec![ImportSpellJsonConflictResolution {
+                existing_id: 1,
+                incoming_content_hash: new_hash.clone(),
+                action: "replace_with_new".to_string(),
+            }],
+            default_action: None,
+        };
+
+        let result = apply_import_spell_json_with_maintenance(
+            &conn,
+            temp_dir.path(),
+            &maintenance_state,
+            vec![incoming_item],
+            Some(resolve_options),
+        )
+        .expect("replace import should succeed");
+
+        assert_eq!(result.imported_count, 0, "replace should not count as a new insert");
+        assert_eq!(
+            result
+                .conflicts_resolved
+                .as_ref()
+                .expect("resolved counts")
+                .replace_count,
+            1
+        );
+        assert!(
+            !spells_dir.join(format!("{existing_hash}.json")).exists(),
+            "replace-only imports should still trigger post-import GC"
+        );
+        assert!(
+            spells_dir.join(format!("{new_hash}.json")).exists(),
+            "new hash file should remain after replace"
+        );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
+    }
+
+    #[test]
+    fn test_preview_import_rewrites_tampered_id_to_recomputed_hash() {
+        let mut incoming_spell = test_spell("Tampered Id", 2, "Import payload");
+        incoming_spell.id = Some("x".repeat(64));
+        let payload = serde_json::to_string(&incoming_spell).expect("serialize incoming spell");
+
+        let preview =
+            tauri::async_runtime::block_on(preview_import_spell_json(payload, None)).expect("preview import");
+
+        assert_eq!(preview.spells.len(), 1);
+        let stored_spell = &preview.spells[0].spell;
+        assert_eq!(
+            stored_spell.id.as_deref(),
+            Some(preview.spells[0].content_hash.as_str()),
+            "preview items should carry the trusted recomputed content hash in spell.id"
+        );
+    }
+
+    #[test]
     fn test_apply_import_same_hash_dedups_before_name_conflict() {
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Storm Cage", 1, "Existing spell");
-        let mut incoming_spell = test_spell("Storm Cage", 3, "Incoming variant");
-        incoming_spell.tags = vec!["arcane".to_string()];
-        let shared_hash = "c".repeat(64);
+        let mut incoming_spell = test_spell("Storm Cage", 1, "Existing spell");
+        incoming_spell.source_refs = vec![SourceRef {
+            system: Some("AD&D 2e".to_string()),
+            book: "PHB".to_string(),
+            page: Some(serde_json::json!("42")),
+            url: None,
+            note: None,
+        }];
+        let shared_hash = test_hash(&existing_spell);
+        let incoming_item = preview_item_for_test(incoming_spell);
 
         insert_spell_for_apply_test(&conn, 1, &existing_spell, &shared_hash);
 
         let result = apply_import_spell_json_impl(
             &conn,
-            vec![PreviewSpellJsonItem {
-                spell: incoming_spell,
-                content_hash: shared_hash,
-                warnings: vec![],
-            }],
+            vec![incoming_item],
             None,
         )
         .expect("apply import should succeed");
@@ -2754,29 +3736,26 @@ mod tests {
     fn test_apply_import_dedup_counters_track_merged_vs_no_change() {
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Echo Ward", 2, "Existing spell");
-        let shared_hash = "g".repeat(64);
+        let shared_hash = test_hash(&existing_spell);
 
         insert_spell_for_apply_test(&conn, 1, &existing_spell, &shared_hash);
 
         let mut first_incoming = test_spell("Echo Ward", 2, "Existing spell");
-        first_incoming.tags = vec!["new-tag".to_string()];
+        first_incoming.source_refs = vec![SourceRef {
+            system: Some("AD&D 2e".to_string()),
+            book: "Tome of Magic".to_string(),
+            page: Some(serde_json::json!("55")),
+            url: None,
+            note: None,
+        }];
         let mut second_incoming = test_spell("Echo Ward", 2, "Existing spell");
-        second_incoming.tags = vec!["new-tag".to_string()];
+        second_incoming.source_refs = first_incoming.source_refs.clone();
+        let first_item = preview_item_for_test(first_incoming);
+        let second_item = preview_item_for_test(second_incoming);
 
         let result = apply_import_spell_json_impl(
             &conn,
-            vec![
-                PreviewSpellJsonItem {
-                    spell: first_incoming,
-                    content_hash: shared_hash.clone(),
-                    warnings: vec![],
-                },
-                PreviewSpellJsonItem {
-                    spell: second_incoming,
-                    content_hash: shared_hash,
-                    warnings: vec![],
-                },
-            ],
+            vec![first_item, second_item],
             None,
         )
         .expect("apply import should succeed");
@@ -2789,6 +3768,9 @@ mod tests {
 
     #[test]
     fn test_apply_import_conflict_resolution_branches_keep_replace_keep_both() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
@@ -2796,9 +3778,9 @@ mod tests {
         let keep_existing_spell = test_spell("Aegis Shell", 1, "Keep me");
         let replace_existing_spell = test_spell("Moon Lance", 3, "Old replace target");
         let keep_both_existing_spell = test_spell("Twin Flame", 4, "Original twin");
-        let keep_existing_hash = "h".repeat(64);
-        let replace_old_hash = "i".repeat(64);
-        let keep_both_existing_hash = "j".repeat(64);
+        let keep_existing_hash = test_hash(&keep_existing_spell);
+        let replace_old_hash = test_hash(&replace_existing_spell);
+        let keep_both_existing_hash = test_hash(&keep_both_existing_spell);
 
         insert_spell_for_apply_test(&conn, 1, &keep_existing_spell, &keep_existing_hash);
         insert_spell_for_apply_test(&conn, 2, &replace_existing_spell, &replace_old_hash);
@@ -2818,14 +3800,21 @@ mod tests {
         let keep_existing_incoming = test_spell("Aegis Shell", 1, "Incoming but skipped");
         let replace_incoming = test_spell("Moon Lance", 3, "Replacement description");
         let keep_both_incoming = test_spell("Twin Flame", 4, "Imported twin");
-        let replace_new_hash = "k".repeat(64);
-        let keep_both_new_hash = "l".repeat(64);
+        let keep_existing_item = preview_item_for_test(keep_existing_incoming);
+        let replace_item = preview_item_for_test(replace_incoming);
+        let keep_both_item = preview_item_for_test(keep_both_incoming);
+        let keep_existing_incoming_hash = keep_existing_item.content_hash.clone();
+        let replace_new_hash = replace_item.content_hash.clone();
+        let keep_both_new_hash = keep_both_item.content_hash.clone();
+        let mut renamed_keep_both_spell = keep_both_item.spell.clone();
+        renamed_keep_both_spell.name = "Twin Flame (1)".to_string();
+        let renamed_keep_both_hash = test_hash(&renamed_keep_both_spell);
 
         let resolve_options = ImportSpellJsonResolveOptions {
             resolutions: vec![
                 ImportSpellJsonConflictResolution {
                     existing_id: 1,
-                    incoming_content_hash: "m".repeat(64),
+                    incoming_content_hash: keep_existing_incoming_hash.clone(),
                     action: "keep_existing".to_string(),
                 },
                 ImportSpellJsonConflictResolution {
@@ -2844,23 +3833,7 @@ mod tests {
 
         let result = apply_import_spell_json_impl(
             &conn,
-            vec![
-                PreviewSpellJsonItem {
-                    spell: keep_existing_incoming,
-                    content_hash: "m".repeat(64),
-                    warnings: vec![],
-                },
-                PreviewSpellJsonItem {
-                    spell: replace_incoming,
-                    content_hash: replace_new_hash.clone(),
-                    warnings: vec![],
-                },
-                PreviewSpellJsonItem {
-                    spell: keep_both_incoming,
-                    content_hash: keep_both_new_hash.clone(),
-                    warnings: vec![],
-                },
-            ],
+            vec![keep_existing_item, replace_item, keep_both_item],
             Some(resolve_options),
         )
         .expect("apply import should succeed");
@@ -2909,24 +3882,34 @@ mod tests {
         let keep_both_name: String = conn
             .query_row(
                 "SELECT name FROM spell WHERE content_hash = ?",
-                params![keep_both_new_hash],
+                params![renamed_keep_both_hash],
                 |row| row.get(0),
             )
             .expect("query keep_both row");
         assert_eq!(keep_both_name, "Twin Flame (1)");
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_keep_both_suffix_is_name_global_across_levels() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
         let conn = setup_import_apply_test_db();
 
         let base_spell = test_spell("Cross Fire", 1, "Original");
         let existing_suffixed_other_level = test_spell("Cross Fire (1)", 9, "Higher level variant");
-        insert_spell_for_apply_test(&conn, 1, &base_spell, &"r".repeat(64));
-        insert_spell_for_apply_test(&conn, 2, &existing_suffixed_other_level, &"s".repeat(64));
+        let base_hash = test_hash(&base_spell);
+        let existing_suffixed_hash = test_hash(&existing_suffixed_other_level);
+        insert_spell_for_apply_test(&conn, 1, &base_spell, &base_hash);
+        insert_spell_for_apply_test(&conn, 2, &existing_suffixed_other_level, &existing_suffixed_hash);
 
-        let incoming = test_spell("Cross Fire", 3, "Incoming variant");
-        let new_hash = "t".repeat(64);
+        let incoming_item = preview_item_for_test(test_spell("Cross Fire", 3, "Incoming variant"));
+        let new_hash = incoming_item.content_hash.clone();
+        let mut renamed_incoming_spell = incoming_item.spell.clone();
+        renamed_incoming_spell.name = "Cross Fire (2)".to_string();
+        let renamed_hash = test_hash(&renamed_incoming_spell);
         let resolve_options = ImportSpellJsonResolveOptions {
             resolutions: vec![ImportSpellJsonConflictResolution {
                 existing_id: 1,
@@ -2938,11 +3921,7 @@ mod tests {
 
         let result = apply_import_spell_json_impl(
             &conn,
-            vec![PreviewSpellJsonItem {
-                spell: incoming,
-                content_hash: new_hash.clone(),
-                warnings: vec![],
-            }],
+            vec![incoming_item],
             Some(resolve_options),
         )
         .expect("apply import should succeed");
@@ -2951,7 +3930,7 @@ mod tests {
         let inserted_name: String = conn
             .query_row(
                 "SELECT name FROM spell WHERE content_hash = ?",
-                params![new_hash],
+                params![renamed_hash],
                 |row| row.get(0),
             )
             .expect("query inserted keep_both spell");
@@ -2959,36 +3938,80 @@ mod tests {
             inserted_name, "Cross Fire (2)",
             "suffix should increment globally by name even when (1) exists at another level"
         );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
+    }
+
+    #[test]
+    fn test_keep_both_rewrites_stored_id_to_renamed_hash() {
+        let conn = setup_import_apply_test_db();
+        let existing_spell = test_spell("Keep Both Id", 3, "Existing spell");
+        let existing_hash = test_hash(&existing_spell);
+        insert_spell_for_apply_test(&conn, 1, &existing_spell, &existing_hash);
+
+        let incoming_item = preview_item_for_test(test_spell("Keep Both Id", 4, "Incoming variant"));
+        let resolve_options = ImportSpellJsonResolveOptions {
+            resolutions: vec![ImportSpellJsonConflictResolution {
+                existing_id: 1,
+                incoming_content_hash: incoming_item.content_hash.clone(),
+                action: "keep_both".to_string(),
+            }],
+            default_action: None,
+        };
+
+        let result = apply_import_spell_json_impl(&conn, vec![incoming_item], Some(resolve_options))
+            .expect("apply import should succeed");
+
+        assert_eq!(result.imported_count, 1);
+        let stored_json: String = conn
+            .query_row(
+                "SELECT canonical_data FROM spell WHERE name = 'Keep Both Id (1)'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query keep_both canonical json");
+        let stored_spell: CanonicalSpell =
+            serde_json::from_str(&stored_json).expect("deserialize keep_both spell");
+        let stored_hash = stored_spell.compute_hash().expect("compute keep_both hash");
+        assert_eq!(
+            stored_spell.id.as_deref(),
+            Some(stored_hash.as_str()),
+            "keep_both should store the renamed spell with a matching recomputed id"
+        );
     }
 
     #[test]
     fn test_apply_import_replace_failure_rolls_back_item_and_keeps_other_rows() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
 
         let replace_existing_spell = test_spell("Rune Chain", 5, "Old rune chain");
         let keep_both_existing_spell = test_spell("Solar Knot", 2, "Original knot");
-        let replace_old_hash = "n".repeat(64);
-        let keep_both_old_hash = "o".repeat(64);
-        let replace_new_hash = "p".repeat(64);
-        let keep_both_new_hash = "q".repeat(64);
+        let replace_old_hash = test_hash(&replace_existing_spell);
+        let keep_both_old_hash = test_hash(&keep_both_existing_spell);
 
         insert_spell_for_apply_test(&conn, 1, &replace_existing_spell, &replace_old_hash);
         insert_spell_for_apply_test(&conn, 2, &keep_both_existing_spell, &keep_both_old_hash);
         conn.execute(
             "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (1, 1, ?)",
-            params![replace_old_hash],
+            params![replace_old_hash.clone()],
         )
         .expect("seed old character_class_spell hash reference");
+        let replace_item =
+            preview_item_for_test(test_spell("Rune Chain", 5, "Incoming replace should rollback"));
+        let keep_both_item =
+            preview_item_for_test(test_spell("Solar Knot", 2, "Incoming keep both"));
+        let replace_new_hash = replace_item.content_hash.clone();
+        let keep_both_new_hash = keep_both_item.content_hash.clone();
         conn.execute(
             "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (2, 99, ?)",
-            params!["p".repeat(64)],
+            params![replace_new_hash.clone()],
         )
         .expect("seed conflicting character_class_spell hash reference");
-
-        let replace_incoming = test_spell("Rune Chain", 5, "Incoming replace should rollback");
-        let keep_both_incoming = test_spell("Solar Knot", 2, "Incoming keep both");
 
         let resolve_options = ImportSpellJsonResolveOptions {
             resolutions: vec![
@@ -3008,18 +4031,7 @@ mod tests {
 
         let result = apply_import_spell_json_impl(
             &conn,
-            vec![
-                PreviewSpellJsonItem {
-                    spell: keep_both_incoming,
-                    content_hash: keep_both_new_hash.clone(),
-                    warnings: vec![],
-                },
-                PreviewSpellJsonItem {
-                    spell: replace_incoming,
-                    content_hash: replace_new_hash,
-                    warnings: vec![],
-                },
-            ],
+            vec![keep_both_item, replace_item],
             Some(resolve_options),
         )
         .expect("apply import should return per-item failures, not top-level error");
@@ -3060,6 +4072,8 @@ mod tests {
             )
             .expect("query keep_both inserted row");
         assert_eq!(keep_both_count, 1, "other savepoint commits should remain");
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
@@ -3068,20 +4082,15 @@ mod tests {
         let existing_a = test_spell("Twin Sigil", 1, "Existing row A");
         let existing_b = test_spell("Twin Sigil", 4, "Existing row B");
         let incoming_spell = test_spell("Twin Sigil", 7, "Incoming row");
-        let hash_a = "d".repeat(64);
-        let hash_b = "e".repeat(64);
-        let incoming_hash = "f".repeat(64);
+        let hash_a = test_hash(&existing_a);
+        let hash_b = test_hash(&existing_b);
 
         insert_spell_for_apply_test(&conn, 1, &existing_a, &hash_a);
         insert_spell_for_apply_test(&conn, 2, &existing_b, &hash_b);
 
         let result = apply_import_spell_json_impl(
             &conn,
-            vec![PreviewSpellJsonItem {
-                spell: incoming_spell,
-                content_hash: incoming_hash,
-                warnings: vec![],
-            }],
+            vec![preview_item_for_test(incoming_spell)],
             None,
         )
         .expect("apply import should succeed");
@@ -3100,17 +4109,14 @@ mod tests {
         let existing_spell = test_spell("Mirror Ward", 2, "Existing target spell");
         let conflicting_spell = test_spell("Prismatic Net", 6, "Spell already using incoming hash");
         let incoming_spell = test_spell("Mirror Ward", 2, "Incoming replacement spell");
-        let old_hash = "0".repeat(64);
-        let collision_hash = "1".repeat(64);
+        let old_hash = test_hash(&existing_spell);
+        let collision_hash = test_hash(&conflicting_spell);
 
         insert_spell_for_apply_test(&conn, 1, &existing_spell, &old_hash);
         insert_spell_for_apply_test(&conn, 2, &conflicting_spell, &collision_hash);
 
-        let item = PreviewSpellJsonItem {
-            spell: incoming_spell,
-            content_hash: collision_hash.clone(),
-            warnings: vec![],
-        };
+        let mut item = preview_item_for_test(incoming_spell);
+        item.content_hash = collision_hash.clone();
 
         let err = replace_with_new_impl(&conn, 1, Some(&old_hash), &collision_hash, &item)
             .expect_err("replace should fail when incoming hash belongs to another spell row");

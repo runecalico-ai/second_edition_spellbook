@@ -1,9 +1,37 @@
 import clsx from "classnames";
+import type { ReactNode } from "react";
 import { useModal } from "../../store/useModal";
+import type { ModalButton, ModalType } from "../../store/useModal";
 
-export default function Modal() {
-  const { isOpen, type, title, message, buttons, dismissible = true, hideModal } = useModal();
+function buttonTestId(label: string): string {
+  return `modal-button-${label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")}`;
+}
 
+interface ModalShellProps {
+  isOpen: boolean;
+  type: ModalType;
+  title: string;
+  message: string | string[];
+  buttons: ModalButton[];
+  customContent?: ReactNode;
+  dismissible?: boolean;
+  onRequestClose: () => void;
+}
+
+export function ModalShell({
+  isOpen,
+  type,
+  title,
+  message,
+  buttons,
+  customContent,
+  dismissible = true,
+  onRequestClose,
+}: ModalShellProps) {
   if (!isOpen) return null;
 
   const typeStyles = {
@@ -25,10 +53,11 @@ export default function Modal() {
       <button
         type="button"
         aria-label="Close modal"
+        data-testid="modal-backdrop"
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 border-none p-0 m-0 w-full h-full cursor-default"
         onClick={() => {
           if (dismissible) {
-            hideModal();
+            onRequestClose();
           }
         }}
       />
@@ -38,6 +67,7 @@ export default function Modal() {
         open
         aria-modal="true"
         aria-labelledby="modal-title"
+        data-testid="modal-dialog"
         className={clsx(
           "relative w-full max-w-md overflow-hidden rounded-xl border bg-neutral-900 shadow-2xl animate-in zoom-in-95 duration-200",
           typeStyles[type],
@@ -135,35 +165,68 @@ export default function Modal() {
             </h2>
           </div>
 
-          <div className="text-neutral-300 space-y-2">
-            {Array.isArray(message) ? (
-              <ul className="list-disc list-inside space-y-1">
-                {message.map((m, i) => (
-                  <li key={`${i}-${m.substring(0, 20)}`}>{m}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="whitespace-pre-wrap">{message}</p>
-            )}
-          </div>
+          {customContent ? (
+            <div className="text-neutral-300">{customContent}</div>
+          ) : (
+            <div className="text-neutral-300 space-y-2">
+              {Array.isArray(message) ? (
+                <ul className="list-disc list-inside space-y-1">
+                  {message.map((m, i) => (
+                    <li key={`${i}-${m.substring(0, 20)}`}>{m}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="whitespace-pre-wrap">{message}</p>
+              )}
+            </div>
+          )}
 
-          <div className="mt-8 flex justify-end gap-3">
-            {buttons.map((btn, i) => (
-              <button
-                key={`${i}-${btn.label}`}
-                type="button"
-                onClick={() => btn.onClick?.()}
-                className={clsx(
-                  "px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95",
-                  buttonStyles[btn.variant || "secondary"],
-                )}
-              >
-                {btn.label}
-              </button>
-            ))}
-          </div>
+          {buttons.length > 0 && (
+            <div className="mt-8 flex justify-end gap-3">
+              {buttons.map((btn, i) => (
+                <button
+                  key={`${i}-${btn.label}`}
+                  type="button"
+                  data-testid={buttonTestId(btn.label)}
+                  onClick={() => btn.onClick?.()}
+                  className={clsx(
+                    "px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95",
+                    buttonStyles[btn.variant || "secondary"],
+                  )}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </dialog>
     </div>
+  );
+}
+
+export default function Modal() {
+  const {
+    isOpen,
+    type,
+    title,
+    message,
+    buttons,
+    customContent,
+    dismissible = true,
+    hideModal,
+  } = useModal();
+
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      type={type}
+      title={title}
+      message={message}
+      buttons={buttons}
+      customContent={customContent}
+      dismissible={dismissible}
+      onRequestClose={hideModal}
+    />
   );
 }

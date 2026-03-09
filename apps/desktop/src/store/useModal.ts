@@ -1,30 +1,36 @@
+import type { ReactNode } from "react";
 import { create } from "zustand";
 
 export type ModalType = "info" | "success" | "warning" | "error";
 
-interface ModalButton {
+export interface ModalButton {
   label: string;
   onClick?: () => void | Promise<void>;
   variant?: "primary" | "secondary" | "danger";
 }
 
-interface ModalState {
+export interface ModalState {
   isOpen: boolean;
   type: ModalType;
   title: string;
   message: string | string[];
   buttons: ModalButton[];
+  customContent?: ReactNode;
   dismissible?: boolean;
   onClose?: () => void;
 }
 
 interface ModalStore extends ModalState {
+  queuedModal?: ShowModalOptions;
   showModal: (options: Omit<ModalState, "isOpen">) => void;
+  showModalIfIdle: (options: Omit<ModalState, "isOpen">) => boolean;
   hideModal: () => void;
   // Convenience helpers
   alert: (message: string | string[], title?: string, type?: ModalType) => Promise<void>;
   confirm: (message: string | string[], title?: string) => Promise<boolean>;
 }
+
+export type ShowModalOptions = Omit<ModalState, "isOpen">;
 
 const initialState: ModalState = {
   isOpen: false,
@@ -36,15 +42,29 @@ const initialState: ModalState = {
 
 export const useModal = create<ModalStore>((set, get) => ({
   ...initialState,
+  queuedModal: undefined,
 
   showModal: (options) => {
-    set({ ...options, isOpen: true });
+    set({ ...options, isOpen: true, queuedModal: undefined });
+  },
+
+  showModalIfIdle: (options) => {
+    if (get().isOpen) {
+      set({ queuedModal: options });
+      return false;
+    }
+    set({ ...options, isOpen: true, queuedModal: undefined });
+    return true;
   },
 
   hideModal: () => {
-    const { onClose } = get();
+    const { onClose, queuedModal } = get();
     if (onClose) onClose();
-    set({ isOpen: false });
+    if (queuedModal) {
+      set({ ...queuedModal, isOpen: true, queuedModal: undefined });
+      return;
+    }
+    set({ isOpen: false, queuedModal: undefined });
   },
 
   alert: (message, title = "Notice", type = "info") => {

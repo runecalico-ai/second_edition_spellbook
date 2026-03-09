@@ -1,0 +1,905 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DamageKind {
+    #[default]
+    #[serde(alias = "NONE", alias = "None")]
+    None,
+    #[serde(alias = "MODELED", alias = "Modeled")]
+    Modeled,
+    #[serde(alias = "DM_ADJUDICATED", alias = "DmAdjudicated")]
+    DmAdjudicated,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DamageCombineMode {
+    #[default]
+    #[serde(alias = "SUM", alias = "Sum")]
+    Sum,
+    #[serde(alias = "MAX", alias = "Max")]
+    Max,
+    #[serde(alias = "CHOOSE_ONE", alias = "ChooseOne")]
+    ChooseOne,
+    #[serde(alias = "SEQUENCE", alias = "Sequence")]
+    Sequence,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DamageType {
+    #[serde(alias = "ACID", alias = "Acid")]
+    Acid,
+    #[serde(alias = "COLD", alias = "Cold")]
+    Cold,
+    #[serde(alias = "ELECTRICITY", alias = "Electricity")]
+    Electricity,
+    #[serde(alias = "FIRE", alias = "Fire")]
+    Fire,
+    #[serde(alias = "SONIC", alias = "Sonic")]
+    Sonic,
+    #[serde(alias = "FORCE", alias = "Force")]
+    Force,
+    #[serde(alias = "MAGIC", alias = "Magic")]
+    Magic,
+    #[serde(alias = "NEGATIVE_ENERGY", alias = "NegativeEnergy")]
+    NegativeEnergy,
+    #[serde(alias = "POSITIVE_ENERGY", alias = "PositiveEnergy")]
+    PositiveEnergy,
+    #[serde(alias = "POISON", alias = "Poison")]
+    Poison,
+    #[serde(alias = "PSYCHIC", alias = "Psychic")]
+    Psychic,
+    #[serde(alias = "PHYSICAL_BLUDGEONING", alias = "PhysicalBludgeoning")]
+    PhysicalBludgeoning,
+    #[serde(alias = "PHYSICAL_PIERCING", alias = "PhysicalPiercing")]
+    PhysicalPiercing,
+    #[serde(alias = "PHYSICAL_SLASHING", alias = "PhysicalSlashing")]
+    PhysicalSlashing,
+    #[default]
+    #[serde(alias = "UNTYPED", alias = "Untyped")]
+    Untyped,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct DiceTerm {
+    pub count: i32,
+    pub sides: i32,
+    #[serde(default, alias = "per_die_modifier")]
+    pub per_die_modifier: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct DicePool {
+    pub terms: Vec<DiceTerm>,
+    #[serde(default, alias = "flat_modifier")]
+    pub flat_modifier: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ScalingKind {
+    #[default]
+    #[serde(alias = "ADD_DICE_PER_STEP", alias = "AddDicePerStep")]
+    AddDicePerStep,
+    #[serde(alias = "ADD_FLAT_PER_STEP", alias = "AddFlatPerStep")]
+    AddFlatPerStep,
+    #[serde(alias = "SET_BASE_BY_LEVEL_BAND", alias = "SetBaseByLevelBand")]
+    SetBaseByLevelBand,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ScalingDriver {
+    #[default]
+    #[serde(alias = "CASTER_LEVEL", alias = "CasterLevel")]
+    CasterLevel,
+    #[serde(alias = "SPELL_LEVEL", alias = "SpellLevel")]
+    SpellLevel,
+    #[serde(alias = "TARGET_HD", alias = "TargetHd")]
+    TargetHd,
+    #[serde(alias = "TARGET_LEVEL", alias = "TargetLevel")]
+    TargetLevel,
+    #[serde(alias = "CHOICE", alias = "Choice")]
+    Choice,
+    #[serde(alias = "OTHER", alias = "Other")]
+    Other,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct LevelBand {
+    pub min: i32,
+    pub max: i32,
+    pub base: DicePool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct ScalingRule {
+    pub kind: ScalingKind,
+    pub driver: ScalingDriver,
+    #[serde(default = "default_step")]
+    pub step: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_steps")]
+    pub max_steps: Option<i32>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "dice_increment"
+    )]
+    pub dice_increment: Option<DiceTerm>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "flat_increment"
+    )]
+    pub flat_increment: Option<i32>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "level_bands"
+    )]
+    pub level_bands: Option<Vec<LevelBand>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+fn default_step() -> i32 {
+    1
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct ClampSpec {
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "min_total")]
+    pub min_total: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "max_total")]
+    pub max_total: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationScope {
+    #[default]
+    #[serde(alias = "PER_TARGET", alias = "PerTarget")]
+    PerTarget,
+    #[serde(alias = "PER_AREA_TARGET", alias = "PerAreaTarget")]
+    PerAreaTarget,
+    #[serde(alias = "PER_MISSILE", alias = "PerMissile")]
+    PerMissile,
+    #[serde(alias = "PER_RAY", alias = "PerRay")]
+    PerRay,
+    #[serde(alias = "PER_ROUND", alias = "PerRound")]
+    PerRound,
+    #[serde(alias = "PER_TURN", alias = "PerTurn")]
+    PerTurn,
+    #[serde(alias = "PER_HIT", alias = "PerHit")]
+    PerHit,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TickDriver {
+    #[default]
+    #[serde(alias = "FIXED", alias = "Fixed")]
+    Fixed,
+    #[serde(alias = "CASTER_LEVEL", alias = "CasterLevel")]
+    CasterLevel,
+    #[serde(alias = "SPELL_LEVEL", alias = "SpellLevel")]
+    SpellLevel,
+    #[serde(alias = "DURATION", alias = "Duration")]
+    Duration,
+    #[serde(alias = "CHOICE", alias = "Choice")]
+    Choice,
+    #[serde(alias = "DM", alias = "Dm")]
+    Dm,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct ApplicationSpec {
+    pub scope: ApplicationScope,
+    #[serde(default = "default_step")]
+    pub ticks: i32,
+    #[serde(default = "default_tick_driver", alias = "tick_driver")]
+    pub tick_driver: TickDriver,
+}
+
+impl Default for ApplicationSpec {
+    fn default() -> Self {
+        Self {
+            scope: ApplicationScope::default(),
+            ticks: 1,
+            tick_driver: TickDriver::default(),
+        }
+    }
+}
+
+fn default_tick_driver() -> TickDriver {
+    TickDriver::Fixed
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DamageSaveKind {
+    #[default]
+    #[serde(alias = "NONE", alias = "None")]
+    None,
+    #[serde(alias = "HALF", alias = "Half")]
+    Half,
+    #[serde(alias = "NEGATES", alias = "Negates")]
+    Negates,
+    #[serde(alias = "PARTIAL", alias = "Partial")]
+    Partial,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct DamageSavePartial {
+    pub numerator: i32,
+    pub denominator: i32,
+}
+
+impl Default for DamageSavePartial {
+    fn default() -> Self {
+        Self {
+            numerator: 1,
+            denominator: 2,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct DamageSaveSpec {
+    pub kind: DamageSaveKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partial: Option<DamageSavePartial>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MrInteraction {
+    #[default]
+    #[serde(alias = "NORMAL", alias = "Normal")]
+    Normal,
+    #[serde(alias = "IGNORES_MR", alias = "IgnoresMr")]
+    IgnoresMr,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+    #[serde(alias = "UNKNOWN", alias = "Unknown")]
+    Unknown,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct DamagePart {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(alias = "damage_type")]
+    pub damage_type: DamageType,
+    pub base: DicePool,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "scaling")]
+    pub scaling: Option<Vec<ScalingRule>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "clamp_total"
+    )]
+    pub clamp_total: Option<ClampSpec>,
+    pub application: ApplicationSpec,
+    pub save: DamageSaveSpec,
+    #[serde(default = "default_mr_interaction", alias = "mr_interaction")]
+    pub mr_interaction: MrInteraction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+fn default_mr_interaction() -> MrInteraction {
+    MrInteraction::Normal
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct SpellDamageSpec {
+    pub kind: DamageKind,
+    #[serde(default, alias = "combine_mode")]
+    pub combine_mode: DamageCombineMode,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "parts")]
+    pub parts: Option<Vec<DamagePart>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "dm_guidance"
+    )]
+    pub dm_guidance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    /// Original source text preserved as non-hashed metadata.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "source_text",
+        alias = "raw_legacy_value",
+        alias = "rawLegacyValue"
+    )]
+    pub source_text: Option<String>,
+}
+
+impl SpellDamageSpec {
+    pub fn normalize(&mut self) {
+        if let Some(n) = &mut self.notes {
+            *n = crate::models::canonical_spell::normalize_string(
+                n,
+                crate::models::canonical_spell::NormalizationMode::Textual,
+            );
+        }
+        if let Some(g) = &mut self.dm_guidance {
+            *g = crate::models::canonical_spell::normalize_string(
+                g,
+                crate::models::canonical_spell::NormalizationMode::Textual,
+            );
+        }
+        if let Some(s) = &mut self.source_text {
+            *s = crate::models::canonical_spell::normalize_string(
+                s,
+                crate::models::canonical_spell::NormalizationMode::Textual,
+            );
+        }
+
+        if let Some(parts) = &mut self.parts {
+            for part in parts.iter_mut() {
+                // Canonical form: clamp count >= 0 and sides >= 1 (schema constraints).
+                for term in part.base.terms.iter_mut() {
+                    term.count = term.count.max(0);
+                    term.sides = term.sides.max(1);
+                }
+                part.id = crate::models::canonical_spell::normalize_string(
+                    &part.id,
+                    crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
+                );
+                if let Some(l) = &mut part.label {
+                    *l = crate::models::canonical_spell::normalize_string(
+                        l,
+                        crate::models::canonical_spell::NormalizationMode::Textual,
+                    );
+                }
+                if let Some(pn) = &mut part.notes {
+                    *pn = crate::models::canonical_spell::normalize_string(
+                        pn,
+                        crate::models::canonical_spell::NormalizationMode::Textual,
+                    );
+                }
+                if let Some(scaling_rules) = &mut part.scaling {
+                    for rule in scaling_rules.iter_mut() {
+                        if let Some(dice_inc) = &mut rule.dice_increment {
+                            dice_inc.count = dice_inc.count.max(0);
+                            dice_inc.sides = dice_inc.sides.max(1);
+                        }
+                        if let Some(bands) = &mut rule.level_bands {
+                            for band in bands.iter_mut() {
+                                for term in band.base.terms.iter_mut() {
+                                    term.count = term.count.max(0);
+                                    term.sides = term.sides.max(1);
+                                }
+                            }
+                            bands.sort_by_key(|b| (b.min, b.max));
+                        }
+                        if let Some(rn) = &mut rule.notes {
+                            *rn = crate::models::canonical_spell::normalize_string(
+                                rn,
+                                crate::models::canonical_spell::NormalizationMode::Textual,
+                            );
+                        }
+                    }
+                    // Sort scaling rules by kind, driver, and step
+                    scaling_rules.sort_by(|a, b| {
+                        (a.kind as i32, a.driver as i32, a.step).cmp(&(
+                            b.kind as i32,
+                            b.driver as i32,
+                            b.step,
+                        ))
+                    });
+                }
+            }
+            // Sort parts by ID to ensure stable hash, UNLESS combine_mode is sequence
+            // For sequence mode, order is semantically meaningful and must be preserved.
+            // If IDs are identical, use serialized content as a tie-breaker to ensure
+            // order-independent hashing remains fully deterministic.
+            if self.combine_mode != DamageCombineMode::Sequence {
+                parts.sort_by(|a, b| {
+                    let id_cmp = a.id.cmp(&b.id);
+                    if id_cmp == std::cmp::Ordering::Equal {
+                        // Tie-breaker: deterministic JCS-serialized content
+                        let a_json = serde_json_canonicalizer::to_string(a).unwrap_or_default();
+                        let b_json = serde_json_canonicalizer::to_string(b).unwrap_or_default();
+                        a_json.cmp(&b_json)
+                    } else {
+                        id_cmp
+                    }
+                });
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_damage_spec_alias_raw_legacy_value_reads_into_source_text() {
+        let from_source_text: SpellDamageSpec =
+            serde_json::from_str(r#"{"kind":"dm_adjudicated","source_text":"from source_text"}"#)
+                .expect("deserialize source_text variant");
+        assert_eq!(
+            from_source_text.source_text.as_deref(),
+            Some("from source_text")
+        );
+
+        let from_raw_legacy: SpellDamageSpec = serde_json::from_str(
+            r#"{"kind":"dm_adjudicated","raw_legacy_value":"from raw_legacy_value"}"#,
+        )
+        .expect("deserialize raw_legacy_value alias variant");
+        assert_eq!(
+            from_raw_legacy.source_text.as_deref(),
+            Some("from raw_legacy_value")
+        );
+
+        let from_raw_legacy_camel: SpellDamageSpec = serde_json::from_str(
+            r#"{"kind":"dm_adjudicated","rawLegacyValue":"from rawLegacyValue"}"#,
+        )
+        .expect("deserialize rawLegacyValue alias variant");
+        assert_eq!(
+            from_raw_legacy_camel.source_text.as_deref(),
+            Some("from rawLegacyValue")
+        );
+    }
+
+    #[test]
+    fn test_damage_spec_alias_coexistence_rejected_as_duplicate_field() {
+        let source_then_raw = serde_json::from_str::<SpellDamageSpec>(
+            r#"{"kind":"dm_adjudicated","source_text":"source first","raw_legacy_value":"raw last"}"#,
+        )
+        .expect_err("coexisting source_text + raw_legacy_value should be rejected");
+        assert!(
+            source_then_raw.to_string().contains("duplicate field"),
+            "expected duplicate-field error; got: {source_then_raw}"
+        );
+
+        let raw_then_source = serde_json::from_str::<SpellDamageSpec>(
+            r#"{"kind":"dm_adjudicated","raw_legacy_value":"raw first","source_text":"source last"}"#,
+        )
+        .expect_err("coexisting raw_legacy_value + source_text should be rejected");
+        assert!(
+            raw_then_source.to_string().contains("duplicate field"),
+            "expected duplicate-field error; got: {raw_then_source}"
+        );
+    }
+
+    #[test]
+    fn test_dice_term_normalization_clamping() {
+        // CONCERN-3: negative count and zero sides are clamped for canonical form.
+        let mut spec = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sum,
+            source_text: None,
+            parts: Some(vec![DamagePart {
+                id: "main".to_string(),
+                damage_type: DamageType::Fire,
+                base: DicePool {
+                    terms: vec![
+                        DiceTerm {
+                            count: -1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        },
+                        DiceTerm {
+                            count: 2,
+                            sides: 0,
+                            per_die_modifier: 0,
+                        },
+                    ],
+                    flat_modifier: 0,
+                },
+                application: ApplicationSpec::default(),
+                save: DamageSaveSpec::default(),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        spec.normalize();
+        let terms = &spec.parts.as_ref().unwrap()[0].base.terms;
+        assert_eq!(terms[0].count, 0, "count must be clamped to >= 0");
+        assert_eq!(terms[0].sides, 6, "sides unchanged when already >= 1");
+        assert_eq!(terms[1].count, 2, "count unchanged when already >= 0");
+        assert_eq!(terms[1].sides, 1, "sides must be clamped to >= 1");
+    }
+
+    #[test]
+    fn test_sequence_mode_preserves_order() {
+        let mut spec = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sequence,
+            source_text: None,
+            parts: Some(vec![
+                DamagePart {
+                    id: "z_initial".to_string(),
+                    damage_type: DamageType::Fire,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "a_followup".to_string(),
+                    damage_type: DamageType::Cold,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 4,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "m_final".to_string(),
+                    damage_type: DamageType::Acid,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 8,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+            ]),
+            dm_guidance: None,
+            notes: None,
+        };
+
+        spec.normalize();
+
+        let parts = spec.parts.as_ref().unwrap();
+        assert_eq!(parts.len(), 3);
+        // Order should be preserved (z, a, m) not sorted (a, m, z)
+        assert_eq!(parts[0].id, "z_initial");
+        assert_eq!(parts[1].id, "a_followup");
+        assert_eq!(parts[2].id, "m_final");
+    }
+
+    #[test]
+    fn test_non_sequence_modes_sort_by_id() {
+        let mut spec = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sum, // Non-sequence mode
+            source_text: None,
+            parts: Some(vec![
+                DamagePart {
+                    id: "z_third".to_string(),
+                    damage_type: DamageType::Fire,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "a_first".to_string(),
+                    damage_type: DamageType::Cold,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 4,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "m_second".to_string(),
+                    damage_type: DamageType::Acid,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 8,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+            ]),
+            dm_guidance: None,
+            notes: None,
+        };
+
+        spec.normalize();
+
+        let parts = spec.parts.as_ref().unwrap();
+        assert_eq!(parts.len(), 3);
+        // Should be sorted alphabetically by ID
+        assert_eq!(parts[0].id, "a_first");
+        assert_eq!(parts[1].id, "m_second");
+        assert_eq!(parts[2].id, "z_third");
+    }
+
+    #[test]
+    fn test_scaling_rules_normalization() {
+        let mut spec = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            parts: Some(vec![DamagePart {
+                id: "test".to_string(),
+                damage_type: DamageType::Fire,
+                scaling: Some(vec![
+                    ScalingRule {
+                        kind: ScalingKind::AddDicePerStep,
+                        driver: ScalingDriver::CasterLevel,
+                        step: 2,
+                        dice_increment: Some(DiceTerm {
+                            count: -1,
+                            sides: 0,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    ScalingRule {
+                        kind: ScalingKind::SetBaseByLevelBand,
+                        driver: ScalingDriver::CasterLevel,
+                        step: 1,
+                        level_bands: Some(vec![
+                            LevelBand {
+                                min: 10,
+                                max: 20,
+                                base: DicePool {
+                                    terms: vec![DiceTerm {
+                                        count: 2,
+                                        sides: 6,
+                                        ..Default::default()
+                                    }],
+                                    ..Default::default()
+                                },
+                            },
+                            LevelBand {
+                                min: 1,
+                                max: 9,
+                                base: DicePool {
+                                    terms: vec![DiceTerm {
+                                        count: 1,
+                                        sides: 6,
+                                        ..Default::default()
+                                    }],
+                                    ..Default::default()
+                                },
+                            },
+                        ]),
+                        ..Default::default()
+                    },
+                ]),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        spec.normalize();
+
+        let part = &spec.parts.as_ref().unwrap()[0];
+        let scaling = part.scaling.as_ref().unwrap();
+
+        // Sorting: AddDicePerStep (0) vs SetBaseByLevelBand (2)
+        assert_eq!(scaling[0].kind, ScalingKind::AddDicePerStep);
+        assert_eq!(scaling[1].kind, ScalingKind::SetBaseByLevelBand);
+
+        // Clamping in AddDicePerStep
+        let dice_inc = scaling[0].dice_increment.as_ref().unwrap();
+        assert_eq!(dice_inc.count, 0);
+        assert_eq!(dice_inc.sides, 1);
+
+        // Sorting in level_bands
+        let bands = scaling[1].level_bands.as_ref().unwrap();
+        assert_eq!(bands[0].min, 1);
+        assert_eq!(bands[1].min, 10);
+    }
+
+    #[test]
+    fn test_all_combine_modes_sort_except_sequence() {
+        for (mode, should_sort) in [
+            (DamageCombineMode::Sum, true),
+            (DamageCombineMode::Max, true),
+            (DamageCombineMode::ChooseOne, true),
+            (DamageCombineMode::Sequence, false),
+        ] {
+            let mut spec = SpellDamageSpec {
+                kind: DamageKind::Modeled,
+                combine_mode: mode,
+                source_text: None,
+                parts: Some(vec![
+                    DamagePart {
+                        id: "z".to_string(),
+                        damage_type: DamageType::Fire,
+                        base: DicePool {
+                            terms: vec![DiceTerm {
+                                count: 1,
+                                sides: 6,
+                                per_die_modifier: 0,
+                            }],
+                            flat_modifier: 0,
+                        },
+                        application: ApplicationSpec::default(),
+                        save: DamageSaveSpec::default(),
+                        ..Default::default()
+                    },
+                    DamagePart {
+                        id: "a".to_string(),
+                        damage_type: DamageType::Cold,
+                        base: DicePool {
+                            terms: vec![DiceTerm {
+                                count: 1,
+                                sides: 4,
+                                per_die_modifier: 0,
+                            }],
+                            flat_modifier: 0,
+                        },
+                        application: ApplicationSpec::default(),
+                        save: DamageSaveSpec::default(),
+                        ..Default::default()
+                    },
+                ]),
+                dm_guidance: None,
+                notes: None,
+            };
+
+            spec.normalize();
+
+            let parts = spec.parts.as_ref().unwrap();
+            if should_sort {
+                assert_eq!(parts[0].id, "a", "Mode {:?} should sort parts", mode);
+                assert_eq!(parts[1].id, "z", "Mode {:?} should sort parts", mode);
+            } else {
+                assert_eq!(parts[0].id, "z", "Mode {:?} should preserve order", mode);
+                assert_eq!(parts[1].id, "a", "Mode {:?} should preserve order", mode);
+            }
+        }
+    }
+
+    #[test]
+    fn test_sequence_different_order_different_serialization() {
+        // Two specs with same parts but different order should serialize differently
+        let mut spec1 = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sequence,
+            source_text: None,
+            parts: Some(vec![
+                DamagePart {
+                    id: "first".to_string(),
+                    damage_type: DamageType::Fire,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "second".to_string(),
+                    damage_type: DamageType::Cold,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 4,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+            ]),
+            dm_guidance: None,
+            notes: None,
+        };
+
+        let mut spec2 = SpellDamageSpec {
+            kind: DamageKind::Modeled,
+            combine_mode: DamageCombineMode::Sequence,
+            source_text: None,
+            parts: Some(vec![
+                DamagePart {
+                    id: "second".to_string(), // Swapped order
+                    damage_type: DamageType::Cold,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 4,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+                DamagePart {
+                    id: "first".to_string(), // Swapped order
+                    damage_type: DamageType::Fire,
+                    base: DicePool {
+                        terms: vec![DiceTerm {
+                            count: 1,
+                            sides: 6,
+                            per_die_modifier: 0,
+                        }],
+                        flat_modifier: 0,
+                    },
+                    application: ApplicationSpec::default(),
+                    save: DamageSaveSpec::default(),
+                    ..Default::default()
+                },
+            ]),
+            dm_guidance: None,
+            notes: None,
+        };
+
+        spec1.normalize();
+        spec2.normalize();
+
+        let json1 = serde_json::to_string(&spec1).unwrap();
+        let json2 = serde_json::to_string(&spec2).unwrap();
+
+        // Different order should result in different serialization
+        assert_ne!(
+            json1, json2,
+            "Sequence mode should preserve order differences"
+        );
+    }
+}

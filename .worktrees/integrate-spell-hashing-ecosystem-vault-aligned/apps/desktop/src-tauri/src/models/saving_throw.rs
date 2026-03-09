@@ -1,0 +1,284 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SavingThrowKind {
+    #[default]
+    #[serde(alias = "NONE", alias = "None")]
+    None,
+    #[serde(alias = "SINGLE", alias = "Single")]
+    Single,
+    #[serde(alias = "MULTIPLE", alias = "Multiple")]
+    Multiple,
+    #[serde(alias = "DM_ADJUDICATED", alias = "DmAdjudicated")]
+    DmAdjudicated,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveType {
+    #[serde(alias = "PARALYZATION_POISON_DEATH", alias = "ParalyzationPoisonDeath")]
+    ParalyzationPoisonDeath,
+    #[serde(alias = "ROD_STAFF_WAND", alias = "RodStaffWand")]
+    RodStaffWand,
+    #[serde(alias = "PETRIFICATION_POLYMORPH", alias = "PetrificationPolymorph")]
+    PetrificationPolymorph,
+    #[serde(alias = "BREATH_WEAPON", alias = "BreathWeapon")]
+    BreathWeapon,
+    #[default]
+    #[serde(alias = "SPELL", alias = "Spell")]
+    Spell,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveVs {
+    #[default]
+    #[serde(alias = "SPELL", alias = "Spell")]
+    Spell,
+    #[serde(alias = "POISON", alias = "Poison")]
+    Poison,
+    #[serde(alias = "DEATH_MAGIC", alias = "DeathMagic")]
+    DeathMagic,
+    #[serde(alias = "POLYMORPH", alias = "Polymorph")]
+    Polymorph,
+    #[serde(alias = "PETRIFICATION", alias = "Petrification")]
+    Petrification,
+    #[serde(alias = "BREATH", alias = "Breath")]
+    Breath,
+    #[serde(alias = "WEAPON", alias = "Weapon")]
+    Weapon,
+    #[serde(alias = "OTHER", alias = "Other")]
+    Other,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveAppliesTo {
+    #[default]
+    #[serde(alias = "EACH_TARGET", alias = "EachTarget")]
+    EachTarget,
+    #[serde(alias = "EACH_ROUND", alias = "EachRound")]
+    EachRound,
+    #[serde(alias = "EACH_APPLICATION", alias = "EachApplication")]
+    EachApplication,
+    #[serde(alias = "ONCE_PER_CAST", alias = "OncePerCast")]
+    OncePerCast,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveTiming {
+    #[serde(alias = "ON_HIT", alias = "OnHit")]
+    OnHit,
+    #[serde(alias = "ON_CONTACT", alias = "OnContact")]
+    OnContact,
+    #[serde(alias = "ON_ENTRY", alias = "OnEntry")]
+    OnEntry,
+    #[serde(alias = "END_OF_ROUND", alias = "EndOfRound")]
+    EndOfRound,
+    #[default]
+    #[serde(alias = "ON_EFFECT", alias = "OnEffect")]
+    OnEffect,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveResult {
+    #[default]
+    #[serde(alias = "NO_EFFECT", alias = "NoEffect")]
+    NoEffect,
+    #[serde(alias = "REDUCED_EFFECT", alias = "ReducedEffect")]
+    ReducedEffect,
+    #[serde(alias = "FULL_EFFECT", alias = "FullEffect")]
+    FullEffect,
+    #[serde(alias = "PARTIAL_DAMAGE_ONLY", alias = "PartialDamageOnly")]
+    PartialDamageOnly,
+    #[serde(alias = "PARTIAL_NON_DAMAGE_ONLY", alias = "PartialNonDamageOnly")]
+    PartialNonDamageOnly,
+    #[serde(alias = "SPECIAL", alias = "Special")]
+    Special,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct SaveOutcomeEffect {
+    pub result: SaveResult,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct SingleSave {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(alias = "save_type")]
+    pub save_type: SaveType,
+    #[serde(default, alias = "save_vs")]
+    pub save_vs: SaveVs,
+    #[serde(default)]
+    pub modifier: i32,
+    #[serde(default, alias = "applies_to")]
+    pub applies_to: SaveAppliesTo,
+    #[serde(default)]
+    pub timing: SaveTiming,
+    pub on_success: SaveOutcomeEffect,
+    pub on_failure: SaveOutcomeEffect,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct SavingThrowSpec {
+    pub kind: SavingThrowKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub single: Option<SingleSave>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multiple: Option<Vec<SingleSave>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "raw_legacy_value"
+    )]
+    pub raw_legacy_value: Option<String>,
+    #[serde(
+        default,
+        skip_serializing,
+        rename = "dm_guidance",
+        alias = "dmGuidance"
+    )]
+    pub legacy_dm_guidance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+}
+
+impl SavingThrowSpec {
+    pub fn is_default(&self) -> bool {
+        // `legacy_dm_guidance` is intentionally omitted from this check. migrate_to_v2()
+        // (task 1.3) runs before pruning and always moves `dm_guidance` into `notes`.
+        // Including it here would prevent pruning a spec that is otherwise at default but
+        // still carries a pre-migration `dm_guidance` value.
+        self.kind == SavingThrowKind::None
+            && self.single.is_none()
+            && self.multiple.is_none()
+            && self.raw_legacy_value.is_none()
+            && self.notes.is_none()
+    }
+
+    pub fn normalize(&mut self) {
+        if let Some(n) = &mut self.notes {
+            *n = crate::models::canonical_spell::normalize_string(
+                n,
+                crate::models::canonical_spell::NormalizationMode::Textual,
+            );
+        }
+
+        if let Some(s) = &mut self.single {
+            normalize_single_save(s);
+        }
+        if let Some(m) = &mut self.multiple {
+            for s in m.iter_mut() {
+                normalize_single_save(s);
+            }
+            // Do NOT sort 'multiple'. The order is semantically significant (sequencing).
+            // See Contract Rule 4 (it is not listed as an unordered set).
+        }
+    }
+}
+
+fn normalize_single_save(save: &mut SingleSave) {
+    if let Some(id) = &mut save.id {
+        *id = crate::models::canonical_spell::normalize_string(
+            id,
+            crate::models::canonical_spell::NormalizationMode::LowercaseStructured,
+        );
+    }
+    if let Some(n) = &mut save.on_success.notes {
+        *n = crate::models::canonical_spell::normalize_string(
+            n,
+            crate::models::canonical_spell::NormalizationMode::Textual,
+        );
+    }
+    if let Some(n) = &mut save.on_failure.notes {
+        *n = crate::models::canonical_spell::normalize_string(
+            n,
+            crate::models::canonical_spell::NormalizationMode::Textual,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_single_save_id_normalization() {
+        let mut spec = SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            single: Some(SingleSave {
+                id: Some("Test_ID".to_string()),
+                save_type: SaveType::Spell,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        spec.normalize();
+
+        let single = spec.single.as_ref().unwrap();
+        assert_eq!(single.id.as_ref().unwrap(), "test_id");
+    }
+
+    #[test]
+    fn test_multiple_saves_normalization() {
+        let mut spec = SavingThrowSpec {
+            kind: SavingThrowKind::Multiple,
+            multiple: Some(vec![
+                SingleSave {
+                    id: Some("Save_A".to_string()),
+                    save_type: SaveType::Spell,
+                    ..Default::default()
+                },
+                SingleSave {
+                    id: Some("Save_B".to_string()),
+                    save_type: SaveType::BreathWeapon,
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        };
+        spec.normalize();
+
+        let multiple = spec.multiple.as_ref().unwrap();
+        assert_eq!(multiple[0].id.as_ref().unwrap(), "save_a");
+        assert_eq!(multiple[1].id.as_ref().unwrap(), "save_b");
+    }
+
+    /// Priority D (TG3): raw_legacy_value passes through normalize() unchanged (stored as-is).
+    #[test]
+    fn test_raw_legacy_value_unchanged_by_normalize() {
+        let raw = "  Rod, Staff, or Wand  ";
+        let mut spec = SavingThrowSpec {
+            kind: SavingThrowKind::Single,
+            raw_legacy_value: Some(raw.to_string()),
+            single: Some(SingleSave {
+                id: Some("spell".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        spec.normalize();
+        assert_eq!(
+            spec.raw_legacy_value.as_deref(),
+            Some(raw),
+            "raw_legacy_value must not be normalized or modified"
+        );
+    }
+}

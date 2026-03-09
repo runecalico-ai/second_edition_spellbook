@@ -1,0 +1,46 @@
+{
+    "kind": "modeled",
+    "parts": [
+        {
+            "id": "impact",
+            "damage_type": "physical_bludgeoning",
+            "base": {
+                "terms": [
+                    {
+                        "count": 2,
+                        "sides": 6
+                    }
+                ],
+                "flat_modifier": 0
+            },
+            "application": {
+                "scope": "per_target",
+                "ticks": 1
+            },
+            "save": {
+                "kind": "none"
+            }
+        },
+        {
+            "id": "burn",
+            "damage_type": "fire",
+            "base": {
+                "terms": [
+                    {
+                        "count": 1,
+                        "sides": 6
+                    }
+                ],
+                "flat_modifier": 0
+            },
+            "application": {
+                "scope": "per_round",
+                "ticks": 3
+            },
+            "save": {
+                "kind": "negates",
+                "notes": "Successful save prevents ongoing burn entirely."
+            }
+        }
+    ]
+}

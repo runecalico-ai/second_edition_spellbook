@@ -1,0 +1,40 @@
+{
+    "kind": "modeled",
+    "combine_mode": "sum",
+    "parts": [
+        {
+            "id": "blast",
+            "label": "Explosion",
+            "damage_type": "fire",
+            "base": {
+                "terms": [
+                    {
+                        "count": 0,
+                        "sides": 6
+                    }
+                ],
+                "flat_modifier": 0
+            },
+            "scaling": [
+                {
+                    "kind": "add_dice_per_step",
+                    "driver": "caster_level",
+                    "step": 1,
+                    "max_steps": 10,
+                    "dice_increment": {
+                        "count": 1,
+                        "sides": 6
+                    }
+                }
+            ],
+            "application": {
+                "scope": "per_target",
+                "ticks": 1,
+                "tick_driver": "fixed"
+            },
+            "save": {
+                "kind": "half"
+            }
+        }
+    ]
+}

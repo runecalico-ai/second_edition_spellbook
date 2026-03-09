@@ -1,0 +1,8 @@
+{
+    "kind": "dm_adjudicated",
+    "payer": "caster",
+    "payment_timing": "on_effect",
+    "payment_semantics": "spend",
+    "dm_guidance": "Apply XP cost when the wish exceeds conservative duplication or creates significant permanent advantage; typical baseline is 5000 XP.",
+    "notes": "Encode your campaign's wish policy separately if you want determinism."
+}

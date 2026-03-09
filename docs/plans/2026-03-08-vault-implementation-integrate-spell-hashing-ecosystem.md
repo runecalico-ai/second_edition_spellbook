@@ -10,7 +10,22 @@
 
 ---
 
-### Task 1: Build Backend Vault Primitives
+## Completion status (2026-03-08)
+
+| Task | Status | Notes |
+|------|--------|--------|
+| Task 1: Backend vault primitives | Done | Pathing, integrity verify, atomic write, spell/import write-through |
+| Task 2: Integrity sweep, recovery, GC | Done | Sweep, re-export, GC with live hash set, schema-conditional artifact ref |
+| Task 3: Import/GC coordination | Done | Guard, post-import GC, replace/keep_both vault writes |
+| Task 4: User-facing vault controls | Done | VaultMaintenanceDialog, integrity-on-open, Optimize Vault, startup UX |
+| Task 5: Verification and three-pass review | Done | Full verify (cargo test 292, typecheck, test:unit 73), review artifact saved |
+| Task 6: Documentation close-out | Done | tasks.md Task 4 marked complete, TROUBLESHOOTING vault section, backup/restore scope documented |
+
+Verification: `cargo test --lib` (292 passed), `pnpm --dir apps/desktop typecheck`, `pnpm --dir apps/desktop test:unit` (73 passed). Four previously failing import/vault tests were fixed (artifact table for get_spell_from_conn, skip-merge for replace resolution, mutex poisoning resolved).
+
+---
+
+### [DONE] Task 1: Build Backend Vault Primitives
 
 **Subagent Unit:** Backend vault core
 
@@ -70,7 +85,7 @@ Expected: FAIL on missing helpers and commands.
 Run: `cargo test vault:: spells:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS for new pathing/integrity/write-through tests.
 
-### Task 2: Implement Integrity Sweep, Recovery, and GC Engine
+### [DONE] Task 2: Implement Integrity Sweep, Recovery, and GC Engine
 
 **Subagent Unit:** Backend maintenance engine
 
@@ -128,7 +143,7 @@ Expected: FAIL on missing sweep/GC implementation.
 Run: `cargo test vault:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS for recovery and GC scenarios.
 
-### Task 3: Enforce Import/GC Coordination and Post-Import Cleanup
+### [DONE] Task 3: Enforce Import/GC Coordination and Post-Import Cleanup
 
 **Subagent Unit:** Backend import integration
 
@@ -171,7 +186,7 @@ Expected: FAIL on missing import-state guard and post-import hook.
 Run: `cargo test import:: vault:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS for import guard and post-import cleanup coverage.
 
-### Task 4: Add User-Facing Vault Controls and Settings
+### [DONE] Task 4: Add User-Facing Vault Controls and Settings
 
 **Subagent Unit:** Frontend + IPC integration
 
@@ -228,7 +243,7 @@ Expected: FAIL on missing vault maintenance UI and types.
 Run: `pnpm --dir apps/desktop test:unit`
 Expected: PASS for vault settings and maintenance dialog coverage.
 
-### Task 5: Full Verification and Three-Pass Review Using Subagents
+### [DONE] Task 5: Full Verification and Three-Pass Review Using Subagents
 
 **Subagent Unit:** Verification + review
 
@@ -302,7 +317,7 @@ Manual verification:
 Suggested filename:
 - `openspec/changes/integrate-spell-hashing-ecosystem/review-task-4_2026_03_08_three-pass.md`
 
-### Task 6: Optional Documentation Close-Out
+### [DONE] Task 6: Optional Documentation Close-Out
 
 **Subagent Unit:** Docs follow-through
 

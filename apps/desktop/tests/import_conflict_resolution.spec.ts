@@ -197,9 +197,9 @@ test.describe("JSON Import Conflict Resolution", () => {
       await expect(page.getByRole("link", { name: spellName, exact: true })).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
-      await expect(page.getByRole("link", { name: `${spellName} (1)`, exact: false })).toBeVisible(
-        { timeout: TIMEOUTS.medium },
-      );
+      await expect(page.getByRole("link", { name: `${spellName} (1)`, exact: false })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
     });
   });
 
@@ -402,9 +402,9 @@ test.describe("JSON Import Conflict Resolution", () => {
       await expect(page.getByRole("link", { name: baseName, exact: true })).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
-      await expect(
-        page.getByRole("link", { name: `${baseName} (1)`, exact: false }),
-      ).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(page.getByRole("link", { name: `${baseName} (1)`, exact: false })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
     });
   });
 
@@ -455,9 +455,7 @@ test.describe("JSON Import Conflict Resolution", () => {
       await app.resolveNextConflict("keep_existing");
       // Either next conflict (2 of N) or result screen if only one was left
       await expect(
-        page
-          .getByTestId("conflict-progress")
-          .or(page.getByTestId("btn-import-more")),
+        page.getByTestId("conflict-progress").or(page.getByTestId("btn-import-more")),
       ).toBeVisible({ timeout: TIMEOUTS.long });
     });
   });

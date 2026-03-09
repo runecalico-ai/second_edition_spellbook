@@ -697,36 +697,43 @@ fn find_unique_name_for_keep_both(
 
 /// Replace existing spell row with incoming data; cascade spell_content_hash if columns exist; log changes.
 /// Fails if new content_hash already exists as a different spell. Call inside an open transaction.
+/// Returns the stored content_hash (from spell's compute_hash) so callers can refresh the vault for that hash.
 fn replace_with_new_impl(
     tx: &rusqlite::Connection,
     existing_id: i64,
     old_hash: Option<&str>,
-    new_hash: &str,
+    _new_hash: &str,
     item: &PreviewSpellJsonItem,
-) -> Result<(), AppError> {
+) -> Result<String, AppError> {
     if existing_id <= 0 {
         return Err(AppError::Import(
             "replace_with_new: invalid existing_id".into(),
         ));
     }
+    let canonical_json = item
+        .spell
+        .to_canonical_json()
+        .map_err(|e| AppError::Import(e))?;
+    let stored_hash = item
+        .spell
+        .compute_hash()
+        .map_err(|e| AppError::Import(e))?;
     let conflicting_row: Option<(i64, String)> = tx
         .query_row(
             "SELECT id, name FROM spell WHERE content_hash = ? AND id != ?",
-            params![new_hash, existing_id],
+            params![&stored_hash, existing_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
     if let Some((conflicting_id, conflicting_name)) = conflicting_row {
         return Err(AppError::Import(format!(
             "Replace with New failed: incoming content hash '{}' already exists on spell '{}' (id {}). This imported version already exists. Choose Keep Existing to keep the current spell, or Keep Both to import it as a separate copy.",
-            new_hash, conflicting_name, conflicting_id
+            stored_hash, conflicting_name, conflicting_id
         )));
     }
     let old_spell = get_spell_from_conn(tx, existing_id)?
         .ok_or_else(|| AppError::Import("replace_with_new: existing spell not found".into()))?;
     let changes = diff_canonical_vs_detail(&old_spell, &item.spell);
-    let canonical_json =
-        serde_json::to_string(&item.spell).map_err(|e| AppError::Import(e.to_string()))?;
     let (
         name_f,
         school,
@@ -786,7 +793,7 @@ fn replace_with_new_impl(
             is_cantrip,
             Utc::now().to_rfc3339(),
             canonical_json,
-            new_hash,
+            &stored_hash,
             schema_version,
             existing_id,
         ],
@@ -796,7 +803,7 @@ fn replace_with_new_impl(
         if table_has_column(&*tx, "character_class_spell", "spell_content_hash") {
             let n = tx.execute(
                 "UPDATE character_class_spell SET spell_content_hash = ? WHERE spell_content_hash = ?",
-                params![new_hash, old_h],
+                params![&stored_hash, old_h],
             )?;
             if n > 0 {
                 // optional: log if we want
@@ -805,12 +812,12 @@ fn replace_with_new_impl(
         if table_has_column(&*tx, "artifact", "spell_content_hash") {
             let _ = tx.execute(
                 "UPDATE artifact SET spell_content_hash = ? WHERE spell_content_hash = ?",
-                params![new_hash, old_h],
+                params![&stored_hash, old_h],
             )?;
         }
     }
     log_changes(tx, existing_id, changes)?;
-    Ok(())
+    Ok(stored_hash)
 }
 
 /// Resolve action for one conflict: from resolution list or default_action.
@@ -898,7 +905,7 @@ fn apply_import_spell_json_impl(
                         params![merged_tags, merged_canonical, Utc::now().to_rfc3339(), spell_id],
                     )?;
                     merged_count += 1;
-                    vault_hashes_to_refresh.insert(content_hash.clone());
+                    // Skip vault refresh: merged_canonical may not be canonical form; vault file stays as-is until next save.
                 }
                 sp.commit().map_err(AppError::Database)?;
                 return Ok(());
@@ -913,9 +920,24 @@ fn apply_import_spell_json_impl(
                 )
                 .optional()?;
 
+            // If a resolution targets a different row with replace_with_new, do not merge here;
+            // fall through to by-name so replace_with_new_impl runs and can fail (e.g. hash on another row).
+            let skip_merge_for_replace_resolution = existing_by_hash.as_ref().map_or(false, |(spell_id, _, _)| {
+                resolve_options.as_ref().map_or(false, |o| {
+                    o.resolutions.iter().any(|r| {
+                        r.action == "replace_with_new"
+                            && r.incoming_content_hash == content_hash
+                            && r.existing_id != *spell_id
+                    })
+                })
+            });
+
             if let Some((spell_id, tags_str, canonical_json)) = existing_by_hash {
-                seen_hash_in_batch.insert(content_hash.clone(), spell_id);
-                let (merged_tags, merged_canonical) = merge_canonical_metadata(
+                if skip_merge_for_replace_resolution {
+                    // Fall through to by-name branch so replace is attempted and can fail.
+                } else {
+                    seen_hash_in_batch.insert(content_hash.clone(), spell_id);
+                    let (merged_tags, merged_canonical) = merge_canonical_metadata(
                     &canonical_json,
                     &item.spell.tags,
                     &item.spell.source_refs,
@@ -932,10 +954,11 @@ fn apply_import_spell_json_impl(
                         params![merged_tags, merged_canonical, Utc::now().to_rfc3339(), spell_id],
                     )?;
                     merged_count += 1;
-                    vault_hashes_to_refresh.insert(content_hash.clone());
+                    // Skip vault refresh: merged_canonical may not be canonical form; vault file stays as-is until next save.
                 }
                 sp.commit().map_err(AppError::Database)?;
                 return Ok(());
+                }
             }
 
             // 3) Hash not found: check name-only for conflict (deterministic row selection).
@@ -962,16 +985,16 @@ fn apply_import_spell_json_impl(
                             }
                             "replace_with_new" => {
                                 let old_h = existing_hash.as_deref();
-                                replace_with_new_impl(
+                                let stored_hash = replace_with_new_impl(
                                     &sp,
                                     existing_id,
                                     old_h,
                                     &content_hash,
                                     &item,
                                 )?;
-                                seen_hash_in_batch.insert(content_hash.clone(), existing_id);
+                                seen_hash_in_batch.insert(stored_hash.clone(), existing_id);
                                 conflicts_resolved.replace_count += 1;
-                                vault_hashes_to_refresh.insert(content_hash.clone());
+                                vault_hashes_to_refresh.insert(stored_hash);
                                 migration_manager::sync_check_spell(&sp, existing_id);
                                 if let Ok(Some(detail)) = get_spell_from_conn(&sp, existing_id) {
                                     imported_spells.push(detail);
@@ -986,8 +1009,12 @@ fn apply_import_spell_json_impl(
                                 keep_both_names.insert(unique_name.clone());
                                 let mut spell_clone = item.spell.clone();
                                 spell_clone.name = unique_name;
-                                let canon_json = serde_json::to_string(&spell_clone)
-                                    .map_err(|e| AppError::Import(e.to_string()))?;
+                                let canon_json = spell_clone
+                                    .to_canonical_json()
+                                    .map_err(|e| AppError::Import(e))?;
+                                let keep_both_hash = spell_clone
+                                    .compute_hash()
+                                    .map_err(|e| AppError::Import(e))?;
                                 let row = canonical_spell_to_flat_row(&spell_clone);
                                 sp.execute(
                                     "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
@@ -1000,14 +1027,14 @@ fn apply_import_spell_json_impl(
                                         row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7,
                                         row.8, row.9, row.10, row.11, row.12, row.13, row.14,
                                         row.15, row.16, row.17, row.18, row.19, row.20, row.21,
-                                        row.22, canon_json, content_hash.clone(), row.23,
+                                        row.22, canon_json, &keep_both_hash, row.23,
                                     ],
                                 )?;
                                 let new_id = sp.last_insert_rowid();
-                                seen_hash_in_batch.insert(content_hash, new_id);
+                                seen_hash_in_batch.insert(keep_both_hash.clone(), new_id);
                                 conflicts_resolved.keep_both_count += 1;
                                 imported_count += 1;
-                                vault_hashes_to_refresh.insert(item.content_hash.clone());
+                                vault_hashes_to_refresh.insert(keep_both_hash);
                                 migration_manager::sync_check_spell(&sp, new_id);
                                 if let Ok(Some(detail)) = get_spell_from_conn(&sp, new_id) {
                                     imported_spells.push(detail);
@@ -1037,9 +1064,15 @@ fn apply_import_spell_json_impl(
                 }
             }
 
-            // 4) New spell: INSERT.
-            let canon_json =
-                serde_json::to_string(&item.spell).map_err(|e| AppError::Import(e.to_string()))?;
+            // 4) New spell: INSERT. Use canonical JSON and computed hash so vault export verifies.
+            let canon_json = item
+                .spell
+                .to_canonical_json()
+                .map_err(|e| AppError::Import(e))?;
+            let stored_hash = item
+                .spell
+                .compute_hash()
+                .map_err(|e| AppError::Import(e))?;
             let row = canonical_spell_to_flat_row(&item.spell);
             sp.execute(
                 "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
@@ -1052,13 +1085,13 @@ fn apply_import_spell_json_impl(
                     row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7,
                     row.8, row.9, row.10, row.11, row.12, row.13, row.14,
                     row.15, row.16, row.17, row.18, row.19, row.20, row.21,
-                    row.22, canon_json, content_hash.clone(), row.23,
+                    row.22, canon_json, &stored_hash, row.23,
                 ],
             )?;
             let new_id = sp.last_insert_rowid();
-            seen_hash_in_batch.insert(content_hash.clone(), new_id);
+            seen_hash_in_batch.insert(stored_hash.clone(), new_id);
             imported_count += 1;
-            vault_hashes_to_refresh.insert(content_hash.clone());
+            vault_hashes_to_refresh.insert(stored_hash);
 
             migration_manager::sync_check_spell(&sp, new_id);
 
@@ -2116,6 +2149,22 @@ mod tests {
         conn
     }
 
+    /// Creates the artifact table so get_spell_from_conn can run (used by vault-export tests that do not call create_hash_reference_tables).
+    fn create_artifact_table_for_get_spell(conn: &Connection) {
+        conn.execute(
+            "CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY,
+                spell_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .expect("create artifact table for get_spell_from_conn");
+    }
+
     fn vault_env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
@@ -2587,14 +2636,15 @@ mod tests {
         std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
 
         let conn = setup_import_apply_test_db();
+        create_artifact_table_for_get_spell(&conn);
         let incoming_spell = test_spell("Vault Import", 4, "Imported into vault storage");
-        let incoming_hash = "v".repeat(64);
+        let stored_hash = incoming_spell.compute_hash().expect("hash");
 
         let result = apply_import_spell_json_impl(
             &conn,
             vec![PreviewSpellJsonItem {
                 spell: incoming_spell,
-                content_hash: incoming_hash.clone(),
+                content_hash: stored_hash.clone(),
                 warnings: vec![],
             }],
             None,
@@ -2606,7 +2656,7 @@ mod tests {
             temp_dir
                 .path()
                 .join("spells")
-                .join(format!("{incoming_hash}.json"))
+                .join(format!("{stored_hash}.json"))
                 .exists(),
             "json import should write the canonical spell file into the vault"
         );
@@ -2638,6 +2688,7 @@ mod tests {
         std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
 
         let conn = setup_import_apply_test_db();
+        create_artifact_table_for_get_spell(&conn);
         let maintenance_state = VaultMaintenanceState::default();
         let orphan_hash = "y".repeat(64);
         let spells_dir = temp_dir.path().join("spells");
@@ -2818,8 +2869,10 @@ mod tests {
         let keep_existing_incoming = test_spell("Aegis Shell", 1, "Incoming but skipped");
         let replace_incoming = test_spell("Moon Lance", 3, "Replacement description");
         let keep_both_incoming = test_spell("Twin Flame", 4, "Imported twin");
-        let replace_new_hash = "k".repeat(64);
-        let keep_both_new_hash = "l".repeat(64);
+        let replace_new_hash = replace_incoming.compute_hash().expect("replace spell hash");
+        let mut keep_both_spell_with_suffix = keep_both_incoming.clone();
+        keep_both_spell_with_suffix.name = "Twin Flame (1)".to_string();
+        let keep_both_new_hash = keep_both_spell_with_suffix.compute_hash().expect("keep_both spell hash");
 
         let resolve_options = ImportSpellJsonResolveOptions {
             resolutions: vec![
@@ -2926,7 +2979,9 @@ mod tests {
         insert_spell_for_apply_test(&conn, 2, &existing_suffixed_other_level, &"s".repeat(64));
 
         let incoming = test_spell("Cross Fire", 3, "Incoming variant");
-        let new_hash = "t".repeat(64);
+        let mut incoming_suffixed = incoming.clone();
+        incoming_suffixed.name = "Cross Fire (2)".to_string();
+        let new_hash = incoming_suffixed.compute_hash().expect("keep_both stored hash");
         let resolve_options = ImportSpellJsonResolveOptions {
             resolutions: vec![ImportSpellJsonConflictResolution {
                 existing_id: 1,
@@ -2971,23 +3026,20 @@ mod tests {
         let keep_both_existing_spell = test_spell("Solar Knot", 2, "Original knot");
         let replace_old_hash = "n".repeat(64);
         let keep_both_old_hash = "o".repeat(64);
-        let replace_new_hash = "p".repeat(64);
         let keep_both_new_hash = "q".repeat(64);
+
+        let replace_incoming = test_spell("Rune Chain", 5, "Incoming replace should rollback");
+        let replace_new_hash = replace_incoming.compute_hash().expect("replace incoming hash");
 
         insert_spell_for_apply_test(&conn, 1, &replace_existing_spell, &replace_old_hash);
         insert_spell_for_apply_test(&conn, 2, &keep_both_existing_spell, &keep_both_old_hash);
+        insert_spell_for_apply_test(&conn, 3, &replace_incoming.clone(), &replace_new_hash);
         conn.execute(
             "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (1, 1, ?)",
             params![replace_old_hash],
         )
         .expect("seed old character_class_spell hash reference");
-        conn.execute(
-            "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (2, 99, ?)",
-            params!["p".repeat(64)],
-        )
-        .expect("seed conflicting character_class_spell hash reference");
 
-        let replace_incoming = test_spell("Rune Chain", 5, "Incoming replace should rollback");
         let keep_both_incoming = test_spell("Solar Knot", 2, "Incoming keep both");
 
         let resolve_options = ImportSpellJsonResolveOptions {
@@ -3099,13 +3151,13 @@ mod tests {
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Mirror Ward", 2, "Existing target spell");
         let conflicting_spell = test_spell("Prismatic Net", 6, "Spell already using incoming hash");
-        let incoming_spell = test_spell("Mirror Ward", 2, "Incoming replacement spell");
+        let collision_hash = conflicting_spell.compute_hash().expect("conflicting spell hash");
         let old_hash = "0".repeat(64);
-        let collision_hash = "1".repeat(64);
 
         insert_spell_for_apply_test(&conn, 1, &existing_spell, &old_hash);
         insert_spell_for_apply_test(&conn, 2, &conflicting_spell, &collision_hash);
 
+        let incoming_spell = conflicting_spell.clone();
         let item = PreviewSpellJsonItem {
             spell: incoming_spell,
             content_hash: collision_hash.clone(),

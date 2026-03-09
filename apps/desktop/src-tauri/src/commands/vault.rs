@@ -544,6 +544,7 @@ mod tests {
             "ARCANE".to_string(),
             "A carefully normalized spell for vault testing.".to_string(),
         );
+        spell.school = Some("Abjuration".to_string());
         spell.tags = vec!["alpha".to_string(), "beta".to_string()];
         spell
     }

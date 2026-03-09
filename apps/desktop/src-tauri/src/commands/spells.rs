@@ -984,7 +984,8 @@ mod tests {
                 magic_resistance TEXT,
                 schema_version INTEGER,
                 canonical_data TEXT,
-                content_hash TEXT
+                content_hash TEXT,
+                updated_at TEXT
             );
             CREATE TABLE change_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

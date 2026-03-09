@@ -12,6 +12,10 @@ export default function BulkConflictSummaryDialog({
   disabled = false,
   onAction,
 }: Props) {
+  onAction: (action: BulkConflictAction) => void;
+}
+
+export default function BulkConflictSummaryDialog({ conflictCount, onAction }: Props) {
   return (
     <div className="border border-amber-800/50 rounded-lg bg-amber-950/20 p-5 space-y-4">
       {/* Header */}

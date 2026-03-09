@@ -75,25 +75,25 @@
     - [x] Progress indicator: "Conflict 3 of 15".
 
 ## 4. Vault Implementation
-- [ ] 4.1 Update vault storage:
-    - [ ] Store spell files under vault subfolder: `spells/{content_hash}.json`.
-    - [ ] Ensure file content matches hash (integrity check).
-    - [ ] Vault file content: write full CanonicalSpell JSON (with metadata); integrity check recomputes hash via canonical serialization contract (normalize → validate → strip metadata → JCS → SHA-256), not raw file bytes.
-    - [ ] Implement vault housekeeping (Garbage Collection):
-        - [ ] Find and remove vault spell files not referenced by any spell in DB (feature is required).
-        - [ ] Decide when GC runs: on-demand, and after import.
-    - [ ] Implement GC/import concurrency guard:
-        - [ ] Prevent GC from running during active imports (mutex/lock or UI mutual exclusion).
-        - [ ] GC button disabled or blocked while import is in progress.
-    - [ ] Implement Windows path length safety:
-        - [ ] Verify full path to vault file < 260 chars.
-        - [ ] Log warning if path limit exceeded; provide mitigation (shorter base path).
-    - [ ] Implement vault integrity recovery:
-        - [ ] When vault file is missing but spell row exists with canonical_data, re-export the file.
-        - [ ] If canonical_data is NULL, log entry as unrecoverable (do not crash).
-    - [ ] Implement settings key `vault.integrityCheckOnOpen`:
-        - [ ] `true`: run integrity check automatically when vault opens.
-        - [ ] `false`: skip open-time integrity check (integrity check before GC remains required).
+- [x] 4.1 Update vault storage:
+    - [x] Store spell files under vault subfolder: `spells/{content_hash}.json`.
+    - [x] Ensure file content matches hash (integrity check).
+    - [x] Vault file content: write full CanonicalSpell JSON (with metadata); integrity check recomputes hash via canonical serialization contract (normalize → validate → strip metadata → JCS → SHA-256), not raw file bytes.
+    - [x] Implement vault housekeeping (Garbage Collection):
+        - [x] Find and remove vault spell files not referenced by any spell in DB (feature is required).
+        - [x] Decide when GC runs: on-demand, and after import.
+    - [x] Implement GC/import concurrency guard:
+        - [x] Prevent GC from running during active imports (mutex/lock or UI mutual exclusion).
+        - [x] GC button disabled or blocked while import is in progress.
+    - [x] Implement Windows path length safety:
+        - [x] Verify full path to vault file < 260 chars.
+        - [x] Log warning if path limit exceeded; provide mitigation (shorter base path).
+    - [x] Implement vault integrity recovery:
+        - [x] When vault file is missing but spell row exists with canonical_data, re-export the file.
+        - [x] If canonical_data is NULL, log entry as unrecoverable (do not crash).
+    - [x] Implement settings key `vault.integrityCheckOnOpen`:
+        - [x] `true`: run integrity check automatically when vault opens.
+        - [x] `false`: skip open-time integrity check (integrity check before GC remains required).
 
 ## 5. Spell List Integration
 - [ ] 5.1 Migrate Spell Lists (per-class known/prepared sets in `character_class_spell`) (Migration 0015):

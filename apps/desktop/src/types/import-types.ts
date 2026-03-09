@@ -18,7 +18,6 @@ export function abbreviateHash(hash: string | null | undefined): string {
   return hash.length > 16 ? `${hash.slice(0, 16)}…` : hash;
 }
 
-
 // ---------------------------------------------------------------------------
 // Conflict types
 // ---------------------------------------------------------------------------

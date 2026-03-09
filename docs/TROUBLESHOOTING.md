@@ -259,6 +259,14 @@ If the database is unusable, you can restore from an automatic backup.
    ```
    *Note: Automatically restores the most recent backup without requiring a file path.*
 
+   **Vault and backup/restore:** Backups include the database plus the vault spell files (`spells/` directory) and `vault-settings.json`. When you restore a backup, the app restores the DB, then the `spells/` files and settings, then runs a vault integrity check. You do not need to rebuild vault files from the DB after restore; they are restored directly from the archive.
+
+### Vault Maintenance and Integrity
+
+- **Optimize Vault (GC):** Removes spell files from `spells/` that are no longer referenced by any spell in the database (e.g. after deleting spells or replacing them with new versions). The button is disabled while an import is in progress. An integrity check runs before GC; if it reports issues, resolve or acknowledge them before running Optimize Vault.
+- **Unrecoverable spell files:** If the integrity check finds a spell row whose vault file is missing and the row has no `canonical_data` (or it is NULL), that spell cannot be re-exported to the vault. The app reports these as "unrecoverable" in the integrity summary (e.g. in the Vault Maintenance dialog or startup warning). You can keep the row and re-add content via edit/import, or remove the spell from the library.
+- **Windows path length:** If the full path to a vault file would exceed 260 characters, the app logs a warning. Use a shorter vault base path (e.g. a data directory closer to the drive root) to avoid hitting the limit.
+
 ### Manual Rollback (SQL)
 If CLI tools fail, you can manually reset the migration state (hashed columns) to force a retry on next boot.
 *Requires an SQLite client.*

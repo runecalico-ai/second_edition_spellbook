@@ -1058,7 +1058,8 @@ mod tests {
                 schema_version INTEGER,
                 updated_at TEXT,
                 canonical_data TEXT,
-                content_hash TEXT
+                content_hash TEXT,
+                updated_at TEXT
             );
             CREATE TABLE change_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

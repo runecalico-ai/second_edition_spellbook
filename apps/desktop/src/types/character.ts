@@ -53,6 +53,8 @@ export interface CharacterSpellbookEntry {
   known: number;
   notes?: string | null;
   tags?: string | null;
+  spellContentHash?: string | null;
+  missingFromLibrary?: boolean;
 }
 
 export interface BundleClassSpell {

@@ -427,6 +427,8 @@ pub async fn get_character_class_spells(
                     known: row.get(9)?,
                     notes: row.get(10)?,
                     tags: row.get(11)?,
+                    spell_content_hash: None,
+                    missing_from_library: false,
                 })
             })?;
             let mut out = vec![];
@@ -449,6 +451,8 @@ pub async fn get_character_class_spells(
                     known: row.get(9)?,
                     notes: row.get(10)?,
                     tags: row.get(11)?,
+                    spell_content_hash: None,
+                    missing_from_library: false,
                 })
             })?;
             let mut out = vec![];
@@ -591,6 +595,8 @@ pub async fn get_character_spellbook(
                 known: row.get(8)?,
                 notes: row.get(9)?,
                 tags: row.get(10)?,
+                spell_content_hash: None,
+                missing_from_library: false,
             })
         })?;
 

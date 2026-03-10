@@ -147,6 +147,27 @@ fn map_row_12(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSpellbookEnt
     })
 }
 
+/// Sync helper: remove character_class_spell row(s) by spell_content_hash.
+/// When list_type == "KNOWN", also deletes PREPARED row with same hash (cascade "prepared must be known").
+fn remove_character_spell_by_hash_with_conn(
+    conn: &Connection,
+    character_class_id: i64,
+    spell_content_hash: &str,
+    list_type: &str,
+) -> Result<(), AppError> {
+    conn.execute(
+        "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = ?",
+        params![character_class_id, spell_content_hash, list_type],
+    )?;
+    if list_type == "KNOWN" {
+        conn.execute(
+            "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = 'PREPARED'",
+            params![character_class_id, spell_content_hash],
+        )?;
+    }
+    Ok(())
+}
+
 fn upsert_character_class_spell_with_hash(
     conn: &Connection,
     character_class_id: i64,
@@ -602,6 +623,29 @@ pub async fn remove_character_spell(
 }
 
 #[tauri::command]
+pub async fn remove_character_spell_by_hash(
+    state: State<'_, Arc<Pool>>,
+    character_class_id: i64,
+    spell_content_hash: String,
+    list_type: String,
+) -> Result<(), AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        remove_character_spell_by_hash_with_conn(
+            &conn,
+            character_class_id,
+            &spell_content_hash,
+            &list_type,
+        )
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn update_character_spell_notes(
     state: State<'_, Arc<Pool>>,
     character_class_id: i64,
@@ -748,6 +792,28 @@ mod tests {
             )
             .expect("query stored notes");
         assert_eq!(notes, "note");
+    }
+
+    #[test]
+    fn test_remove_character_spell_by_hash_deletes_row() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) VALUES (7, 0, 'KNOWN', NULL, 'orphan-hash')",
+            [],
+        )
+        .expect("insert orphan row");
+
+        remove_character_spell_by_hash_with_conn(&conn, 7, "orphan-hash", "KNOWN")
+            .expect("remove by hash");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM character_class_spell WHERE spell_content_hash = 'orphan-hash'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count after delete");
+        assert_eq!(count, 0, "row with spell_content_hash = 'orphan-hash' must be deleted");
     }
 
     /// Integration-style test: orphan spell_content_hash (no matching spell) returns one entry

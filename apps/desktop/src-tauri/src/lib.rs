@@ -69,6 +69,7 @@ pub fn run() {
             get_character_class_spells,
             add_character_spell,
             remove_character_spell,
+            remove_character_spell_by_hash,
             update_character_spell_notes,
             get_character_spellbook,
             update_character_spell,

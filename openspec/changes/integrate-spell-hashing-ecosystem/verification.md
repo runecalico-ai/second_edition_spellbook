@@ -163,6 +163,14 @@
   - THEN `spell_content_hash` MUST be set for each row
   - AND join to `spell` on `spell.content_hash = character_class_spell.spell_content_hash` MUST succeed
 
+#### Missing spell handling
+- [ ] **Verification: Migration 0015 — column, backfill, and indexes**
+  - Migration 0015 adds column `spell_content_hash` to `character_class_spell`, backfills from `spell.content_hash`, and creates unique index `idx_ccs_character_hash_list` (and optionally `idx_ccs_spell_content_hash`) on a fresh DB.
+- [ ] **Verification: get_character_class_spells returns missing_from_library and placeholder**
+  - When no spell row exists for a given `spell_content_hash`, `get_character_class_spells` returns `missing_from_library: true` and a placeholder name (e.g. "Spell no longer in library").
+- [ ] **Verification: remove_character_spell_by_hash removes row and cascades PREPARED**
+  - `remove_character_spell_by_hash` removes the `character_class_spell` row and cascades PREPARED when removing KNOWN (same `character_class_id` and `spell_content_hash`).
+
 ### Character Integration
 - [ ] **Test: Character referencing spell hash**
   - GIVEN character with "Fireball" (hash A) memorized

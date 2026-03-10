@@ -174,6 +174,15 @@ mod tests {
             "spell_content_hash"
         ));
         assert!(has_column(&conn, "artifact", "spell_content_hash"));
+
+        let index_exists = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_ccs_character_hash_list'",
+                [],
+                |row| row.get::<_, i32>(0),
+            )
+            .is_ok();
+        assert!(index_exists, "idx_ccs_character_hash_list must exist after migration 0015");
     }
 
     #[test]

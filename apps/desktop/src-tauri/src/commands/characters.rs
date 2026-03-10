@@ -869,6 +869,92 @@ mod tests {
         );
         assert_eq!(entries[0].spell_content_hash.as_deref(), Some("orphan-hash"));
     }
+
+    /// get_character_class_spells with mixed present and missing: one hash matches spell table,
+    /// one has no spell row; assert two entries with correct missing_from_library and names.
+    #[test]
+    fn get_character_class_spells_mixed_present_and_missing_returns_both() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                content_hash TEXT,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                is_quest_spell INTEGER DEFAULT 0,
+                is_cantrip INTEGER DEFAULT 0,
+                tags TEXT
+            );
+            CREATE TABLE "character" (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE TABLE character_class (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_id INTEGER NOT NULL
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
+            );
+            INSERT INTO "character" (id, name) VALUES (1, 'Test');
+            INSERT INTO character_class (id, character_id) VALUES (10, 1);
+            INSERT INTO spell (id, content_hash, name, level, school, sphere, is_quest_spell, is_cantrip, tags)
+            VALUES (1, 'present-hash', 'Magic Missile', 1, 'Evocation', NULL, 0, 0, NULL);
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+            VALUES (10, 1, 'KNOWN', NULL, 'present-hash'), (10, 0, 'KNOWN', NULL, 'missing-hash');
+            "#,
+        )
+        .expect("create schema and seed");
+
+        let entries = get_character_class_spells_with_conn(&conn, 10, Some("KNOWN"))
+            .expect("get_character_class_spells_with_conn");
+        assert_eq!(entries.len(), 2, "two entries: one present, one missing");
+
+        let present = entries
+            .iter()
+            .find(|e| e.spell_content_hash.as_deref() == Some("present-hash"))
+            .expect("entry for present spell");
+        assert!(!present.missing_from_library, "present spell must not be marked missing");
+        assert_eq!(present.spell_name, "Magic Missile");
+
+        let missing = entries
+            .iter()
+            .find(|e| e.spell_content_hash.as_deref() == Some("missing-hash"))
+            .expect("entry for missing spell");
+        assert!(missing.missing_from_library, "missing spell must be marked missing_from_library");
+        assert_eq!(missing.spell_name, "Spell no longer in library");
+    }
+
+    /// remove_character_spell_by_hash with list_type KNOWN cascades: both KNOWN and PREPARED
+    /// rows for the same (character_class_id, spell_content_hash) are removed.
+    #[test]
+    fn test_remove_character_spell_by_hash_cascades_prepared() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute_batch(
+            r#"
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+            VALUES (7, 0, 'KNOWN', NULL, 'cascade-hash'), (7, 0, 'PREPARED', NULL, 'cascade-hash');
+            "#,
+        )
+        .expect("seed KNOWN and PREPARED rows");
+
+        remove_character_spell_by_hash_with_conn(&conn, 7, "cascade-hash", "KNOWN")
+            .expect("remove by hash");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'cascade-hash'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count after delete");
+        assert_eq!(count, 0, "both KNOWN and PREPARED rows must be removed");
+    }
 }
 
 /// Deprecated: legacy spellbook command. Use the per-class system instead.

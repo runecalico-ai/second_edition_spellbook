@@ -17,6 +17,136 @@ fn table_has_column(conn: &Connection, table: &str, column: &str) -> bool {
     conn.query_row(&sql, [column], |_| Ok(())).is_ok()
 }
 
+/// Sync helper for building character class spell list. Used by the command and by tests.
+fn get_character_class_spells_with_conn(
+    conn: &Connection,
+    character_class_id: i64,
+    list_type: Option<&str>,
+) -> Result<Vec<CharacterSpellbookEntry>, AppError> {
+    let use_hash = table_has_column(conn, "character_class_spell", "spell_content_hash");
+    if use_hash {
+        let (query, params): (String, Vec<Box<dyn ToSql>>) = if let Some(lt) = list_type {
+            (
+                "SELECT cc.character_id, COALESCE(s.id, 0) AS spell_id, COALESCE(s.name, 'Spell no longer in library') AS spell_name, COALESCE(s.level, 0) AS spell_level, s.school, s.sphere, COALESCE(s.is_quest_spell, 0), COALESCE(s.is_cantrip, 0),
+                        CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
+                        CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
+                        ccs.notes,
+                        s.tags,
+                        ccs.spell_content_hash,
+                        CASE WHEN s.id IS NULL AND ccs.spell_content_hash IS NOT NULL THEN 1 ELSE 0 END AS missing_from_library
+                 FROM character_class_spell ccs
+                 LEFT JOIN spell s ON s.content_hash = ccs.spell_content_hash
+                 JOIN character_class cc ON cc.id = ccs.character_class_id
+                 WHERE ccs.character_class_id = ? AND ccs.list_type = ?
+                 ORDER BY COALESCE(s.level, 0), COALESCE(s.name, '')"
+                    .to_string(),
+                vec![Box::new(character_class_id), Box::new(lt.to_string())],
+            )
+        } else {
+            (
+                "SELECT cc.character_id, COALESCE(s.id, 0) AS spell_id, COALESCE(s.name, 'Spell no longer in library') AS spell_name, COALESCE(s.level, 0) AS spell_level, s.school, s.sphere, COALESCE(s.is_quest_spell, 0), COALESCE(s.is_cantrip, 0),
+                        CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
+                        CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
+                        ccs.notes,
+                        s.tags,
+                        ccs.spell_content_hash,
+                        CASE WHEN s.id IS NULL AND ccs.spell_content_hash IS NOT NULL THEN 1 ELSE 0 END AS missing_from_library
+                 FROM character_class_spell ccs
+                 LEFT JOIN spell s ON s.content_hash = ccs.spell_content_hash
+                 JOIN character_class cc ON cc.id = ccs.character_class_id
+                 WHERE ccs.character_class_id = ?
+                 ORDER BY COALESCE(s.level, 0), COALESCE(s.name, '')"
+                    .to_string(),
+                vec![Box::new(character_class_id)],
+            )
+        };
+        let mut stmt = conn.prepare(&query)?;
+        let rows = if list_type.is_some() {
+            stmt.query_map(rusqlite::params_from_iter(params.iter()), map_row_14)?
+        } else {
+            stmt.query_map(rusqlite::params_from_iter(params.iter()), map_row_14)?
+        };
+        let mut out = vec![];
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    } else {
+        let query = if list_type.is_some() {
+            "SELECT cc.character_id, s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
+                    CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
+                    CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
+                    ccs.notes,
+                    s.tags
+             FROM character_class_spell ccs
+             JOIN spell s ON s.id = ccs.spell_id
+             JOIN character_class cc ON cc.id = ccs.character_class_id
+             WHERE ccs.character_class_id = ? AND ccs.list_type = ?
+             ORDER BY s.level, s.name"
+        } else {
+            "SELECT cc.character_id, s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
+                    CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
+                    CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
+                    ccs.notes,
+                    s.tags
+             FROM character_class_spell ccs
+             JOIN spell s ON s.id = ccs.spell_id
+             JOIN character_class cc ON cc.id = ccs.character_class_id
+             WHERE ccs.character_class_id = ?
+             ORDER BY s.level, s.name"
+        };
+        let mut stmt = conn.prepare(query)?;
+        let rows = if let Some(lt) = list_type {
+            stmt.query_map(params![character_class_id, lt], map_row_12)?
+        } else {
+            stmt.query_map(params![character_class_id], map_row_12)?
+        };
+        let mut out = vec![];
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+}
+
+fn map_row_14(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSpellbookEntry> {
+    Ok(CharacterSpellbookEntry {
+        character_id: row.get(0)?,
+        spell_id: row.get(1)?,
+        spell_name: row.get(2)?,
+        spell_level: row.get(3)?,
+        spell_school: row.get(4)?,
+        spell_sphere: row.get(5)?,
+        is_quest_spell: row.get(6)?,
+        is_cantrip: row.get(7)?,
+        prepared: row.get(8)?,
+        known: row.get(9)?,
+        notes: row.get(10)?,
+        tags: row.get(11)?,
+        spell_content_hash: row.get(12)?,
+        missing_from_library: row.get::<_, i64>(13)? != 0,
+    })
+}
+
+fn map_row_12(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSpellbookEntry> {
+    Ok(CharacterSpellbookEntry {
+        character_id: row.get(0)?,
+        spell_id: row.get(1)?,
+        spell_name: row.get(2)?,
+        spell_level: row.get(3)?,
+        spell_school: row.get(4)?,
+        spell_sphere: row.get(5)?,
+        is_quest_spell: row.get(6)?,
+        is_cantrip: row.get(7)?,
+        prepared: row.get(8)?,
+        known: row.get(9)?,
+        notes: row.get(10)?,
+        tags: row.get(11)?,
+        spell_content_hash: None,
+        missing_from_library: false,
+    })
+}
+
 fn upsert_character_class_spell_with_hash(
     conn: &Connection,
     character_class_id: i64,
@@ -385,82 +515,14 @@ pub async fn get_character_class_spells(
     list_type: Option<String>,
 ) -> Result<Vec<CharacterSpellbookEntry>, AppError> {
     let pool = state.inner().clone();
+    let list_type_clone = list_type.clone();
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let query = if list_type.is_some() {
-            "SELECT cc.character_id, s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
-                    CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
-                    CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
-                    ccs.notes,
-                    s.tags
-             FROM character_class_spell ccs
-             JOIN spell s ON s.id = ccs.spell_id
-             JOIN character_class cc ON cc.id = ccs.character_class_id
-             WHERE ccs.character_class_id = ? AND ccs.list_type = ?
-             ORDER BY s.level, s.name"
-        } else {
-            "SELECT cc.character_id, s.id, s.name, s.level, s.school, s.sphere, s.is_quest_spell, s.is_cantrip,
-                    CASE WHEN ccs.list_type = 'PREPARED' THEN 1 ELSE 0 END,
-                    CASE WHEN ccs.list_type = 'KNOWN' THEN 1 ELSE 0 END,
-                    ccs.notes,
-                    s.tags
-             FROM character_class_spell ccs
-             JOIN spell s ON s.id = ccs.spell_id
-             JOIN character_class cc ON cc.id = ccs.character_class_id
-             WHERE ccs.character_class_id = ?
-             ORDER BY s.level, s.name"
-        };
-
-        let mut stmt = conn.prepare(query)?;
-        if let Some(lt) = list_type {
-            let rows = stmt.query_map(params![character_class_id, lt], |row| {
-                Ok(CharacterSpellbookEntry {
-                    character_id: row.get(0)?,
-                    spell_id: row.get(1)?,
-                    spell_name: row.get(2)?,
-                    spell_level: row.get(3)?,
-                    spell_school: row.get(4)?,
-                    spell_sphere: row.get(5)?,
-                    is_quest_spell: row.get(6)?,
-                    is_cantrip: row.get(7)?,
-                    prepared: row.get(8)?,
-                    known: row.get(9)?,
-                    notes: row.get(10)?,
-                    tags: row.get(11)?,
-                    spell_content_hash: None,
-                    missing_from_library: false,
-                })
-            })?;
-            let mut out = vec![];
-            for row in rows {
-                out.push(row?);
-            }
-            Ok::<Vec<CharacterSpellbookEntry>, AppError>(out)
-        } else {
-            let rows = stmt.query_map(params![character_class_id], |row| {
-                Ok(CharacterSpellbookEntry {
-                    character_id: row.get(0)?,
-                    spell_id: row.get(1)?,
-                    spell_name: row.get(2)?,
-                    spell_level: row.get(3)?,
-                    spell_school: row.get(4)?,
-                    spell_sphere: row.get(5)?,
-                    is_quest_spell: row.get(6)?,
-                    is_cantrip: row.get(7)?,
-                    prepared: row.get(8)?,
-                    known: row.get(9)?,
-                    notes: row.get(10)?,
-                    tags: row.get(11)?,
-                    spell_content_hash: None,
-                    missing_from_library: false,
-                })
-            })?;
-            let mut out = vec![];
-            for row in rows {
-                out.push(row?);
-            }
-            Ok::<Vec<CharacterSpellbookEntry>, AppError>(out)
-        }
+        get_character_class_spells_with_conn(
+            &conn,
+            character_class_id,
+            list_type_clone.as_deref(),
+        )
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -686,6 +748,60 @@ mod tests {
             )
             .expect("query stored notes");
         assert_eq!(notes, "note");
+    }
+
+    /// Integration-style test: orphan spell_content_hash (no matching spell) returns one entry
+    /// with missing_from_library == true and placeholder name "Spell no longer in library".
+    #[test]
+    fn get_character_class_spells_missing_or_returns_placeholder() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                content_hash TEXT,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                is_quest_spell INTEGER DEFAULT 0,
+                is_cantrip INTEGER DEFAULT 0,
+                tags TEXT
+            );
+            CREATE TABLE "character" (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE TABLE character_class (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_id INTEGER NOT NULL
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
+            );
+            INSERT INTO "character" (id, name) VALUES (1, 'Test');
+            INSERT INTO character_class (id, character_id) VALUES (10, 1);
+            -- One spell in library (different hash). No spell with content_hash = 'orphan-hash'.
+            INSERT INTO spell (id, content_hash, name, level, school, sphere, is_quest_spell, is_cantrip, tags)
+            VALUES (1, 'other-hash', 'Real Spell', 1, 'Abjuration', NULL, 0, 0, NULL);
+            -- List row that references missing spell by hash only.
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+            VALUES (10, 0, 'KNOWN', NULL, 'orphan-hash');
+            "#,
+        )
+        .expect("create schema and seed");
+
+        let entries = get_character_class_spells_with_conn(&conn, 10, Some("KNOWN"))
+            .expect("get_character_class_spells_with_conn");
+        assert_eq!(entries.len(), 1, "one entry for orphan hash");
+        assert!(entries[0].missing_from_library, "entry must be marked missing_from_library");
+        assert_eq!(
+            entries[0].spell_name, "Spell no longer in library",
+            "placeholder name for missing spell"
+        );
+        assert_eq!(entries[0].spell_content_hash.as_deref(), Some("orphan-hash"));
     }
 }
 

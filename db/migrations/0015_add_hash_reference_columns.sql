@@ -1,3 +1,7 @@
+-- Migration 0015 (phase 2)
+-- Column creation for spell_content_hash is performed in load_migrations()
+-- before this SQL is executed so the migration remains idempotent on upgraded DBs.
+
 UPDATE character_class_spell
 SET spell_content_hash = (
     SELECT spell.content_hash
@@ -5,7 +9,7 @@ SET spell_content_hash = (
     WHERE spell.id = character_class_spell.spell_id
 )
 WHERE spell_content_hash IS NULL;
-CREATE INDEX IF NOT EXISTS idx_character_class_spell_content_hash
+CREATE INDEX IF NOT EXISTS idx_ccs_spell_content_hash
 ON character_class_spell(spell_content_hash)
 WHERE spell_content_hash IS NOT NULL;
 

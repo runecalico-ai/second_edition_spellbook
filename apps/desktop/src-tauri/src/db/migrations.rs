@@ -10,6 +10,14 @@ fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
     conn.query_row(&sql, [column], |_| Ok(())).is_ok()
 }
 
+/// Applies migration 0015: hash reference columns and indexes.
+///
+/// Column creation happens here (not in the SQL file) so we can run ADD COLUMN
+/// only when missing, keeping the migration idempotent on DBs that were
+/// partially upgraded. The SQL file (phase 2) assumes these columns already
+/// exist and only runs backfills and index creation. The expected non-unique
+/// index on character_class_spell(spell_content_hash) is
+/// `idx_ccs_spell_content_hash`.
 fn apply_hash_reference_columns_migration(conn: &Connection) -> Result<(), AppError> {
     if !has_column(conn, "character_class_spell", "spell_content_hash") {
         conn.execute(
@@ -156,6 +164,45 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_migration_0015_creates_task_5_index_names() {
+        let conn = Connection::open_in_memory().expect("open db");
+        load_migrations(&conn).expect("load migrations");
+
+        let index_names: Vec<String> = conn
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?)",
+            )
+            .expect("prepare")
+            .query_map(
+                rusqlite::params![
+                    "idx_ccs_spell_content_hash",
+                    "idx_ccs_character_hash_list",
+                    "idx_artifact_spell_content_hash",
+                ],
+                |row| row.get(0),
+            )
+            .expect("query")
+            .filter_map(Result::ok)
+            .collect();
+
+        assert!(
+            index_names.contains(&"idx_ccs_spell_content_hash".to_string()),
+            "sqlite_master must contain idx_ccs_spell_content_hash, got: {:?}",
+            index_names
+        );
+        assert!(
+            index_names.contains(&"idx_ccs_character_hash_list".to_string()),
+            "sqlite_master must contain idx_ccs_character_hash_list, got: {:?}",
+            index_names
+        );
+        assert!(
+            index_names.contains(&"idx_artifact_spell_content_hash".to_string()),
+            "sqlite_master must contain idx_artifact_spell_content_hash, got: {:?}",
+            index_names
+        );
+    }
 
     #[test]
     fn test_load_migrations_adds_hash_reference_columns() {

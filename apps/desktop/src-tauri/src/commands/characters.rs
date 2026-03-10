@@ -782,6 +782,47 @@ pub async fn get_character_spellbook(
     Ok(result)
 }
 
+/// Test-only: seeds a character with one class and one orphan spell row (spell_content_hash
+/// set, no matching spell row) for E2E missing-library placeholder tests.
+/// Only use in E2E tests; creates data that would not occur in production without CASCADE disabled.
+#[tauri::command]
+pub async fn test_seed_character_with_orphan_spell(
+    state: State<'_, Arc<Pool>>,
+    character_name: String,
+) -> Result<(), AppError> {
+    let pool = state.inner().clone();
+    let name = character_name;
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        if !table_has_column(&conn, "character_class_spell", "spell_content_hash") {
+            return Err(AppError::Unknown(
+                "test_seed_character_with_orphan_spell requires spell_content_hash column (Migration 0015)"
+                    .to_string(),
+            ));
+        }
+        conn.execute(
+            "INSERT INTO \"character\" (name, type, notes) VALUES (?, 'PC', NULL)",
+            params![name],
+        )?;
+        let character_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO character_class (character_id, class_name, class_label, level) VALUES (?, 'Mage', NULL, 1)",
+            params![character_id],
+        )?;
+        let character_class_id = conn.last_insert_rowid();
+        conn.execute("PRAGMA foreign_keys=OFF", [])?;
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) VALUES (?, 0, 'KNOWN', NULL, 'e2e-orphan-hash')",
+            params![character_class_id],
+        )?;
+        conn.execute("PRAGMA foreign_keys=ON", [])?;
+        Ok::<(), AppError>(())
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

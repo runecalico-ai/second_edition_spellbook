@@ -351,6 +351,11 @@ export class SpellbookApp {
     return this.page.getByRole("row", { name: spellName });
   }
 
+  /** Get the missing-library placeholder row in the character class spell list */
+  getMissingSpellRow() {
+    return this.page.getByTestId("spell-row-missing");
+  }
+
   /** Open character editor by name */
   async openCharacterEditor(name: string): Promise<void> {
     console.log(`Opening character editor: ${name}`);

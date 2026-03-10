@@ -5,9 +5,65 @@ use crate::models::{
     CharacterSpellbookEntry, UpdateAbilitiesInput, UpdateCharacterDetailsInput,
 };
 use rusqlite::ToSql;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::sync::Arc;
 use tauri::State;
+
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    let sql = format!(
+        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
+        table.replace('\'', "''")
+    );
+    conn.query_row(&sql, [column], |_| Ok(())).is_ok()
+}
+
+fn upsert_character_class_spell_with_hash(
+    conn: &Connection,
+    character_class_id: i64,
+    spell_id: i64,
+    list_type: &str,
+    notes: Option<&str>,
+) -> Result<(), AppError> {
+    if table_has_column(conn, "character_class_spell", "spell_content_hash") {
+        let spell_content_hash: Option<String> = conn
+            .query_row(
+                "SELECT content_hash FROM spell WHERE id = ?",
+                [spell_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        conn.execute(
+            "INSERT INTO character_class_spell (
+                character_class_id,
+                spell_id,
+                list_type,
+                notes,
+                spell_content_hash
+             )
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(character_class_id, spell_id, list_type) DO UPDATE SET
+                notes=excluded.notes,
+                spell_content_hash=excluded.spell_content_hash",
+            params![
+                character_class_id,
+                spell_id,
+                list_type,
+                notes,
+                spell_content_hash
+            ],
+        )?;
+    } else {
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(character_class_id, spell_id, list_type) DO UPDATE SET
+                notes=excluded.notes",
+            params![character_class_id, spell_id, list_type, notes],
+        )?;
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn create_character(
@@ -433,12 +489,12 @@ pub async fn add_character_spell(
             }
         }
 
-        conn.execute(
-            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes)
-             VALUES (?, ?, ?, ?)
-             ON CONFLICT(character_class_id, spell_id, list_type) DO UPDATE SET
-                notes=excluded.notes",
-            params![character_class_id, spell_id, list_type, notes],
+        upsert_character_class_spell_with_hash(
+            &conn,
+            character_class_id,
+            spell_id,
+            &list_type,
+            notes.as_deref(),
         )?;
         Ok::<(), AppError>(())
     })
@@ -548,6 +604,83 @@ pub async fn get_character_spellbook(
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_character_spell_test_db(with_hash_column: bool) -> Connection {
+        let conn = Connection::open_in_memory().expect("open db");
+        let character_class_spell_hash_column = if with_hash_column {
+            "spell_content_hash TEXT,"
+        } else {
+            ""
+        };
+        conn.execute_batch(&format!(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                content_hash TEXT
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                {character_class_spell_hash_column}
+                UNIQUE(character_class_id, spell_id, list_type)
+            );
+            "#
+        ))
+        .expect("create schema");
+        conn
+    }
+
+    #[test]
+    fn test_upsert_character_class_spell_with_hash_populates_hash_when_column_exists() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1')",
+            [],
+        )
+        .expect("seed spell");
+
+        upsert_character_class_spell_with_hash(&conn, 7, 1, "KNOWN", Some("note"))
+            .expect("upsert spellbook entry");
+
+        let stored_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE character_class_id = 7",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query stored hash");
+        assert_eq!(stored_hash, "hash-1");
+    }
+
+    #[test]
+    fn test_upsert_character_class_spell_with_hash_supports_legacy_schema() {
+        let conn = setup_character_spell_test_db(false);
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1')",
+            [],
+        )
+        .expect("seed spell");
+
+        upsert_character_class_spell_with_hash(&conn, 7, 1, "KNOWN", Some("note"))
+            .expect("upsert legacy spellbook entry");
+
+        let notes: String = conn
+            .query_row(
+                "SELECT notes FROM character_class_spell WHERE character_class_id = 7",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query stored notes");
+        assert_eq!(notes, "note");
+    }
 }
 
 /// Deprecated: legacy spellbook command. Use the per-class system instead.

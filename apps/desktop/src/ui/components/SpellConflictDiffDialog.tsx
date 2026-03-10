@@ -7,6 +7,7 @@ interface Props {
   /** 0-based index of the current conflict being displayed */
   conflictIndex: number;
   totalConflicts: number;
+  disabled?: boolean;
   onResolve: (resolution: HashConflictResolution, applyToAll: boolean) => void;
 }
 
@@ -14,6 +15,7 @@ export default function SpellConflictDiffDialog({
   conflict,
   conflictIndex,
   totalConflicts,
+  disabled = false,
   onResolve,
 }: Props) {
   const [applyToAll, setApplyToAll] = useState(false);
@@ -89,6 +91,7 @@ export default function SpellConflictDiffDialog({
           type="checkbox"
           data-testid="toggle-apply-to-all"
           checked={applyToAll}
+          disabled={disabled}
           onChange={(e) => setApplyToAll(e.target.checked)}
           className="rounded border-neutral-700 bg-neutral-800 text-amber-500 focus:ring-amber-500"
         />
@@ -100,6 +103,7 @@ export default function SpellConflictDiffDialog({
         <button
           type="button"
           data-testid="btn-keep-existing-json"
+          disabled={disabled}
           onClick={() => resolve("keep_existing")}
           className="px-4 py-2 rounded-lg text-sm font-semibold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-all active:scale-95"
         >
@@ -108,6 +112,7 @@ export default function SpellConflictDiffDialog({
         <button
           type="button"
           data-testid="btn-replace-with-new"
+          disabled={disabled}
           onClick={() => resolve("replace_with_new")}
           className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95"
         >
@@ -116,6 +121,7 @@ export default function SpellConflictDiffDialog({
         <button
           type="button"
           data-testid="btn-keep-both"
+          disabled={disabled}
           onClick={() => resolve("keep_both")}
           className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-500/20 transition-all active:scale-95"
         >

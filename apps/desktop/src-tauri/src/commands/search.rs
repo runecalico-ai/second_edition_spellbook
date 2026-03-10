@@ -152,8 +152,8 @@ const SEARCH_RESULT_LIMIT: usize = 100;
 /// clause. The caller must append `ESCAPE '\'` to the SQL clause.
 fn escape_like_value(s: &str) -> String {
     s.replace('\\', "\\\\")
-     .replace('%', "\\%")
-     .replace('_', "\\_")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn collect_facet_entries(conn: &Connection, sql: &str) -> Result<Vec<String>, AppError> {
@@ -288,7 +288,9 @@ fn search_keyword_with_conn(
 
     // Relevance ranking via bm25 when a text query is present (lower = more relevant).
     if has_text_query {
-        sql.push_str(&format!(" ORDER BY bm25(spell_fts) ASC LIMIT {SEARCH_RESULT_LIMIT}"));
+        sql.push_str(&format!(
+            " ORDER BY bm25(spell_fts) ASC LIMIT {SEARCH_RESULT_LIMIT}"
+        ));
     } else {
         sql.push_str(&format!(" ORDER BY name ASC LIMIT {SEARCH_RESULT_LIMIT}"));
     }
@@ -701,10 +703,7 @@ mod tests {
     fn test_advanced_mode_and_not_operator() {
         // FTS5's NOT is already an infix "AND NOT" operator, so "AND NOT" collapses
         // to just "NOT" — `"fire" NOT "ice"` is the correct FTS5 syntax.
-        assert_eq!(
-            build_fts_query("fire AND NOT ice"),
-            "\"fire\" NOT \"ice\""
-        );
+        assert_eq!(build_fts_query("fire AND NOT ice"), "\"fire\" NOT \"ice\"");
     }
 
     #[test]
@@ -831,7 +830,10 @@ mod tests {
     /// e.g. `%` → `\%`, `_` → `\_`, `\` → `\\`.
     #[test]
     fn test_escape_like_value_combined() {
-        assert_eq!(escape_like_value("50% off_sale\\deal"), "50\\% off\\_sale\\\\deal");
+        assert_eq!(
+            escape_like_value("50% off_sale\\deal"),
+            "50\\% off\\_sale\\\\deal"
+        );
     }
 
     #[test]
@@ -901,8 +903,14 @@ mod tests {
         insert_spell(&conn, 1, "Fireball", "A blazing orb of fire");
         insert_spell(&conn, 2, "Frostbolt", "A shard of ice and frost");
         let ids = search_ids(&conn, "fire");
-        assert!(ids.contains(&1), "'Fireball' must match single-token query 'fire'");
-        assert!(!ids.contains(&2), "'Frostbolt' must NOT match single-token query 'fire'");
+        assert!(
+            ids.contains(&1),
+            "'Fireball' must match single-token query 'fire'"
+        );
+        assert!(
+            !ids.contains(&2),
+            "'Frostbolt' must NOT match single-token query 'fire'"
+        );
     }
 
     /// Searching with lowercase "and" activates basic mode (phrase search).
@@ -971,7 +979,10 @@ mod tests {
         let conn = setup_search_db();
         insert_spell(&conn, 1, "Fireball", "A blazing orb of fire");
         let ids = search_ids(&conn, "");
-        assert!(ids.contains(&1), "empty query should return spells via non-FTS path");
+        assert!(
+            ids.contains(&1),
+            "empty query should return spells via non-FTS path"
+        );
     }
 
     /// Verify the FTS JOIN path works correctly when a school filter is applied

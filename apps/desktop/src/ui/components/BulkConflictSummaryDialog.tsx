@@ -3,10 +3,15 @@ import type { BulkConflictAction } from "../../types/import-types";
 interface Props {
   /** Number of conflicts — component should only be rendered when this is >= 10 */
   conflictCount: number;
+  disabled?: boolean;
   onAction: (action: BulkConflictAction) => void;
 }
 
-export default function BulkConflictSummaryDialog({ conflictCount, onAction }: Props) {
+export default function BulkConflictSummaryDialog({
+  conflictCount,
+  disabled = false,
+  onAction,
+}: Props) {
   return (
     <div className="border border-amber-800/50 rounded-lg bg-amber-950/20 p-5 space-y-4">
       {/* Header */}
@@ -30,6 +35,7 @@ export default function BulkConflictSummaryDialog({ conflictCount, onAction }: P
         <button
           type="button"
           data-testid="btn-bulk-skip-all"
+          disabled={disabled}
           onClick={() => onAction("skip_all")}
           className="w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-all active:scale-95 text-left"
         >
@@ -42,6 +48,7 @@ export default function BulkConflictSummaryDialog({ conflictCount, onAction }: P
         <button
           type="button"
           data-testid="btn-bulk-replace-all"
+          disabled={disabled}
           onClick={() => onAction("replace_all")}
           className="w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95 text-left"
         >
@@ -54,6 +61,7 @@ export default function BulkConflictSummaryDialog({ conflictCount, onAction }: P
         <button
           type="button"
           data-testid="btn-bulk-keep-all"
+          disabled={disabled}
           onClick={() => onAction("keep_all")}
           className="w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-500/20 transition-all active:scale-95 text-left"
         >
@@ -64,6 +72,7 @@ export default function BulkConflictSummaryDialog({ conflictCount, onAction }: P
         <button
           type="button"
           data-testid="btn-bulk-review-each"
+          disabled={disabled}
           onClick={() => onAction("review_each")}
           className="w-full px-4 py-2.5 rounded-lg text-sm font-semibold border border-neutral-600 bg-transparent hover:bg-neutral-800 text-neutral-300 transition-all active:scale-95 text-left"
         >

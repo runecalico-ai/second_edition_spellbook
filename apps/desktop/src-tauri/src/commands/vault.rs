@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
 use dirs::data_dir as system_data_dir;
+use rusqlite::OptionalExtension;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Write;
@@ -12,6 +13,7 @@ use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
 const WINDOWS_PATH_WARNING_THRESHOLD: usize = 240;
+const WINDOWS_PATH_HARD_LIMIT: usize = 260;
 
 pub(crate) fn app_data_dir() -> Result<PathBuf, AppError> {
     if let Ok(override_dir) = std::env::var("SPELLBOOK_DATA_DIR") {
@@ -24,6 +26,71 @@ pub(crate) fn app_data_dir() -> Result<PathBuf, AppError> {
         .join("SpellbookVault");
     fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+fn vault_settings_path_in_root(root: &Path) -> PathBuf {
+    root.join("vault-settings.json")
+}
+
+fn persist_tempfile_replace(
+    temp_file: tempfile::NamedTempFile,
+    target_path: &Path,
+    context: &str,
+) -> Result<(), AppError> {
+    #[cfg(windows)]
+    if target_path.exists() {
+        fs::remove_file(target_path).map_err(|e| {
+            AppError::Unknown(format!("Failed to replace existing {context} file: {e}"))
+        })?;
+    }
+
+    temp_file
+        .persist(target_path)
+        .map_err(|e| AppError::Unknown(format!("Failed to persist {context} file: {}", e.error)))?;
+    Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct VaultSettings {
+    pub integrity_check_on_open: bool,
+}
+
+impl Default for VaultSettings {
+    fn default() -> Self {
+        Self {
+            integrity_check_on_open: true,
+        }
+    }
+}
+
+fn load_vault_settings_from_root(root: &Path) -> Result<VaultSettings, AppError> {
+    let path = vault_settings_path_in_root(root);
+    if !path.exists() {
+        return Ok(VaultSettings::default());
+    }
+
+    let raw = fs::read_to_string(&path)?;
+    serde_json::from_str(&raw)
+        .map_err(|e| AppError::Validation(format!("Invalid vault settings JSON: {e}")))
+}
+
+fn write_vault_settings_in_root(root: &Path, settings: &VaultSettings) -> Result<(), AppError> {
+    let target_path = vault_settings_path_in_root(root);
+    validate_windows_path_length(&target_path)?;
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| AppError::Unknown(format!("Failed to serialize vault settings: {e}")))?;
+
+    let mut temp_file = tempfile::NamedTempFile::new_in(root).map_err(|e| {
+        AppError::Unknown(format!("Failed to create vault settings temp file: {e}"))
+    })?;
+    temp_file.write_all(json.as_bytes())?;
+    temp_file.flush()?;
+    temp_file.as_file().sync_all()?;
+    persist_tempfile_replace(temp_file, &target_path, "vault settings")?;
+
+    Ok(())
 }
 
 fn spell_storage_dir_in_root(root: &Path) -> Result<PathBuf, AppError> {
@@ -40,20 +107,30 @@ pub(crate) fn should_warn_for_windows_path_length(path: &Path) -> bool {
     path.to_string_lossy().chars().count() >= WINDOWS_PATH_WARNING_THRESHOLD
 }
 
-fn warn_for_windows_path_length(path: &Path) {
+fn validate_windows_path_length(path: &Path) -> Result<(), AppError> {
+    let length = path.to_string_lossy().chars().count();
+    if length >= WINDOWS_PATH_HARD_LIMIT {
+        return Err(AppError::Validation(format!(
+            "Windows path length {} exceeds the supported limit for vault writes; choose a shorter vault root",
+            length
+        )));
+    }
+
     if should_warn_for_windows_path_length(path) {
         warn!(
             path = %path.display(),
             "Vault spell file path is near or beyond the Windows path-length safety threshold; use a shorter vault root if writes fail"
         );
     }
+
+    Ok(())
 }
 
 #[allow(dead_code)]
 pub(crate) fn spell_file_path(content_hash: &str) -> Result<PathBuf, AppError> {
     let root = app_data_dir()?;
     let path = spell_file_path_in_root(&root, content_hash);
-    warn_for_windows_path_length(&path);
+    validate_windows_path_length(&path)?;
     Ok(path)
 }
 
@@ -61,8 +138,8 @@ pub(crate) fn verify_vault_spell_json(
     expected_hash: &str,
     json: &str,
 ) -> Result<CanonicalSpell, AppError> {
-    let canonical: CanonicalSpell =
-        serde_json::from_str(json).map_err(|e| AppError::Validation(format!("Invalid vault spell JSON: {e}")))?;
+    let mut canonical: CanonicalSpell = serde_json::from_str(json)
+        .map_err(|e| AppError::Validation(format!("Invalid vault spell JSON: {e}")))?;
     let computed_hash = canonical
         .compute_hash()
         .map_err(|e| AppError::Validation(format!("Vault spell hash verification failed: {e}")))?;
@@ -71,6 +148,7 @@ pub(crate) fn verify_vault_spell_json(
             "Vault spell hash {computed_hash} does not match target filename hash {expected_hash}"
         )));
     }
+    canonical.id = Some(expected_hash.to_string());
     Ok(canonical)
 }
 
@@ -79,25 +157,21 @@ pub(crate) fn write_spell_json_atomically(
     content_hash: &str,
     json: &str,
 ) -> Result<PathBuf, AppError> {
-    verify_vault_spell_json(content_hash, json)?;
+    let canonical = verify_vault_spell_json(content_hash, json)?;
+    let canonical_json = serde_json::to_string(&canonical)
+        .map_err(|e| AppError::Unknown(format!("Failed to serialize vault spell JSON: {e}")))?;
 
-    let spells_dir = spell_storage_dir_in_root(root)?;
     let target_path = spell_file_path_in_root(root, content_hash);
-    warn_for_windows_path_length(&target_path);
+    validate_windows_path_length(&target_path)?;
+    let spells_dir = spell_storage_dir_in_root(root)?;
 
     let mut temp_file = tempfile::NamedTempFile::new_in(&spells_dir)
         .map_err(|e| AppError::Unknown(format!("Failed to create vault temp file: {e}")))?;
-    temp_file.write_all(json.as_bytes())?;
+    temp_file.write_all(canonical_json.as_bytes())?;
     temp_file.flush()?;
     temp_file.as_file().sync_all()?;
 
-    if target_path.exists() {
-        fs::remove_file(&target_path)?;
-    }
-
-    temp_file
-        .persist(&target_path)
-        .map_err(|e| AppError::Unknown(format!("Failed to persist vault spell file: {}", e.error)))?;
+    persist_tempfile_replace(temp_file, &target_path, "vault spell")?;
 
     Ok(target_path)
 }
@@ -115,49 +189,232 @@ pub(crate) fn export_spell_to_vault_by_hash(
     write_spell_json_atomically(&root, content_hash, &canonical_json)
 }
 
-#[derive(Default)]
-pub struct VaultMaintenanceState {
-    import_in_progress: Mutex<bool>,
+fn archive_entry_name(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy().replace('\\', "/"))
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
+fn add_file_to_backup_archive(
+    zip: &mut ZipWriter<File>,
+    options: SimpleFileOptions,
+    archive_name: &str,
+    source_path: &Path,
+) -> Result<(), AppError> {
+    zip.start_file(archive_name, options)
+        .map_err(|e| AppError::Unknown(format!("Failed to start zip entry: {}", e)))?;
+    let mut source = File::open(source_path)
+        .map_err(|e| AppError::Unknown(format!("Failed to open backup source file: {}", e)))?;
+    std::io::copy(&mut source, zip)
+        .map_err(|e| AppError::Unknown(format!("Failed to write file to zip: {}", e)))?;
+    Ok(())
+}
+
+fn add_directory_to_backup_archive(
+    zip: &mut ZipWriter<File>,
+    options: SimpleFileOptions,
+    root: &Path,
+    directory: &Path,
+) -> Result<(), AppError> {
+    if !directory.exists() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            add_directory_to_backup_archive(zip, options, root, &path)?;
+            continue;
+        }
+
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|e| AppError::Unknown(format!("Failed to derive backup path: {e}")))?;
+        add_file_to_backup_archive(zip, options, &archive_entry_name(relative), &path)?;
+    }
+
+    Ok(())
+}
+
+fn restore_supporting_files_from_archive(
+    archive: &mut ZipArchive<File>,
+    staging_dir: &Path,
+) -> Result<(), AppError> {
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|e| AppError::Unknown(format!("Failed to read zip entry: {}", e)))?;
+        let entry_name = entry.name().to_string();
+        if entry_name == "spellbook.sqlite3" {
+            continue;
+        }
+        if entry_name != "vault-settings.json" && !entry_name.starts_with("spells/") {
+            continue;
+        }
+
+        // Validate to prevent zip slip
+        let entry_path = Path::new(&entry_name);
+        for component in entry_path.components() {
+            match component {
+                std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_) => {
+                    return Err(AppError::Validation(format!(
+                        "Invalid zip entry path: {}",
+                        entry_name
+                    )));
+                }
+                _ => {}
+            }
+        }
+
+        let output_path = staging_dir.join(entry_path);
+        // Ensure path is rooted in staging_dir
+        if !output_path.starts_with(staging_dir) {
+            return Err(AppError::Validation(format!(
+                "Zip entry escapes destination: {}",
+                entry_name
+            )));
+        }
+
+        if (*entry.name()).ends_with('/') || entry.is_dir() {
+            fs::create_dir_all(&output_path).map_err(|e| {
+                AppError::Unknown(format!("Failed to create restored directory: {}", e))
+            })?;
+        } else {
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut output = File::create(&output_path)
+                .map_err(|e| AppError::Unknown(format!("Failed to create restored file: {}", e)))?;
+            std::io::copy(&mut entry, &mut output).map_err(|e| {
+                AppError::Unknown(format!("Failed to extract restored file: {}", e))
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+pub struct VaultMaintenanceState {
+    phase: Mutex<VaultMaintenancePhase>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum VaultMaintenancePhase {
+    #[default]
+    Idle,
+    Import,
+    Gc,
+}
+
+#[derive(Debug)]
 pub struct VaultImportGuard<'a> {
     state: &'a VaultMaintenanceState,
 }
 
+#[derive(Debug)]
+pub struct VaultGcGuard<'a> {
+    state: &'a VaultMaintenanceState,
+}
+
+#[cfg(test)]
+pub(crate) fn vault_env_lock() -> &'static Mutex<()> {
+    use std::sync::OnceLock;
+
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 impl VaultMaintenanceState {
     pub fn start_import(&self) -> Result<VaultImportGuard<'_>, AppError> {
-        let mut import_in_progress = self
-            .import_in_progress
+        let mut phase = self
+            .phase
             .lock()
             .map_err(|_| AppError::Unknown("Vault maintenance state is poisoned".to_string()))?;
-        if *import_in_progress {
-            return Err(AppError::Import(
-                "Another import is already in progress.".to_string(),
-            ));
+        match *phase {
+            VaultMaintenancePhase::Idle => {
+                *phase = VaultMaintenancePhase::Import;
+            }
+            VaultMaintenancePhase::Import => {
+                return Err(AppError::Import(
+                    "Another import is already in progress.".to_string(),
+                ));
+            }
+            VaultMaintenancePhase::Gc => {
+                return Err(AppError::Import(
+                    "Vault optimization is currently in progress.".to_string(),
+                ));
+            }
         }
-        *import_in_progress = true;
-        drop(import_in_progress);
+        drop(phase);
         Ok(VaultImportGuard { state: self })
     }
 
-    pub fn ensure_gc_allowed(&self) -> Result<(), AppError> {
-        let import_in_progress = self
-            .import_in_progress
+    pub fn start_gc(&self) -> Result<VaultGcGuard<'_>, AppError> {
+        let mut phase = self
+            .phase
             .lock()
             .map_err(|_| AppError::Unknown("Vault maintenance state is poisoned".to_string()))?;
-        if *import_in_progress {
-            return Err(AppError::Validation(
-                "Vault optimization is unavailable while an import is in progress.".to_string(),
-            ));
+        match *phase {
+            VaultMaintenancePhase::Idle => {
+                *phase = VaultMaintenancePhase::Gc;
+            }
+            VaultMaintenancePhase::Import => {
+                return Err(AppError::Validation(
+                    "Vault optimization is unavailable while an import is in progress.".to_string(),
+                ));
+            }
+            VaultMaintenancePhase::Gc => {
+                return Err(AppError::Validation(
+                    "Vault optimization is already in progress.".to_string(),
+                ));
+            }
         }
-        Ok(())
+        drop(phase);
+        Ok(VaultGcGuard { state: self })
     }
 }
 
 impl Drop for VaultImportGuard<'_> {
     fn drop(&mut self) {
-        if let Ok(mut import_in_progress) = self.state.import_in_progress.lock() {
-            *import_in_progress = false;
+        if let Ok(mut phase) = self.state.phase.lock() {
+            if *phase == VaultMaintenancePhase::Import {
+                *phase = VaultMaintenancePhase::Idle;
+            }
+        }
+    }
+}
+
+impl<'a> VaultImportGuard<'a> {
+    pub fn into_gc_guard(self) -> Result<VaultGcGuard<'a>, AppError> {
+        {
+            let mut phase = self.state.phase.lock().map_err(|_| {
+                AppError::Unknown("Vault maintenance state is poisoned".to_string())
+            })?;
+            if *phase != VaultMaintenancePhase::Import {
+                return Err(AppError::Unknown(
+                    "Vault maintenance state lost the active import guard".to_string(),
+                ));
+            }
+            *phase = VaultMaintenancePhase::Gc;
+        }
+
+        let state = self.state;
+        std::mem::forget(self);
+        Ok(VaultGcGuard { state })
+    }
+}
+
+impl Drop for VaultGcGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut phase) = self.state.phase.lock() {
+            if *phase == VaultMaintenancePhase::Gc {
+                *phase = VaultMaintenancePhase::Idle;
+            }
         }
     }
 }
@@ -209,9 +466,14 @@ fn record_unrecoverable(
     content_hash: &str,
     reason: impl Into<String>,
 ) {
+    let reason = reason.into();
+    warn!(
+        content_hash,
+        reason, "Vault integrity recovery could not repair spell file"
+    );
     summary.unrecoverable.push(VaultUnrecoverableEntry {
         content_hash: content_hash.to_string(),
-        reason: reason.into(),
+        reason,
     });
     summary.warning_count = summary.unrecoverable.len();
 }
@@ -234,24 +496,27 @@ pub(crate) fn run_vault_integrity_check_with_root(
     root: &Path,
 ) -> Result<VaultIntegritySummary, AppError> {
     let mut summary = VaultIntegritySummary::default();
-    let mut stmt = conn.prepare(
-        "SELECT content_hash, canonical_data FROM spell WHERE content_hash IS NOT NULL",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, Option<String>>(1)?,
-        ))
-    })?;
+    let live_hashes = collect_live_content_hashes(conn)?;
 
-    for row in rows {
-        let (content_hash, canonical_data) = row?;
+    for content_hash in live_hashes {
+        let canonical_data = conn
+            .query_row(
+                "SELECT canonical_data FROM spell WHERE content_hash = ?",
+                [content_hash.as_str()],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
         summary.checked_count += 1;
         let path = spell_file_path_in_root(root, &content_hash);
 
         if !path.exists() {
             summary.missing_count += 1;
-            match recover_spell_file_from_canonical_data(root, &content_hash, canonical_data.as_deref()) {
+            match recover_spell_file_from_canonical_data(
+                root,
+                &content_hash,
+                canonical_data.as_deref(),
+            ) {
                 Ok(true) => summary.reexported_count += 1,
                 Ok(false) => record_unrecoverable(
                     &mut summary,
@@ -266,11 +531,19 @@ pub(crate) fn run_vault_integrity_check_with_root(
         let file_json = match fs::read_to_string(&path) {
             Ok(json) => json,
             Err(err) => {
-                record_unrecoverable(
-                    &mut summary,
+                match recover_spell_file_from_canonical_data(
+                    root,
                     &content_hash,
-                    format!("Failed to read vault spell file: {err}"),
-                );
+                    canonical_data.as_deref(),
+                ) {
+                    Ok(true) => summary.repaired_count += 1,
+                    Ok(false) => record_unrecoverable(
+                        &mut summary,
+                        &content_hash,
+                        format!("Failed to read vault spell file: {err}; canonical_data is NULL"),
+                    ),
+                    Err(reason) => record_unrecoverable(&mut summary, &content_hash, reason),
+                }
                 continue;
             }
         };
@@ -279,7 +552,8 @@ pub(crate) fn run_vault_integrity_check_with_root(
             continue;
         }
 
-        match recover_spell_file_from_canonical_data(root, &content_hash, canonical_data.as_deref()) {
+        match recover_spell_file_from_canonical_data(root, &content_hash, canonical_data.as_deref())
+        {
             Ok(true) => summary.repaired_count += 1,
             Ok(false) => record_unrecoverable(
                 &mut summary,
@@ -309,6 +583,16 @@ fn collect_live_content_hashes(conn: &rusqlite::Connection) -> Result<HashSet<St
         )?;
         let artifact_rows = artifact_stmt.query_map([], |row| row.get::<_, String>(0))?;
         for row in artifact_rows {
+            live_hashes.insert(row?);
+        }
+    }
+
+    if table_has_column(conn, "character_class_spell", "spell_content_hash") {
+        let mut ccs_stmt = conn.prepare(
+            "SELECT spell_content_hash FROM character_class_spell WHERE spell_content_hash IS NOT NULL",
+        )?;
+        let ccs_rows = ccs_stmt.query_map([], |row| row.get::<_, String>(0))?;
+        for row in ccs_rows {
             live_hashes.insert(row?);
         }
     }
@@ -357,10 +641,34 @@ pub(crate) fn optimize_vault_with_root(
     root: &Path,
     maintenance_state: Option<&VaultMaintenanceState>,
 ) -> Result<VaultGcSummary, AppError> {
-    if let Some(maintenance_state) = maintenance_state {
-        maintenance_state.ensure_gc_allowed()?;
-    }
+    let _gc_guard = maintenance_state
+        .map(VaultMaintenanceState::start_gc)
+        .transpose()?;
     run_vault_gc_with_root(conn, root)
+}
+
+#[tauri::command]
+pub async fn get_vault_settings() -> Result<VaultSettings, AppError> {
+    tokio::task::spawn_blocking(move || {
+        let root = app_data_dir()?;
+        load_vault_settings_from_root(&root)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn set_vault_integrity_check_on_open(enabled: bool) -> Result<VaultSettings, AppError> {
+    tokio::task::spawn_blocking(move || {
+        let root = app_data_dir()?;
+        let settings = VaultSettings {
+            integrity_check_on_open: enabled,
+        };
+        write_vault_settings_in_root(&root, &settings)?;
+        Ok::<VaultSettings, AppError>(settings)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))?
 }
 
 #[tauri::command]
@@ -398,60 +706,70 @@ pub async fn backup_vault(
     pool: tauri::State<'_, std::sync::Arc<crate::db::pool::Pool>>,
     destination_path: String,
 ) -> Result<String, AppError> {
-    use rusqlite::backup::Backup;
-    use std::time::Duration;
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        use rusqlite::backup::Backup;
+        use std::time::Duration;
 
-    let _ = app_data_dir()?;
-    let dest_path = PathBuf::from(&destination_path);
+        let data_dir = app_data_dir()?;
+        let dest_path = PathBuf::from(&destination_path);
 
-    // Ensure parent directory exists
-    if let Some(parent) = dest_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+        // Ensure parent directory exists
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
 
-    // Create a temporary file for the database backup
-    let temp_db = tempfile::NamedTempFile::new()
-        .map_err(|e| AppError::Unknown(format!("Failed to create temp file: {}", e)))?;
-    let temp_db_path = temp_db.path();
+        // Create a temporary file for the database backup
+        let temp_db = tempfile::NamedTempFile::new()
+            .map_err(|e| AppError::Unknown(format!("Failed to create temp file: {}", e)))?;
+        let temp_db_path = temp_db.path();
 
-    // Use SQLite's backup API to safely backup the database
-    {
-        let pool_arc = pool.inner().clone();
-        let src_conn = pool_arc.get()?;
-        let mut dst_conn = rusqlite::Connection::open(temp_db_path)
+        // Use SQLite's backup API to safely backup the database
+        {
+            let src_conn = pool.get()?;
+            let mut dst_conn = rusqlite::Connection::open(temp_db_path)
+                .map_err(|e| AppError::Unknown(format!("Failed to open temp db: {}", e)))?;
+
+            let backup = Backup::new(&src_conn, &mut dst_conn)
+                .map_err(|e| AppError::Unknown(format!("Failed to init backup: {}", e)))?;
+
+            backup
+                .run_to_completion(5, Duration::from_millis(250), None)
+                .map_err(|e| AppError::Unknown(format!("Failed to backup database: {}", e)))?;
+        }
+
+        // Create ZIP archive
+        let file = File::create(&dest_path)
+            .map_err(|e| AppError::Unknown(format!("Failed to create backup file: {}", e)))?;
+
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+
+        // Add the backed-up database to the ZIP
+        zip.start_file("spellbook.sqlite3", options)
+            .map_err(|e| AppError::Unknown(format!("Failed to start zip entry: {}", e)))?;
+
+        let mut temp_db_file = File::open(temp_db_path)
             .map_err(|e| AppError::Unknown(format!("Failed to open temp db: {}", e)))?;
+        std::io::copy(&mut temp_db_file, &mut zip)
+            .map_err(|e| AppError::Unknown(format!("Failed to write db to zip: {}", e)))?;
 
-        let backup = Backup::new(&src_conn, &mut dst_conn)
-            .map_err(|e| AppError::Unknown(format!("Failed to init backup: {}", e)))?;
+        let settings_path = vault_settings_path_in_root(&data_dir);
+        if settings_path.exists() {
+            add_file_to_backup_archive(&mut zip, options, "vault-settings.json", &settings_path)?;
+        }
+        add_directory_to_backup_archive(&mut zip, options, &data_dir, &data_dir.join("spells"))?;
 
-        backup
-            .run_to_completion(5, Duration::from_millis(250), None)
-            .map_err(|e| AppError::Unknown(format!("Failed to backup database: {}", e)))?;
-    }
+        // Finalize the ZIP archive
+        zip.finish()
+            .map_err(|e| AppError::Unknown(format!("Failed to finalize zip: {}", e)))?;
 
-    // Create ZIP archive
-    let file = File::create(&dest_path)
-        .map_err(|e| AppError::Unknown(format!("Failed to create backup file: {}", e)))?;
-
-    let mut zip = ZipWriter::new(file);
-    let options = SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .unix_permissions(0o644);
-
-    // Add the backed-up database to the ZIP
-    zip.start_file("spellbook.sqlite3", options)
-        .map_err(|e| AppError::Unknown(format!("Failed to start zip entry: {}", e)))?;
-
-    let mut temp_db_file = File::open(temp_db_path)
-        .map_err(|e| AppError::Unknown(format!("Failed to open temp db: {}", e)))?;
-    std::io::copy(&mut temp_db_file, &mut zip)
-        .map_err(|e| AppError::Unknown(format!("Failed to write db to zip: {}", e)))?;
-
-    // Finalize the ZIP archive
-    zip.finish()
-        .map_err(|e| AppError::Unknown(format!("Failed to finalize zip: {}", e)))?;
-
-    Ok(destination_path)
+        Ok::<String, AppError>(destination_path)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))?
 }
 
 #[tauri::command]
@@ -460,22 +778,34 @@ pub async fn restore_vault(
     backup_path: String,
     allow_overwrite: bool,
 ) -> Result<(), AppError> {
+    let pool = pool.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let backup_file = PathBuf::from(&backup_path);
+        let data_dir = app_data_dir()?;
+        restore_vault_impl(pool, &data_dir, &backup_file, allow_overwrite)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))?
+}
+
+pub(crate) fn restore_vault_impl(
+    pool: std::sync::Arc<crate::db::pool::Pool>,
+    data_dir: &Path,
+    backup_file: &Path,
+    allow_overwrite: bool,
+) -> Result<(), AppError> {
     use rusqlite::backup::Backup;
     use std::time::Duration;
-
-    let backup_file = PathBuf::from(&backup_path);
 
     if !backup_file.exists() {
         return Err(AppError::NotFound(format!(
             "Backup file not found: {}",
-            backup_path
+            backup_file.display()
         )));
     }
 
-    let data_dir = app_data_dir()?;
-
     // Check if data directory has content
-    let has_content = fs::read_dir(&data_dir)
+    let has_content = fs::read_dir(data_dir)
         .map(|mut entries| entries.next().is_some())
         .unwrap_or(false);
 
@@ -485,7 +815,7 @@ pub async fn restore_vault(
         ));
     }
 
-    let file = File::open(&backup_file)
+    let file = File::open(backup_file)
         .map_err(|e| AppError::Unknown(format!("Failed to open backup file: {}", e)))?;
 
     let mut archive = ZipArchive::new(file)
@@ -509,14 +839,27 @@ pub async fn restore_vault(
     // Drop the file handle before using it
     drop(temp_file);
     drop(db_file);
+
+    // Extract supporting files to a staging directory
+    let staging_dir = data_dir.join("restore-staging");
+    if staging_dir.exists() {
+        fs::remove_dir_all(&staging_dir)?;
+    }
+    fs::create_dir_all(&staging_dir)?;
+
+    let restore_result = restore_supporting_files_from_archive(&mut archive, &staging_dir);
+    if let Err(e) = restore_result {
+        // Cleanup staging directory on extraction failure
+        let _ = fs::remove_dir_all(&staging_dir);
+        return Err(e);
+    }
     drop(archive);
 
     // Use SQLite's restore API to restore the database
-    {
+    let restore_db_result = (|| -> Result<(), AppError> {
         let src_conn = rusqlite::Connection::open(temp_db_path)
             .map_err(|e| AppError::Unknown(format!("Failed to open temp db: {}", e)))?;
-        let pool_arc = pool.inner().clone();
-        let mut dst_conn = pool_arc.get()?;
+        let mut dst_conn = pool.get()?;
 
         let backup = Backup::new(&src_conn, &mut dst_conn)
             .map_err(|e| AppError::Unknown(format!("Failed to init restore: {}", e)))?;
@@ -524,7 +867,82 @@ pub async fn restore_vault(
         backup
             .run_to_completion(5, Duration::from_millis(250), None)
             .map_err(|e| AppError::Unknown(format!("Failed to restore database: {}", e)))?;
+        drop(backup);
+
+        let _ = run_vault_integrity_check_with_root(&dst_conn, data_dir)?;
+        Ok(())
+    })();
+
+    if restore_db_result.is_err() {
+        // Cleanup staging directory on database restore failure
+        let _ = fs::remove_dir_all(&staging_dir);
+        return restore_db_result;
     }
+
+    // Database and staging were successful. Move staging into place as atomically as possible.
+    // On Windows and macOS, we need to handle existing directories gracefully.
+    let live_spells_dir = data_dir.join("spells");
+    let live_settings_file = data_dir.join("vault-settings.json");
+    let staged_spells_dir = staging_dir.join("spells");
+    let staged_settings_file = staging_dir.join("vault-settings.json");
+
+    let backup_spells_dir = data_dir.join("spells.old");
+    let backup_settings_file = data_dir.join("vault-settings.json.old");
+
+    // Clean up any stale backups from before
+    let _ = fs::remove_dir_all(&backup_spells_dir);
+    let _ = fs::remove_file(&backup_settings_file);
+
+    // Move live files into backups
+    let spells_backed_up = if live_spells_dir.exists() {
+        fs::rename(&live_spells_dir, &backup_spells_dir).is_ok()
+    } else {
+        false
+    };
+    let settings_backed_up = if live_settings_file.exists() {
+        fs::rename(&live_settings_file, &backup_settings_file).is_ok()
+    } else {
+        false
+    };
+
+    // Move staging to live
+    let restore_spells_success =
+        !staged_spells_dir.exists() || fs::rename(&staged_spells_dir, &live_spells_dir).is_ok();
+    let restore_settings_success = !staged_settings_file.exists()
+        || fs::rename(&staged_settings_file, &live_settings_file).is_ok();
+
+    // If either failed, try to rollback
+    if !restore_spells_success || !restore_settings_success {
+        if restore_spells_success && staged_spells_dir.exists() {
+            let _ = fs::rename(&live_spells_dir, &staged_spells_dir);
+        }
+        if restore_settings_success && staged_settings_file.exists() {
+            let _ = fs::rename(&live_settings_file, &staged_settings_file);
+        }
+
+        if spells_backed_up {
+            let _ = fs::rename(&backup_spells_dir, &live_spells_dir);
+        }
+        if settings_backed_up {
+            let _ = fs::rename(&backup_settings_file, &live_settings_file);
+        }
+
+        let _ = fs::remove_dir_all(&staging_dir);
+        return Err(AppError::Unknown(
+            "Failed to atomically move restore artifacts into place".to_string(),
+        ));
+    }
+
+    // Cleanup backups on success
+    if spells_backed_up {
+        let _ = fs::remove_dir_all(&backup_spells_dir);
+    }
+    if settings_backed_up {
+        let _ = fs::remove_file(&backup_settings_file);
+    }
+
+    // Final cleanup of staging directory
+    let _ = fs::remove_dir_all(&staging_dir);
 
     Ok(())
 }
@@ -604,6 +1022,151 @@ mod tests {
     }
 
     #[test]
+    fn test_load_vault_settings_defaults_to_integrity_check_on_open() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+
+        let settings =
+            load_vault_settings_from_root(temp_dir.path()).expect("load default settings");
+
+        assert!(settings.integrity_check_on_open);
+    }
+
+    #[test]
+    fn test_write_and_load_vault_settings_round_trip() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let expected = VaultSettings {
+            integrity_check_on_open: false,
+        };
+
+        write_vault_settings_in_root(temp_dir.path(), &expected).expect("write settings");
+        let actual = load_vault_settings_from_root(temp_dir.path()).expect("read settings");
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_backup_helpers_include_spell_files_and_settings() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let data_dir = temp_dir.path().join("vault");
+        std::fs::create_dir_all(data_dir.join("spells")).expect("create spells dir");
+        std::fs::write(
+            data_dir.join("vault-settings.json"),
+            r#"{"integrityCheckOnOpen":false}"#,
+        )
+        .expect("write settings");
+        std::fs::write(
+            data_dir.join("spells").join("hash.json"),
+            r#"{"id":"hash"}"#,
+        )
+        .expect("write spell file");
+
+        let temp_db = temp_dir.path().join("spellbook.sqlite3");
+        std::fs::write(&temp_db, "db").expect("write db");
+
+        let backup_path = temp_dir.path().join("backup.zip");
+        let file = File::create(&backup_path).expect("create backup archive");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+
+        add_file_to_backup_archive(&mut zip, options, "spellbook.sqlite3", &temp_db)
+            .expect("archive db");
+        add_file_to_backup_archive(
+            &mut zip,
+            options,
+            "vault-settings.json",
+            &data_dir.join("vault-settings.json"),
+        )
+        .expect("archive settings");
+        add_directory_to_backup_archive(&mut zip, options, &data_dir, &data_dir.join("spells"))
+            .expect("archive spells");
+        zip.finish().expect("finish archive");
+
+        let file = File::open(&backup_path).expect("open backup archive");
+        let mut archive = ZipArchive::new(file).expect("read backup archive");
+        assert!(archive.by_name("spellbook.sqlite3").is_ok());
+        assert!(archive.by_name("vault-settings.json").is_ok());
+        assert!(archive.by_name("spells/hash.json").is_ok());
+    }
+
+    #[test]
+    fn test_restore_supporting_files_from_archive_replaces_existing_spell_files() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let backup_path = temp_dir.path().join("backup.zip");
+        let file = File::create(&backup_path).expect("create backup archive");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+        let source_dir = temp_dir.path().join("source");
+        std::fs::create_dir_all(source_dir.join("spells")).expect("create source spells dir");
+        std::fs::write(source_dir.join("spellbook.sqlite3"), "db").expect("write db");
+        std::fs::write(
+            source_dir.join("vault-settings.json"),
+            r#"{"integrityCheckOnOpen":true}"#,
+        )
+        .expect("write settings");
+        std::fs::write(
+            source_dir.join("spells").join("new.json"),
+            r#"{"id":"new"}"#,
+        )
+        .expect("write spell file");
+        add_file_to_backup_archive(
+            &mut zip,
+            options,
+            "spellbook.sqlite3",
+            &source_dir.join("spellbook.sqlite3"),
+        )
+        .expect("archive db");
+        add_file_to_backup_archive(
+            &mut zip,
+            options,
+            "vault-settings.json",
+            &source_dir.join("vault-settings.json"),
+        )
+        .expect("archive settings");
+        add_directory_to_backup_archive(&mut zip, options, &source_dir, &source_dir.join("spells"))
+            .expect("archive spells");
+        zip.finish().expect("finish archive");
+
+        let data_dir = temp_dir.path().join("restore-target");
+        std::fs::create_dir_all(data_dir.join("spells")).expect("create target spells dir");
+
+        let file = File::open(&backup_path).expect("open backup archive");
+        let mut archive = ZipArchive::new(file).expect("read backup archive");
+        restore_supporting_files_from_archive(&mut archive, &data_dir)
+            .expect("restore supporting files");
+
+        assert!(data_dir.join("vault-settings.json").exists());
+        assert!(data_dir.join("spells").join("new.json").exists());
+    }
+
+    #[test]
+    fn test_write_vault_settings_overwrites_existing_file() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+
+        write_vault_settings_in_root(
+            temp_dir.path(),
+            &VaultSettings {
+                integrity_check_on_open: true,
+            },
+        )
+        .expect("write initial settings");
+        write_vault_settings_in_root(
+            temp_dir.path(),
+            &VaultSettings {
+                integrity_check_on_open: false,
+            },
+        )
+        .expect("overwrite existing settings");
+
+        let actual =
+            load_vault_settings_from_root(temp_dir.path()).expect("read overwritten settings");
+        assert!(!actual.integrity_check_on_open);
+    }
+
+    #[test]
     fn test_spell_file_path_generation_uses_spells_subdirectory() {
         let root = Path::new("C:\\SpellbookVault");
         let path = spell_file_path_in_root(root, &"a".repeat(64));
@@ -624,6 +1187,53 @@ mod tests {
     }
 
     #[test]
+    fn test_write_rejects_windows_paths_at_or_above_hard_limit() {
+        let long_root = PathBuf::from(format!("C:\\{}", "a".repeat(252)));
+        let mut spell = sample_spell();
+        let hash = spell.compute_hash().expect("hash");
+        spell.id = Some(hash.clone());
+        let json = serde_json::to_string(&spell).expect("serialize json");
+
+        let err = write_spell_json_atomically(&long_root, &hash, &json)
+            .expect_err("writes beyond the Windows hard limit should be rejected");
+
+        assert!(
+            err.to_string().contains("Windows path length"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_maintenance_state_blocks_gc_while_import_active() {
+        let maintenance_state = VaultMaintenanceState::default();
+        let _import_guard = maintenance_state.start_import().expect("start import");
+
+        let err = maintenance_state
+            .start_gc()
+            .expect_err("gc should not start while import is active");
+
+        assert!(
+            err.to_string().contains("import"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_maintenance_state_blocks_import_while_gc_active() {
+        let maintenance_state = VaultMaintenanceState::default();
+        let _gc_guard = maintenance_state.start_gc().expect("start gc");
+
+        let err = maintenance_state
+            .start_import()
+            .expect_err("import should not start while gc is active");
+
+        assert!(
+            err.to_string().contains("Vault optimization"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn test_verify_vault_spell_json_recomputes_canonical_hash_not_raw_bytes() {
         let mut spell = sample_spell();
         let hash = spell.compute_hash().expect("hash");
@@ -641,6 +1251,28 @@ mod tests {
     }
 
     #[test]
+    fn test_verify_vault_spell_json_rejects_unknown_properties() {
+        let mut spell = sample_spell();
+        let hash = spell.compute_hash().expect("hash");
+        spell.id = Some(hash.clone());
+
+        let mut value = serde_json::to_value(&spell).expect("serialize spell");
+        value
+            .as_object_mut()
+            .expect("spell object")
+            .insert("unexpectedField".to_string(), serde_json::json!("tampered"));
+        let json = serde_json::to_string(&value).expect("serialize tampered json");
+
+        let err = verify_vault_spell_json(&hash, &json)
+            .expect_err("unknown top-level properties should fail integrity verification");
+
+        assert!(
+            err.to_string().contains("Validation error"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn test_write_rejects_target_filename_hash_mismatch() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut spell = sample_spell();
@@ -648,17 +1280,55 @@ mod tests {
         spell.id = Some(actual_hash);
         let json = serde_json::to_string(&spell).expect("serialize json");
 
-        let err = write_spell_json_atomically(
-            temp_dir.path(),
-            &"b".repeat(64),
-            &json,
-        )
-        .expect_err("mismatched hash should be rejected");
+        let err = write_spell_json_atomically(temp_dir.path(), &"b".repeat(64), &json)
+            .expect_err("mismatched hash should be rejected");
 
         assert!(
             err.to_string().contains("does not match"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_write_spell_json_atomically_rewrites_stale_embedded_id() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut spell = sample_spell();
+        let actual_hash = spell.compute_hash().expect("hash");
+        spell.id = Some("a".repeat(64));
+        let json = serde_json::to_string(&spell).expect("serialize json");
+
+        let path =
+            write_spell_json_atomically(temp_dir.path(), &actual_hash, &json).expect("write spell");
+        let written_json = fs::read_to_string(path).expect("read written json");
+        let written_spell: CanonicalSpell =
+            serde_json::from_str(&written_json).expect("deserialize written spell");
+
+        assert_eq!(
+            written_spell.id.as_deref(),
+            Some(actual_hash.as_str()),
+            "vault writes should heal stale embedded ids to the filename hash"
+        );
+    }
+
+    #[test]
+    fn test_write_spell_json_atomically_overwrites_existing_file() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut spell = sample_spell();
+        let actual_hash = spell.compute_hash().expect("hash");
+        spell.id = Some(actual_hash.clone());
+        let json = serde_json::to_string(&spell).expect("serialize json");
+
+        let path = write_spell_json_atomically(temp_dir.path(), &actual_hash, &json)
+            .expect("write initial spell");
+        fs::write(&path, "{\"stale\":true}").expect("replace with stale content");
+
+        write_spell_json_atomically(temp_dir.path(), &actual_hash, &json)
+            .expect("overwrite existing spell file");
+
+        let written_json = fs::read_to_string(path).expect("read overwritten spell");
+        let written_spell: CanonicalSpell =
+            serde_json::from_str(&written_json).expect("deserialize overwritten spell");
+        assert_eq!(written_spell.id.as_deref(), Some(actual_hash.as_str()));
     }
 
     #[test]
@@ -676,9 +1346,38 @@ mod tests {
 
         assert_eq!(summary.reexported_count, 1);
         assert!(
-            temp_dir.path().join("spells").join(format!("{hash}.json")).exists(),
+            temp_dir
+                .path()
+                .join("spells")
+                .join(format!("{hash}.json"))
+                .exists(),
             "integrity check should re-export the missing spell file"
         );
+    }
+
+    #[test]
+    fn test_integrity_repairs_unreadable_file_from_db_canonical_data() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        let mut spell = sample_spell();
+        let hash = spell.compute_hash().expect("hash");
+        spell.id = Some(hash.clone());
+        let json = serde_json::to_string(&spell).expect("serialize spell");
+        insert_spell_row(&conn, 1, &spell, &hash, Some(&json));
+
+        let path = temp_dir.path().join("spells").join(format!("{hash}.json"));
+        fs::create_dir_all(path.parent().expect("spell parent")).expect("create spells dir");
+        fs::write(&path, [0xff_u8, 0xfe_u8, 0xfd_u8]).expect("write unreadable bytes");
+
+        let summary = run_vault_integrity_check_with_root(&conn, temp_dir.path())
+            .expect("integrity check should recover unreadable files");
+
+        assert_eq!(summary.repaired_count, 1);
+        assert!(summary.unrecoverable.is_empty());
+        let repaired_json = fs::read_to_string(path).expect("read repaired spell");
+        let repaired_spell: CanonicalSpell =
+            serde_json::from_str(&repaired_json).expect("deserialize repaired spell");
+        assert_eq!(repaired_spell.id.as_deref(), Some(hash.as_str()));
     }
 
     #[test]
@@ -694,6 +1393,26 @@ mod tests {
 
         assert_eq!(summary.unrecoverable.len(), 1);
         assert_eq!(summary.unrecoverable[0].content_hash, hash);
+    }
+
+    #[test]
+    fn test_integrity_reports_missing_artifact_only_hash_as_unrecoverable() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        let artifact_only_hash = "f".repeat(64);
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, spell_content_hash) VALUES (1, NULL, ?)",
+            params![artifact_only_hash.clone()],
+        )
+        .expect("insert artifact-only hash reference");
+
+        let summary = run_vault_integrity_check_with_root(&conn, temp_dir.path())
+            .expect("integrity check should inspect artifact-only live hashes");
+
+        assert_eq!(summary.checked_count, 1);
+        assert_eq!(summary.missing_count, 1);
+        assert_eq!(summary.unrecoverable.len(), 1);
+        assert_eq!(summary.unrecoverable[0].content_hash, artifact_only_hash);
     }
 
     #[test]
@@ -738,7 +1457,8 @@ mod tests {
         let orphan_hash = "o".repeat(64);
         let spells_dir = temp_dir.path().join("spells");
         std::fs::create_dir_all(&spells_dir).expect("create spells dir");
-        std::fs::write(spells_dir.join(format!("{live_hash}.json")), live_json).expect("write live file");
+        std::fs::write(spells_dir.join(format!("{live_hash}.json")), live_json)
+            .expect("write live file");
         std::fs::write(
             spells_dir.join(format!("{orphan_hash}.json")),
             r#"{"name":"Orphan","tradition":"ARCANE","level":1,"description":"Orphan","school":"Abjuration"}"#,
@@ -750,6 +1470,39 @@ mod tests {
         assert_eq!(summary.deleted_count, 1);
         assert!(spells_dir.join(format!("{live_hash}.json")).exists());
         assert!(!spells_dir.join(format!("{orphan_hash}.json")).exists());
+    }
+
+    #[test]
+    fn test_gc_preserves_character_spell_hash_references() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        conn.execute(
+            "CREATE TABLE character_class_spell (id INTEGER PRIMARY KEY, spell_id INTEGER, spell_content_hash TEXT)",
+            [],
+        )
+        .expect("create character_class_spell table");
+
+        let mut spell = sample_spell();
+        let hash = spell.compute_hash().expect("hash");
+        spell.id = Some(hash.clone());
+        let json = serde_json::to_string(&spell).expect("serialize spell");
+
+        conn.execute(
+            "INSERT INTO character_class_spell (id, spell_id, spell_content_hash) VALUES (1, NULL, ?)",
+            params![hash.clone()],
+        )
+        .expect("insert character spell hash reference");
+
+        let spells_dir = temp_dir.path().join("spells");
+        fs::create_dir_all(&spells_dir).expect("create spells dir");
+        fs::write(spells_dir.join(format!("{hash}.json")), json)
+            .expect("write referenced spell file");
+
+        let summary = run_vault_gc_with_root(&conn, temp_dir.path()).expect("gc should succeed");
+
+        assert_eq!(summary.deleted_count, 0);
+        assert_eq!(summary.retained_count, 1);
+        assert!(spells_dir.join(format!("{hash}.json")).exists());
     }
 
     #[test]
@@ -766,7 +1519,11 @@ mod tests {
 
         assert_eq!(summary.integrity.reexported_count, 1);
         assert!(
-            temp_dir.path().join("spells").join(format!("{live_hash}.json")).exists(),
+            temp_dir
+                .path()
+                .join("spells")
+                .join(format!("{live_hash}.json"))
+                .exists(),
             "gc should restore missing live file during the integrity phase"
         );
     }
@@ -778,5 +1535,107 @@ mod tests {
         let summary = run_vault_gc_with_root(&conn, temp_dir.path()).expect("gc should succeed");
 
         assert_eq!(summary.warning_count, 0);
+    }
+
+    #[test]
+    fn test_restore_supporting_files_from_archive_rejects_zip_slip() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let backup_path = temp_dir.path().join("backup.zip");
+
+        let file = File::create(&backup_path).expect("create backup");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+
+        zip.start_file("spells/../../somewhere.json", options)
+            .expect("start malicious file");
+        zip.write_all(b"bad").expect("write malicious file");
+
+        zip.finish().expect("finish archive");
+
+        let data_dir = temp_dir.path().join("restore-target");
+        std::fs::create_dir_all(&data_dir).expect("create target dir");
+
+        let file = File::open(&backup_path).expect("open backup archive");
+        let mut archive = ZipArchive::new(file).expect("read backup archive");
+        let err = restore_supporting_files_from_archive(&mut archive, &data_dir)
+            .expect_err("should reject zip slip");
+
+        assert!(err.to_string().contains("Invalid zip entry path"));
+    }
+
+    #[test]
+    fn test_restore_vault_rolls_back_partial_restore_on_failure() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let data_dir = temp_dir.path().join("data");
+        std::env::set_var("SPELLBOOK_DATA_DIR", data_dir.to_str().unwrap());
+        std::fs::create_dir_all(data_dir.join("spells")).expect("create data dir");
+
+        // Setup LIVE vault with some files
+        std::fs::write(data_dir.join("spells").join("live-spell.json"), "live")
+            .expect("live spell");
+        std::fs::write(data_dir.join("vault-settings.json"), "live settings")
+            .expect("live settings");
+
+        // We need a proper sqlite file to setup the initial DB pool
+        let pool = crate::db::pool::init_db(None, false).expect("failed to init db pool");
+        let pool_arc = std::sync::Arc::new(pool);
+
+        let backup_path = temp_dir.path().join("backup.zip");
+
+        let file = File::create(&backup_path).expect("create backup");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+
+        // Corrupt SQLite database by just putting random text (SQLite Backup API will fail)
+        zip.start_file("spellbook.sqlite3", options)
+            .expect("start db");
+        zip.write_all(b"I am not a database")
+            .expect("write broken db");
+
+        zip.start_file("spells/incoming.json", options)
+            .expect("start spells");
+        zip.write_all(b"incoming").expect("write incoming spell");
+
+        zip.start_file("vault-settings.json", options)
+            .expect("start incoming settings");
+        zip.write_all(b"incoming settings")
+            .expect("write incoming setings");
+
+        zip.finish().expect("finish archive");
+
+        let err = restore_vault_impl(pool_arc.clone(), &data_dir, &backup_path, true)
+            .expect_err("restore should fail due to bad DB");
+
+        assert!(
+            err.to_string().contains("Failed to restore database")
+                || err.to_string().contains("not an error"),
+            "Error was: {}",
+            err
+        );
+
+        // assert LIVE files are untouched
+        assert!(data_dir.join("spells").join("live-spell.json").exists());
+        assert_eq!(
+            std::fs::read_to_string(data_dir.join("vault-settings.json")).unwrap(),
+            "live settings"
+        );
+
+        // Incoming shouldn't exist
+        assert!(!data_dir.join("spells").join("incoming.json").exists());
+
+        // Staging and backups should be cleaned up
+        assert!(!data_dir.join("restore-staging").exists());
+        assert!(!data_dir.join("spells.old").exists());
+        assert!(!data_dir.join("vault-settings.json.old").exists());
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 }

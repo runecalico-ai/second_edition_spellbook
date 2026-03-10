@@ -5,8 +5,8 @@ pub mod models;
 pub mod sidecar;
 pub mod utils;
 
-use commands::*;
 use commands::vault::VaultMaintenanceState;
+use commands::*;
 use db::init_db;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -93,7 +93,9 @@ pub fn run() {
             print_spellbook,
             backup_vault,
             restore_vault,
+            get_vault_settings,
             run_vault_integrity_check,
+            set_vault_integrity_check_on_open,
             optimize_vault,
             export_character_bundle,
             export_character_markdown_zip,

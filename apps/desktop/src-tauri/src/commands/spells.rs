@@ -1159,6 +1159,10 @@ mod tests {
 
     #[test]
     fn test_apply_spell_update_with_conn_cascades_hash_references() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_spell_update_test_db();
         let initial_detail = SpellDetail {
             id: Some(1),
@@ -1241,6 +1245,8 @@ mod tests {
 
         assert_eq!(class_hash, new_hash);
         assert_eq!(artifact_hash, new_hash);
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]

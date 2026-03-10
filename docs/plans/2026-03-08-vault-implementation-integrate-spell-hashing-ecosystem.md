@@ -10,7 +10,7 @@
 
 ---
 
-## Completion status (2026-03-08)
+## Completion status (2026-03-10)
 
 | Task | Status | Notes |
 |------|--------|--------|
@@ -18,10 +18,16 @@
 | Task 2: Integrity sweep, recovery, GC | Done | Sweep, re-export, GC with live hash set, schema-conditional artifact ref |
 | Task 3: Import/GC coordination | Done | Guard, post-import GC, replace/keep_both vault writes |
 | Task 4: User-facing vault controls | Done | VaultMaintenanceDialog, integrity-on-open, Optimize Vault, startup UX |
-| Task 5: Verification and three-pass review | Done | Full verify (cargo test 292, typecheck, test:unit 73), review artifact saved |
-| Task 6: Documentation close-out | Done | tasks.md Task 4 marked complete, TROUBLESHOOTING vault section, backup/restore scope documented |
+| Task 5: Security Hardening & Robustness | Done | Zip-slip protection, Atomic restore with staging/backups, async backup/restore |
+| Task 6: Verification and three-pass review | Done | Full verify (cargo test 328, typecheck, test:unit 73), review artifact saved |
+| Task 7: Documentation close-out | Done | tasks.md Task 4 marked complete, TROUBLESHOOTING vault section, backup/restore scope documented |
 
-Verification: `cargo test --lib` (292 passed), `pnpm --dir apps/desktop typecheck`, `pnpm --dir apps/desktop test:unit` (73 passed). Four previously failing import/vault tests were fixed (artifact table for get_spell_from_conn, skip-merge for replace resolution, mutex poisoning resolved).
+Verification: `cargo test` (328 passed), `pnpm --dir apps/desktop typecheck`, `pnpm --dir apps/desktop test:unit` (73 passed).
+Recent Fixes:
+- Addressed Windows path length limitations in tests by implementing `vault_env_lock` and temporary `SPELLBOOK_DATA_DIR` setup/cleanup.
+- Resolved zip-slip vulnerability in `restore_supporting_files_from_archive`.
+- Implemented atomic restore logic in `restore_vault_impl` using staging directories and backup files.
+- Converted synchronous backup/restore commands to asynchronous IPC calls.
 
 ---
 

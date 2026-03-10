@@ -3096,6 +3096,10 @@ mod tests {
 
     #[test]
     fn test_apply_import_conflict_same_name_different_level_different_hash() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Mirror Veil", 1, "Existing spell");
         let incoming_spell = test_spell("Mirror Veil", 5, "Incoming spell with different content");
@@ -3119,6 +3123,8 @@ mod tests {
             result.conflicts[0].incoming_content_hash, incoming_hash,
             "conflict should track incoming hash"
         );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
@@ -3185,7 +3191,10 @@ mod tests {
 
     #[test]
     fn test_manual_gc_is_blocked_while_import_guard_is_active() {
+        let _guard_env = vault_env_lock().lock().expect("lock vault env");
         let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let maintenance_state = VaultMaintenanceState::default();
         let _guard = maintenance_state
@@ -3198,11 +3207,16 @@ mod tests {
             err.to_string().contains("import"),
             "unexpected error: {err}"
         );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_run_with_import_maintenance_blocks_manual_gc_for_legacy_flows() {
+        let _guard_env = vault_env_lock().lock().expect("lock vault env");
         let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let maintenance_state = VaultMaintenanceState::default();
 
@@ -3216,11 +3230,16 @@ mod tests {
             err.to_string().contains("import"),
             "unexpected error: {err}"
         );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_run_post_import_gc_if_needed_removes_orphans_for_legacy_imports() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
         let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let live_spell = test_spell("Legacy Import Live", 2, "Live spell");
         let live_hash = test_hash(&live_spell);
@@ -3244,11 +3263,16 @@ mod tests {
 
         assert!(spells_dir.join(format!("{live_hash}.json")).exists());
         assert!(!spells_dir.join(format!("{orphan_hash}.json")).exists());
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_run_post_import_gc_if_needed_skips_gc_when_no_legacy_mutation() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
         let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let orphan_hash = "m".repeat(64);
         let spells_dir = temp_dir.path().join("spells");
@@ -3266,6 +3290,8 @@ mod tests {
             spells_dir.join(format!("{orphan_hash}.json")).exists(),
             "gc should not run when no legacy mutations were applied"
         );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
@@ -3757,6 +3783,10 @@ mod tests {
 
     #[test]
     fn test_apply_import_same_hash_dedups_before_name_conflict() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Storm Cage", 1, "Existing spell");
         let mut incoming_spell = test_spell("Storm Cage", 1, "Existing spell");
@@ -3788,10 +3818,16 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
             .expect("count spells");
         assert_eq!(spell_count, 1, "dedup should keep only one spell row");
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_apply_import_dedup_counters_track_merged_vs_no_change() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Echo Ward", 2, "Existing spell");
         let shared_hash = test_hash(&existing_spell);
@@ -3821,6 +3857,8 @@ mod tests {
         assert_eq!(result.duplicates_skipped.total, 2);
         assert_eq!(result.duplicates_skipped.merged_count, 1);
         assert_eq!(result.duplicates_skipped.no_change_count, 1);
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
@@ -4187,6 +4225,10 @@ mod tests {
 
     #[test]
     fn test_apply_import_conflict_deterministic_when_name_has_multiple_rows() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let existing_a = test_spell("Twin Sigil", 1, "Existing row A");
         let existing_b = test_spell("Twin Sigil", 4, "Existing row B");
@@ -4207,10 +4249,16 @@ mod tests {
             result.conflicts[0].existing_id, 1,
             "name-only conflict should deterministically select the lowest id row"
         );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_replace_with_new_collision_error_includes_conflicting_spell_name_and_hash() {
+        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Mirror Ward", 2, "Existing target spell");
         let conflicting_spell = test_spell("Prismatic Net", 6, "Spell already using incoming hash");
@@ -4257,5 +4305,7 @@ mod tests {
             msg.contains("Keep Both"),
             "error should suggest Keep Both action, got: {msg}"
         );
+
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 }

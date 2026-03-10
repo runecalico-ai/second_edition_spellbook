@@ -20,3 +20,7 @@ WHERE spell_content_hash IS NULL
 CREATE INDEX IF NOT EXISTS idx_artifact_spell_content_hash
 ON artifact(spell_content_hash)
 WHERE spell_content_hash IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ccs_character_hash_list
+ON character_class_spell(character_class_id, spell_content_hash, list_type)
+WHERE spell_content_hash IS NOT NULL;

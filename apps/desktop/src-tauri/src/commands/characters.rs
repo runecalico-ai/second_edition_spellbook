@@ -168,6 +168,63 @@ fn remove_character_spell_by_hash_with_conn(
     Ok(())
 }
 
+/// Sync helper: validate PREPARED-known rule and upsert. Used by add_character_spell command and tests.
+fn add_character_spell_with_conn(
+    conn: &Connection,
+    character_class_id: i64,
+    spell_id: i64,
+    list_type: &str,
+    notes: Option<&str>,
+) -> Result<(), AppError> {
+    // C1.1.6 Ensure integrity: Validate Prepared spells must be Known
+    if list_type == "PREPARED" {
+        let use_hash = table_has_column(conn, "character_class_spell", "spell_content_hash");
+        let known_exists: bool = if use_hash {
+            let spell_content_hash: Option<String> = conn
+                .query_row(
+                    "SELECT content_hash FROM spell WHERE id = ?",
+                    [spell_id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .flatten();
+            if let Some(hash) = spell_content_hash.as_deref() {
+                conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = 'KNOWN')",
+                    params![character_class_id, hash],
+                    |row| row.get(0),
+                )?
+            } else {
+                conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'KNOWN')",
+                    params![character_class_id, spell_id],
+                    |row| row.get(0),
+                )?
+            }
+        } else {
+            conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'KNOWN')",
+                params![character_class_id, spell_id],
+                |row| row.get(0),
+            )?
+        };
+
+        if !known_exists {
+            return Err(AppError::Unknown(
+                "Cannot prepare a spell that is not in the Known list.".to_string(),
+            ));
+        }
+    }
+
+    upsert_character_class_spell_with_hash(
+        conn,
+        character_class_id,
+        spell_id,
+        list_type,
+        notes,
+    )
+}
+
 fn upsert_character_class_spell_with_hash(
     conn: &Connection,
     character_class_id: i64,
@@ -184,26 +241,48 @@ fn upsert_character_class_spell_with_hash(
             )
             .optional()?
             .flatten();
-        conn.execute(
-            "INSERT INTO character_class_spell (
-                character_class_id,
-                spell_id,
-                list_type,
-                notes,
-                spell_content_hash
-             )
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(character_class_id, spell_id, list_type) DO UPDATE SET
-                notes=excluded.notes,
-                spell_content_hash=excluded.spell_content_hash",
-            params![
-                character_class_id,
-                spell_id,
-                list_type,
-                notes,
-                spell_content_hash
-            ],
-        )?;
+        if let Some(hash) = spell_content_hash.as_deref() {
+            let updated = conn.execute(
+                "UPDATE character_class_spell
+                 SET spell_id = ?, notes = ?, spell_content_hash = ?
+                 WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = ?",
+                params![spell_id, notes, hash, character_class_id, hash, list_type],
+            )?;
+            if updated == 0 {
+                conn.execute(
+                    "INSERT INTO character_class_spell (
+                        character_class_id,
+                        spell_id,
+                        list_type,
+                        notes,
+                        spell_content_hash
+                     )
+                     VALUES (?, ?, ?, ?, ?)",
+                    params![character_class_id, spell_id, list_type, notes, hash],
+                )?;
+            }
+        } else {
+            conn.execute(
+                "INSERT INTO character_class_spell (
+                    character_class_id,
+                    spell_id,
+                    list_type,
+                    notes,
+                    spell_content_hash
+                 )
+                 VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT(character_class_id, spell_id, list_type) DO UPDATE SET
+                    notes=excluded.notes,
+                    spell_content_hash=excluded.spell_content_hash",
+                params![
+                    character_class_id,
+                    spell_id,
+                    list_type,
+                    notes,
+                    spell_content_hash
+                ],
+            )?;
+        }
     } else {
         conn.execute(
             "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes)
@@ -562,28 +641,13 @@ pub async fn add_character_spell(
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-
-        // C1.1.6 Ensure integrity: Validate Prepared spells must be Known
-        if list_type == "PREPARED" {
-            let known_exists: bool = conn.query_row(
-                "SELECT EXISTS(SELECT 1 FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'KNOWN')",
-                params![character_class_id, spell_id],
-                |row| row.get(0),
-            )?;
-
-            if !known_exists {
-                return Err(AppError::Unknown("Cannot prepare a spell that is not in the Known list.".to_string()));
-            }
-        }
-
-        upsert_character_class_spell_with_hash(
+        add_character_spell_with_conn(
             &conn,
             character_class_id,
             spell_id,
             &list_type,
             notes.as_deref(),
-        )?;
-        Ok::<(), AppError>(())
+        )
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -747,6 +811,16 @@ mod tests {
             "#
         ))
         .expect("create schema");
+        if with_hash_column {
+            conn.execute_batch(
+                r#"
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_ccs_character_hash_list
+                ON character_class_spell(character_class_id, spell_content_hash, list_type)
+                WHERE spell_content_hash IS NOT NULL;
+                "#,
+            )
+            .expect("create hash unique index");
+        }
         conn
     }
 
@@ -954,6 +1028,74 @@ mod tests {
             )
             .expect("count after delete");
         assert_eq!(count, 0, "both KNOWN and PREPARED rows must be removed");
+    }
+
+    /// PREPARED add succeeds when KNOWN row is matched by spell_content_hash (e.g. after hash restore).
+    /// Seeds KNOWN with spell_id=0 and spell_content_hash='restored-hash', then spell id=5 with same hash;
+    /// adding PREPARED by spell_id 5 should succeed once validation uses hash.
+    #[test]
+    fn test_add_prepared_spell_succeeds_when_known_row_matches_by_hash() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) VALUES (7, 0, 'KNOWN', NULL, 'restored-hash')",
+            [],
+        )
+        .expect("seed KNOWN row by hash");
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (5, 'restored-hash')",
+            [],
+        )
+        .expect("seed spell row with restored hash");
+
+        add_character_spell_with_conn(&conn, 7, 5, "PREPARED", None)
+            .expect("add PREPARED should succeed when KNOWN matches by hash");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'restored-hash' AND list_type = 'PREPARED'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count PREPARED row");
+        assert_eq!(count, 1, "PREPARED row must be inserted");
+    }
+
+    /// Upsert with hash path should UPDATE existing row keyed by (character_class_id, spell_content_hash, list_type)
+    /// instead of inserting a second row (which would violate idx_ccs_character_hash_list).
+    #[test]
+    fn test_upsert_character_class_spell_with_hash_updates_existing_hash_row() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (5, 'restored-hash')",
+            [],
+        )
+        .expect("seed spell");
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) VALUES (7, 0, 'KNOWN', NULL, 'restored-hash')",
+            [],
+        )
+        .expect("seed stale KNOWN row by hash");
+
+        upsert_character_class_spell_with_hash(&conn, 7, 5, "KNOWN", Some("updated note"))
+            .expect("upsert should update existing hash row");
+
+        let row_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'restored-hash' AND list_type = 'KNOWN'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count rows");
+        assert_eq!(row_count, 1, "must have exactly one row for this hash/list");
+        let (spell_id, notes): (i64, Option<String>) = conn
+            .query_row(
+                "SELECT spell_id, notes FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'restored-hash' AND list_type = 'KNOWN'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("get row");
+        assert_eq!(spell_id, 5, "spell_id must be refreshed");
+        assert_eq!(notes.as_deref(), Some("updated note"), "notes must be updated");
     }
 }
 

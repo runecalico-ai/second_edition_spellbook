@@ -1087,15 +1087,55 @@ mod tests {
             )
             .expect("count rows");
         assert_eq!(row_count, 1, "must have exactly one row for this hash/list");
-        let (spell_id, notes): (i64, Option<String>) = conn
+        let (spell_id, hash): (i64, String) = conn
             .query_row(
-                "SELECT spell_id, notes FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'restored-hash' AND list_type = 'KNOWN'",
+                "SELECT spell_id, spell_content_hash FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'restored-hash' AND list_type = 'KNOWN'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get::<_, String>(1)?)),
             )
             .expect("get row");
-        assert_eq!(spell_id, 5, "spell_id must be refreshed");
+        assert_eq!(spell_id, 5, "spell_id must be refreshed from 0 to live spell id");
+        assert_eq!(hash, "restored-hash", "spell_content_hash must remain unchanged");
+        let notes: Option<String> = conn
+            .query_row(
+                "SELECT notes FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'restored-hash' AND list_type = 'KNOWN'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("get notes");
         assert_eq!(notes.as_deref(), Some("updated note"), "notes must be updated");
+    }
+
+    /// Remove-by-hash still cascades after row is recovered: seed KNOWN and PREPARED by hash
+    /// with stale spell_id = 0, insert the matching spell row, then remove KNOWN by hash;
+    /// both rows must be deleted.
+    #[test]
+    fn test_remove_by_hash_cascades_after_restored_hash() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute_batch(
+            r#"
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+            VALUES (7, 0, 'KNOWN', NULL, 'restored-hash'), (7, 0, 'PREPARED', NULL, 'restored-hash');
+            "#,
+        )
+        .expect("seed KNOWN and PREPARED rows by hash with stale spell_id = 0");
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (5, 'restored-hash')",
+            [],
+        )
+        .expect("insert matching spell row later");
+
+        remove_character_spell_by_hash_with_conn(&conn, 7, "restored-hash", "KNOWN")
+            .expect("remove KNOWN by hash");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'restored-hash'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count after delete");
+        assert_eq!(count, 0, "both KNOWN and PREPARED rows must be deleted after remove-by-hash");
     }
 }
 

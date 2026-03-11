@@ -273,4 +273,61 @@ test.describe("Character Edge Cases & Hardening", () => {
     await app.navigate("Characters");
     await app.deleteCharacterFromList(charName);
   });
+
+  test("restored-row: removing a recovered hash-backed row works from normal UI path", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const charName = `RestoredRowChar_${runId}`;
+
+    await test.step("Setup: seed orphan row and then restore it with a live spell", async () => {
+      await app.navigate("Characters");
+      await page.waitForTimeout(500);
+      await page.evaluate(
+        async (name: string) => {
+          const inv = (window as Window & { __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> } })
+            .__TAURI_INTERNALS__?.invoke;
+          if (!inv) throw new Error("Tauri invoke not available");
+          await inv("test_seed_character_with_orphan_spell", { characterName: name });
+        },
+        charName,
+      );
+
+      await page.evaluate(async () => {
+        const inv = (window as Window & { __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> } })
+          .__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_spell", {
+          name: "Restored E2E Spell",
+          hash: "e2e-orphan-hash",
+        });
+      });
+
+      await page.reload();
+      await expect(page.getByRole("link", { name: charName })).toBeVisible({
+        timeout: 5000,
+      });
+    });
+
+    await test.step("Verify row renders as normal and can be removed", async () => {
+      await app.openCharacterEditor(charName);
+      const mageSection = page.locator('[aria-label="Class section for Mage"]');
+      await mageSection.getByRole("button", { name: "KNOWN" }).click();
+      await page.waitForTimeout(500);
+      const row = page.getByTestId("spell-row-Restored E2E Spell");
+      await expect(row).toBeVisible();
+
+      await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
+
+      const removeBtn = row.locator("[data-testid^='btn-remove-spell-']");
+      await removeBtn.click();
+
+      await expect(row).not.toBeVisible();
+    });
+
+    await app.navigate("Characters");
+    await app.deleteCharacterFromList(charName);
+  });
 });

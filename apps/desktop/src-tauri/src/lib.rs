@@ -71,6 +71,7 @@ pub fn run() {
             remove_character_spell,
             remove_character_spell_by_hash,
             update_character_spell_notes,
+            test_seed_spell,
             test_seed_character_with_orphan_spell,
             get_character_spellbook,
             update_character_spell,

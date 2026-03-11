@@ -35,7 +35,9 @@ fn get_character_class_spells_with_conn(
                         ccs.spell_content_hash,
                         CASE WHEN s.id IS NULL AND ccs.spell_content_hash IS NOT NULL THEN 1 ELSE 0 END AS missing_from_library
                  FROM character_class_spell ccs
-                 LEFT JOIN spell s ON s.content_hash = ccs.spell_content_hash
+                 LEFT JOIN spell s ON
+                    (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
+                    OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)
                  JOIN character_class cc ON cc.id = ccs.character_class_id
                  WHERE ccs.character_class_id = ? AND ccs.list_type = ?
                  ORDER BY COALESCE(s.level, 0), COALESCE(s.name, '')"
@@ -52,7 +54,9 @@ fn get_character_class_spells_with_conn(
                         ccs.spell_content_hash,
                         CASE WHEN s.id IS NULL AND ccs.spell_content_hash IS NOT NULL THEN 1 ELSE 0 END AS missing_from_library
                  FROM character_class_spell ccs
-                 LEFT JOIN spell s ON s.content_hash = ccs.spell_content_hash
+                 LEFT JOIN spell s ON
+                    (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
+                    OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)
                  JOIN character_class cc ON cc.id = ccs.character_class_id
                  WHERE ccs.character_class_id = ?
                  ORDER BY COALESCE(s.level, 0), COALESCE(s.name, '')"
@@ -665,17 +669,45 @@ pub async fn remove_character_spell(
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        conn.execute(
-            "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = ?",
-            params![character_class_id, spell_id, list_type],
-        )?;
+        let use_hash = table_has_column(&conn, "character_class_spell", "spell_content_hash");
 
-        // C1.1.5 Ensure integrity: Removing from Known removes from Prepared
-        if list_type == "KNOWN" {
-             conn.execute(
-                "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'PREPARED'",
-                params![character_class_id, spell_id],
+        let mut deleted = 0;
+        if use_hash {
+            // AUTHORITATIVE HASH PATH: handles restored rows with stale IDs
+            let spell_content_hash: Option<String> = conn
+                .query_row("SELECT content_hash FROM spell WHERE id = ?", [spell_id], |row| {
+                    row.get(0)
+                })
+                .optional()?
+                .flatten();
+
+            if let Some(hash) = spell_content_hash {
+                deleted = conn.execute(
+                    "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = ?",
+                    params![character_class_id, hash, list_type],
+                )?;
+                if deleted > 0 && list_type == "KNOWN" {
+                    conn.execute(
+                        "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = 'PREPARED'",
+                        params![character_class_id, hash],
+                    )?;
+                }
+            }
+        }
+
+        // LEGACY OR UNRESOLVABLE PATH: fallback for rows with NULL hash or very old legacy DBs
+        if deleted == 0 {
+            conn.execute(
+                "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = ?",
+                params![character_class_id, spell_id, list_type],
             )?;
+
+            if list_type == "KNOWN" {
+                conn.execute(
+                    "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'PREPARED'",
+                    params![character_class_id, spell_id],
+                )?;
+            }
         }
 
         Ok::<(), AppError>(())
@@ -720,10 +752,31 @@ pub async fn update_character_spell_notes(
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        conn.execute(
-            "UPDATE character_class_spell SET notes=? WHERE character_class_id = ? AND spell_id = ? AND list_type = ?",
-            params![notes, character_class_id, spell_id, list_type],
-        )?;
+        let use_hash = table_has_column(&conn, "character_class_spell", "spell_content_hash");
+
+        let mut updated = 0;
+        if use_hash {
+            let spell_content_hash: Option<String> = conn
+                .query_row("SELECT content_hash FROM spell WHERE id = ?", [spell_id], |row| {
+                    row.get(0)
+                })
+                .optional()?
+                .flatten();
+
+            if let Some(hash) = spell_content_hash {
+                updated = conn.execute(
+                    "UPDATE character_class_spell SET notes=? WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = ?",
+                    params![notes, character_class_id, hash, list_type],
+                )?;
+            }
+        }
+
+        if updated == 0 {
+            conn.execute(
+                "UPDATE character_class_spell SET notes=? WHERE character_class_id = ? AND spell_id = ? AND list_type = ?",
+                params![notes, character_class_id, spell_id, list_type],
+            )?;
+        }
         Ok::<(), AppError>(())
     })
     .await
@@ -780,6 +833,28 @@ pub async fn get_character_spellbook(
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
     Ok(result)
+}
+
+/// Test-only: inserts a spell row by name and content_hash for E2E (e.g. restoring an orphan).
+/// Only use in E2E tests.
+#[tauri::command]
+pub async fn test_seed_spell(
+    state: State<'_, Arc<Pool>>,
+    name: String,
+    hash: String,
+) -> Result<i64, AppError> {
+    let pool = state.inner().clone();
+    let id = tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        conn.execute(
+            "INSERT INTO spell (name, level, description, content_hash) VALUES (?, 1, 'Test', ?)",
+            params![name, hash],
+        )?;
+        Ok::<i64, AppError>(conn.last_insert_rowid())
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+    Ok(id)
 }
 
 /// Test-only: seeds a character with one class and one orphan spell row (spell_content_hash
@@ -1043,6 +1118,40 @@ mod tests {
             .expect("entry for missing spell");
         assert!(missing.missing_from_library, "missing spell must be marked missing_from_library");
         assert_eq!(missing.spell_name, "Spell no longer in library");
+    }
+
+    /// When character_class_spell has spell_content_hash NULL (legacy or incomplete backfill),
+    /// join falls back to spell_id so the spell row is resolved and not shown as missing.
+    #[test]
+    fn test_get_character_class_spells_fallback_to_id_when_hash_null() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (id INTEGER PRIMARY KEY, content_hash TEXT, name TEXT, level INTEGER, school TEXT, sphere TEXT, is_quest_spell INTEGER DEFAULT 0, is_cantrip INTEGER DEFAULT 0, tags TEXT);
+            CREATE TABLE "character" (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE TABLE character_class (id INTEGER PRIMARY KEY, character_id INTEGER);
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
+            );
+            INSERT INTO "character" (id, name) VALUES (1, 'Test');
+            INSERT INTO character_class (id, character_id) VALUES (1, 1);
+            -- Spell is present but character_class_spell row has NULL hash (legacy or incomplete backfill)
+            INSERT INTO spell (id, content_hash, name, level, school, sphere, is_quest_spell, is_cantrip, tags) VALUES (100, 'some-hash', 'Legacy Spell', 1, NULL, NULL, 0, 0, NULL);
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+            VALUES (1, 100, 'KNOWN', NULL, NULL);
+            "#,
+        )
+        .expect("seed");
+
+        let entries = get_character_class_spells_with_conn(&conn, 1, Some("KNOWN")).expect("read");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].spell_name, "Legacy Spell");
+        assert!(!entries[0].missing_from_library);
     }
 
     /// remove_character_spell_by_hash with list_type KNOWN cascades: both KNOWN and PREPARED

@@ -65,11 +65,7 @@ fn get_character_class_spells_with_conn(
             )
         };
         let mut stmt = conn.prepare(&query)?;
-        let rows = if list_type.is_some() {
-            stmt.query_map(rusqlite::params_from_iter(params.iter()), map_row_14)?
-        } else {
-            stmt.query_map(rusqlite::params_from_iter(params.iter()), map_row_14)?
-        };
+        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), map_row_14)?;
         let mut out = vec![];
         for row in rows {
             out.push(row?);
@@ -220,13 +216,7 @@ fn add_character_spell_with_conn(
         }
     }
 
-    upsert_character_class_spell_with_hash(
-        conn,
-        character_class_id,
-        spell_id,
-        list_type,
-        notes,
-    )
+    upsert_character_class_spell_with_hash(conn, character_class_id, spell_id, list_type, notes)
 }
 
 fn upsert_character_class_spell_with_hash(
@@ -622,11 +612,7 @@ pub async fn get_character_class_spells(
     let list_type_clone = list_type.clone();
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        get_character_class_spells_with_conn(
-            &conn,
-            character_class_id,
-            list_type_clone.as_deref(),
-        )
+        get_character_class_spells_with_conn(&conn, character_class_id, list_type_clone.as_deref())
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -1003,7 +989,10 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("count after delete");
-        assert_eq!(count, 0, "row with spell_content_hash = 'orphan-hash' must be deleted");
+        assert_eq!(
+            count, 0,
+            "row with spell_content_hash = 'orphan-hash' must be deleted"
+        );
     }
 
     /// Integration-style test: orphan spell_content_hash (no matching spell) returns one entry
@@ -1052,12 +1041,18 @@ mod tests {
         let entries = get_character_class_spells_with_conn(&conn, 10, Some("KNOWN"))
             .expect("get_character_class_spells_with_conn");
         assert_eq!(entries.len(), 1, "one entry for orphan hash");
-        assert!(entries[0].missing_from_library, "entry must be marked missing_from_library");
+        assert!(
+            entries[0].missing_from_library,
+            "entry must be marked missing_from_library"
+        );
         assert_eq!(
             entries[0].spell_name, "Spell no longer in library",
             "placeholder name for missing spell"
         );
-        assert_eq!(entries[0].spell_content_hash.as_deref(), Some("orphan-hash"));
+        assert_eq!(
+            entries[0].spell_content_hash.as_deref(),
+            Some("orphan-hash")
+        );
     }
 
     /// get_character_class_spells with mixed present and missing: one hash matches spell table,
@@ -1109,14 +1104,20 @@ mod tests {
             .iter()
             .find(|e| e.spell_content_hash.as_deref() == Some("present-hash"))
             .expect("entry for present spell");
-        assert!(!present.missing_from_library, "present spell must not be marked missing");
+        assert!(
+            !present.missing_from_library,
+            "present spell must not be marked missing"
+        );
         assert_eq!(present.spell_name, "Magic Missile");
 
         let missing = entries
             .iter()
             .find(|e| e.spell_content_hash.as_deref() == Some("missing-hash"))
             .expect("entry for missing spell");
-        assert!(missing.missing_from_library, "missing spell must be marked missing_from_library");
+        assert!(
+            missing.missing_from_library,
+            "missing spell must be marked missing_from_library"
+        );
         assert_eq!(missing.spell_name, "Spell no longer in library");
     }
 
@@ -1244,8 +1245,14 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get::<_, String>(1)?)),
             )
             .expect("get row");
-        assert_eq!(spell_id, 5, "spell_id must be refreshed from 0 to live spell id");
-        assert_eq!(hash, "restored-hash", "spell_content_hash must remain unchanged");
+        assert_eq!(
+            spell_id, 5,
+            "spell_id must be refreshed from 0 to live spell id"
+        );
+        assert_eq!(
+            hash, "restored-hash",
+            "spell_content_hash must remain unchanged"
+        );
         let notes: Option<String> = conn
             .query_row(
                 "SELECT notes FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'restored-hash' AND list_type = 'KNOWN'",
@@ -1253,7 +1260,11 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("get notes");
-        assert_eq!(notes.as_deref(), Some("updated note"), "notes must be updated");
+        assert_eq!(
+            notes.as_deref(),
+            Some("updated note"),
+            "notes must be updated"
+        );
     }
 
     /// Remove-by-hash still cascades after row is recovered: seed KNOWN and PREPARED by hash
@@ -1285,7 +1296,10 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("count after delete");
-        assert_eq!(count, 0, "both KNOWN and PREPARED rows must be deleted after remove-by-hash");
+        assert_eq!(
+            count, 0,
+            "both KNOWN and PREPARED rows must be deleted after remove-by-hash"
+        );
     }
 }
 

@@ -171,9 +171,7 @@ mod tests {
         load_migrations(&conn).expect("load migrations");
 
         let index_names: Vec<String> = conn
-            .prepare(
-                "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?)",
-            )
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?)")
             .expect("prepare")
             .query_map(
                 rusqlite::params![
@@ -229,7 +227,10 @@ mod tests {
                 |row| row.get::<_, i32>(0),
             )
             .is_ok();
-        assert!(index_exists, "idx_ccs_character_hash_list must exist after migration 0015");
+        assert!(
+            index_exists,
+            "idx_ccs_character_hash_list must exist after migration 0015"
+        );
     }
 
     #[test]

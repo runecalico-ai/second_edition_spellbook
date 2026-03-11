@@ -5,9 +5,11 @@ Task: `5.1 Migrate Spell Lists (per-class known/prepared sets in character_class
 
 Review method: three independent passes, each scoped like a small subagent review unit.
 
+**Verification (post-fix):** Findings below have been checked against the codebase. Status for each finding is noted; the Bottom Line and Three Passes sections are updated to reflect completed work.
+
 ## Findings
 
-### [P1] Recovered hash-backed rows cannot be mutated from the UI
+### [P1] Recovered hash-backed rows cannot be mutated from the UI — **Addressed**
 
 In hash mode, `get_character_class_spells_with_conn()` returns `spell_id` from the joined `spell` row, not from `character_class_spell` (`apps/desktop/src-tauri/src/commands/characters.rs:30-41`, `47-58`). That makes sense for display, but the mutation commands still target rows by `character_class_spell.spell_id`:
 
@@ -29,7 +31,9 @@ Recommended fix:
 - add hash-aware variants for note updates and standard remove flow, not just the missing-library cleanup path
 - if you keep `spell_id` mutations for legacy DBs, branch on column presence the same way add/read already do
 
-### [P1] Hash-mode reads mis-handle rows whose backfill left `spell_content_hash` NULL
+*Implementation:* `remove_character_spell` and `update_character_spell_notes` now resolve `content_hash` from `spell` by the incoming `spell_id`, then mutate by `(character_class_id, spell_content_hash, list_type)` when the hash column exists; they fall back to `spell_id` when no hash or no rows affected. E2E test "restored-row: removing a recovered hash-backed row works from normal UI path" covers the Remove flow.
+
+### [P1] Hash-mode reads mis-handle rows whose backfill left `spell_content_hash` NULL — **Addressed**
 
 Task 5 and the design both acknowledge a transition period where `spell_content_hash` may still be NULL if the prerequisite migration/backfill has not completed cleanly. The current hash-mode read query ignores `ccs.spell_id` completely and joins only on `s.content_hash = ccs.spell_content_hash` (`apps/desktop/src-tauri/src/commands/characters.rs:37-40`, `54-57`).
 
@@ -50,7 +54,9 @@ Recommended fix:
 - alternatively, hard-fail Task 5 surfaces when backfill has not completed, but that would need to be enforced explicitly rather than just logged
 - add a unit test for: `spell_id` valid, `spell_content_hash` NULL, spell should still resolve normally
 
-### [P2] The current tests miss the two highest-risk transition regressions
+*Implementation:* Hash-mode read query now joins with `(ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash) OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)`. Unit test `test_get_character_class_spells_fallback_to_id_when_hash_null` covers NULL-hash fallback.
+
+### [P2] The current tests miss the two highest-risk transition regressions — **Mostly addressed**
 
 Coverage is good for:
 
@@ -70,9 +76,11 @@ Recommended fix:
 - backend unit test for NULL-hash fallback read behavior
 - one E2E covering a restored row, not just a permanently orphaned row
 
+*Implementation:* NULL-hash fallback has backend unit test. Restored-row notes path covered by `test_upsert_character_class_spell_with_hash_updates_existing_hash_row`; restored-row Remove covered by E2E "restored-row: removing a recovered hash-backed row works from normal UI path". No dedicated Rust unit test for `remove_character_spell(..., spell_id, ...)` on a restored row (behavior is implemented and E2E-verified). Optional: E2E that NULL-hash transitional rows do not render as placeholders was not added.
+
 ## Three Passes
 
-### Pass 1: Migration and schema transition
+### Pass 1: Migration and schema transition — **Done**
 
 Scope:
 
@@ -88,12 +96,12 @@ Assessment:
 
 Subagent-sized work:
 
-1. Add a read-path test for `spell_id` present + `spell_content_hash` NULL.
-2. Decide whether Task 5 should support partial backfill gracefully or block the feature until backfill succeeds.
-3. If graceful: implement the join fallback.
-4. If blocking: surface a real error instead of only logging `Hash backfill failed`.
+1. ~~Add a read-path test for `spell_id` present + `spell_content_hash` NULL.~~ **Done:** `test_get_character_class_spells_fallback_to_id_when_hash_null`
+2. ~~Decide whether Task 5 should support partial backfill gracefully or block the feature until backfill succeeds.~~ **Done:** graceful.
+3. ~~If graceful: implement the join fallback.~~ **Done:** join uses `(ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)`.
+4. If blocking: surface a real error instead of only logging `Hash backfill failed`. *N/A (graceful path chosen).*
 
-### Pass 2: Backend command/read-write behavior
+### Pass 2: Backend command/read-write behavior — **Done**
 
 Scope:
 
@@ -102,17 +110,17 @@ Scope:
 Assessment:
 
 - add/prepared-known validation already has hash-aware handling
-- remove and notes update are still ID-keyed in the normal path
-- the command set therefore supports orphan cleanup but not full hash-authoritative mutation
+- ~~remove and notes update are still ID-keyed in the normal path~~ **Fixed:** both resolve by hash when column exists.
+- the command set now supports hash-authoritative mutation with legacy fallback.
 
 Subagent-sized work:
 
-1. Add a helper that chooses hash-keyed mutation when `spell_content_hash` exists.
-2. Route Remove and notes-update through that helper.
-3. Keep the legacy `spell_id` path for DBs without Migration 0015.
-4. Add backend tests for restored-row remove and restored-row notes update.
+1. ~~Add a helper that chooses hash-keyed mutation when `spell_content_hash` exists.~~ **Done:** inline in `remove_character_spell` / `update_character_spell_notes` (resolve hash from `spell` by `spell_id`, then mutate by hash).
+2. ~~Route Remove and notes-update through that helper.~~ **Done.**
+3. ~~Keep the legacy `spell_id` path for DBs without Migration 0015.~~ **Done:** fallback when `deleted == 0` / `updated == 0`.
+4. Add backend tests for restored-row remove and restored-row notes update. **Done:** notes via upsert test; remove covered by E2E (no separate Rust unit for remove-by-spell_id on restored row).
 
-### Pass 3: Frontend spell-list behavior
+### Pass 3: Frontend spell-list behavior — **Done** (item 3 optional, not added)
 
 Scope:
 
@@ -122,30 +130,29 @@ Scope:
 Assessment:
 
 - missing-library placeholder UI is implemented correctly for true orphan rows
-- the frontend assumes `missingFromLibrary` cleanly partitions row behavior, but the backend currently leaks transition states that violate that assumption
-- once backend identity is fixed, the frontend can stay mostly unchanged
+- backend identity is fixed, so transition states are handled; frontend unchanged as expected.
+- frontend continues to use `spellId` for normal rows and `spellContentHash` for missing rows; backend resolves hash from spell id for mutations.
 
 Subagent-sized work:
 
-1. Keep `spellContentHash` on every row as the preferred identity after Task 5.
-2. Add an E2E that restores a spell for a previously stale hash row and verifies Remove still works.
-3. Add an E2E or component-level assertion that NULL-hash transitional rows do not render as placeholders.
+1. ~~Keep `spellContentHash` on every row as the preferred identity after Task 5.~~ **Done:** row includes `spellContentHash`; Remove/notes use backend hash resolution for normal rows.
+2. ~~Add an E2E that restores a spell for a previously stale hash row and verifies Remove still works.~~ **Done:** "restored-row: removing a recovered hash-backed row works from normal UI path".
+3. Add an E2E or component-level assertion that NULL-hash transitional rows do not render as placeholders. *Optional; not implemented.*
 
 ## Implementation Order
 
-1. Fix backend read-path fallback for NULL hashes.
-2. Fix backend mutation commands to use hash identity when available.
-3. Add backend tests for restored-row and NULL-hash transitions.
-4. Add one UI/E2E regression test for the restored-row path.
+1. ~~Fix backend read-path fallback for NULL hashes.~~ **Done**
+2. ~~Fix backend mutation commands to use hash identity when available.~~ **Done**
+3. ~~Add backend tests for restored-row and NULL-hash transitions.~~ **Done** (NULL-hash unit test; restored-row notes via upsert test; restored-row remove via E2E).
+4. ~~Add one UI/E2E regression test for the restored-row path.~~ **Done**
 
 ## Bottom Line
 
-Task 5 is close on schema work and happy-path display, but the transition boundary is still fragile. The code currently handles:
+**Post-fix:** The transition boundary has been addressed. The code now handles:
 
 - fully migrated hash rows
 - permanently orphaned hash rows
+- **restored rows whose stored `spell_id` is stale** (mutations resolve by hash from live spell id)
+- **partially migrated rows whose `spell_content_hash` is still NULL** (read path falls back to `spell_id` join; unit test added)
 
-It does not reliably handle:
-
-- restored rows whose stored `spell_id` is stale
-- partially migrated rows whose `spell_content_hash` is still NULL
+Original assessment (for context): Task 5 was close on schema work and happy-path display, but the transition boundary was fragile; the two P1 findings and the main P2 test gaps have since been fixed.

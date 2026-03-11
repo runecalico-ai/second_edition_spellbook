@@ -794,42 +794,41 @@ function ClassSpellList({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!isCollapsed &&
-            (selectedRemoveIds.size > 0 || selectedRemoveHashes.size > 0) && (
-              <button
-                type="button"
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  const total = selectedRemoveIds.size + selectedRemoveHashes.size;
-                  if (!(await modalConfirm(`Remove ${total} spells?`, "Bulk Remove"))) return;
-                  try {
-                    for (const spellId of selectedRemoveIds) {
-                      await invoke("remove_character_spell", {
-                        characterClassId: charClass.id,
-                        spellId,
-                        listType: activeTab,
-                      });
-                    }
-                    for (const spellContentHash of selectedRemoveHashes) {
-                      await invoke("remove_character_spell_by_hash", {
-                        characterClassId: charClass.id,
-                        spellContentHash,
-                        listType: activeTab,
-                      });
-                    }
-                    setSelectedRemoveIds(new Set());
-                    setSelectedRemoveHashes(new Set());
-                    loadSpells();
-                  } catch (e) {
-                    modalAlert(`Bulk remove failed: ${e}`, "Error", "error");
+          {!isCollapsed && (selectedRemoveIds.size > 0 || selectedRemoveHashes.size > 0) && (
+            <button
+              type="button"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const total = selectedRemoveIds.size + selectedRemoveHashes.size;
+                if (!(await modalConfirm(`Remove ${total} spells?`, "Bulk Remove"))) return;
+                try {
+                  for (const spellId of selectedRemoveIds) {
+                    await invoke("remove_character_spell", {
+                      characterClassId: charClass.id,
+                      spellId,
+                      listType: activeTab,
+                    });
                   }
-                }}
-                data-testid="btn-bulk-remove-spells"
-                className="px-2 py-1 bg-red-900/20 hover:bg-red-900/40 text-red-500 border border-red-500/30 rounded text-xs transition-all"
-              >
-                REMOVE {selectedRemoveIds.size + selectedRemoveHashes.size}
-              </button>
-            )}
+                  for (const spellContentHash of selectedRemoveHashes) {
+                    await invoke("remove_character_spell_by_hash", {
+                      characterClassId: charClass.id,
+                      spellContentHash,
+                      listType: activeTab,
+                    });
+                  }
+                  setSelectedRemoveIds(new Set());
+                  setSelectedRemoveHashes(new Set());
+                  loadSpells();
+                } catch (e) {
+                  modalAlert(`Bulk remove failed: ${e}`, "Error", "error");
+                }
+              }}
+              data-testid="btn-bulk-remove-spells"
+              className="px-2 py-1 bg-red-900/20 hover:bg-red-900/40 text-red-500 border border-red-500/30 rounded text-xs transition-all"
+            >
+              REMOVE {selectedRemoveIds.size + selectedRemoveHashes.size}
+            </button>
+          )}
           {!isCollapsed && (
             <SpellPicker
               charClass={charClass}
@@ -845,12 +844,10 @@ function ClassSpellList({
         <div className="flex-1 overflow-auto p-4 space-y-2 min-h-[200px]">
           {filteredSpells.map((spell) => {
             const missing = spell.missingFromLibrary === true;
-            const rowKey = missing
-              ? (spell.spellContentHash ?? "")
-              : String(spell.spellId);
+            const rowKey = missing ? (spell.spellContentHash ?? "") : String(spell.spellId);
             const displayName = missing ? "Spell no longer in library" : spell.spellName;
             const isSelected = missing
-              ? (spell.spellContentHash != null && selectedRemoveHashes.has(spell.spellContentHash))
+              ? spell.spellContentHash != null && selectedRemoveHashes.has(spell.spellContentHash)
               : selectedRemoveIds.has(spell.spellId);
             const toggleSelection = () => {
               if (missing && spell.spellContentHash != null) {

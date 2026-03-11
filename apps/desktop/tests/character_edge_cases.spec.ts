@@ -179,21 +179,26 @@ test.describe("Character Edge Cases & Hardening", () => {
     await test.step("Setup: seed character with orphan spell row (no matching spell in library)", async () => {
       await app.navigate("Characters");
       await page.waitForTimeout(500);
-      await page.evaluate(
-        async (name: string) => {
-          const inv = (window as Window & { __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> } })
-            .__TAURI_INTERNALS__?.invoke;
-          if (!inv) throw new Error("Tauri invoke not available");
-          await inv("test_seed_character_with_orphan_spell", { characterName: name });
-        },
-        charName,
-      );
+      await page.evaluate(async (name: string) => {
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_character_with_orphan_spell", { characterName: name });
+      }, charName);
       await page.reload();
       await expect(page.getByRole("link", { name: charName })).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
       await page.waitForTimeout(2000);
-      if (await page.getByTestId("modal-dialog").isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (
+        await page
+          .getByTestId("modal-dialog")
+          .isVisible({ timeout: 2000 })
+          .catch(() => false)
+      ) {
         await page.getByTestId("modal-button-dismiss").click();
         await page.waitForTimeout(300);
       }
@@ -201,7 +206,12 @@ test.describe("Character Edge Cases & Hardening", () => {
 
     await test.step("Open CharacterEditor and assert missing-library row", async () => {
       await app.openCharacterEditor(charName);
-      if (await page.getByTestId("modal-dialog").isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (
+        await page
+          .getByTestId("modal-dialog")
+          .isVisible({ timeout: 2000 })
+          .catch(() => false)
+      ) {
         await page.getByTestId("modal-button-dismiss").click();
         await page.waitForTimeout(300);
       }
@@ -213,9 +223,7 @@ test.describe("Character Edge Cases & Hardening", () => {
       });
       const missingRow = app.getMissingSpellRow();
       await expect(missingRow).toBeVisible();
-      await expect(
-        missingRow.locator("[data-testid^='btn-remove-spell-hash-']"),
-      ).toBeVisible();
+      await expect(missingRow.locator("[data-testid^='btn-remove-spell-hash-']")).toBeVisible();
     });
 
     await app.navigate("Characters");
@@ -233,21 +241,26 @@ test.describe("Character Edge Cases & Hardening", () => {
     await test.step("Setup: seed character with orphan spell row", async () => {
       await app.navigate("Characters");
       await page.waitForTimeout(500);
-      await page.evaluate(
-        async (name: string) => {
-          const inv = (window as Window & { __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> } })
-            .__TAURI_INTERNALS__?.invoke;
-          if (!inv) throw new Error("Tauri invoke not available");
-          await inv("test_seed_character_with_orphan_spell", { characterName: name });
-        },
-        charName,
-      );
+      await page.evaluate(async (name: string) => {
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_character_with_orphan_spell", { characterName: name });
+      }, charName);
       await page.reload();
       await expect(page.getByRole("link", { name: charName })).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
       await page.waitForTimeout(2000);
-      if (await page.getByTestId("modal-dialog").isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (
+        await page
+          .getByTestId("modal-dialog")
+          .isVisible({ timeout: 2000 })
+          .catch(() => false)
+      ) {
         await page.getByTestId("modal-button-dismiss").click();
         await page.waitForTimeout(300);
       }
@@ -255,7 +268,12 @@ test.describe("Character Edge Cases & Hardening", () => {
 
     await test.step("Open CharacterEditor, click remove on missing row, assert row disappears", async () => {
       await app.openCharacterEditor(charName);
-      if (await page.getByTestId("modal-dialog").isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (
+        await page
+          .getByTestId("modal-dialog")
+          .isVisible({ timeout: 2000 })
+          .catch(() => false)
+      ) {
         await page.getByTestId("modal-button-dismiss").click();
         await page.waitForTimeout(300);
       }
@@ -285,19 +303,22 @@ test.describe("Character Edge Cases & Hardening", () => {
     await test.step("Setup: seed orphan row and then restore it with a live spell", async () => {
       await app.navigate("Characters");
       await page.waitForTimeout(500);
-      await page.evaluate(
-        async (name: string) => {
-          const inv = (window as Window & { __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> } })
-            .__TAURI_INTERNALS__?.invoke;
-          if (!inv) throw new Error("Tauri invoke not available");
-          await inv("test_seed_character_with_orphan_spell", { characterName: name });
-        },
-        charName,
-      );
+      await page.evaluate(async (name: string) => {
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_character_with_orphan_spell", { characterName: name });
+      }, charName);
 
       await page.evaluate(async () => {
-        const inv = (window as Window & { __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> } })
-          .__TAURI_INTERNALS__?.invoke;
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
         if (!inv) throw new Error("Tauri invoke not available");
         await inv("test_seed_spell", {
           name: "Restored E2E Spell",

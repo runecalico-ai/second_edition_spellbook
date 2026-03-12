@@ -37,6 +37,164 @@ fn app_data_dir() -> Result<PathBuf, AppError> {
     Ok(dir)
 }
 
+fn table_has_column(conn: &rusqlite::Connection, table: &str, column: &str) -> bool {
+    let sql = format!(
+        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
+        table.replace('\'', "''")
+    );
+    conn.query_row(&sql, [column], |_| Ok(())).is_ok()
+}
+
+fn load_character_printable_spells(
+    conn: &rusqlite::Connection,
+    character_id: i64,
+    class_name: Option<&str>,
+) -> Result<Vec<PrintableSpellbookEntry>, AppError> {
+    let use_hash = table_has_column(conn, "character_class_spell", "spell_content_hash");
+
+    if use_hash {
+        let missing_query = if class_name.is_some() {
+            "SELECT COUNT(*)
+             FROM character_class_spell ccs
+             JOIN character_class cc ON cc.id = ccs.character_class_id
+             LEFT JOIN spell s ON
+                (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
+                OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)
+             WHERE cc.character_id = ?1 AND cc.class_name = ?2 AND s.id IS NULL"
+        } else {
+            "SELECT COUNT(*)
+             FROM character_class_spell ccs
+             JOIN character_class cc ON cc.id = ccs.character_class_id
+             LEFT JOIN spell s ON
+                (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
+                OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)
+             WHERE cc.character_id = ?1 AND s.id IS NULL"
+        };
+
+        let missing_count: i64 = if let Some(class_name) = class_name {
+            conn.query_row(
+                missing_query,
+                rusqlite::params![character_id, class_name],
+                |row| row.get(0),
+            )?
+        } else {
+            conn.query_row(missing_query, [character_id], |row| row.get(0))?
+        };
+
+        if missing_count > 0 {
+            return Err(AppError::Export(
+                "Cannot export character spells because one or more spell-list entries reference spells that are no longer in the library."
+                    .to_string(),
+            ));
+        }
+    }
+
+    let query = if use_hash {
+        if class_name.is_some() {
+            "SELECT s.id, s.name, s.level, s.school, s.class_list, s.range, s.components,
+                    s.duration, s.saving_throw, s.description,
+                    (ccs.list_type = 'PREPARED') as prepared,
+                    (ccs.list_type = 'KNOWN') as known,
+                    ccs.notes, cc.class_name
+             FROM character_class_spell ccs
+             JOIN spell s ON
+                (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
+                OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)
+             JOIN character_class cc ON cc.id = ccs.character_class_id
+             WHERE cc.character_id = ? AND cc.class_name = ?
+             ORDER BY s.level, s.name"
+        } else {
+            "SELECT s.id, s.name, s.level, s.school, s.class_list, s.range, s.components,
+                    s.duration, s.saving_throw, s.description,
+                    (ccs.list_type = 'PREPARED') as prepared,
+                    (ccs.list_type = 'KNOWN') as known,
+                    ccs.notes, cc.class_name
+             FROM character_class_spell ccs
+             JOIN spell s ON
+                (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
+                OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)
+             JOIN character_class cc ON cc.id = ccs.character_class_id
+             WHERE cc.character_id = ?
+             ORDER BY cc.class_name, s.level, s.name"
+        }
+    } else if class_name.is_some() {
+        "SELECT s.id, s.name, s.level, s.school, s.class_list, s.range, s.components,
+                s.duration, s.saving_throw, s.description,
+                (ccs.list_type = 'PREPARED') as prepared,
+                (ccs.list_type = 'KNOWN') as known,
+                ccs.notes, cc.class_name
+         FROM character_class_spell ccs
+         JOIN spell s ON s.id = ccs.spell_id
+         JOIN character_class cc ON cc.id = ccs.character_class_id
+         WHERE cc.character_id = ? AND cc.class_name = ?
+         ORDER BY s.level, s.name"
+    } else {
+        "SELECT s.id, s.name, s.level, s.school, s.class_list, s.range, s.components,
+                s.duration, s.saving_throw, s.description,
+                (ccs.list_type = 'PREPARED') as prepared,
+                (ccs.list_type = 'KNOWN') as known,
+                ccs.notes, cc.class_name
+         FROM character_class_spell ccs
+         JOIN spell s ON s.id = ccs.spell_id
+         JOIN character_class cc ON cc.id = ccs.character_class_id
+         WHERE cc.character_id = ?
+         ORDER BY cc.class_name, s.level, s.name"
+    };
+
+    let mut stmt = conn.prepare(query)?;
+    let mut out = vec![];
+
+    if let Some(class_name) = class_name {
+        let rows = stmt.query_map(rusqlite::params![character_id, class_name], |row| {
+            Ok(PrintableSpellbookEntry {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                level: row.get(2)?,
+                school: row.get(3)?,
+                class_list: row.get(4)?,
+                range: row.get(5)?,
+                components: row.get(6)?,
+                duration: row.get(7)?,
+                saving_throw: row.get(8)?,
+                description: row.get(9)?,
+                prepared: row.get(10)?,
+                known: row.get(11)?,
+                notes: row.get(12)?,
+                class_name: Some(row.get(13)?),
+            })
+        })?;
+
+        for row in rows {
+            out.push(row?);
+        }
+    } else {
+        let rows = stmt.query_map([character_id], |row| {
+            Ok(PrintableSpellbookEntry {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                level: row.get(2)?,
+                school: row.get(3)?,
+                class_list: row.get(4)?,
+                range: row.get(5)?,
+                components: row.get(6)?,
+                duration: row.get(7)?,
+                saving_throw: row.get(8)?,
+                description: row.get(9)?,
+                prepared: row.get(10)?,
+                known: row.get(11)?,
+                notes: row.get(12)?,
+                class_name: Some(row.get(13)?),
+            })
+        })?;
+
+        for row in rows {
+            out.push(row?);
+        }
+    }
+
+    Ok(out)
+}
+
 #[tauri::command]
 pub async fn export_spells(
     state: State<'_, Arc<Pool>>,
@@ -404,42 +562,7 @@ pub async fn export_character_sheet(
         }
 
         // Fetch ALL spells for ALL classes
-        let mut character_spells = vec![];
-        let mut stmt = conn.prepare(
-            "SELECT s.id, s.name, s.level, s.school, s.class_list, s.range, s.components,
-                    s.duration, s.saving_throw, s.description,
-                    (ccs.list_type = 'PREPARED') as prepared,
-                    (ccs.list_type = 'KNOWN') as known,
-                    ccs.notes, cc.class_name
-             FROM character_class_spell ccs
-             JOIN spell s ON s.id = ccs.spell_id
-             JOIN character_class cc ON cc.id = ccs.character_class_id
-             WHERE cc.character_id = ?
-             ORDER BY cc.class_name, s.level, s.name",
-        )?;
-
-        let rows = stmt.query_map([character_id], |row| {
-            Ok(PrintableSpellbookEntry {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                level: row.get(2)?,
-                school: row.get(3)?,
-                class_list: row.get(4)?,
-                range: row.get(5)?,
-                components: row.get(6)?,
-                duration: row.get(7)?,
-                saving_throw: row.get(8)?,
-                description: row.get(9)?,
-                prepared: row.get(10)?,
-                known: row.get(11)?,
-                notes: row.get(12)?,
-                class_name: Some(row.get(13)?),
-            })
-        })?;
-
-        for r in rows {
-            character_spells.push(r?);
-        }
+        let character_spells = load_character_printable_spells(&conn, character_id, None)?;
 
         Ok::<_, AppError>(PrintableCharacter {
             name,
@@ -516,42 +639,7 @@ pub async fn export_character_spellbook_pack(
         )?;
 
         // Fetch spells for this specific class
-        let mut stmt = conn.prepare(
-            "SELECT s.id, s.name, s.level, s.school, s.class_list, s.range, s.components,
-                    s.duration, s.saving_throw, s.description,
-                    (ccs.list_type = 'PREPARED') as prepared,
-                    (ccs.list_type = 'KNOWN') as known,
-                    ccs.notes
-             FROM character_class_spell ccs
-             JOIN spell s ON s.id = ccs.spell_id
-             JOIN character_class cc ON cc.id = ccs.character_class_id
-             WHERE cc.character_id = ? AND cc.class_name = ?
-             ORDER BY s.level, s.name",
-        )?;
-
-        let rows = stmt.query_map(rusqlite::params![character_id, class_name_query], |row| {
-            Ok(PrintableSpellbookEntry {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                level: row.get(2)?,
-                school: row.get(3)?,
-                class_list: row.get(4)?,
-                range: row.get(5)?,
-                components: row.get(6)?,
-                duration: row.get(7)?,
-                saving_throw: row.get(8)?,
-                description: row.get(9)?,
-                prepared: row.get(10)?,
-                known: row.get(11)?,
-                notes: row.get(12)?,
-                class_name: Some(class_name_query.clone()),
-            })
-        })?;
-
-        let mut out = vec![];
-        for row in rows {
-            out.push(row?);
-        }
+        let out = load_character_printable_spells(&conn, character_id, Some(&class_name_query))?;
         Ok::<_, AppError>((character, out))
     })
     .await
@@ -631,6 +719,46 @@ mod tests {
                 path TEXT NOT NULL,
                 hash TEXT NOT NULL,
                 imported_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    fn setup_character_export_db() -> rusqlite::Connection {
+        let conn = setup_test_db();
+        conn.execute(
+            "CREATE TABLE \"character\" (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                race TEXT,
+                alignment TEXT,
+                notes TEXT
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE character_class (
+                id INTEGER PRIMARY KEY,
+                character_id INTEGER NOT NULL,
+                class_name TEXT NOT NULL,
+                class_label TEXT,
+                level INTEGER NOT NULL
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
             )",
             [],
         )
@@ -812,5 +940,67 @@ mod tests {
             .expect_err("bundle export should fail on invalid canonical_data");
         assert!(err.to_string().contains("Invalid canonical_data"));
         assert!(err.to_string().contains("BadCanonicalBundle"));
+    }
+
+    #[test]
+    fn test_load_character_printable_spells_hash_backed_row_survives_stale_spell_id() {
+        let conn = setup_character_export_db();
+        conn.execute(
+            "INSERT INTO \"character\" (id, name, type) VALUES (1, 'Elminster', 'PC')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class (id, character_id, class_name, class_label, level) VALUES (10, 1, 'Mage', NULL, 12)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, school, content_hash, is_quest_spell, is_cantrip, reversible)
+             VALUES (200, 'Fireball', 3, 'Boom', 'Evocation', 'hash-fireball', 0, 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+             VALUES (10, 9999, 'KNOWN', 'restored row', 'hash-fireball')",
+            [],
+        )
+        .unwrap();
+
+        let spells = load_character_printable_spells(&conn, 1, None).expect("load spells");
+        assert_eq!(spells.len(), 1);
+        assert_eq!(spells[0].id, 200);
+        assert_eq!(spells[0].name, "Fireball");
+        assert_eq!(spells[0].notes.as_deref(), Some("restored row"));
+    }
+
+    #[test]
+    fn test_load_character_printable_spells_rejects_orphaned_hash_rows() {
+        let conn = setup_character_export_db();
+        conn.execute(
+            "INSERT INTO \"character\" (id, name, type) VALUES (1, 'Khelben', 'PC')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class (id, character_id, class_name, class_label, level) VALUES (11, 1, 'Mage', NULL, 14)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+             VALUES (11, 0, 'KNOWN', NULL, 'missing-hash')",
+            [],
+        )
+        .unwrap();
+
+        let err = match load_character_printable_spells(&conn, 1, None) {
+            Ok(_) => panic!("orphaned hash row should fail export"),
+            Err(err) => err,
+        };
+        assert!(err
+            .to_string()
+            .contains("reference spells that are no longer in the library"));
     }
 }

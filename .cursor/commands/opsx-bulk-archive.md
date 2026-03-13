@@ -1,4 +1,7 @@
 ---
+name: /opsx-bulk-archive
+id: opsx-bulk-archive
+category: Workflow
 description: Archive multiple completed changes at once
 ---
 
@@ -222,7 +225,7 @@ Failed K changes:
 ```
 ## No Changes to Archive
 
-No active changes found. Use `/opsx:new` to create a new change.
+No active changes found. Create a new change to get started.
 ```
 
 **Guardrails**

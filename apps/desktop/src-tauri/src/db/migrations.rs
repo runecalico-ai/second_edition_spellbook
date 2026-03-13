@@ -173,36 +173,28 @@ mod tests {
         let conn = Connection::open_in_memory().expect("open db");
         load_migrations(&conn).expect("load migrations");
 
-        let index_names: Vec<String> = conn
-            .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?)")
-            .expect("prepare")
-            .query_map(
-                rusqlite::params![
-                    "idx_ccs_spell_content_hash",
-                    "idx_ccs_character_hash_list",
-                    "idx_artifact_spell_content_hash",
-                ],
-                |row| row.get(0),
-            )
-            .expect("query")
-            .filter_map(Result::ok)
-            .collect();
+        let partial_indexes = vec![
+            "idx_ccs_spell_content_hash",
+            "idx_artifact_spell_content_hash",
+            "idx_ccs_character_hash_list",
+        ];
 
-        assert!(
-            index_names.contains(&"idx_ccs_spell_content_hash".to_string()),
-            "sqlite_master must contain idx_ccs_spell_content_hash, got: {:?}",
-            index_names
-        );
-        assert!(
-            index_names.contains(&"idx_ccs_character_hash_list".to_string()),
-            "sqlite_master must contain idx_ccs_character_hash_list, got: {:?}",
-            index_names
-        );
-        assert!(
-            index_names.contains(&"idx_artifact_spell_content_hash".to_string()),
-            "sqlite_master must contain idx_artifact_spell_content_hash, got: {:?}",
-            index_names
-        );
+        for index in partial_indexes {
+            let sql: String = conn
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+                    rusqlite::params![index],
+                    |row| row.get(0),
+                )
+                .expect("query index sql");
+
+            assert!(
+                sql.contains("WHERE spell_content_hash IS NOT NULL"),
+                "Index {} must be a partial index, got SQL: {}",
+                index,
+                sql
+            );
+        }
     }
 
     #[test]

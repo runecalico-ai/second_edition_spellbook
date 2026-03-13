@@ -1,6 +1,9 @@
 -- Migration 0015 (phase 2)
 -- Column creation for spell_content_hash is performed in load_migrations()
 -- before this SQL is executed so the migration remains idempotent on upgraded DBs.
+--
+-- Artifact table: artifact.hash is the artifact file content hash; artifact.spell_content_hash
+-- is the referenced spell's canonical content hash (Decision #5).
 
 UPDATE character_class_spell
 SET spell_content_hash = (

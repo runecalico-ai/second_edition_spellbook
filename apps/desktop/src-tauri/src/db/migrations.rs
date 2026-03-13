@@ -18,6 +18,9 @@ fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
 /// exist and only runs backfills and index creation. The expected non-unique
 /// index on character_class_spell(spell_content_hash) is
 /// `idx_ccs_spell_content_hash`.
+///
+/// For artifact: `artifact.hash` is the artifact file hash; `artifact.spell_content_hash`
+/// is the referenced spell's canonical content hash (Decision #5).
 fn apply_hash_reference_columns_migration(conn: &Connection) -> Result<(), AppError> {
     if !has_column(conn, "character_class_spell", "spell_content_hash") {
         conn.execute(
@@ -341,6 +344,54 @@ mod tests {
         );
     }
 
+    /// Orphan artifact row (spell_id points to non-existent spell) keeps spell_content_hash NULL.
+    #[test]
+    fn test_migration_0015_orphan_artifact_spell_id_keeps_hash_null() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT);
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            PRAGMA user_version = 14;
+
+            INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
+            INSERT INTO artifact (type, hash, spell_id, path) VALUES ('source', 'file-hash', 999, 'orphan.md');
+            "#,
+        )
+        .expect("seed version 14 with orphan artifact spell_id=999");
+
+        load_migrations(&conn).expect("apply migration 0015");
+
+        let artifact_hash: Option<String> = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE spell_id = 999",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query orphan artifact");
+        assert!(
+            artifact_hash.is_none(),
+            "orphan artifact (spell_id=999) must keep spell_content_hash NULL, got {:?}",
+            artifact_hash
+        );
+    }
+
     /// Backfill only updates WHERE spell_content_hash IS NULL; pre-set hash is preserved.
     #[test]
     fn test_migration_0015_backfill_does_not_overwrite_existing_hash() {
@@ -372,6 +423,8 @@ mod tests {
             INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
             INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
             VALUES (7, 1, 'KNOWN', NULL, 'existing');
+            INSERT INTO artifact (type, hash, spell_id, path, spell_content_hash)
+            VALUES ('source', 'artifact-hash', 1, 'spell.md', 'existing-artifact-hash');
             "#,
         )
         .expect("seed version 14 with pre-set spell_content_hash");
@@ -388,6 +441,17 @@ mod tests {
         assert_eq!(
             preserved, "existing",
             "backfill must not overwrite existing spell_content_hash"
+        );
+        let artifact_preserved: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query artifact row");
+        assert_eq!(
+            artifact_preserved, "existing-artifact-hash",
+            "backfill must not overwrite existing artifact.spell_content_hash"
         );
     }
 

@@ -161,25 +161,43 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
     // matches but spell_content_hash belongs to a different spell.
     // artifact.hash = file hash (we return it); spell_content_hash = spell ref (we filter by it).
     // When spell_id is dropped: keep only spell_content_hash = ? branch; remove legacy OR and (sid, None) arm.
+    let artifact_has_hash_column = table_has_column(conn, "artifact", "spell_content_hash");
     let artifacts: Vec<SpellArtifact> = match (spell.id, spell.content_hash.as_deref()) {
         (Some(sid), Some(h)) => {
-            let mut stmt = conn.prepare(
-                "SELECT id, spell_id, type, path, hash, imported_at FROM artifact
-                 WHERE (spell_content_hash IS NOT NULL AND spell_content_hash = ?)
-                    OR (spell_content_hash IS NULL AND spell_id = ?)",
-            )?;
-            let rows = stmt.query_map(rusqlite::params![h, sid], |row| {
-                let spell_id: i64 = row.get::<_, Option<i64>>(1)?.unwrap_or(sid);
-                Ok(SpellArtifact {
-                    id: row.get(0)?,
-                    spell_id,
-                    r#type: row.get(2)?,
-                    path: row.get(3)?,
-                    hash: row.get(4)?,
-                    imported_at: row.get(5)?,
-                })
-            })?;
-            rows.collect::<Result<Vec<_>, _>>()?
+            if artifact_has_hash_column {
+                let mut stmt = conn.prepare(
+                    "SELECT id, spell_id, type, path, hash, imported_at FROM artifact
+                     WHERE (spell_content_hash IS NOT NULL AND spell_content_hash = ?)
+                        OR (spell_content_hash IS NULL AND spell_id = ?)",
+                )?;
+                let rows = stmt.query_map(rusqlite::params![h, sid], |row| {
+                    let spell_id: i64 = row.get::<_, Option<i64>>(1)?.unwrap_or(sid);
+                    Ok(SpellArtifact {
+                        id: row.get(0)?,
+                        spell_id,
+                        r#type: row.get(2)?,
+                        path: row.get(3)?,
+                        hash: row.get(4)?,
+                        imported_at: row.get(5)?,
+                    })
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
+                )?;
+                let rows = stmt.query_map([sid], |row| {
+                    Ok(SpellArtifact {
+                        id: row.get(0)?,
+                        spell_id: row.get::<_, Option<i64>>(1)?.unwrap_or(sid),
+                        r#type: row.get(2)?,
+                        path: row.get(3)?,
+                        hash: row.get(4)?,
+                        imported_at: row.get(5)?,
+                    })
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            }
         }
         (Some(sid), None) => {
             let mut stmt = conn.prepare(
@@ -1015,7 +1033,7 @@ pub async fn upsert_spell(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::vault::vault_env_lock;
+    use crate::commands::vault::VaultTestEnvGuard;
     use rusqlite::Connection;
 
     #[test]
@@ -1072,6 +1090,75 @@ mod tests {
         let artifacts = detail.artifacts.expect("artifacts loaded");
         assert_eq!(artifacts.len(), 1, "legacy artifact with spell_content_hash NULL but spell_id match must be loaded");
         assert_eq!(artifacts[0].path, "legacy.md");
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_legacy_artifact_schema_without_hash_column() {
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                level INTEGER NOT NULL,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER NOT NULL DEFAULT 0,
+                is_cantrip INTEGER NOT NULL DEFAULT 0,
+                damage TEXT,
+                magic_resistance TEXT,
+                schema_version INTEGER,
+                updated_at TEXT,
+                canonical_data TEXT,
+                content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .expect("create legacy spell+artifact test schema");
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (1, 'source', 'legacy-schema.md', 'ah', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .expect("insert legacy artifact row");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (1, 'errata', 'legacy-schema-2.md', 'bh', '2026-01-01T00:00:01Z')",
+            [],
+        )
+        .expect("insert second legacy artifact row");
+
+        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let artifacts = detail.artifacts.expect("artifacts loaded");
+        assert_eq!(artifacts.len(), 2, "legacy artifact schema should still load all matching rows by spell_id fallback");
+        assert_eq!(artifacts[0].path, "legacy-schema.md");
+        assert_eq!(artifacts[1].path, "legacy-schema-2.md");
     }
 
     #[test]
@@ -1222,9 +1309,7 @@ mod tests {
 
     #[test]
     fn test_apply_spell_update_with_conn_persists_vault_file() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_spell_update_test_db();
         let initial_detail = SpellDetail {
@@ -1285,15 +1370,11 @@ mod tests {
             vault_file.exists(),
             "spell update should materialize the corresponding vault file"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_apply_spell_update_with_conn_cascades_hash_references() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_spell_update_test_db();
         let initial_detail = SpellDetail {
@@ -1377,8 +1458,6 @@ mod tests {
 
         assert_eq!(class_hash, new_hash);
         assert_eq!(artifact_hash, new_hash);
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
@@ -1413,11 +1492,11 @@ mod tests {
 
     #[test]
     fn test_apply_spell_update_with_conn_rolls_back_on_vault_export_failure() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
         let long_root = std::env::temp_dir()
             .join("spellbook-backend")
             .join("a".repeat(240));
-        std::env::set_var("SPELLBOOK_DATA_DIR", &long_root);
+        let _env = VaultTestEnvGuard::with_root(long_root.clone())
+            .expect("set isolated vault env");
 
         let conn = setup_spell_update_test_db();
         let initial_detail = SpellDetail {
@@ -1516,7 +1595,5 @@ mod tests {
         assert_eq!(class_hash, old_hash);
         assert_eq!(artifact_hash, old_hash);
         assert_eq!(change_log_count, 0);
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 }

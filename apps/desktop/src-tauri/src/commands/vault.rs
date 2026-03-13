@@ -12,6 +12,11 @@ use tracing::warn;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
+#[cfg(test)]
+use std::ffi::OsString;
+#[cfg(test)]
+use std::sync::MutexGuard;
+
 const WINDOWS_PATH_WARNING_THRESHOLD: usize = 240;
 const WINDOWS_PATH_HARD_LIMIT: usize = 260;
 
@@ -327,6 +332,75 @@ pub(crate) fn vault_env_lock() -> &'static Mutex<()> {
 
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+#[cfg(test)]
+pub(crate) fn lock_vault_env_for_test() -> MutexGuard<'static, ()> {
+    vault_env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) struct VaultTestEnvGuard {
+    _lock: MutexGuard<'static, ()>,
+    root: PathBuf,
+    _temp_dir: Option<tempfile::TempDir>,
+    previous_data_dir: Option<OsString>,
+}
+
+#[cfg(test)]
+impl VaultTestEnvGuard {
+    pub(crate) fn new_temp() -> Result<Self, AppError> {
+        let lock = lock_vault_env_for_test();
+        Self::new_temp_with_lock(lock)
+    }
+
+    fn new_temp_with_lock(lock: MutexGuard<'static, ()>) -> Result<Self, AppError> {
+        let temp_dir = tempfile::tempdir()
+            .map_err(|e| AppError::Unknown(format!("Failed to create temp vault dir: {e}")))?;
+        Self::with_root_and_tempdir(lock, temp_dir.path().to_path_buf(), Some(temp_dir))
+    }
+
+    pub(crate) fn with_root(root: PathBuf) -> Result<Self, AppError> {
+        let lock = lock_vault_env_for_test();
+        Self::with_root_and_tempdir(lock, root, None)
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.root
+    }
+
+    fn restore_env(&mut self) {
+        match &self.previous_data_dir {
+            Some(previous) => std::env::set_var("SPELLBOOK_DATA_DIR", previous),
+            None => std::env::remove_var("SPELLBOOK_DATA_DIR"),
+        }
+    }
+
+    fn with_root_and_tempdir(
+        lock: MutexGuard<'static, ()>,
+        root: PathBuf,
+        temp_dir: Option<tempfile::TempDir>,
+    ) -> Result<Self, AppError> {
+        let previous_data_dir = std::env::var_os("SPELLBOOK_DATA_DIR");
+        std::env::set_var("SPELLBOOK_DATA_DIR", &root);
+
+        Ok(Self {
+            _lock: lock,
+            root,
+            _temp_dir: temp_dir,
+            previous_data_dir,
+        })
+    }
+}
+
+#[cfg(test)]
+impl Drop for VaultTestEnvGuard {
+    fn drop(&mut self) {
+        self.restore_env();
+    }
 }
 
 impl VaultMaintenanceState {
@@ -953,6 +1027,7 @@ mod tests {
     use crate::models::canonical_spell::CanonicalSpell;
     use rusqlite::{params, Connection};
     use sha2::{Digest, Sha256};
+    use std::panic::{self, AssertUnwindSafe};
     use std::path::{Path, PathBuf};
 
     fn sample_spell() -> CanonicalSpell {
@@ -1201,6 +1276,67 @@ mod tests {
             err.to_string().contains("Windows path length"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_vault_test_env_guard_recovers_after_panic_and_cleans_env() {
+        let panic_result = panic::catch_unwind(AssertUnwindSafe(|| {
+            let env = VaultTestEnvGuard::new_temp().expect("acquire isolated vault env");
+            let active_root = std::env::var_os("SPELLBOOK_DATA_DIR")
+                .expect("isolated env should set SPELLBOOK_DATA_DIR");
+            assert_eq!(PathBuf::from(active_root), env.path().to_path_buf());
+            panic!("intentional panic while holding isolated vault env");
+        }));
+
+        assert!(panic_result.is_err(), "panic should be captured for regression coverage");
+        assert!(
+            vault_env_lock().is_poisoned(),
+            "panic should poison the raw test env lock before helper recovery"
+        );
+        assert!(
+            std::env::var_os("SPELLBOOK_DATA_DIR").is_none(),
+            "isolated env guard must clean SPELLBOOK_DATA_DIR during unwind"
+        );
+
+        let recovered = VaultTestEnvGuard::new_temp()
+            .expect("isolated env guard should recover from a poisoned lock");
+        assert!(
+            recovered.previous_data_dir.is_none(),
+            "cleanup during unwind should leave no preexisting env for the next guard"
+        );
+        assert_eq!(
+            std::env::var_os("SPELLBOOK_DATA_DIR"),
+            Some(recovered.path().as_os_str().to_os_string())
+        );
+        drop(recovered);
+
+        let recovered_again = VaultTestEnvGuard::new_temp()
+            .expect("isolated env guard should keep recovering from the poisoned lock");
+        assert_eq!(
+            std::env::var_os("SPELLBOOK_DATA_DIR"),
+            Some(recovered_again.path().as_os_str().to_os_string())
+        );
+    }
+
+    #[test]
+    fn test_vault_test_env_guard_restores_preexisting_env_value() {
+        let lock = lock_vault_env_for_test();
+        std::env::set_var("SPELLBOOK_DATA_DIR", "preexisting-vault-root");
+        let mut env = VaultTestEnvGuard::new_temp_with_lock(lock)
+            .expect("acquire isolated vault env with preexisting value captured");
+        assert_eq!(
+            std::env::var_os("SPELLBOOK_DATA_DIR"),
+            Some(env.path().as_os_str().to_os_string())
+        );
+        env.restore_env();
+        assert_eq!(
+            std::env::var_os("SPELLBOOK_DATA_DIR"),
+            Some(std::ffi::OsString::from("preexisting-vault-root")),
+            "guard should restore the preexisting env value on drop"
+        );
+        env.previous_data_dir = None;
+        drop(env);
+        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
@@ -1575,7 +1711,8 @@ mod tests {
 
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let data_dir = temp_dir.path().join("data");
-        std::env::set_var("SPELLBOOK_DATA_DIR", data_dir.to_str().unwrap());
+        let _env = VaultTestEnvGuard::with_root(data_dir.clone())
+            .expect("set isolated vault env");
         std::fs::create_dir_all(data_dir.join("spells")).expect("create data dir");
 
         // Setup LIVE vault with some files
@@ -1635,7 +1772,5 @@ mod tests {
         assert!(!data_dir.join("restore-staging").exists());
         assert!(!data_dir.join("spells.old").exists());
         assert!(!data_dir.join("vault-settings.json.old").exists());
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 }

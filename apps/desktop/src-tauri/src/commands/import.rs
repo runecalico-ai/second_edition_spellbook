@@ -819,10 +819,6 @@ fn resolve_action_for_conflict(
         .iter()
         .find(|r| r.existing_id == existing_id && r.incoming_content_hash == incoming_content_hash)
         .map(|r| r.action.clone());
-    println!(
-        "DEBUG: resolution for existing_id={}, hash={} -> {:?}",
-        existing_id, incoming_content_hash, action
-    );
     if let Some(a) = action {
         return Some(a);
     }
@@ -2547,7 +2543,9 @@ pub async fn reparse_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::vault::{optimize_vault_with_root, vault_env_lock, VaultMaintenanceState};
+    use crate::commands::vault::{
+        optimize_vault_with_root, VaultMaintenanceState, VaultTestEnvGuard,
+    };
     use crate::models::canonical_spell::{CanonicalSpell, SourceRef};
     use rusqlite::{params, Connection};
 
@@ -3096,9 +3094,7 @@ mod tests {
 
     #[test]
     fn test_apply_import_conflict_same_name_different_level_different_hash() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Mirror Veil", 1, "Existing spell");
@@ -3123,15 +3119,11 @@ mod tests {
             result.conflicts[0].incoming_content_hash, incoming_hash,
             "conflict should track incoming hash"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_apply_import_materializes_vault_file_after_commit() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         create_artifact_table_for_get_spell(&conn);
@@ -3158,17 +3150,15 @@ mod tests {
                 .exists(),
             "json import should write the canonical spell file into the vault"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_apply_import_rolls_back_when_vault_write_fails() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
         let long_root = std::env::temp_dir()
             .join("spellbook-import")
             .join("a".repeat(240));
-        std::env::set_var("SPELLBOOK_DATA_DIR", &long_root);
+        let _env = VaultTestEnvGuard::with_root(long_root.clone())
+            .expect("set isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let incoming_item = preview_item_for_test(test_spell(
@@ -3185,15 +3175,11 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
             .expect("query spell count");
         assert_eq!(spell_count, 0, "json import should roll back the DB row");
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_manual_gc_is_blocked_while_import_guard_is_active() {
-        let _guard_env = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let maintenance_state = VaultMaintenanceState::default();
@@ -3207,15 +3193,11 @@ mod tests {
             err.to_string().contains("import"),
             "unexpected error: {err}"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_run_with_import_maintenance_blocks_manual_gc_for_legacy_flows() {
-        let _guard_env = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let maintenance_state = VaultMaintenanceState::default();
@@ -3230,15 +3212,11 @@ mod tests {
             err.to_string().contains("import"),
             "unexpected error: {err}"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_run_post_import_gc_if_needed_removes_orphans_for_legacy_imports() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let live_spell = test_spell("Legacy Import Live", 2, "Live spell");
@@ -3263,15 +3241,11 @@ mod tests {
 
         assert!(spells_dir.join(format!("{live_hash}.json")).exists());
         assert!(!spells_dir.join(format!("{orphan_hash}.json")).exists());
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_run_post_import_gc_if_needed_skips_gc_when_no_legacy_mutation() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let orphan_hash = "m".repeat(64);
@@ -3290,15 +3264,11 @@ mod tests {
             spells_dir.join(format!("{orphan_hash}.json")).exists(),
             "gc should not run when no legacy mutations were applied"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_resolve_import_conflicts_with_conn_and_root_overwrite_cascades_hash_references() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
@@ -3371,8 +3341,6 @@ mod tests {
             spells_dir.join(format!("{old_hash}.json")).exists(),
             "helper-level resolution should leave old hash cleanup to the command-level post-import GC"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
@@ -3406,9 +3374,7 @@ mod tests {
 
     #[test]
     fn test_resolve_import_conflicts_with_conn_and_root_rolls_back_batch_on_error() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
@@ -3502,13 +3468,15 @@ mod tests {
             spells_dir.join(format!("{old_hash}.json")).exists(),
             "helper-level resolution should leave old hash cleanup to the command-level post-import GC"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_resolve_import_conflicts_with_conn_and_root_rolls_back_when_vault_write_fails() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let long_root = std::env::temp_dir()
+            .join("spellbook-legacy-import")
+            .join("b".repeat(400));
+        let _env = VaultTestEnvGuard::with_root(long_root.clone())
+            .expect("set isolated vault env");
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
@@ -3528,10 +3496,6 @@ mod tests {
             params![old_hash.clone()],
         )
         .expect("seed artifact hash reference");
-
-        let long_root = std::env::temp_dir()
-            .join("spellbook-legacy-import")
-            .join("b".repeat(400));
         let err = resolve_import_conflicts_with_conn_and_root(
             &conn,
             &long_root,
@@ -3578,7 +3542,7 @@ mod tests {
 
     #[test]
     fn test_run_legacy_import_chunk_transaction_rolls_back_partial_mutations() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
@@ -3616,9 +3580,7 @@ mod tests {
 
     #[test]
     fn test_successful_import_triggers_post_import_gc() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
@@ -3648,15 +3610,11 @@ mod tests {
             !spells_dir.join(format!("{orphan_hash}.json")).exists(),
             "post-import gc should remove orphaned spell files"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_import_conflict_does_not_trigger_post_import_gc() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         create_artifact_table_for_get_spell(&conn);
@@ -3691,15 +3649,11 @@ mod tests {
             spells_dir.join(format!("{orphan_hash}.json")).exists(),
             "conflict-only import should not trigger post-import gc"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_replace_only_import_triggers_post_import_gc() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let maintenance_state = VaultMaintenanceState::default();
@@ -3759,8 +3713,6 @@ mod tests {
             spells_dir.join(format!("{new_hash}.json")).exists(),
             "new hash file should remain after replace"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
@@ -3783,9 +3735,7 @@ mod tests {
 
     #[test]
     fn test_apply_import_same_hash_dedups_before_name_conflict() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Storm Cage", 1, "Existing spell");
@@ -3818,15 +3768,11 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
             .expect("count spells");
         assert_eq!(spell_count, 1, "dedup should keep only one spell row");
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_apply_import_dedup_counters_track_merged_vs_no_change() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Echo Ward", 2, "Existing spell");
@@ -3857,15 +3803,11 @@ mod tests {
         assert_eq!(result.duplicates_skipped.total, 2);
         assert_eq!(result.duplicates_skipped.merged_count, 1);
         assert_eq!(result.duplicates_skipped.no_change_count, 1);
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_apply_import_conflict_resolution_branches_keep_replace_keep_both() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
@@ -4001,15 +3943,11 @@ mod tests {
             )
             .expect("query keep_both row");
         assert_eq!(keep_both_name, "Twin Flame (1)");
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_keep_both_suffix_is_name_global_across_levels() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
         let conn = setup_import_apply_test_db();
 
         let base_spell = test_spell("Cross Fire", 1, "Original");
@@ -4060,15 +3998,11 @@ mod tests {
             inserted_name, "Cross Fire (2)",
             "suffix should increment globally by name even when (1) exists at another level"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_keep_both_rewrites_stored_id_to_renamed_hash() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Keep Both Id", 3, "Existing spell");
         let existing_hash = test_hash(&existing_spell);
@@ -4107,15 +4041,11 @@ mod tests {
             recomputed_hash,
             "keep_both should compute the renamed spell hash matching the recomputed DB content_hash"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_apply_import_replace_failure_rolls_back_item_and_keeps_other_rows() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
@@ -4219,15 +4149,11 @@ mod tests {
             )
             .expect("query keep_both inserted row");
         assert_eq!(keep_both_count, 1, "other savepoint commits should remain");
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_apply_import_conflict_deterministic_when_name_has_multiple_rows() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let existing_a = test_spell("Twin Sigil", 1, "Existing row A");
@@ -4249,15 +4175,11 @@ mod tests {
             result.conflicts[0].existing_id, 1,
             "name-only conflict should deterministically select the lowest id row"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 
     #[test]
     fn test_replace_with_new_collision_error_includes_conflicting_spell_name_and_hash() {
-        let _guard = vault_env_lock().lock().expect("lock vault env");
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        std::env::set_var("SPELLBOOK_DATA_DIR", temp_dir.path());
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let existing_spell = test_spell("Mirror Ward", 2, "Existing target spell");
@@ -4305,7 +4227,5 @@ mod tests {
             msg.contains("Keep Both"),
             "error should suggest Keep Both action, got: {msg}"
         );
-
-        std::env::remove_var("SPELLBOOK_DATA_DIR");
     }
 }

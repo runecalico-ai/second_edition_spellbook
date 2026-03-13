@@ -573,16 +573,35 @@ pub(crate) fn run_vault_integrity_check_with_root(
     let live_hashes = collect_live_content_hashes(conn)?;
 
     for content_hash in live_hashes {
-        let canonical_data = conn
+        let spell_exists: bool = conn
             .query_row(
+                "SELECT 1 FROM spell WHERE content_hash = ?",
+                [content_hash.as_str()],
+                |_| Ok(true),
+            )
+            .optional()?
+            .unwrap_or(false);
+
+        let canonical_data = if spell_exists {
+            conn.query_row(
                 "SELECT canonical_data FROM spell WHERE content_hash = ?",
                 [content_hash.as_str()],
                 |row| row.get::<_, Option<String>>(0),
             )
             .optional()?
-            .flatten();
+            .flatten()
+        } else {
+            None
+        };
+
         summary.checked_count += 1;
         let path = spell_file_path_in_root(root, &content_hash);
+
+        let missing_db_reason = if !spell_exists {
+            "Hash referenced only by artifact/list; spell row deleted, cannot recover vault file".to_string()
+        } else {
+            "canonical_data is NULL in spell table".to_string()
+        };
 
         if !path.exists() {
             summary.missing_count += 1;
@@ -595,7 +614,7 @@ pub(crate) fn run_vault_integrity_check_with_root(
                 Ok(false) => record_unrecoverable(
                     &mut summary,
                     &content_hash,
-                    "Missing vault file and canonical_data is NULL",
+                    if !spell_exists { missing_db_reason } else { format!("Missing vault file and {missing_db_reason}") },
                 ),
                 Err(reason) => record_unrecoverable(&mut summary, &content_hash, reason),
             }
@@ -614,7 +633,7 @@ pub(crate) fn run_vault_integrity_check_with_root(
                     Ok(false) => record_unrecoverable(
                         &mut summary,
                         &content_hash,
-                        format!("Failed to read vault spell file: {err}; canonical_data is NULL"),
+                        if !spell_exists { missing_db_reason } else { format!("Failed to read vault spell file: {err}; {missing_db_reason}") },
                     ),
                     Err(reason) => record_unrecoverable(&mut summary, &content_hash, reason),
                 }
@@ -632,7 +651,7 @@ pub(crate) fn run_vault_integrity_check_with_root(
             Ok(false) => record_unrecoverable(
                 &mut summary,
                 &content_hash,
-                "Invalid vault file and canonical_data is NULL",
+                if !spell_exists { missing_db_reason } else { format!("Invalid vault file and {missing_db_reason}") },
             ),
             Err(reason) => record_unrecoverable(&mut summary, &content_hash, reason),
         }
@@ -1529,6 +1548,10 @@ mod tests {
 
         assert_eq!(summary.unrecoverable.len(), 1);
         assert_eq!(summary.unrecoverable[0].content_hash, hash);
+        assert_eq!(
+            summary.unrecoverable[0].reason,
+            "Missing vault file and canonical_data is NULL in spell table"
+        );
     }
 
     #[test]
@@ -1549,6 +1572,10 @@ mod tests {
         assert_eq!(summary.missing_count, 1);
         assert_eq!(summary.unrecoverable.len(), 1);
         assert_eq!(summary.unrecoverable[0].content_hash, artifact_only_hash);
+        assert_eq!(
+            summary.unrecoverable[0].reason,
+            "Hash referenced only by artifact/list; spell row deleted, cannot recover vault file"
+        );
     }
 
     #[test]

@@ -156,24 +156,48 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
         .optional()?
         .ok_or_else(|| AppError::NotFound("Spell not found".into()))?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
-    )?;
-    let artifact_rows = stmt.query_map([id], |row| {
-        Ok(SpellArtifact {
-            id: row.get(0)?,
-            spell_id: row.get(1)?,
-            r#type: row.get(2)?,
-            path: row.get(3)?,
-            hash: row.get(4)?,
-            imported_at: row.get(5)?,
-        })
-    })?;
+    // Hash-first: load artifacts by spell content hash; fallback to spell_id only when
+    // spell_content_hash IS NULL (migration-period legacy). Exclude rows whose spell_id
+    // matches but spell_content_hash belongs to a different spell.
+    let artifacts: Vec<SpellArtifact> = match (spell.id, spell.content_hash.as_deref()) {
+        (Some(sid), Some(h)) => {
+            let mut stmt = conn.prepare(
+                "SELECT id, spell_id, type, path, hash, imported_at FROM artifact
+                 WHERE (spell_content_hash IS NOT NULL AND spell_content_hash = ?)
+                    OR (spell_content_hash IS NULL AND spell_id = ?)",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![h, sid], |row| {
+                let spell_id: i64 = row.get::<_, Option<i64>>(1)?.unwrap_or(sid);
+                Ok(SpellArtifact {
+                    id: row.get(0)?,
+                    spell_id,
+                    r#type: row.get(2)?,
+                    path: row.get(3)?,
+                    hash: row.get(4)?,
+                    imported_at: row.get(5)?,
+                })
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+        (Some(sid), None) => {
+            let mut stmt = conn.prepare(
+                "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
+            )?;
+            let rows = stmt.query_map([sid], |row| {
+                Ok(SpellArtifact {
+                    id: row.get(0)?,
+                    spell_id: row.get(1)?,
+                    r#type: row.get(2)?,
+                    path: row.get(3)?,
+                    hash: row.get(4)?,
+                    imported_at: row.get(5)?,
+                })
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+        (None, _) => vec![],
+    };
 
-    let mut artifacts = vec![];
-    for artifact in artifact_rows {
-        artifacts.push(artifact?);
-    }
     spell.artifacts = Some(artifacts);
 
     Ok(Some(spell))
@@ -993,6 +1017,62 @@ mod tests {
     use rusqlite::Connection;
 
     #[test]
+    fn test_get_spell_from_conn_loads_artifact_by_content_hash_when_hash_set() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (NULL, 'source', 'a.md', 'ah', '2026-01-01T00:00:00Z', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert artifact keyed by hash only");
+        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let artifacts = detail.artifacts.expect("artifacts loaded");
+        assert_eq!(artifacts.len(), 1, "artifact with spell_content_hash=spell hash must be loaded");
+        assert_eq!(artifacts[0].path, "a.md");
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_excludes_artifact_when_spell_id_matches_but_hash_different() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (1, 'source', 'wrong.md', 'ah', '2026-01-01T00:00:00Z', 'other-spell-hash')",
+            [],
+        )
+        .expect("insert artifact with stale spell_id but different spell_content_hash");
+        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let artifacts = detail.artifacts.unwrap_or_default();
+        assert!(artifacts.is_empty(), "artifact whose spell_content_hash belongs to another spell must not leak into this spell");
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_legacy_fallback_loads_artifact_when_hash_null() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (1, 'source', 'legacy.md', 'ah', '2026-01-01T00:00:00Z', NULL)",
+            [],
+        )
+        .expect("insert legacy artifact with spell_id only");
+        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let artifacts = detail.artifacts.expect("artifacts loaded");
+        assert_eq!(artifacts.len(), 1, "legacy artifact with spell_content_hash NULL but spell_id match must be loaded");
+        assert_eq!(artifacts[0].path, "legacy.md");
+    }
+
+    #[test]
     fn test_validate_cantrip_level() {
         // Cantrip must be level 0
         assert!(validate_epic_and_quest_spells(0, &None, false, true).is_ok());
@@ -1024,6 +1104,56 @@ mod tests {
         assert!(validate_epic_and_quest_spells(10, &Some("Wizard".into()), false, false).is_ok());
         assert!(validate_epic_and_quest_spells(10, &Some("Mage".into()), false, false).is_ok());
         assert!(validate_epic_and_quest_spells(10, &Some("Priest".into()), false, false).is_err());
+    }
+
+    /// Minimal schema for get_spell_from_conn artifact read-path tests (spell + artifact only).
+    fn setup_get_spell_artifact_test_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                level INTEGER NOT NULL,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER NOT NULL DEFAULT 0,
+                is_cantrip INTEGER NOT NULL DEFAULT 0,
+                damage TEXT,
+                magic_resistance TEXT,
+                schema_version INTEGER,
+                updated_at TEXT,
+                canonical_data TEXT,
+                content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL,
+                spell_content_hash TEXT
+            );
+            "#,
+        )
+        .expect("create spell+artifact test schema");
+        conn
     }
 
     fn setup_spell_update_test_db() -> Connection {

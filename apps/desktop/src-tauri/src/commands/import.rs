@@ -696,7 +696,7 @@ fn replace_with_new_impl(
     tx: &rusqlite::Connection,
     existing_id: i64,
     old_hash: Option<&str>,
-    _new_hash: &str,
+    _incoming_hash_unused: &str,
     item: &PreviewSpellJsonItem,
 ) -> Result<String, AppError> {
     if existing_id <= 0 {
@@ -705,6 +705,8 @@ fn replace_with_new_impl(
         ));
     }
     let canonical_json = item.spell.to_canonical_json().map_err(AppError::Import)?;
+    // We recompute the hash from the canonical payload rather than trusting _incoming_hash_unused
+    // to ensure complete integrity before saving to the DB and vault.
     let stored_hash = item.spell.compute_hash().map_err(AppError::Import)?;
     let conflicting_row: Option<(i64, String)> = tx
         .query_row(
@@ -4070,6 +4072,12 @@ mod tests {
             params![replace_old_hash.clone()],
         )
         .expect("seed old character_class_spell hash reference");
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, type, path, hash, imported_at, spell_content_hash)
+             VALUES (1, 1, 'pdf', 'dummy.pdf', 'dummyhash', '2026-01-01', ?)",
+            params![replace_old_hash.clone()],
+        )
+        .expect("seed old artifact hash reference");
         let replace_item = preview_item_for_test(test_spell(
             "Rune Chain",
             5,
@@ -4139,6 +4147,17 @@ mod tests {
         assert_eq!(
             ccs_rolled_back_hash, replace_old_hash,
             "failed replace must rollback cascaded character_class_spell hash update"
+        );
+        let artifact_rolled_back_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query artifact hash after rollback");
+        assert_eq!(
+            artifact_rolled_back_hash, replace_old_hash,
+            "failed replace must rollback cascaded artifact hash update"
         );
 
         let keep_both_count: i64 = conn

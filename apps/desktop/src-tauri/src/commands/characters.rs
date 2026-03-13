@@ -995,6 +995,36 @@ mod tests {
         );
     }
 
+    /// Unique index idx_ccs_character_hash_list must reject duplicate
+    /// (character_class_id, spell_content_hash, list_type). Verification.md requires this.
+    #[test]
+    fn test_unique_index_rejects_duplicate_character_class_spell_hash_list() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) VALUES (7, 0, 'KNOWN', NULL, 'dup-hash')",
+            [],
+        )
+        .expect("first insert must succeed");
+
+        let second = conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) VALUES (7, 1, 'KNOWN', NULL, 'dup-hash')",
+            [],
+        );
+        assert!(
+            second.is_err(),
+            "second insert with same (character_class_id, spell_content_hash, list_type) must fail with unique constraint"
+        );
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM character_class_spell WHERE character_class_id = 7 AND spell_content_hash = 'dup-hash' AND list_type = 'KNOWN'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count rows");
+        assert_eq!(count, 1, "exactly one row must remain for this triple");
+    }
+
     /// Integration-style test: orphan spell_content_hash (no matching spell) returns one entry
     /// with missing_from_library == true and placeholder name "Spell no longer in library".
     #[test]

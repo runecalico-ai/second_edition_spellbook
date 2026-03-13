@@ -286,6 +286,7 @@ test.describe("Character Edge Cases & Hardening", () => {
       await removeBtn.click();
       await page.waitForTimeout(500);
       await expect(missingRow).not.toBeVisible();
+      await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
     });
 
     await app.navigate("Characters");

@@ -9,6 +9,7 @@ SET spell_content_hash = (
     WHERE spell.id = character_class_spell.spell_id
 )
 WHERE spell_content_hash IS NULL;
+-- Partial index for hash lookups only; NULLs are legacy/transitional.
 CREATE INDEX IF NOT EXISTS idx_ccs_spell_content_hash
 ON character_class_spell(spell_content_hash)
 WHERE spell_content_hash IS NOT NULL;

@@ -67,6 +67,11 @@ Use the search box to filter characters by:
 - **JSON**: Full character data for backup/transfer
 - **Markdown**: Human-readable format
 
+### Missing spell references and export/print
+If a character has any **"Spell no longer in library"** entries in their spell list (e.g. the spell was removed from the library or the reference was broken), **Print Sheet**, **Print Pack**, and **Export Character** (JSON/bundle) are blocked. The app will show an error instead of producing the file. To proceed:
+1. In the Character Editor, remove the broken entries using **Remove** next to each "Spell no longer in library" row, or
+2. Restore the missing spell to the library (re-import or re-add it), then reload the character.
+
 ## Tips
 
 - Use unique character names for easier searching
@@ -84,3 +89,6 @@ A: Yes, there's no hard limit on number of classes per character
 
 **Q: Are spell lists shared between characters?**
 A: No, each character has completely independent spell lists
+
+**Q: Why can't I print or export my character?**
+A: If your character has "Spell no longer in library" in any class spell list, printing and export are disabled until you remove those entries or restore the missing spells to the library. Use the Remove action next to each such entry in the Character Editor, then try again.

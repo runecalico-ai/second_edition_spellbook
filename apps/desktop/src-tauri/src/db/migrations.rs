@@ -291,6 +291,106 @@ mod tests {
         assert_eq!(artifact_hash, "hash-1");
     }
 
+    /// Orphan character_class_spell row (spell_id points to non-existent spell) keeps
+    /// spell_content_hash NULL after migration; backfill subquery returns NULL.
+    #[test]
+    fn test_migration_0015_orphan_spell_id_keeps_hash_null() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT);
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            PRAGMA user_version = 14;
+
+            INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes)
+            VALUES (7, 1, 'KNOWN', NULL), (8, 999, 'KNOWN', NULL);
+            "#,
+        )
+        .expect("seed version 14 with orphan spell_id=999");
+
+        load_migrations(&conn).expect("apply migration 0015");
+
+        let orphan_hash: Option<String> = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE character_class_id = 8 AND spell_id = 999",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query orphan row");
+        assert!(
+            orphan_hash.is_none(),
+            "orphan row (spell_id=999) must keep spell_content_hash NULL, got {:?}",
+            orphan_hash
+        );
+    }
+
+    /// Backfill only updates WHERE spell_content_hash IS NULL; pre-set hash is preserved.
+    #[test]
+    fn test_migration_0015_backfill_does_not_overwrite_existing_hash() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT);
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                spell_content_hash TEXT
+            );
+            PRAGMA user_version = 14;
+
+            INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+            VALUES (7, 1, 'KNOWN', NULL, 'existing');
+            "#,
+        )
+        .expect("seed version 14 with pre-set spell_content_hash");
+
+        load_migrations(&conn).expect("apply migration 0015");
+
+        let preserved: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE character_class_id = 7",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query row");
+        assert_eq!(
+            preserved, "existing",
+            "backfill must not overwrite existing spell_content_hash"
+        );
+    }
+
     #[test]
     fn test_migration_0015_is_idempotent_when_columns_already_exist() {
         let conn = Connection::open_in_memory().expect("open db");

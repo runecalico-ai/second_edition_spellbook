@@ -96,15 +96,15 @@
         - [x] `false`: skip open-time integrity check (integrity check before GC remains required).
 
 ## 5. Spell List Integration
-- [ ] 5.1 Migrate Spell Lists (per-class known/prepared sets in `character_class_spell`) (Migration 0015):
-    - [ ] Add `spell_content_hash TEXT` column to `character_class_spell`.
-    - [ ] Backfill from `spell.content_hash` WHERE `spell.id = character_class_spell.spell_id`.
-    - [ ] Add index: `CREATE INDEX idx_ccs_spell_content_hash ON character_class_spell(spell_content_hash)`.
-    - [ ] Add unique constraint via index: `CREATE UNIQUE INDEX idx_ccs_character_hash_list ON character_class_spell(character_class_id, spell_content_hash, list_type)` (parallel to existing `UNIQUE(character_class_id, spell_id, list_type)` during transition).
-    - [ ] Update application reads/joins to use `spell_content_hash`.
-    - [ ] Handle missing spells:
-        - [ ] Show "Spell no longer in library" placeholder.
-        - [ ] Provide "Remove" action to clear the broken reference.
+- [x] 5.1 Migrate Spell Lists (per-class known/prepared sets in `character_class_spell`) (Migration 0015):
+    - [x] Add `spell_content_hash TEXT` column to `character_class_spell`.
+    - [x] Backfill from `spell.content_hash` WHERE `spell.id = character_class_spell.spell_id`.
+    - [x] Add index: `CREATE INDEX idx_ccs_spell_content_hash ON character_class_spell(spell_content_hash)`.
+    - [x] Add unique constraint via index: `CREATE UNIQUE INDEX idx_ccs_character_hash_list ON character_class_spell(character_class_id, spell_content_hash, list_type)` (parallel to existing `UNIQUE(character_class_id, spell_id, list_type)` during transition).
+    - [x] Update application reads/joins to use `spell_content_hash`.
+    - [x] Handle missing spells:
+        - [x] Show "Spell no longer in library" placeholder.
+        - [x] Provide "Remove" action to clear the broken reference.
 
 ## 6. Artifact Integration
 - [ ] 6.1 Migrate artifact spell references to content hash (Migration 0015):

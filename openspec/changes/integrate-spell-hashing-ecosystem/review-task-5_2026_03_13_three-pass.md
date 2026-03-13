@@ -39,8 +39,8 @@ Method: Three independent passes; each Task 5 sub-item reviewed by a dedicated c
   - No test for orphan case: row with `spell_id` pointing to non-existent spell keeps `spell_content_hash` NULL.
   - No test that pre-set `spell_content_hash` is left unchanged on re-run.
 - **Recommendations:**
-  - Optional: test orphan row stays NULL after migration.
-  - Optional: in idempotent test, assert existing `spell_content_hash` is not overwritten.
+  - Optional: test orphan row stays NULL after migration. — **Implemented** (test_migration_0015_orphan_spell_id_keeps_hash_null).
+  - Optional: in idempotent test, assert existing `spell_content_hash` is not overwritten. — **Implemented** (test_migration_0015_backfill_does_not_overwrite_existing_hash).
 
 ---
 
@@ -49,7 +49,7 @@ Method: Three independent passes; each Task 5 sub-item reviewed by a dedicated c
 - **Completeness:** Yes. Index created with required name, table, column; `IF NOT EXISTS`; migrations.rs asserts index exists.
 - **Accuracy:** Yes. Implementation adds partial index `WHERE spell_content_hash IS NOT NULL` (acceptable; supports hash lookups).
 - **Issues/gaps:** None.
-- **Recommendations:** Optional: add SQL comment that partial index is intentional for hash lookups only.
+- **Recommendations:** Optional: add SQL comment that partial index is intentional for hash lookups only. — **Implemented** (comment in 0015_add_hash_reference_columns.sql).
 
 ---
 
@@ -61,7 +61,7 @@ Method: Three independent passes; each Task 5 sub-item reviewed by a dedicated c
   - No test that duplicate `(character_class_id, spell_content_hash, list_type)` insert is rejected (verification.md expects this).
   - Upsert uses UPDATE-then-INSERT, not `ON CONFLICT` on this index; DB still enforces uniqueness.
 - **Recommendations:**
-  - Add test: insert duplicate (character_class_id, spell_content_hash, list_type), assert second insert fails and exactly one row remains.
+  - Add test: insert duplicate (character_class_id, spell_content_hash, list_type), assert second insert fails and exactly one row remains. — **Implemented** (test_unique_index_rejects_duplicate_character_class_spell_hash_list).
   - Optional: use `INSERT ... ON CONFLICT(...) DO UPDATE` for hash path to rely on index explicitly.
 
 ---
@@ -83,8 +83,8 @@ Method: Three independent passes; each Task 5 sub-item reviewed by a dedicated c
   - Export/bundle **block** when any spell-list entry is missing (no placeholder in export); acceptable if by design.
   - E2E could explicitly assert "Spell no longer in library" is not visible after Remove.
 - **Recommendations:**
-  - Document that PDF/print/bundle export is blocked when character has "Spell no longer in library" entries; user should Remove or restore spell first.
-  - Optional: E2E assertion that placeholder text is gone after Remove.
+  - Document that PDF/print/bundle export is blocked when character has "Spell no longer in library" entries; user should Remove or restore spell first. — **Implemented** (docs/user/character_profiles.md).
+  - Optional: E2E assertion that placeholder text is gone after Remove. — **Implemented** (character_edge_cases.spec.ts).
 
 ---
 
@@ -104,10 +104,10 @@ Method: Three independent passes; each Task 5 sub-item reviewed by a dedicated c
 **Subagent-sized work:**
 
 1. ✅ Column (5.1a), index (5.1c): Complete; no change.
-2. ✅ Backfill (5.1b): Complete; optional tests for orphan and idempotent preserve.
-3. ✅ Unique index (5.1d): Complete; add test that duplicate (character_class_id, spell_content_hash, list_type) is rejected.
+2. ✅ Backfill (5.1b): Complete; optional tests for orphan and idempotent preserve. — **Implemented** (migration tests).
+3. ✅ Unique index (5.1d): Complete; add test that duplicate (character_class_id, spell_content_hash, list_type) is rejected. — **Implemented** (test_unique_index_rejects_duplicate_character_class_spell_hash_list).
 4. ✅ Reads/joins (5.1e): Complete; optional centralization of join condition.
-5. Decide and document export behavior when character has “Spell no longer in library” (block vs. allow with placeholders).
+5. ✅ Decide and document export behavior when character has “Spell no longer in library” (block vs. allow with placeholders). — **Implemented** (character_profiles.md).
 
 ---
 
@@ -145,23 +145,23 @@ Method: Three independent passes; each Task 5 sub-item reviewed by a dedicated c
 
 **Subagent-sized work:**
 
-1. Optional: Backfill test for orphan row (5.1b); idempotent test that existing hash is preserved.
-2. Add: Test that unique index rejects duplicate (character_class_id, spell_content_hash, list_type) (5.1d).
-3. Optional: E2E assertion that "Spell no longer in library" is not visible after Remove (5.1f).
-4. Document: Export/print/bundle blocked when character has missing-library entries; user should Remove or restore spell first.
+1. ✅ Optional: Backfill test for orphan row (5.1b); idempotent test that existing hash is preserved. — **Implemented**.
+2. ✅ Add: Test that unique index rejects duplicate (character_class_id, spell_content_hash, list_type) (5.1d). — **Implemented**.
+3. ✅ Optional: E2E assertion that "Spell no longer in library" is not visible after Remove (5.1f). — **Implemented**.
+4. ✅ Document: Export/print/bundle blocked when character has missing-library entries; user should Remove or restore spell first. — **Implemented**.
 
 ---
 
 ## Summary Table
 
-| Item | Completeness | Accuracy | Blocking issues | Optional improvements |
-|------|--------------|----------|-----------------|------------------------|
-| 5.1a | Yes | Yes | None | — |
-| 5.1b | Yes | Yes | None | Orphan + idempotent preserve tests |
-| 5.1c | Yes | Yes | None | Comment for partial index |
-| 5.1d | Yes | Yes | None | Duplicate-reject test; consider ON CONFLICT |
-| 5.1e | Yes | Yes | None | Centralize join condition |
-| 5.1f | Yes | Yes | None | Document export behavior; E2E assertion |
+| Item | Completeness | Accuracy | Blocking issues | Optional improvements | Implemented |
+|------|--------------|----------|-----------------|------------------------|-------------|
+| 5.1a | Yes | Yes | None | — | — |
+| 5.1b | Yes | Yes | None | Orphan + idempotent preserve tests | ✅ |
+| 5.1c | Yes | Yes | None | Comment for partial index | ✅ |
+| 5.1d | Yes | Yes | None | Duplicate-reject test; consider ON CONFLICT | ✅ (test only) |
+| 5.1e | Yes | Yes | None | Centralize join condition | — |
+| 5.1f | Yes | Yes | None | Document export behavior; E2E assertion | ✅ |
 
 ---
 
@@ -175,10 +175,10 @@ Task 5.1 is **complete and accurate** for implementation review:
 
 Recommended before closing Task 5:
 
-1. Add test that unique index rejects duplicate `(character_class_id, spell_content_hash, list_type)`.
-2. Document that character export/print/bundle is blocked when the character has “Spell no longer in library” entries.
+1. ✅ Add test that unique index rejects duplicate `(character_class_id, spell_content_hash, list_type)`. — **Implemented**.
+2. ✅ Document that character export/print/bundle is blocked when the character has “Spell no longer in library” entries. — **Implemented**.
 
-All other recommendations are optional (extra tests, join centralization, E2E hardening, SQL comment).
+All other recommendations are optional; those implemented: orphan/backfill migration tests, SQL comment, E2E placeholder-gone assertion. Not implemented: join centralization, ON CONFLICT refactor.
 
 ---
 

@@ -107,11 +107,11 @@
         - [x] Provide "Remove" action to clear the broken reference.
 
 ## 6. Artifact Integration
-- [ ] 6.1 Migrate artifact spell references to content hash (Migration 0015):
-    - [ ] Add `spell_content_hash TEXT` to `artifact` table; backfill from `spell.content_hash` WHERE `spell.id = artifact.spell_id`.
-    - [ ] Add index: `CREATE INDEX idx_artifact_spell_content_hash ON artifact(spell_content_hash)`.
-    - [ ] Use `spell_content_hash` for reads/joins; keep `spell_id` for migration period (see design).
-    - [ ] Note: `artifact.hash` is the artifact's own file hash; `artifact.spell_content_hash` is the referenced spell's canonical content hash (see design Decision #5).
+- [x] 6.1 Migrate artifact spell references to content hash (Migration 0015):
+    - [x] Add `spell_content_hash TEXT` to `artifact` table; backfill from `spell.content_hash` WHERE `spell.id = artifact.spell_id`.
+    - [x] Add index: `CREATE INDEX idx_artifact_spell_content_hash ON artifact(spell_content_hash)`.
+    - [x] Use `spell_content_hash` for reads/joins; keep `spell_id` for migration period (see design).
+    - [x] Note: `artifact.hash` is the artifact's own file hash; `artifact.spell_content_hash` is the referenced spell's canonical content hash (see design Decision #5).
 
 ## 7. Character Integration
 

@@ -159,6 +159,8 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
     // Hash-first: load artifacts by spell content hash; fallback to spell_id only when
     // spell_content_hash IS NULL (migration-period legacy). Exclude rows whose spell_id
     // matches but spell_content_hash belongs to a different spell.
+    // artifact.hash = file hash (we return it); spell_content_hash = spell ref (we filter by it).
+    // When spell_id is dropped: keep only spell_content_hash = ? branch; remove legacy OR and (sid, None) arm.
     let artifacts: Vec<SpellArtifact> = match (spell.id, spell.content_hash.as_deref()) {
         (Some(sid), Some(h)) => {
             let mut stmt = conn.prepare(

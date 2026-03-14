@@ -6,11 +6,16 @@ This workflow runs linting checks on all parts of the application.
 
 ## Frontend (React/TS)
 
-1. Lint and Type-Check the frontend code
-   - Linting (Biome) ensures code quality and style.
+1. Lint the frontend code
+   - `pnpm lint` runs Biome (code quality and style) then Knip (unused dependency detection). CI fails only if Knip reports unused npm dependencies; unused exports and files are informational.
    ```bash
    cd apps/desktop
    pnpm lint
+   ```
+   - To run tools individually:
+   ```bash
+   pnpm lint:biome   # Biome only
+   pnpm knip         # unused dependency detection only
    ```
 
 2. Type-Check the frontend code

@@ -8,9 +8,7 @@ export default function ArtifactRow({ artifact: art }: ArtifactRowProps) {
   return (
     <div className="text-xs space-y-1 text-neutral-500">
       <div className="flex justify-between">
-        <span className="font-semibold text-neutral-400">
-          Type: {art.type.toUpperCase()}
-        </span>
+        <span className="font-semibold text-neutral-400">Type: {art.type.toUpperCase()}</span>
         <span>Imported: {new Date(art.importedAt).toLocaleString()}</span>
       </div>
       <div className="truncate">Path: {art.path}</div>

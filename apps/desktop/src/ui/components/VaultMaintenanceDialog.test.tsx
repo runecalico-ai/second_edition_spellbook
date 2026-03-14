@@ -35,11 +35,7 @@ function createSummary(overrides: Partial<VaultIntegritySummary> = {}): VaultInt
 describe("VaultMaintenanceDialog", () => {
   it("shows Optimize Vault and disables it while import is in progress", () => {
     const html = renderToStaticMarkup(
-      <VaultMaintenanceDialog
-        isImportInProgress={true}
-        settings={defaultSettings}
-        result={null}
-      />,
+      <VaultMaintenanceDialog isImportInProgress={true} settings={defaultSettings} result={null} />,
     );
 
     expect(html).toContain("Optimize Vault");

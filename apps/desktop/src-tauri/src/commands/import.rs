@@ -8,8 +8,8 @@ use crate::commands::vault::{
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::{
-    validate_tradition_school_sphere_consistency, CanonicalSpell, SourceRef,
-    BUNDLE_FORMAT_VERSION, CURRENT_SCHEMA_VERSION,
+    validate_tradition_school_sphere_consistency, CanonicalSpell, SourceRef, BUNDLE_FORMAT_VERSION,
+    CURRENT_SCHEMA_VERSION,
 };
 use crate::models::{
     ConflictsResolved, DuplicatesSkipped, ImportArtifact, ImportConflict, ImportConflictField,
@@ -28,9 +28,9 @@ use rusqlite::OptionalExtension;
 use serde::de::{self, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::path::PathBuf;
-use std::fmt;
 use std::sync::Arc;
 use tracing::warn;
 
@@ -2621,22 +2621,22 @@ fn resolve_artifact_spell_id(
 ) -> Result<(i64, String), AppError> {
     let has_hash_col = table_has_column(conn, "artifact", "spell_content_hash");
 
-    let (db_spell_id, db_spell_hash, path): (Option<i64>, Option<String>, String) =
-        if has_hash_col {
-            conn.query_row(
-                "SELECT spell_id, spell_content_hash, path FROM artifact WHERE id = ?",
-                [artifact_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .map_err(AppError::Database)?
-        } else {
-            conn.query_row(
-                "SELECT spell_id, path FROM artifact WHERE id = ?",
-                [artifact_id],
-                |row| Ok((row.get::<_, Option<i64>>(0)?, None::<String>, row.get(1)?)),
-            )
-            .map_err(AppError::Database)?
-        };
+    let (db_spell_id, db_spell_hash, path): (Option<i64>, Option<String>, String) = if has_hash_col
+    {
+        conn.query_row(
+            "SELECT spell_id, spell_content_hash, path FROM artifact WHERE id = ?",
+            [artifact_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(AppError::Database)?
+    } else {
+        conn.query_row(
+            "SELECT spell_id, path FROM artifact WHERE id = ?",
+            [artifact_id],
+            |row| Ok((row.get::<_, Option<i64>>(0)?, None::<String>, row.get(1)?)),
+        )
+        .map_err(AppError::Database)?
+    };
 
     // Hash-first: look up spell.id by content_hash; fall back to spell_id (migration period).
     // When spell_id is dropped: remove the `.or(db_spell_id)` fallback arm.
@@ -2697,7 +2697,11 @@ pub async fn reparse_artifact(
         })
         .await
         .map_err(|e| AppError::Unknown(e.to_string()))??
-        .ok_or_else(|| AppError::NotFound("The spell referenced by this artifact is no longer in the library".to_string()))?
+        .ok_or_else(|| {
+            AppError::NotFound(
+                "The spell referenced by this artifact is no longer in the library".to_string(),
+            )
+        })?
     };
 
     let result = call_sidecar("import", json!({"files": [artifact_path]})).await?;
@@ -3120,7 +3124,10 @@ mod tests {
             Some("Combat"),
             "rejected import payload must not be silently rewritten"
         );
-        assert_eq!(spell.id, None, "rejected import should not stamp a content hash");
+        assert_eq!(
+            spell.id, None,
+            "rejected import should not stamp a content hash"
+        );
     }
 
     #[test]
@@ -3212,7 +3219,10 @@ mod tests {
         let err = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
             .expect_err("payloads over 100 MB should be rejected");
 
-        assert!(err.to_string().contains("100 MB"), "unexpected error: {err}");
+        assert!(
+            err.to_string().contains("100 MB"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
@@ -3223,7 +3233,11 @@ mod tests {
             .expect("payload just below 100 MB should be accepted");
 
         assert_eq!(result.spells.len(), 1);
-        assert!(result.failures.is_empty(), "unexpected failures: {:?}", result.failures);
+        assert!(
+            result.failures.is_empty(),
+            "unexpected failures: {:?}",
+            result.failures
+        );
     }
 
     #[test]
@@ -3234,7 +3248,11 @@ mod tests {
             .expect("payload at exactly 100 MB should be accepted");
 
         assert_eq!(result.spells.len(), 1);
-        assert!(result.failures.is_empty(), "unexpected failures: {:?}", result.failures);
+        assert!(
+            result.failures.is_empty(),
+            "unexpected failures: {:?}",
+            result.failures
+        );
     }
 
     #[test]
@@ -3283,8 +3301,15 @@ mod tests {
             ))
             .expect("preview should classify oversized fields as failures");
 
-            assert!(result.spells.is_empty(), "{field_name} should be rejected before preview output");
-            assert_eq!(result.failures.len(), 1, "{field_name} should produce exactly one failure");
+            assert!(
+                result.spells.is_empty(),
+                "{field_name} should be rejected before preview output"
+            );
+            assert_eq!(
+                result.failures.len(),
+                1,
+                "{field_name} should produce exactly one failure"
+            );
             assert!(
                 result.failures[0].reason.contains(expected_path),
                 "expected {field_name} failure to mention {expected_path}, got: {}",
@@ -3367,8 +3392,15 @@ mod tests {
             ))
             .expect("preview should classify oversized SourceRef fields as failures");
 
-            assert!(result.spells.is_empty(), "{field_name} should not survive preview");
-            assert_eq!(result.failures.len(), 1, "{field_name} should produce exactly one failure");
+            assert!(
+                result.spells.is_empty(),
+                "{field_name} should not survive preview"
+            );
+            assert_eq!(
+                result.failures.len(),
+                1,
+                "{field_name} should produce exactly one failure"
+            );
             assert!(
                 result.failures[0].reason.contains(expected_path),
                 "expected {field_name} failure to mention {expected_path}, got: {}",
@@ -3409,7 +3441,11 @@ mod tests {
         .expect("preview should accept exact-boundary spell");
 
         assert_eq!(preview.spells.len(), 1);
-        assert!(preview.failures.is_empty(), "unexpected preview failures: {:?}", preview.failures);
+        assert!(
+            preview.failures.is_empty(),
+            "unexpected preview failures: {:?}",
+            preview.failures
+        );
 
         let result = apply_import_spell_json_with_maintenance(
             &conn,
@@ -3421,7 +3457,11 @@ mod tests {
         .expect("import should accept exact-boundary spell");
 
         assert_eq!(result.imported_count, 1);
-        assert!(result.failures.is_empty(), "unexpected import failures: {:?}", result.failures);
+        assert!(
+            result.failures.is_empty(),
+            "unexpected import failures: {:?}",
+            result.failures
+        );
     }
 
     #[test]
@@ -3504,7 +3544,10 @@ mod tests {
         let err = parse_and_classify_payload(&payload)
             .expect_err("bundles over 10,000 spells should be rejected");
 
-        assert!(err.to_string().contains("10,000"), "unexpected error: {err}");
+        assert!(
+            err.to_string().contains("10,000"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
@@ -3766,8 +3809,7 @@ mod tests {
         let long_root = std::env::temp_dir()
             .join("spellbook-import")
             .join("a".repeat(240));
-        let _env = VaultTestEnvGuard::with_root(long_root.clone())
-            .expect("set isolated vault env");
+        let _env = VaultTestEnvGuard::with_root(long_root.clone()).expect("set isolated vault env");
 
         let conn = setup_import_apply_test_db();
         let incoming_item = preview_item_for_test(test_spell(
@@ -4084,8 +4126,7 @@ mod tests {
         let long_root = std::env::temp_dir()
             .join("spellbook-legacy-import")
             .join("b".repeat(400));
-        let _env = VaultTestEnvGuard::with_root(long_root.clone())
-            .expect("set isolated vault env");
+        let _env = VaultTestEnvGuard::with_root(long_root.clone()).expect("set isolated vault env");
         let conn = setup_import_apply_test_db();
         create_change_log_table(&conn);
         create_hash_reference_tables(&conn);
@@ -4918,7 +4959,10 @@ mod tests {
         .expect("insert artifact with stale hash but valid spell_id");
 
         let (spell_id, path) = resolve_artifact_spell_id(&conn, 1).expect("resolve ok");
-        assert_eq!(spell_id, 7, "should fall back to spell_id when hash not found");
+        assert_eq!(
+            spell_id, 7,
+            "should fall back to spell_id when hash not found"
+        );
         assert_eq!(path, "b.md");
     }
 

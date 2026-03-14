@@ -1329,7 +1329,11 @@ mod tests {
             .unwrap()
             .map(|r| r.unwrap())
             .collect();
-        assert_eq!(spell_ids, vec![2, 2], "both rows should point to new spell_id");
+        assert_eq!(
+            spell_ids,
+            vec![2, 2],
+            "both rows should point to new spell_id"
+        );
     }
 
     #[test]

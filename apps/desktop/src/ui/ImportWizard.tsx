@@ -6,10 +6,7 @@ import type { SourceRefUrlPolicy } from "../types/vault";
 import FieldMapper, { type ParsedSpell } from "./FieldMapper";
 import BulkConflictSummaryDialog from "./components/BulkConflictSummaryDialog";
 import SpellConflictDiffDialog from "./components/SpellConflictDiffDialog";
-import {
-  getVaultSettings,
-  setImportSourceRefUrlPolicy,
-} from "./components/VaultMaintenanceDialog";
+import { getVaultSettings, setImportSourceRefUrlPolicy } from "./components/VaultMaintenanceDialog";
 import type {
   BulkConflictAction,
   ConflictAction,
@@ -534,7 +531,7 @@ export default function ImportWizard() {
         await runWithImportActivity(async () => {
           const result = await invoke<HashImportResult>("import_spell_json", {
             payload: jsonPayload,
-              sourceRefUrlPolicy,
+            sourceRefUrlPolicy,
           });
           setJsonImportResult(result);
           if (result.conflicts.length === 0) {

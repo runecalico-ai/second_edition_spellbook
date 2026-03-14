@@ -365,127 +365,106 @@ test.describe("Character Edge Cases & Hardening", () => {
       const hashA = `hash-upgrade-a-${runId}`;
       const hashB = `hash-upgrade-b-${runId}`;
 
-      await test.step(
-        "Setup: seed character with spell Hash A and library spell Hash B (same name)",
-        async () => {
-          await app.navigate("Characters");
-          await page.waitForTimeout(500);
+      await test.step("Setup: seed character with spell Hash A and library spell Hash B (same name)", async () => {
+        await app.navigate("Characters");
+        await page.waitForTimeout(500);
 
-          await page.evaluate(
-            async ({
-              name,
-              spell,
-              hash,
-            }: {
-              name: string;
-              spell: string;
-              hash: string;
-            }) => {
-              const inv = (
-                window as Window & {
-                  __TAURI_INTERNALS__?: {
-                    invoke: (c: string, a?: object) => Promise<unknown>;
-                  };
-                }
-              ).__TAURI_INTERNALS__?.invoke;
-              if (!inv) throw new Error("Tauri invoke not available");
-              await inv("test_seed_character_with_upgradeable_spell", {
-                characterName: name,
-                spellName: spell,
-                spellHashA: hash,
-              });
-            },
-            { name: charName, spell: spellName, hash: hashA },
-          );
+        await page.evaluate(
+          async ({
+            name,
+            spell,
+            hash,
+          }: {
+            name: string;
+            spell: string;
+            hash: string;
+          }) => {
+            const inv = (
+              window as Window & {
+                __TAURI_INTERNALS__?: {
+                  invoke: (c: string, a?: object) => Promise<unknown>;
+                };
+              }
+            ).__TAURI_INTERNALS__?.invoke;
+            if (!inv) throw new Error("Tauri invoke not available");
+            await inv("test_seed_character_with_upgradeable_spell", {
+              characterName: name,
+              spellName: spell,
+              spellHashA: hash,
+            });
+          },
+          { name: charName, spell: spellName, hash: hashA },
+        );
 
-          await page.evaluate(
-            async ({ name, hash }: { name: string; hash: string }) => {
-              const inv = (
-                window as Window & {
-                  __TAURI_INTERNALS__?: {
-                    invoke: (c: string, a?: object) => Promise<unknown>;
-                  };
-                }
-              ).__TAURI_INTERNALS__?.invoke;
-              if (!inv) throw new Error("Tauri invoke not available");
-              await inv("test_seed_spell", { name, hash });
-            },
-            { name: spellName, hash: hashB },
-          );
+        await page.evaluate(
+          async ({ name, hash }: { name: string; hash: string }) => {
+            const inv = (
+              window as Window & {
+                __TAURI_INTERNALS__?: {
+                  invoke: (c: string, a?: object) => Promise<unknown>;
+                };
+              }
+            ).__TAURI_INTERNALS__?.invoke;
+            if (!inv) throw new Error("Tauri invoke not available");
+            await inv("test_seed_spell", { name, hash });
+          },
+          { name: spellName, hash: hashB },
+        );
 
-          await page.reload();
-          await expect(page.getByRole("link", { name: charName })).toBeVisible({
-            timeout: TIMEOUTS.medium,
-          });
-          await page.waitForTimeout(2000);
+        await page.reload();
+        await expect(page.getByRole("link", { name: charName })).toBeVisible({
+          timeout: TIMEOUTS.medium,
+        });
+        await page.waitForTimeout(2000);
 
-          if (
-            await page
-              .getByTestId("modal-dialog")
-              .isVisible({ timeout: 2000 })
-              .catch(() => false)
-          ) {
-            await page.getByTestId("modal-button-dismiss").click();
-            await page.waitForTimeout(300);
-          }
-        },
-      );
-
-      await test.step(
-        "Open CharacterEditor and verify Upgrade button appears on the spell row",
-        async () => {
-          await app.openCharacterEditor(charName);
-          if (
-            await page
-              .getByTestId("modal-dialog")
-              .isVisible({ timeout: 2000 })
-              .catch(() => false)
-          ) {
-            await page.getByTestId("modal-button-dismiss").click();
-            await page.waitForTimeout(300);
-          }
-          const mageSection = page.locator(
-            '[aria-label="Class section for Mage"]',
-          );
-          await mageSection.getByRole("button", { name: "KNOWN" }).click();
-          await page.waitForTimeout(500);
-
-          await expect(
-            page.getByText("Spell no longer in library"),
-          ).not.toBeVisible();
-
-          const upgradeBtn = page.locator(
-            "[data-testid^='btn-upgrade-spell-']",
-          );
-          await expect(upgradeBtn).toBeVisible({
-            timeout: TIMEOUTS.medium,
-          });
-        },
-      );
-
-      await test.step(
-        "Click Upgrade and verify spell still resolves without errors",
-        async () => {
-          const upgradeBtn = page.locator(
-            "[data-testid^='btn-upgrade-spell-']",
-          );
-          await upgradeBtn.click();
-          await page.waitForTimeout(800);
-
-          const modalVisible = await page
+        if (
+          await page
             .getByTestId("modal-dialog")
-            .isVisible({ timeout: 1000 })
-            .catch(() => false);
-          expect(modalVisible).toBe(false);
+            .isVisible({ timeout: 2000 })
+            .catch(() => false)
+        ) {
+          await page.getByTestId("modal-button-dismiss").click();
+          await page.waitForTimeout(300);
+        }
+      });
 
-          await expect(
-            page.getByText("Spell no longer in library"),
-          ).not.toBeVisible();
-          await expect(
-            page.getByText(spellName),
-          ).toBeVisible({ timeout: TIMEOUTS.medium });
-        },
-      );
+      await test.step("Open CharacterEditor and verify Upgrade button appears on the spell row", async () => {
+        await app.openCharacterEditor(charName);
+        if (
+          await page
+            .getByTestId("modal-dialog")
+            .isVisible({ timeout: 2000 })
+            .catch(() => false)
+        ) {
+          await page.getByTestId("modal-button-dismiss").click();
+          await page.waitForTimeout(300);
+        }
+        const mageSection = page.locator('[aria-label="Class section for Mage"]');
+        await mageSection.getByRole("button", { name: "KNOWN" }).click();
+        await page.waitForTimeout(500);
+
+        await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
+
+        const upgradeBtn = page.locator("[data-testid^='btn-upgrade-spell-']");
+        await expect(upgradeBtn).toBeVisible({
+          timeout: TIMEOUTS.medium,
+        });
+      });
+
+      await test.step("Click Upgrade and verify spell still resolves without errors", async () => {
+        const upgradeBtn = page.locator("[data-testid^='btn-upgrade-spell-']");
+        await upgradeBtn.click();
+        await page.waitForTimeout(800);
+
+        const modalVisible = await page
+          .getByTestId("modal-dialog")
+          .isVisible({ timeout: 1000 })
+          .catch(() => false);
+        expect(modalVisible).toBe(false);
+
+        await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
+        await expect(page.getByText(spellName)).toBeVisible({ timeout: TIMEOUTS.medium });
+      });
 
       await app.navigate("Characters");
       await app.deleteCharacterFromList(charName);

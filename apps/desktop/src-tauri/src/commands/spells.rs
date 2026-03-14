@@ -1068,9 +1068,15 @@ mod tests {
             [],
         )
         .expect("insert artifact keyed by hash only");
-        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
         let artifacts = detail.artifacts.expect("artifacts loaded");
-        assert_eq!(artifacts.len(), 1, "artifact with spell_content_hash=spell hash must be loaded");
+        assert_eq!(
+            artifacts.len(),
+            1,
+            "artifact with spell_content_hash=spell hash must be loaded"
+        );
         assert_eq!(artifacts[0].path, "a.md");
     }
 
@@ -1087,7 +1093,9 @@ mod tests {
             [],
         )
         .expect("insert artifact with stale spell_id but different spell_content_hash");
-        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
         let artifacts = detail.artifacts.unwrap_or_default();
         assert!(artifacts.is_empty(), "artifact whose spell_content_hash belongs to another spell must not leak into this spell");
     }
@@ -1105,9 +1113,15 @@ mod tests {
             [],
         )
         .expect("insert legacy artifact with spell_id only");
-        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
         let artifacts = detail.artifacts.expect("artifacts loaded");
-        assert_eq!(artifacts.len(), 1, "legacy artifact with spell_content_hash NULL but spell_id match must be loaded");
+        assert_eq!(
+            artifacts.len(),
+            1,
+            "legacy artifact with spell_content_hash NULL but spell_id match must be loaded"
+        );
         assert_eq!(artifacts[0].path, "legacy.md");
     }
 
@@ -1173,9 +1187,15 @@ mod tests {
         )
         .expect("insert second legacy artifact row");
 
-        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
         let artifacts = detail.artifacts.expect("artifacts loaded");
-        assert_eq!(artifacts.len(), 2, "legacy artifact schema should still load all matching rows by spell_id fallback");
+        assert_eq!(
+            artifacts.len(),
+            2,
+            "legacy artifact schema should still load all matching rows by spell_id fallback"
+        );
         assert_eq!(artifacts[0].path, "legacy-schema.md");
         assert_eq!(artifacts[1].path, "legacy-schema-2.md");
     }
@@ -1194,7 +1214,9 @@ mod tests {
         )
         .expect("insert artifact with spell_content_hash set");
 
-        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
         let artifact = &detail.artifacts.expect("loaded")[0];
         assert_eq!(
             artifact.spell_content_hash,
@@ -1217,7 +1239,9 @@ mod tests {
         )
         .expect("insert legacy artifact with null spell_content_hash");
 
-        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
         let artifact = &detail.artifacts.expect("loaded")[0];
         assert_eq!(
             artifact.spell_content_hash, None,
@@ -1270,8 +1294,9 @@ mod tests {
             ..Default::default()
         };
 
-        let err = canonicalize_spell_detail(detail)
-            .expect_err("direct writes should reject school/sphere combinations that import rejects");
+        let err = canonicalize_spell_detail(detail).expect_err(
+            "direct writes should reject school/sphere combinations that import rejects",
+        );
 
         assert!(
             err.to_string().contains("mutually exclusive"),
@@ -1353,15 +1378,23 @@ mod tests {
             ..Default::default()
         };
 
-        let (canonical, hash, _json) =
-            canonicalize_spell_detail(detail).expect("exact-boundary direct-write spell should validate");
+        let (canonical, hash, _json) = canonicalize_spell_detail(detail)
+            .expect("exact-boundary direct-write spell should validate");
 
         assert_eq!(canonical.name.len(), 256);
         assert_eq!(canonical.description.len(), 16_384);
         assert_eq!(canonical.author.as_deref().map(str::len), Some(256));
-        assert_eq!(canonical.source_refs.len(), 1, "direct source should map into a single source_ref");
+        assert_eq!(
+            canonical.source_refs.len(),
+            1,
+            "direct source should map into a single source_ref"
+        );
         assert_eq!(canonical.source_refs[0].book.len(), 512);
-        assert_eq!(hash.len(), 64, "hash should still be computed for valid boundary input");
+        assert_eq!(
+            hash.len(),
+            64,
+            "hash should still be computed for valid boundary input"
+        );
     }
 
     /// Minimal schema for get_spell_from_conn artifact read-path tests (spell + artifact only).
@@ -1664,8 +1697,7 @@ mod tests {
         let long_root = std::env::temp_dir()
             .join("spellbook-backend")
             .join("a".repeat(240));
-        let _env = VaultTestEnvGuard::with_root(long_root.clone())
-            .expect("set isolated vault env");
+        let _env = VaultTestEnvGuard::with_root(long_root.clone()).expect("set isolated vault env");
 
         let conn = setup_spell_update_test_db();
         let initial_detail = SpellDetail {
@@ -1821,7 +1853,9 @@ mod tests {
         );
 
         let stored_source: Option<String> = conn
-            .query_row("SELECT source FROM spell WHERE id = 1", [], |row| row.get(0))
+            .query_row("SELECT source FROM spell WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .expect("query source after rejected update");
         let change_log_count: i64 = conn
             .query_row(
@@ -1831,7 +1865,13 @@ mod tests {
             )
             .expect("query change log count");
 
-        assert_eq!(stored_source, None, "rejected update must not persist source text");
-        assert_eq!(change_log_count, 0, "rejected update must roll back change log writes");
+        assert_eq!(
+            stored_source, None,
+            "rejected update must not persist source text"
+        );
+        assert_eq!(
+            change_log_count, 0,
+            "rejected update must roll back change log writes"
+        );
     }
 }

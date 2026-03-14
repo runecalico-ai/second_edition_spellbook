@@ -70,8 +70,8 @@ def test_handle_export_invalid_format(tmp_path):
 def test_handle_export_html_escapes_spell_name_and_description(tmp_path):
     spells = [
         {
-            "name": '<img src=x onerror=alert(1)>',
-            "description": '<script>alert(1)</script> dangerous',
+            "name": "<img src=x onerror=alert(1)>",
+            "description": "<script>alert(1)</script> dangerous",
             "level": 3,
             "school": "Evocation",
         }
@@ -90,5 +90,5 @@ def test_handle_export_html_escapes_spell_name_and_description(tmp_path):
     content = Path(result["path"]).read_text()
     assert "&lt;img src=x onerror=alert(1)&gt;" in content
     assert "&lt;script&gt;alert(1)&lt;/script&gt; dangerous" in content
-    assert '<img src=x onerror=alert(1)>' not in content
-    assert '<script>alert(1)</script>' not in content
+    assert "<img src=x onerror=alert(1)>" not in content
+    assert "<script>alert(1)</script>" not in content

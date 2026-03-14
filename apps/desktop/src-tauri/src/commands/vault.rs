@@ -77,12 +77,9 @@ impl Default for VaultSettings {
 
 fn validate_import_source_ref_url_policy(policy: &str) -> Result<(), AppError> {
     match policy {
-        IMPORT_SOURCE_REF_URL_POLICY_DROP_REF | IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL => {
-            Ok(())
-        }
+        IMPORT_SOURCE_REF_URL_POLICY_DROP_REF | IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL => Ok(()),
         _ => Err(AppError::Validation(
-            "Invalid import.sourceRefUrlPolicy; expected 'drop-ref' or 'reject-spell'"
-                .to_string(),
+            "Invalid import.sourceRefUrlPolicy; expected 'drop-ref' or 'reject-spell'".to_string(),
         )),
     }
 }
@@ -617,7 +614,8 @@ pub(crate) fn run_vault_integrity_check_with_root(
         let path = spell_file_path_in_root(root, &content_hash);
 
         let missing_db_reason = if !spell_exists {
-            "Hash referenced only by artifact/list; spell row deleted, cannot recover vault file".to_string()
+            "Hash referenced only by artifact/list; spell row deleted, cannot recover vault file"
+                .to_string()
         } else {
             "canonical_data is NULL in spell table".to_string()
         };
@@ -633,7 +631,11 @@ pub(crate) fn run_vault_integrity_check_with_root(
                 Ok(false) => record_unrecoverable(
                     &mut summary,
                     &content_hash,
-                    if !spell_exists { missing_db_reason } else { format!("Missing vault file and {missing_db_reason}") },
+                    if !spell_exists {
+                        missing_db_reason
+                    } else {
+                        format!("Missing vault file and {missing_db_reason}")
+                    },
                 ),
                 Err(reason) => record_unrecoverable(&mut summary, &content_hash, reason),
             }
@@ -652,7 +654,11 @@ pub(crate) fn run_vault_integrity_check_with_root(
                     Ok(false) => record_unrecoverable(
                         &mut summary,
                         &content_hash,
-                        if !spell_exists { missing_db_reason } else { format!("Failed to read vault spell file: {err}; {missing_db_reason}") },
+                        if !spell_exists {
+                            missing_db_reason
+                        } else {
+                            format!("Failed to read vault spell file: {err}; {missing_db_reason}")
+                        },
                     ),
                     Err(reason) => record_unrecoverable(&mut summary, &content_hash, reason),
                 }
@@ -670,7 +676,11 @@ pub(crate) fn run_vault_integrity_check_with_root(
             Ok(false) => record_unrecoverable(
                 &mut summary,
                 &content_hash,
-                if !spell_exists { missing_db_reason } else { format!("Invalid vault file and {missing_db_reason}") },
+                if !spell_exists {
+                    missing_db_reason
+                } else {
+                    format!("Invalid vault file and {missing_db_reason}")
+                },
             ),
             Err(reason) => record_unrecoverable(&mut summary, &content_hash, reason),
         }
@@ -1324,8 +1334,7 @@ mod tests {
             temp_dir.path(),
             &VaultSettings {
                 integrity_check_on_open: false,
-                import_source_ref_url_policy: IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL
-                    .to_string(),
+                import_source_ref_url_policy: IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL.to_string(),
             },
         )
         .expect("overwrite existing settings");
@@ -1386,7 +1395,10 @@ mod tests {
             panic!("intentional panic while holding isolated vault env");
         }));
 
-        assert!(panic_result.is_err(), "panic should be captured for regression coverage");
+        assert!(
+            panic_result.is_err(),
+            "panic should be captured for regression coverage"
+        );
         assert!(
             vault_env_lock().is_poisoned(),
             "panic should poison the raw test env lock before helper recovery"
@@ -1817,8 +1829,7 @@ mod tests {
 
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let data_dir = temp_dir.path().join("data");
-        let _env = VaultTestEnvGuard::with_root(data_dir.clone())
-            .expect("set isolated vault env");
+        let _env = VaultTestEnvGuard::with_root(data_dir.clone()).expect("set isolated vault env");
         std::fs::create_dir_all(data_dir.join("spells")).expect("create data dir");
 
         // Setup LIVE vault with some files

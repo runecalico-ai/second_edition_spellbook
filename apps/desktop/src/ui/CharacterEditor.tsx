@@ -929,36 +929,30 @@ function ClassSpellList({
                           }}
                         />
                       )}
-                      {!missing &&
-                        spell.availableUpgradeHash &&
-                        spell.availableUpgradeSpellId && (
-                          <button
-                            type="button"
-                            data-testid={`btn-upgrade-spell-${spell.spellId}`}
-                            onClick={async () => {
-                              try {
-                                await invoke("upgrade_character_class_spell", {
-                                  characterClassId: charClass.id,
-                                  oldHash: spell.spellContentHash,
-                                  newSpellId: spell.availableUpgradeSpellId,
-                                  newHash: spell.availableUpgradeHash,
-                                });
-                                loadSpells();
-                              } catch (e) {
-                                modalAlert(
-                                  `Failed to upgrade spell: ${e}`,
-                                  "Error",
-                                  "error",
-                                );
-                              }
-                            }}
-                            className="text-yellow-500 hover:text-yellow-300 transition-colors text-[10px] font-mono uppercase"
-                            aria-label="Upgrade to newer version"
-                            title="Upgrade to newer version of this spell"
-                          >
-                            ↑ Upgrade
-                          </button>
-                        )}
+                      {!missing && spell.availableUpgradeHash && spell.availableUpgradeSpellId && (
+                        <button
+                          type="button"
+                          data-testid={`btn-upgrade-spell-${spell.spellId}`}
+                          onClick={async () => {
+                            try {
+                              await invoke("upgrade_character_class_spell", {
+                                characterClassId: charClass.id,
+                                oldHash: spell.spellContentHash,
+                                newSpellId: spell.availableUpgradeSpellId,
+                                newHash: spell.availableUpgradeHash,
+                              });
+                              loadSpells();
+                            } catch (e) {
+                              modalAlert(`Failed to upgrade spell: ${e}`, "Error", "error");
+                            }
+                          }}
+                          className="text-yellow-500 hover:text-yellow-300 transition-colors text-[10px] font-mono uppercase"
+                          aria-label="Upgrade to newer version"
+                          title="Upgrade to newer version of this spell"
+                        >
+                          ↑ Upgrade
+                        </button>
+                      )}
                       <button
                         type="button"
                         data-testid={

@@ -1061,7 +1061,12 @@ mod tests {
     #[test]
     fn test_search_malformed_operator_payload_falls_back_to_literal_phrase() {
         let conn = setup_search_db();
-        insert_spell(&conn, 1, "Literal", "Incantation fire AND OR ice appears verbatim");
+        insert_spell(
+            &conn,
+            1,
+            "Literal",
+            "Incantation fire AND OR ice appears verbatim",
+        );
         insert_spell(&conn, 2, "Split Terms", "fire and ice appear separately");
 
         let ids = search_ids(&conn, "fire AND OR ice");
@@ -1320,7 +1325,8 @@ mod tests {
             .map(|spell| spell.id)
             .collect();
 
-        assert_eq!(ids, expected_ids,
+        assert_eq!(
+            ids, expected_ids,
             "text-query results must match the direct bm25-ranked ordering for the same MATCH term"
         );
     }

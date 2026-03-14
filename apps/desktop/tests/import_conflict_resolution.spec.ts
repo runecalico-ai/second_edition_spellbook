@@ -49,7 +49,10 @@ function writeSpellBundle(filePath: string, spells: ReturnType<typeof makeSpell>
   return filePath;
 }
 
-function buildSizedSpellBundle(targetBytes: number, overrides?: Partial<ReturnType<typeof makeSpell>>) {
+function buildSizedSpellBundle(
+  targetBytes: number,
+  overrides?: Partial<ReturnType<typeof makeSpell>>,
+) {
   const spell = {
     ...makeSpell("SizedBundle", "", 3),
     ...overrides,
@@ -62,7 +65,9 @@ function buildSizedSpellBundle(targetBytes: number, overrides?: Partial<ReturnTy
   const descriptionBytes = targetBytes - Buffer.byteLength(basePayload, "utf-8");
 
   if (descriptionBytes < 0) {
-    throw new Error(`Target size ${targetBytes} is smaller than base payload ${basePayload.length}`);
+    throw new Error(
+      `Target size ${targetBytes} is smaller than base payload ${basePayload.length}`,
+    );
   }
 
   spell.description = "x".repeat(descriptionBytes);
@@ -117,7 +122,9 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
   });
 
-  test("json preview: 10 MB + 1 byte requires confirmation before preview", async ({ appContext }) => {
+  test("json preview: 10 MB + 1 byte requires confirmation before preview", async ({
+    appContext,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const payload = buildSizedSpellBundle(LARGE_IMPORT_WARNING_THRESHOLD_BYTES + 1);
@@ -130,7 +137,9 @@ test.describe("JSON Import Conflict Resolution", () => {
         buffer: Buffer.from(payload, "utf-8"),
       });
 
-      await expect(page.getByText("warning-threshold.json")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.getByText("warning-threshold.json")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Preview stops on confirmation modal", async () => {
@@ -210,9 +219,7 @@ test.describe("JSON Import Conflict Resolution", () => {
       await app.navigate("Library");
       await app.navigate("Import");
 
-      await expect(page.getByTestId("select-source-ref-url-policy")).toHaveValue(
-        "reject-spell",
-      );
+      await expect(page.getByTestId("select-source-ref-url-policy")).toHaveValue("reject-spell");
     });
 
     await test.step("Preview rejects spells with invalid SourceRef URLs", async () => {

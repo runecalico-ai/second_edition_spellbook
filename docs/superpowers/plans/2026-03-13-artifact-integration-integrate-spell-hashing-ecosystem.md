@@ -1,6 +1,6 @@
 # Artifact Integration Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Complete Task 6 of `integrate-spell-hashing-ecosystem` so artifact spell references fully participate in the content-hash ecosystem during the Migration 0015 dual-column period.
 
@@ -54,7 +54,7 @@
 - Reference: `openspec/changes/integrate-spell-hashing-ecosystem/design.md`
 - Reference: `openspec/changes/integrate-spell-hashing-ecosystem/specs/artifacts/spec.md`
 
-- [ ] **Step 1: Read the current 0015 artifact behavior before changing code**
+- [x] **Step 1: Read the current 0015 artifact behavior before changing code**
 
 Confirm all of the following in the existing code:
 
@@ -79,7 +79,7 @@ Expected outcome:
 - orphan `spell_id` rows keep `spell_content_hash` as `NULL`
 - partial index name matches the spec
 
-- [ ] **Step 2: Add or tighten migration tests only where coverage is missing**
+- [x] **Step 2: Add or tighten migration tests only where coverage is missing**
 
 Required scenarios:
 - backfill sets `artifact.spell_content_hash` from `spell.content_hash`
@@ -90,13 +90,13 @@ Required scenarios:
 Run: `cargo test db::migrations::tests:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS with explicit artifact assertions, not just character spell list assertions.
 
-- [ ] **Step 3: Keep SQL and Rust comments aligned with Decision #5**
+- [x] **Step 3: Keep SQL and Rust comments aligned with Decision #5**
 
 Add a short SQL or Rust comment clarifying:
 - `artifact.hash` is the artifact file hash
 - `artifact.spell_content_hash` is the referenced spell canonical hash
 
-- [ ] **Step 4: Commit the migration-contract tightening**
+- [x] **Step 4: Commit the migration-contract tightening**
 
 ```bash
 git add db/migrations/0015_add_hash_reference_columns.sql apps/desktop/src-tauri/src/db/migrations.rs
@@ -115,7 +115,7 @@ git commit -m "test: harden artifact hash migration contract"
 - Test: `apps/desktop/src-tauri/src/commands/spells.rs`
 - Reference: `openspec/changes/integrate-spell-hashing-ecosystem/specs/artifacts/spec.md`
 
-- [ ] **Step 1: Write failing tests for spell detail artifact loading**
+- [x] **Step 1: Write failing tests for spell detail artifact loading**
 
 Add tests covering:
 - artifact row with `spell_content_hash` populated and stale or null `spell_id`
@@ -135,7 +135,7 @@ WHERE
 Run: `cargo test spells:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: FAIL because current implementation only uses `WHERE spell_id = ?`.
 
-- [ ] **Step 2: Update `get_spell_from_conn` to prefer `content_hash`**
+- [x] **Step 2: Update `get_spell_from_conn` to prefer `content_hash`**
 
 Implementation rules:
 - read the spell row first
@@ -144,7 +144,7 @@ Implementation rules:
 - do not return duplicate artifact rows when both columns match
 - do not include artifacts whose `spell_id` still matches but whose `spell_content_hash` now belongs to a different spell
 
-- [ ] **Step 3: Decide whether `SpellArtifact` needs transition metadata**
+- [x] **Step 3: Decide whether `SpellArtifact` needs transition metadata**
 
 Audit whether the frontend or IPC needs any additional fields such as:
 - `spell_content_hash`
@@ -154,12 +154,12 @@ Default recommendation:
 - keep the existing `SpellArtifact` payload unchanged unless a concrete consumer needs the new field now
 - prefer backend correctness over expanding the IPC surface unnecessarily
 
-- [ ] **Step 4: Re-run focused tests**
+- [x] **Step 4: Re-run focused tests**
 
 Run: `cargo test spells:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS for hash-first reads, legacy fallback, and no duplicate artifact rows.
 
-- [ ] **Step 5: Commit the read-path change**
+- [x] **Step 5: Commit the read-path change**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/spells.rs apps/desktop/src-tauri/src/models/spell.rs
@@ -177,7 +177,7 @@ git commit -m "feat: load spell artifacts by content hash"
 - Test: `apps/desktop/src-tauri/src/commands/import.rs`
 - Test: `apps/desktop/src-tauri/src/commands/spells.rs`
 
-- [ ] **Step 1: Enumerate every direct artifact write path**
+- [x] **Step 1: Enumerate every direct artifact write path**
 
 Audit at minimum:
 - `upsert_import_artifact` in `commands/import.rs`
@@ -190,7 +190,7 @@ Expected result:
 - vault GC reads `artifact.spell_content_hash`
 - if an artifact-centric read path exists outside `spells.rs`, it handles missing referenced spells gracefully and does not crash
 
-- [ ] **Step 2: Add failing tests only for uncovered gaps**
+- [x] **Step 2: Add failing tests only for uncovered gaps**
 
 Candidate tests:
 - spell CRUD path updates `artifact.spell_content_hash` when spell hash changes
@@ -200,19 +200,19 @@ Candidate tests:
 Run: `cargo test import:: spells:: vault:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: FAIL only if a real uncovered path exists.
 
-- [ ] **Step 3: Implement the minimal fixes for any audited gap**
+- [x] **Step 3: Implement the minimal fixes for any audited gap**
 
 Keep changes small:
 - no new dependencies
 - no schema churn beyond Task 6 scope
 - no artifact-only abstraction layer unless duplication becomes unmanageable
 
-- [ ] **Step 4: Re-run focused backend tests**
+- [x] **Step 4: Re-run focused backend tests**
 
 Run: `cargo test import:: spells:: vault:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS with artifact dual-column assertions.
 
-- [ ] **Step 5: Commit only if real code changed**
+- [x] **Step 5: Commit only if real code changed**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/import.rs apps/desktop/src-tauri/src/commands/spells.rs apps/desktop/src-tauri/src/commands/vault.rs
@@ -231,17 +231,17 @@ git commit -m "test: close artifact hash write-path gaps"
 - Review: `apps/desktop/src-tauri/src/commands/import.rs`
 - Review: `apps/desktop/src-tauri/src/commands/vault.rs`
 
-- [ ] **Step 1: Run the migration test suite**
+- [x] **Step 1: Run the migration test suite**
 
 Run: `cargo test db::migrations::tests:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS
 
-- [ ] **Step 2: Run artifact-focused spell tests**
+- [x] **Step 2: Run artifact-focused spell tests**
 
 Run: `cargo test spells:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS
 
-- [ ] **Step 3: Run import and vault regressions that touch artifact hash references**
+- [x] **Step 3: Run import and vault regressions that touch artifact hash references**
 
 Run: `cargo test import:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS
@@ -249,7 +249,7 @@ Expected: PASS
 Run: `cargo test vault:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS
 
-- [ ] **Step 4: Run a final broad safety pass**
+- [x] **Step 4: Run a final broad safety pass**
 
 Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`
 Expected: PASS
@@ -262,7 +262,7 @@ Expected: PASS
 - Modify: `openspec/changes/integrate-spell-hashing-ecosystem/review-task-6_2026_03_13_three-pass.md`
 - Modify: `openspec/changes/integrate-spell-hashing-ecosystem/tasks.md`
 
-- [ ] **Step 1: Pass 1, spec-compliance review**
+- [x] **Step 1: Pass 1, spec-compliance review**
 
 Review against:
 - `openspec/changes/integrate-spell-hashing-ecosystem/tasks.md`
@@ -275,7 +275,7 @@ Checklist:
 - missing spell references are handled gracefully
 - dual-column migration-period writes remain intact
 
-- [ ] **Step 2: Pass 2, backend correctness review**
+- [x] **Step 2: Pass 2, backend correctness review**
 
 Focus:
 - stale `spell_id` tolerance
@@ -284,7 +284,7 @@ Focus:
 - vault GC safety with `artifact.spell_content_hash`
 - no accidental regression of legacy fallback behavior
 
-- [ ] **Step 3: Pass 3, test-and-maintainability review**
+- [x] **Step 3: Pass 3, test-and-maintainability review**
 
 Focus:
 - tests prove the real spec contract instead of implementation trivia
@@ -292,7 +292,7 @@ Focus:
 - query logic is readable enough to survive the future `spell_id` removal migration
 - comments clearly distinguish `artifact.hash` vs `artifact.spell_content_hash`
 
-- [ ] **Step 4: Save the review artifact**
+- [x] **Step 4: Save the review artifact**
 
 Use this structure:
 - task checklist
@@ -304,7 +304,7 @@ Use this structure:
 Suggested file:
 - `openspec/changes/integrate-spell-hashing-ecosystem/review-task-6_2026_03_13_three-pass.md`
 
-- [ ] **Step 5: Only then mark Task 6 complete**
+- [x] **Step 5: Only then mark Task 6 complete**
 
 Update:
 - `openspec/changes/integrate-spell-hashing-ecosystem/tasks.md`

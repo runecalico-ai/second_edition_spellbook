@@ -84,9 +84,6 @@ importers:
       autoprefixer:
         specifier: ^10.4.19
         version: 10.4.23(postcss@8.5.6)
-      babel-plugin-react-compiler:
-        specifier: ^1.0.0
-        version: 1.0.0
       knip:
         specifier: ^5.50.5
         version: 5.86.0(@types/node@20.19.30)(typescript@5.9.3)
@@ -1428,9 +1425,6 @@ packages:
   axe-core@4.11.1:
     resolution: {integrity: sha512-BASOg+YwO2C+346x3LZOeoovTIoTrRqEsqMa6fmfAV0P+U9mFr9NsyOEpiYvFjbc64NMrSswhV50WdXzdb/Z5A==}
     engines: {node: '>=4'}
-
-  babel-plugin-react-compiler@1.0.0:
-    resolution: {integrity: sha512-Ixm8tFfoKKIPYdCCKYTsqv+Fd4IJ0DQqMyEimo+pxUOMUR9cVPlwTrFt9Avu+3cb6Zp3mAzl+t1MrG2fxxKsxw==}
 
   baseline-browser-mapping@2.9.14:
     resolution: {integrity: sha512-B0xUquLkiGLgHhpPBqvl7GWegWBUNuujQ6kXd/r1U38ElPT6Ok8KZ8e+FpUGEc2ZoRQUzq/aUnaKFc/svWUGSg==}
@@ -3432,10 +3426,6 @@ snapshots:
       postcss-value-parser: 4.2.0
 
   axe-core@4.11.1: {}
-
-  babel-plugin-react-compiler@1.0.0:
-    dependencies:
-      '@babel/types': 7.29.0
 
   baseline-browser-mapping@2.9.14: {}
 

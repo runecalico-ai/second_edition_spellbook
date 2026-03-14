@@ -54,7 +54,6 @@
     "@vitejs/plugin-react": "^5.1.2",
     "@vitest/browser-playwright": "^4.0.18",
     "autoprefixer": "^10.4.19",
-    "babel-plugin-react-compiler": "^1.0.0",
     "playwright": "^1.58.2",
     "postcss": "^8.4.38",
     "storybook": "^10.2.7",

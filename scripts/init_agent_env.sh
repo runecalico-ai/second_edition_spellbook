@@ -5,11 +5,8 @@ echo "================================================================"
 echo "Initializing Linux Agent Environment for Second Edition Spellbook"
 echo "================================================================"
 
-# cd to repository root
-cd /home/user/second_edition_spellbook
-
 # Ensure we are running from the repository root
-if [ ! -f "apps/desktop/package.json" ] || [ ! -f "services/ml/pyproject.toml" ]; then
+if [ ! -f "apps/desktop/package.json" ]; then
     echo "Error: Please run this script from the root of the repository."
     exit 1
 fi

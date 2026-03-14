@@ -7,15 +7,27 @@ This workflow runs linting checks on all parts of the application.
 ## Frontend (React/TS)
 
 1. Lint the frontend code
-   - Linting ensures code quality and consistency in the React application.
+   - Run Biome + Knip together (default local lint flow).
    ```bash
    cd apps/desktop
    pnpm lint
    ```
 
+2. (Optional) Run frontend lint tools individually for clearer troubleshooting
+   - Run only Biome:
+   ```bash
+   cd apps/desktop
+   pnpm run lint:biome
+   ```
+   - Run only Knip (unused dependency hygiene):
+   ```bash
+   cd apps/desktop
+   pnpm run knip
+   ```
+
 ## Backend (Rust/Tauri)
 
-2. Lint the backend code
+3. Lint the backend code
    - Clippy is the standard linter for Rust.
    ```bash
    cd apps/desktop/src-tauri
@@ -24,7 +36,7 @@ This workflow runs linting checks on all parts of the application.
 
 ## Services (Python/ML)
 
-3. Lint the Python services
+4. Lint the Python services
    - Ruff is an extremely fast Python linter.
    ```bash
    # Active Virtual Environment (Windows)

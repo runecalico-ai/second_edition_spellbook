@@ -29,9 +29,13 @@ jobs:
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
-      - name: Lint (JS)
+      - name: Lint (Biome)
         working-directory: apps/desktop
-        run: pnpm lint
+        run: pnpm run lint:biome
+
+      - name: Knip
+        working-directory: apps/desktop
+        run: pnpm run knip
 
       - name: Format check (JS)
         working-directory: apps/desktop

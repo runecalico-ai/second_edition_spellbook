@@ -166,7 +166,7 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
         (Some(sid), Some(h)) => {
             if artifact_has_hash_column {
                 let mut stmt = conn.prepare(
-                    "SELECT id, spell_id, type, path, hash, imported_at FROM artifact
+                    "SELECT id, spell_id, type, path, hash, imported_at, spell_content_hash FROM artifact
                      WHERE (spell_content_hash IS NOT NULL AND spell_content_hash = ?)
                         OR (spell_content_hash IS NULL AND spell_id = ?)",
                 )?;
@@ -179,6 +179,7 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
                         path: row.get(3)?,
                         hash: row.get(4)?,
                         imported_at: row.get(5)?,
+                        spell_content_hash: row.get(6)?,
                     })
                 })?;
                 rows.collect::<Result<Vec<_>, _>>()?
@@ -194,6 +195,7 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
                         path: row.get(3)?,
                         hash: row.get(4)?,
                         imported_at: row.get(5)?,
+                        spell_content_hash: None,
                     })
                 })?;
                 rows.collect::<Result<Vec<_>, _>>()?
@@ -211,6 +213,7 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
                     path: row.get(3)?,
                     hash: row.get(4)?,
                     imported_at: row.get(5)?,
+                    spell_content_hash: None,
                 })
             })?;
             rows.collect::<Result<Vec<_>, _>>()?
@@ -1159,6 +1162,51 @@ mod tests {
         assert_eq!(artifacts.len(), 2, "legacy artifact schema should still load all matching rows by spell_id fallback");
         assert_eq!(artifacts[0].path, "legacy-schema.md");
         assert_eq!(artifacts[1].path, "legacy-schema-2.md");
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_artifact_exposes_spell_content_hash() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (NULL, 'source', 'a.md', 'ah', '2026-01-01T00:00:00Z', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert artifact with spell_content_hash set");
+
+        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let artifact = &detail.artifacts.expect("loaded")[0];
+        assert_eq!(
+            artifact.spell_content_hash,
+            Some("spell-hash-1".to_string()),
+            "artifact should expose spell_content_hash when column is populated"
+        );
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_artifact_null_spell_content_hash_for_legacy() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (1, 'source', 'legacy.md', 'ah', '2026-01-01T00:00:00Z', NULL)",
+            [],
+        )
+        .expect("insert legacy artifact with null spell_content_hash");
+
+        let detail = get_spell_from_conn(&conn, 1).expect("get spell").expect("some");
+        let artifact = &detail.artifacts.expect("loaded")[0];
+        assert_eq!(
+            artifact.spell_content_hash, None,
+            "legacy artifact (NULL spell_content_hash) should return None"
+        );
     }
 
     #[test]

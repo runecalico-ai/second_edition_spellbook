@@ -14,7 +14,9 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:check": "pnpm run typecheck && pnpm run tauri build --check",
-    "lint": "biome lint .",
+    "lint": "pnpm run lint:biome && pnpm run knip",
+    "lint:biome": "biome lint .",
+    "knip": "knip",
     "format": "biome format --write .",
     "format:check": "biome check . --formatter-enabled=true --linter-enabled=false --organize-imports-enabled=false --assists-enabled=false",
     "storybook": "storybook dev -p 6006",
@@ -51,7 +53,6 @@
     "@types/react-dom": "^18.2.25",
     "@vitejs/plugin-react": "^5.1.2",
     "@vitest/browser-playwright": "^4.0.18",
-    "@vitest/coverage-v8": "^4.0.18",
     "autoprefixer": "^10.4.19",
     "babel-plugin-react-compiler": "^1.0.0",
     "playwright": "^1.58.2",
@@ -60,6 +61,7 @@
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5",
     "vite": "^7.3.0",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "knip": "^5.50.5"
   }
 }

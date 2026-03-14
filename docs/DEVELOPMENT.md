@@ -127,11 +127,23 @@ We enforce strict formatting and type safety across all languages. Run these bef
 
 | Language | Tool | Command (from `apps/desktop`) |
 | :--- | :--- | :--- |
-| **JS/TS (Check)** | Biome | `pnpm lint` |
+| **JS/TS (Lint + Knip)** | Biome + Knip | `pnpm lint` |
+| **JS/TS (Lint only)** | Biome | `pnpm lint:biome` |
+| **JS/TS (Knip only)** | Knip | `pnpm knip` |
 | **JS/TS (Types)** | `tsc` | `pnpm tsc --noEmit` |
 | **JS/TS (Format)**| Biome | `pnpm format` |
 | **Rust** | Rustfmt | `cargo fmt` (in `src-tauri`) |
 | **Python** | Ruff | `ruff format .` (in `services/ml`) |
+
+### Knip (unused dependency detection)
+
+[Knip](https://knip.dev/) detects unused npm dependencies, exports, and files in `apps/desktop`.
+
+- `pnpm lint` runs Biome then Knip — the standard local lint command.
+- `pnpm lint:biome` runs Biome only (used by the "Lint (Biome)" CI step).
+- `pnpm knip` runs Knip only (used by the "Knip" CI step and for standalone checks).
+
+**CI behaviour**: CI fails only when Knip reports unused *dependencies*. Unused exports and files are reported as informational warnings and do not fail the build.
 
 ---
 

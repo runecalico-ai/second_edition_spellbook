@@ -19,6 +19,8 @@ use std::sync::MutexGuard;
 
 const WINDOWS_PATH_WARNING_THRESHOLD: usize = 240;
 const WINDOWS_PATH_HARD_LIMIT: usize = 260;
+const IMPORT_SOURCE_REF_URL_POLICY_DROP_REF: &str = "drop-ref";
+const IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL: &str = "reject-spell";
 
 pub(crate) fn app_data_dir() -> Result<PathBuf, AppError> {
     if let Ok(override_dir) = std::env::var("SPELLBOOK_DATA_DIR") {
@@ -57,16 +59,31 @@ fn persist_tempfile_replace(
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(crate = "serde")]
+#[serde(default)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultSettings {
     pub integrity_check_on_open: bool,
+    pub import_source_ref_url_policy: String,
 }
 
 impl Default for VaultSettings {
     fn default() -> Self {
         Self {
             integrity_check_on_open: true,
+            import_source_ref_url_policy: IMPORT_SOURCE_REF_URL_POLICY_DROP_REF.to_string(),
         }
+    }
+}
+
+fn validate_import_source_ref_url_policy(policy: &str) -> Result<(), AppError> {
+    match policy {
+        IMPORT_SOURCE_REF_URL_POLICY_DROP_REF | IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL => {
+            Ok(())
+        }
+        _ => Err(AppError::Validation(
+            "Invalid import.sourceRefUrlPolicy; expected 'drop-ref' or 'reject-spell'"
+                .to_string(),
+        )),
     }
 }
 
@@ -77,8 +94,10 @@ fn load_vault_settings_from_root(root: &Path) -> Result<VaultSettings, AppError>
     }
 
     let raw = fs::read_to_string(&path)?;
-    serde_json::from_str(&raw)
-        .map_err(|e| AppError::Validation(format!("Invalid vault settings JSON: {e}")))
+    let settings: VaultSettings = serde_json::from_str(&raw)
+        .map_err(|e| AppError::Validation(format!("Invalid vault settings JSON: {e}")))?;
+    validate_import_source_ref_url_policy(&settings.import_source_ref_url_policy)?;
+    Ok(settings)
 }
 
 fn write_vault_settings_in_root(root: &Path, settings: &VaultSettings) -> Result<(), AppError> {
@@ -754,9 +773,23 @@ pub async fn get_vault_settings() -> Result<VaultSettings, AppError> {
 pub async fn set_vault_integrity_check_on_open(enabled: bool) -> Result<VaultSettings, AppError> {
     tokio::task::spawn_blocking(move || {
         let root = app_data_dir()?;
-        let settings = VaultSettings {
-            integrity_check_on_open: enabled,
-        };
+        let mut settings = load_vault_settings_from_root(&root)?;
+        settings.integrity_check_on_open = enabled;
+        write_vault_settings_in_root(&root, &settings)?;
+        Ok::<VaultSettings, AppError>(settings)
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))?
+}
+
+#[tauri::command]
+pub async fn set_import_source_ref_url_policy(policy: String) -> Result<VaultSettings, AppError> {
+    tokio::task::spawn_blocking(move || {
+        validate_import_source_ref_url_policy(&policy)?;
+
+        let root = app_data_dir()?;
+        let mut settings = load_vault_settings_from_root(&root)?;
+        settings.import_source_ref_url_policy = policy;
         write_vault_settings_in_root(&root, &settings)?;
         Ok::<VaultSettings, AppError>(settings)
     })
@@ -1123,6 +1156,10 @@ mod tests {
             load_vault_settings_from_root(temp_dir.path()).expect("load default settings");
 
         assert!(settings.integrity_check_on_open);
+        assert_eq!(
+            settings.import_source_ref_url_policy,
+            IMPORT_SOURCE_REF_URL_POLICY_DROP_REF
+        );
     }
 
     #[test]
@@ -1130,12 +1167,47 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let expected = VaultSettings {
             integrity_check_on_open: false,
+            import_source_ref_url_policy: IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL.to_string(),
         };
 
         write_vault_settings_in_root(temp_dir.path(), &expected).expect("write settings");
         let actual = load_vault_settings_from_root(temp_dir.path()).expect("read settings");
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_load_vault_settings_backfills_missing_import_source_ref_policy() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::fs::write(
+            temp_dir.path().join("vault-settings.json"),
+            r#"{"integrityCheckOnOpen":false}"#,
+        )
+        .expect("write legacy settings");
+
+        let settings =
+            load_vault_settings_from_root(temp_dir.path()).expect("load legacy settings");
+
+        assert!(!settings.integrity_check_on_open);
+        assert_eq!(
+            settings.import_source_ref_url_policy,
+            IMPORT_SOURCE_REF_URL_POLICY_DROP_REF
+        );
+    }
+
+    #[test]
+    fn test_load_vault_settings_rejects_invalid_import_source_ref_policy() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        std::fs::write(
+            temp_dir.path().join("vault-settings.json"),
+            r#"{"integrityCheckOnOpen":true,"importSourceRefUrlPolicy":"javascript"}"#,
+        )
+        .expect("write invalid settings");
+
+        let error = load_vault_settings_from_root(temp_dir.path()).expect_err("invalid policy");
+        assert!(error
+            .to_string()
+            .contains("Invalid import.sourceRefUrlPolicy"));
     }
 
     #[test]
@@ -1244,6 +1316,7 @@ mod tests {
             temp_dir.path(),
             &VaultSettings {
                 integrity_check_on_open: true,
+                import_source_ref_url_policy: IMPORT_SOURCE_REF_URL_POLICY_DROP_REF.to_string(),
             },
         )
         .expect("write initial settings");
@@ -1251,6 +1324,8 @@ mod tests {
             temp_dir.path(),
             &VaultSettings {
                 integrity_check_on_open: false,
+                import_source_ref_url_policy: IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL
+                    .to_string(),
             },
         )
         .expect("overwrite existing settings");
@@ -1258,6 +1333,10 @@ mod tests {
         let actual =
             load_vault_settings_from_root(temp_dir.path()).expect("read overwritten settings");
         assert!(!actual.integrity_check_on_open);
+        assert_eq!(
+            actual.import_source_ref_url_policy,
+            IMPORT_SOURCE_REF_URL_POLICY_REJECT_SPELL
+        );
     }
 
     #[test]

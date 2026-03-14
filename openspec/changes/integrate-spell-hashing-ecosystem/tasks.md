@@ -131,31 +131,31 @@
 
 ## Security Review
 ### 8. SQL Injection & Input Validation
-- [ ] 8.1 **SQL injection prevention:**
-    - [ ] Audit all database queries use parameterized statements.
-    - [ ] FTS: use a single bound parameter for MATCH (e.g. `WHERE spell_fts MATCH ?`) and sanitize/escape FTS5 special characters in application code before binding (reference SQLite FTS5 docs for the full list).
-    - [ ] Review FTS query construction (no string concatenation).
-    - [ ] Test with malicious inputs (e.g., `'; DROP TABLE spell;--`).
-- [ ] 8.2 **Input validation:**
-    - [ ] Validate all fields against schema before insertion after required normalization/truncation preprocessing.
-    - [ ] Reject spells with excessively long fields (DoS prevention).
-    - [ ] Sanitize spell descriptions/names before display (XSS prevention).
+- [x] 8.1 **SQL injection prevention:**
+    - [x] Audit all database queries use parameterized statements.
+    - [x] FTS: use a single bound parameter for MATCH (e.g. `WHERE spell_fts MATCH ?`) and sanitize/escape FTS5 special characters in application code before binding (reference SQLite FTS5 docs for the full list).
+    - [x] Review FTS query construction (no string concatenation).
+    - [x] Test with malicious inputs (e.g., `'; DROP TABLE spell;--`).
+- [x] 8.2 **Input validation:**
+    - [x] Validate all fields against schema before insertion after required normalization/truncation preprocessing.
+    - [x] Reject spells with excessively long fields (DoS prevention).
+    - [x] Sanitize spell descriptions/names before display (XSS prevention).
 
 ### 9. Import Security
-- [ ] 9.1 **File size limits:**
-    - [ ] Reject imports > 100MB (DoS prevention).
-    - [ ] Warn for imports > 10MB (confirm before processing).
-- [ ] 9.2 **JSON structure validation:**
-    - [ ] Validate JSON schema before parsing.
-    - [ ] Reject deeply nested objects (> 50 levels).
-    - [ ] Limit array sizes (e.g., max 10,000 spells per import).
-- [ ] 9.3 **Content sanitization:**
-    - [ ] Sanitize spell names/descriptions before display.
-    - [ ] Strip potentially malicious HTML/scripts.
-    - [ ] Validate all URLs in source_refs (allowlist: http, https, mailto; reject javascript:, data:, ipfs:, etc.).
-    - [ ] Implement settings key `import.sourceRefUrlPolicy`:
-        - [ ] Default `drop-ref`: remove invalid SourceRef, continue importing spell with warning.
-        - [ ] Optional `reject-spell`: reject entire spell if any SourceRef URL fails validation.
+- [x] 9.1 **File size limits:**
+    - [x] Reject imports > 100MB (DoS prevention).
+    - [x] Warn for imports > 10MB (confirm before processing).
+- [x] 9.2 **JSON structure validation:**
+    - [x] Validate JSON schema before parsing.
+    - [x] Reject deeply nested objects (> 50 levels).
+    - [x] Limit array sizes (e.g., max 10,000 spells per import).
+- [x] 9.3 **Content sanitization:**
+    - [x] Sanitize spell names/descriptions before display.
+    - [x] Strip potentially malicious HTML/scripts.
+    - [x] Validate all URLs in source_refs (allowlist: http, https, mailto; reject javascript:, data:, ipfs:, etc.).
+    - [x] Implement settings key `import.sourceRefUrlPolicy`:
+        - [x] Default `drop-ref`: remove invalid SourceRef, continue importing spell with warning.
+        - [x] Optional `reject-spell`: reject entire spell if any SourceRef URL fails validation.
 
 ## 10. Performance Validation
 - [ ] 10.1 Benchmark vault GC:

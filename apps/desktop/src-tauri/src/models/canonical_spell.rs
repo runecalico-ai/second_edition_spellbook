@@ -30,6 +30,13 @@ pub const BUNDLE_FORMAT_VERSION: i64 = 1;
 /// Keep at 1 for v1→v2 migration compatibility: v1 spells are accepted and migrated,
 /// while version 0 records are expected to be materialized/migrated before validation.
 pub const MIN_SUPPORTED_SCHEMA_VERSION: i64 = 1;
+pub const SPELL_NAME_MAX_CHARS: usize = 256;
+pub const SPELL_DESCRIPTION_MAX_CHARS: usize = 16_384;
+pub const SPELL_AUTHOR_MAX_CHARS: usize = 256;
+pub const SOURCE_REF_SYSTEM_MAX_CHARS: usize = 128;
+pub const SOURCE_REF_BOOK_MAX_CHARS: usize = 512;
+pub const SOURCE_REF_NOTE_MAX_CHARS: usize = 2_048;
+pub const SOURCE_REF_URL_MAX_CHARS: usize = 2_048;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -262,23 +269,22 @@ fn default_version() -> String {
 fn default_zero_string() -> String {
     "0".into()
 }
-/// Returns [`CURRENT_SCHEMA_VERSION`] as the serde default for `schema_version`.
+/// Returns [`MIN_SUPPORTED_SCHEMA_VERSION`] as the serde default for `schema_version`.
 ///
 /// When a `canonical_data` JSON blob lacks a `schema_version` key, serde
 /// deserializes the field to this value. This assumes all serialization paths
 /// always include `schema_version` in the output, so the default only applies
 /// to manually-crafted or externally-imported JSON.
 ///
-/// **Consequence:** a blob missing the key will be treated as already at the
-/// current version, and [`migrate_to_v2()`] (or any future migration) will be
-/// skipped silently.
+/// **Consequence:** a blob missing the key is treated as an oldest-supported
+/// payload and will still flow through normalization-time migration.
 ///
 /// **Important:** Any externally crafted or manually edited JSON that omits
-/// `schema_version` will bypass migration entirely. The DB write path and all
+/// `schema_version` will be treated as schema v1. The DB write path and all
 /// export functions always include `schema_version`, so this only affects
 /// hand-crafted JSON or imports from non-compliant sources.
 fn default_schema_version() -> i64 {
-    CURRENT_SCHEMA_VERSION
+    MIN_SUPPORTED_SCHEMA_VERSION
 }
 
 impl CanonicalSpell {
@@ -579,8 +585,9 @@ impl CanonicalSpell {
 
         let compiled = COMPILED_SCHEMA.get_or_init(|| {
             const SCHEMA_STR: &str = include_str!("../../schemas/spell.schema.json");
-            let schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR)
+            let mut schema = serde_json::from_str::<serde_json::Value>(SCHEMA_STR)
                 .expect("Invalid embedded schema definition");
+            apply_text_field_limits(&mut schema);
             jsonschema::JSONSchema::compile(&schema).expect("Schema compilation error")
         });
 
@@ -618,6 +625,49 @@ impl CanonicalSpell {
 
         Ok(())
     }
+}
+
+fn apply_text_field_limits(schema: &mut serde_json::Value) {
+    set_schema_max_length(schema, "/properties/name", SPELL_NAME_MAX_CHARS);
+    set_schema_max_length(
+        schema,
+        "/properties/description",
+        SPELL_DESCRIPTION_MAX_CHARS,
+    );
+    set_schema_max_length(schema, "/properties/author", SPELL_AUTHOR_MAX_CHARS);
+    set_schema_max_length(
+        schema,
+        "/properties/source_refs/items/properties/system",
+        SOURCE_REF_SYSTEM_MAX_CHARS,
+    );
+    set_schema_max_length(
+        schema,
+        "/properties/source_refs/items/properties/book",
+        SOURCE_REF_BOOK_MAX_CHARS,
+    );
+    set_schema_max_length(
+        schema,
+        "/properties/source_refs/items/properties/note",
+        SOURCE_REF_NOTE_MAX_CHARS,
+    );
+    set_schema_max_length(
+        schema,
+        "/properties/source_refs/items/properties/url",
+        SOURCE_REF_URL_MAX_CHARS,
+    );
+}
+
+fn set_schema_max_length(schema: &mut serde_json::Value, pointer: &str, max_length: usize) {
+    let property = schema
+        .pointer_mut(pointer)
+        .unwrap_or_else(|| panic!("missing schema pointer for text limit: {pointer}"));
+    let object = property
+        .as_object_mut()
+        .unwrap_or_else(|| panic!("schema pointer is not an object: {pointer}"));
+    object.insert(
+        "maxLength".to_string(),
+        serde_json::Value::from(max_length as u64),
+    );
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1064,6 +1114,65 @@ fn parse_comma_list(input: &Option<String>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn normalized_optional_structured_field(value: Option<&str>) -> Option<String> {
+    value.and_then(|raw| {
+        let normalized = normalize_string(raw, NormalizationMode::Structured);
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    })
+}
+
+pub(crate) fn validate_tradition_school_sphere_consistency(
+    spell_name: &str,
+    tradition: &str,
+    school: Option<&str>,
+    sphere: Option<&str>,
+) -> Result<(), String> {
+    let normalized_tradition =
+        normalize_string(tradition, NormalizationMode::Structured).to_uppercase();
+    let normalized_school = normalized_optional_structured_field(school);
+    let normalized_sphere = normalized_optional_structured_field(sphere);
+
+    if normalized_school.is_some() && normalized_sphere.is_some() {
+        return Err(format!(
+            "Spell '{}' is invalid: School and sphere are mutually exclusive.",
+            spell_name
+        ));
+    }
+
+    if normalized_school.is_none() && normalized_sphere.is_none() {
+        return Err(format!(
+            "Spell '{}' is invalid: Must have a School (Arcane) or Sphere (Divine) defined.",
+            spell_name
+        ));
+    }
+
+    match normalized_tradition.as_str() {
+        "ARCANE" => {
+            if normalized_school.is_none() {
+                return Err(format!(
+                    "Spell '{}' is invalid: ARCANE tradition requires a School and forbids Sphere.",
+                    spell_name
+                ));
+            }
+        }
+        "DIVINE" => {
+            if normalized_sphere.is_none() {
+                return Err(format!(
+                    "Spell '{}' is invalid: DIVINE tradition requires a Sphere and forbids School.",
+                    spell_name
+                ));
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
 impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
     type Error = String;
 
@@ -1080,6 +1189,12 @@ impl TryFrom<crate::models::spell::SpellDetail> for CanonicalSpell {
 
         spell.school = detail.school.filter(|s| !s.is_empty());
         spell.sphere = detail.sphere.filter(|s| !s.is_empty());
+        validate_tradition_school_sphere_consistency(
+            &spell.name,
+            &spell.tradition,
+            spell.school.as_deref(),
+            spell.sphere.as_deref(),
+        )?;
         spell.class_list = parse_comma_list(&detail.class_list);
         spell.tags = parse_comma_list(&detail.tags);
 
@@ -3826,6 +3941,25 @@ mod tests {
 
         let _ = spell.normalize(None);
         assert_eq!(spell.schema_version, 2);
+    }
+
+    #[test]
+    fn test_missing_schema_version_defaults_to_min_supported_before_normalize() {
+        let payload = serde_json::json!({
+            "name": "Missing Schema Version",
+            "tradition": "ARCANE",
+            "level": 1,
+            "description": "Desc",
+            "school": "Abjuration"
+        });
+
+        let mut spell: CanonicalSpell =
+            serde_json::from_value(payload).expect("deserialize spell without schema_version");
+
+        assert_eq!(spell.schema_version, MIN_SUPPORTED_SCHEMA_VERSION);
+
+        let _ = spell.normalize(None);
+        assert_eq!(spell.schema_version, CURRENT_SCHEMA_VERSION);
     }
 
     #[test]

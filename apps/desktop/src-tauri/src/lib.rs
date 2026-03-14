@@ -100,6 +100,7 @@ pub fn run() {
             restore_vault,
             get_vault_settings,
             run_vault_integrity_check,
+            set_import_source_ref_url_policy,
             set_vault_integrity_check_on_open,
             optimize_vault,
             export_character_bundle,

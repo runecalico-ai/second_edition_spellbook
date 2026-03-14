@@ -5,6 +5,7 @@ import VaultMaintenanceDialog, {
   formatVaultIntegritySummary,
   formatVaultMaintenanceError,
   optimizeVault,
+  setImportSourceRefUrlPolicy,
   toggleIntegrityCheckOnOpen,
 } from "./VaultMaintenanceDialog";
 import type { VaultIntegritySummary, VaultSettings } from "../../types/vault";
@@ -14,6 +15,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 const invokeMock = vi.mocked(invoke);
+const defaultSettings: VaultSettings = {
+  integrityCheckOnOpen: true,
+  importSourceRefUrlPolicy: "drop-ref",
+};
 
 function createSummary(overrides: Partial<VaultIntegritySummary> = {}): VaultIntegritySummary {
   return {
@@ -32,7 +37,7 @@ describe("VaultMaintenanceDialog", () => {
     const html = renderToStaticMarkup(
       <VaultMaintenanceDialog
         isImportInProgress={true}
-        settings={{ integrityCheckOnOpen: true }}
+        settings={defaultSettings}
         result={null}
       />,
     );
@@ -56,7 +61,10 @@ describe("VaultMaintenanceDialog", () => {
   });
 
   it("toggles integrity-on-open and persists via IPC", async () => {
-    invokeMock.mockResolvedValue({ integrityCheckOnOpen: false } satisfies VaultSettings);
+    invokeMock.mockResolvedValue({
+      integrityCheckOnOpen: false,
+      importSourceRefUrlPolicy: "drop-ref",
+    } satisfies VaultSettings);
 
     const result = await toggleIntegrityCheckOnOpen(false);
 
@@ -64,6 +72,20 @@ describe("VaultMaintenanceDialog", () => {
       enabled: false,
     });
     expect(result.integrityCheckOnOpen).toBe(false);
+  });
+
+  it("persists import SourceRef URL policy via IPC", async () => {
+    invokeMock.mockResolvedValue({
+      integrityCheckOnOpen: true,
+      importSourceRefUrlPolicy: "reject-spell",
+    } satisfies VaultSettings);
+
+    const result = await setImportSourceRefUrlPolicy("reject-spell");
+
+    expect(invokeMock).toHaveBeenCalledWith("set_import_source_ref_url_policy", {
+      policy: "reject-spell",
+    });
+    expect(result.importSourceRefUrlPolicy).toBe("reject-spell");
   });
 
   it("formats integrity summary and unrecoverable results", () => {
@@ -99,7 +121,7 @@ describe("VaultMaintenanceDialog", () => {
     const html = renderToStaticMarkup(
       <VaultMaintenanceDialog
         isImportInProgress={false}
-        settings={{ integrityCheckOnOpen: true }}
+        settings={defaultSettings}
         result={null}
       />,
     );

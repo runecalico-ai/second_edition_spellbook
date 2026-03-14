@@ -65,7 +65,7 @@
 - Verify for audit notes only: `apps/desktop/src-tauri/src/commands/characters.rs`
 - Verify for audit notes only: `apps/desktop/src-tauri/src/commands/spells.rs`
 
-- [ ] **Step 0: Capture baseline backend health**
+- [x] **Step 0: Capture baseline backend health**
 
 Run:
 ```powershell
@@ -77,7 +77,7 @@ cargo test commands::spells::tests -- --nocapture
 
 Expected: existing targeted suites are green before Task 8 changes start.
 
-- [ ] **Step 1: Freeze the current SQL/FTS contract in tests**
+- [x] **Step 1: Freeze the current SQL/FTS contract in tests**
 
 Add targeted tests in `search.rs` that exercise:
 - FTS payload `'; DROP TABLE spell;--`
@@ -85,7 +85,7 @@ Add targeted tests in `search.rs` that exercise:
 - wildcard-heavy LIKE payloads (`%`, `_`, `\\`)
 - advanced query cases that must still bind a single MATCH parameter
 
-- [ ] **Step 2: Run focused backend tests and confirm failures or gaps**
+- [x] **Step 2: Run focused backend tests and confirm failures or gaps**
 
 Run:
 ```powershell
@@ -97,7 +97,7 @@ Expected:
 - Existing escaping tests stay green.
 - New malicious-input tests either fail first or demonstrate any remaining assertion gaps.
 
-- [ ] **Step 3: Tighten query construction only where a real gap exists**
+- [x] **Step 3: Tighten query construction only where a real gap exists**
 
 Keep the current architecture:
 - `spell_fts MATCH ?` must stay a single bound parameter.
@@ -106,11 +106,11 @@ Keep the current architecture:
 
 Only add code changes if tests prove a missing guard or missing explanatory invariant.
 
-- [ ] **Step 4: Add code comments for non-obvious safe dynamic SQL**
+- [x] **Step 4: Add code comments for non-obvious safe dynamic SQL**
 
 Document that the `col` prefix and other interpolated fragments are hardcoded, not user-controlled, so future edits do not regress into string-injected SQL.
 
-- [ ] **Step 5: Re-run focused backend tests**
+- [x] **Step 5: Re-run focused backend tests**
 
 Run:
 ```powershell
@@ -130,7 +130,7 @@ Expected: targeted search tests pass, including malicious-input coverage.
 - Verify only: `apps/desktop/src-tauri/src/commands/vault.rs`
 - Test: `apps/desktop/src-tauri/src/commands/import.rs`
 
-- [ ] **Step 0: Add or confirm import guardrail constants**
+- [x] **Step 0: Add or confirm import guardrail constants**
 
 Define or confirm constants for:
 - hard reject over 100 MB in the backend preview/import path
@@ -140,7 +140,7 @@ Define or confirm constants for:
 
 Prefer one Rust source of truth if the constants are reused across multiple backend paths.
 
-- [ ] **Step 0b: Audit already-implemented URL policy behavior**
+- [x] **Step 0b: Audit already-implemented URL policy behavior**
 
 Before changing code, verify the existing `SourceRef` protections in `import.rs`:
 - protocol allowlist (`http`, `https`, `mailto`)
@@ -149,7 +149,7 @@ Before changing code, verify the existing `SourceRef` protections in `import.rs`
 
 Only add implementation work here if tests expose a real gap.
 
-- [ ] **Step 1: Write failing tests for payload and structure limits**
+- [x] **Step 1: Write failing tests for payload and structure limits**
 
 Add tests for:
 - reject payloads larger than 100 MB
@@ -157,7 +157,7 @@ Add tests for:
 - reject JSON nesting deeper than 50 levels
 - preserve current valid import behavior below the thresholds
 
-- [ ] **Step 2: Run the focused import test subset**
+- [x] **Step 2: Run the focused import test subset**
 
 Run:
 ```powershell
@@ -167,7 +167,7 @@ cargo test commands::import::tests -- --nocapture
 
 Expected: new guardrail tests fail first.
 
-- [ ] **Step 3: Implement backend guardrails before expensive parsing or processing**
+- [x] **Step 3: Implement backend guardrails before expensive parsing or processing**
 
 Implementation targets:
 - Enforce hard reject in the backend using the incoming payload byte length available in `preview_import_spell_json` and the final import execution path.
@@ -176,7 +176,7 @@ Implementation targets:
 - Keep the import order explicit: structure and size checks first, metadata normalization/truncation next, then version/schema validation, migration, hash computation, and dedup/conflict handling.
 - If JSON depth cannot be enforced cleanly with current parsing helpers, isolate that work in a dedicated helper instead of scattering ad hoc recursion checks.
 
-- [ ] **Step 4: Preserve current URL policy and normalization flow**
+- [x] **Step 4: Preserve current URL policy and normalization flow**
 
 Do not regress:
 - `import.sourceRefUrlPolicy`
@@ -184,7 +184,7 @@ Do not regress:
 - schema-version and bundle-version checks
 - deduplication and conflict preview behavior
 
-- [ ] **Step 5: Re-run import tests**
+- [x] **Step 5: Re-run import tests**
 
 Run:
 ```powershell
@@ -205,7 +205,7 @@ Expected: guardrail tests and existing import tests pass together.
 - Test: `apps/desktop/src-tauri/src/commands/import.rs`
 - Test: `apps/desktop/src-tauri/src/commands/spells.rs`
 
-- [ ] **Step 1: Define explicit max-length policy for attacker-controlled text fields**
+- [x] **Step 1: Define explicit max-length policy for attacker-controlled text fields**
 
 Inventory first:
 - read `apps/desktop/src-tauri/schemas/spell.schema.json` and document current string-field constraints
@@ -221,7 +221,7 @@ Decide and encode limits for at least:
 Policy must be consistent across direct spell writes and JSON import.
 Cardinality truncation for `tags` and `source_refs` remains separate from field-width validation; do not silently clip arbitrary text fields unless the spec already mandates truncation.
 
-- [ ] **Step 2: Write failing tests for overlong field rejection**
+- [x] **Step 2: Write failing tests for overlong field rejection**
 
 Add tests proving rejection of excessive field sizes during:
 - import preview / import execution
@@ -233,18 +233,18 @@ Use explicit test names for the high-risk cases, for example:
 - oversized `SourceRef.book` / `SourceRef.note`
 - boundary-value acceptance exactly at the configured maximum
 
-- [ ] **Step 3: Implement validation after normalization/truncation preprocessing**
+- [x] **Step 3: Implement validation after normalization/truncation preprocessing**
 
 Respect Task 8 wording:
 - perform required normalization/truncation first
 - then validate schema and field limits before insert/update
 - return explicit validation errors instead of silent clipping except where the spec already mandates truncation (`tags`, `source_refs`)
 
-- [ ] **Step 4: Keep canonical hashing behavior stable for valid inputs**
+- [x] **Step 4: Keep canonical hashing behavior stable for valid inputs**
 
 Ensure valid spells still normalize, validate, and hash identically after the new limits are introduced.
 
-- [ ] **Step 5: Run targeted backend tests**
+- [x] **Step 5: Run targeted backend tests**
 
 Run:
 ```powershell
@@ -266,7 +266,7 @@ Expected: oversized-field tests pass without breaking existing canonical/hash be
 - Verify only unless required: `services/ml/spellbook_sidecar.py`
 - Test: `apps/desktop/tests/`
 
-- [ ] **Step 0: Implement the 10 MB warning in the frontend before Tauri import preview**
+- [x] **Step 0: Implement the 10 MB warning in the frontend before Tauri import preview**
 
 `preview_import_spell_json` receives the full payload string after the frontend has already read the file, so the user-facing warning must happen in `ImportWizard.tsx` using `File.size` before preview/import is invoked.
 
@@ -275,14 +275,14 @@ Required behavior:
 - confirmation warning above 10 MB
 - backend still performs the hard reject over 100 MB
 
-- [ ] **Step 1: Add failing test coverage for the 10 MB warning path if UX changes are needed**
+- [x] **Step 1: Add failing test coverage for the 10 MB warning path if UX changes are needed**
 
 Extend `apps/desktop/tests/batch_import.spec.ts` unless a new file is clearly cleaner. Add coverage that proves:
 - files above 10 MB trigger a confirmation step
 - files at or below the threshold continue normally
 - boundary behavior is correct at exactly 10 MB and 10 MB + 1 byte
 
-- [ ] **Step 2: Add regression coverage for malicious display strings**
+- [x] **Step 2: Add regression coverage for malicious display strings**
 
 Extend `apps/desktop/tests/batch_import.spec.ts` or `apps/desktop/tests/import_conflict_resolution.spec.ts` with a focused regression that imports or seeds strings such as:
 - `<img src=x onerror=alert(1)>`
@@ -291,18 +291,18 @@ Extend `apps/desktop/tests/batch_import.spec.ts` or `apps/desktop/tests/import_c
 Assert the payload is rendered as text and not executed.
 Also verify there is no unsafe HTML sink in the affected rendering paths before adding any sanitization code.
 
-- [ ] **Step 3: Implement only the required UI delta**
+- [x] **Step 3: Implement only the required UI delta**
 
 Likely implementation:
 - `ImportWizard.tsx` warns for files larger than 10 MB before preview/import.
 
 Do not introduce manual HTML sanitization into normal React text rendering unless an actual unsafe HTML sink is found.
 
-- [ ] **Step 4: Verify export rendering remains escaped**
+- [x] **Step 4: Verify export rendering remains escaped**
 
 Extend `services/ml/tests/test_export.py` if current coverage does not already prove `html_escape()` behavior for spell names/descriptions.
 
-- [ ] **Step 5: Run focused frontend verification**
+- [x] **Step 5: Run focused frontend verification**
 
 Run the smallest relevant set:
 ```powershell
@@ -345,7 +345,7 @@ Expected: warning UX and malicious-string rendering checks pass.
 - Modify: `openspec/changes/integrate-spell-hashing-ecosystem/tasks.md`
 - Review: all files changed by Tasks 1-4
 
-- [ ] **Step 1: Re-read Task 8 and compare each checkbox against the code diff**
+- [x] **Step 1: Re-read Task 8 and compare each checkbox against the code diff**
 
 Checklist:
 - all DB query paths audited or covered by tests
@@ -355,7 +355,7 @@ Checklist:
 - oversized fields are rejected
 - rendering safety is verified
 
-- [ ] **Step 2: Run final targeted verification commands**
+- [x] **Step 2: Run final targeted verification commands**
 
 Run at minimum:
 ```powershell
@@ -390,11 +390,11 @@ cd services/ml
 pytest tests/test_export.py -q
 ```
 
-- [ ] **Step 3: Update the OpenSpec task checklist**
+- [x] **Step 3: Update the OpenSpec task checklist**
 
 Mark Task 8 subtasks complete only after verification output confirms them.
 
-- [ ] **Step 4: Produce final review artifact**
+- [x] **Step 4: Produce final review artifact**
 
 Write a three-pass review note beside the change artifacts summarizing:
 - spec compliance

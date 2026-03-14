@@ -19,8 +19,11 @@ export interface VaultGcSummary {
   integrity: VaultIntegritySummary;
 }
 
+export type SourceRefUrlPolicy = "drop-ref" | "reject-spell";
+
 export interface VaultSettings {
   integrityCheckOnOpen: boolean;
+  importSourceRefUrlPolicy: SourceRefUrlPolicy;
 }
 
 export type VaultMaintenanceResult =

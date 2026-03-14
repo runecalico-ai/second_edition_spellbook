@@ -182,7 +182,7 @@ fn search_keyword_with_conn(
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     // When a text query is present we JOIN spell_fts so that bm25() is available
-    // for relevance ordering.  The `s.` prefix avoids ambiguity on columns that
+    // for relevance ordering. The `s.` prefix avoids ambiguity on columns that
     // exist in both `spell` and `spell_fts` (e.g. `tags`, `source`).
     let mut sql = if has_text_query {
         params.push(Box::new(build_fts_query(query)));
@@ -197,11 +197,8 @@ fn search_keyword_with_conn(
             .to_string()
     };
 
-    // When joining with spell_fts, qualify all spell column references with "s."
-    // to avoid "ambiguous column name" errors. This applies to ALL filter branches below.
-    // IMPORTANT: Every filter column reference must use the `col` prefix. A branch
-    // that omits `col` will compile but fail at runtime with "ambiguous column name"
-    // only when both a text query and that specific filter are active simultaneously.
+    // When joining with spell_fts, qualify all spell column references with `s.`
+    // to avoid ambiguous-column errors while keeping user input bound through `?`.
     let col = if has_text_query { "s." } else { "" };
 
     if let Some(f) = filters {
@@ -286,7 +283,6 @@ fn search_keyword_with_conn(
         }
     }
 
-    // Relevance ranking via bm25 when a text query is present (lower = more relevant).
     if has_text_query {
         sql.push_str(&format!(
             " ORDER BY bm25(spell_fts) ASC LIMIT {SEARCH_RESULT_LIMIT}"
@@ -805,6 +801,14 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_malicious_fts_payload_is_wrapped_as_single_phrase() {
+        assert_eq!(
+            build_fts_query("'; DROP TABLE spell;--"),
+            "\"'; DROP TABLE spell;--\""
+        );
+    }
+
     // -----------------------------------------------------------------------
     // escape_like_value — unit tests
     // -----------------------------------------------------------------------
@@ -1034,6 +1038,290 @@ mod tests {
         assert!(
             !ids.contains(&2),
             "Fire Summoning (Conjuration) should be excluded by the school filter"
+        );
+    }
+
+    #[test]
+    fn test_search_malicious_fts_payload_does_not_mutate_spell_table() {
+        let conn = setup_search_db();
+        insert_spell(&conn, 1, "Fireball", "A blazing orb of fire");
+
+        let ids = search_ids(&conn, "'; DROP TABLE spell;--");
+        assert!(
+            ids.is_empty(),
+            "malicious punctuation-heavy payload should execute safely as a bound MATCH phrase"
+        );
+
+        let row_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(row_count, 1, "spell table must remain intact after search");
+    }
+
+    #[test]
+    fn test_search_malformed_operator_payload_falls_back_to_literal_phrase() {
+        let conn = setup_search_db();
+        insert_spell(&conn, 1, "Literal", "Incantation fire AND OR ice appears verbatim");
+        insert_spell(&conn, 2, "Split Terms", "fire and ice appear separately");
+
+        let ids = search_ids(&conn, "fire AND OR ice");
+        assert!(
+            ids.contains(&1),
+            "malformed operator payload should fall back to a literal phrase search"
+        );
+        assert!(
+            !ids.contains(&2),
+            "fallback phrase search must not behave like an injected boolean expression"
+        );
+    }
+
+    #[test]
+    fn test_search_source_filter_treats_like_wildcards_as_literals() {
+        use super::search_keyword_with_conn;
+        use crate::models::SearchFilters;
+
+        let conn = setup_search_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, source, canonical_data) \
+             VALUES (1, 'Escaped Source', 'Keeps literal wildcards', 'Guild_Archive%Vol\\1', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, source, canonical_data) \
+             VALUES (2, 'Wildcard Decoy', 'Would only match if LIKE wildcards leaked', 'GuildXArchiveYVol1', NULL)",
+            [],
+        )
+        .unwrap();
+
+        let filters = SearchFilters {
+            schools: None,
+            spheres: None,
+            level_min: None,
+            level_max: None,
+            class_list: None,
+            source: Some("Guild_Archive%Vol\\1".to_string()),
+            components: None,
+            tags: None,
+            is_quest_spell: None,
+            is_cantrip: None,
+        };
+
+        let ids: Vec<i64> = search_keyword_with_conn(&conn, "", Some(filters))
+            .unwrap()
+            .into_iter()
+            .map(|spell| spell.id)
+            .collect();
+
+        assert!(
+            ids.contains(&1),
+            "LIKE filter should match the literal %, _, and \\ characters"
+        );
+        assert!(
+            !ids.contains(&2),
+            "LIKE filter must not treat user input wildcards as SQL wildcards"
+        );
+    }
+
+    #[test]
+    fn test_search_advanced_mode_payload_does_not_mutate_spell_table() {
+        let conn = setup_search_db();
+        insert_spell(&conn, 1, "Fireball", "A blazing orb of fire and ice");
+
+        let ids = search_ids(&conn, "fire AND ice'); DROP TABLE spell;--");
+        assert!(
+            ids.is_empty(),
+            "advanced-mode payload should execute safely as bound MATCH input and return no rows"
+        );
+
+        let row_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            row_count, 1,
+            "spell table must remain intact after advanced-mode search payload"
+        );
+    }
+
+    #[test]
+    fn test_search_text_query_with_wildcard_heavy_source_filter_is_safe_on_join_path() {
+        use super::search_keyword_with_conn;
+        use crate::models::SearchFilters;
+
+        let conn = setup_search_db();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, description, source, canonical_data) \
+             VALUES (1, 'Bound Match', 'fire rune ward', 'Guild_Archive%Vol\\1', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, source, canonical_data) \
+             VALUES (2, 'Wildcard Leak Decoy', 'fire rune ward', 'GuildXArchiveYVol1', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, source, canonical_data) \
+             VALUES (3, 'Filter Only Decoy', 'ice rune ward', 'Guild_Archive%Vol\\1', NULL)",
+            [],
+        )
+        .unwrap();
+
+        let filters = SearchFilters {
+            schools: None,
+            spheres: None,
+            level_min: None,
+            level_max: None,
+            class_list: None,
+            source: Some("Guild_Archive%Vol\\1".to_string()),
+            components: None,
+            tags: None,
+            is_quest_spell: None,
+            is_cantrip: None,
+        };
+
+        let ids: Vec<i64> = search_keyword_with_conn(&conn, "fire AND rune", Some(filters))
+            .unwrap()
+            .into_iter()
+            .map(|spell| spell.id)
+            .collect();
+
+        assert!(
+            ids.contains(&1),
+            "combined FTS + LIKE path should match the row with both the text query and literal source"
+        );
+        assert!(
+            !ids.contains(&2),
+            "combined path must not treat %, _, or \\ in the source filter as SQL wildcards"
+        );
+        assert!(
+            !ids.contains(&3),
+            "combined path must still enforce the text query when the JOIN path is active"
+        );
+    }
+
+    #[test]
+    fn test_search_ignores_empty_school_and_sphere_entries_in_filter_lists() {
+        use super::search_keyword_with_conn;
+        use crate::models::SearchFilters;
+
+        let conn = setup_search_db();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, sphere, canonical_data) \
+             VALUES (1, 'Exact Match', 'fire sigil', 'Evocation', 'Combat', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, sphere, canonical_data) \
+             VALUES (2, 'Wrong School', 'fire sigil', 'Conjuration', 'Combat', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, sphere, canonical_data) \
+             VALUES (3, 'Wrong Sphere', 'fire sigil', 'Evocation', 'Healing', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, sphere, canonical_data) \
+             VALUES (4, 'Wrong Both', 'fire sigil', 'Alteration', 'Weather', NULL)",
+            [],
+        )
+        .unwrap();
+
+        let filters = SearchFilters {
+            schools: Some(vec![String::new(), "Evocation".to_string()]),
+            spheres: Some(vec![String::new(), "Combat".to_string()]),
+            level_min: None,
+            level_max: None,
+            class_list: None,
+            source: None,
+            components: None,
+            tags: None,
+            is_quest_spell: None,
+            is_cantrip: None,
+        };
+
+        let ids: Vec<i64> = search_keyword_with_conn(&conn, "fire", Some(filters))
+            .unwrap()
+            .into_iter()
+            .map(|spell| spell.id)
+            .collect();
+
+        assert_eq!(
+            ids,
+            vec![1],
+            "empty school/sphere entries must be ignored instead of expanding the filter with LIKE '%%'"
+        );
+    }
+
+    #[test]
+    fn test_search_text_query_results_preserve_observable_bm25_ordering() {
+        use super::{build_fts_query, search_keyword_with_conn};
+
+        let conn = setup_search_db();
+
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (1, 'Zulu Compact', 'fire rune', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (2, 'Alpha Verbose', 'fire rune ember ember ember ember ember ember ember ember ember ember ember ember', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (3, 'Beta Verbose', 'fire rune cinder cinder cinder cinder cinder cinder cinder cinder cinder cinder cinder cinder cinder cinder cinder cinder', NULL)",
+            [],
+        )
+        .unwrap();
+
+        let match_query = build_fts_query("fire AND rune");
+        let mut stmt = conn
+            .prepare(
+                "SELECT s.id, bm25(spell_fts) AS rank \
+                 FROM spell s \
+                 JOIN spell_fts ON spell_fts.rowid = s.id \
+                 WHERE spell_fts MATCH ? \
+                 ORDER BY rank ASC",
+            )
+            .unwrap();
+        let expected_ids: Vec<i64> = stmt
+            .query_map([match_query], |row| row.get::<_, i64>(0))
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+
+        let alphabetical_ids: Vec<i64> = conn
+            .prepare("SELECT id FROM spell ORDER BY name ASC")
+            .unwrap()
+            .query_map([], |row| row.get::<_, i64>(0))
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+
+        assert_ne!(
+            expected_ids, alphabetical_ids,
+            "test fixture must keep bm25 ordering distinguishable from name ordering"
+        );
+
+        let ids: Vec<i64> = search_keyword_with_conn(&conn, "fire AND rune", None)
+            .unwrap()
+            .into_iter()
+            .map(|spell| spell.id)
+            .collect();
+
+        assert_eq!(ids, expected_ids,
+            "text-query results must match the direct bm25-ranked ordering for the same MATCH term"
         );
     }
 }

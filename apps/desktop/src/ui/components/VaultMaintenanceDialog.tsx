@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useImportActivity } from "../../store/useImportActivity";
 import { useModal } from "../../store/useModal";
 import type {
+  SourceRefUrlPolicy,
   VaultGcSummary,
   VaultIntegritySummary,
   VaultMaintenanceResult,
@@ -34,6 +35,12 @@ export async function optimizeVault(): Promise<VaultGcSummary> {
 
 export async function toggleIntegrityCheckOnOpen(enabled: boolean): Promise<VaultSettings> {
   return invoke<VaultSettings>("set_vault_integrity_check_on_open", { enabled });
+}
+
+export async function setImportSourceRefUrlPolicy(
+  policy: SourceRefUrlPolicy,
+): Promise<VaultSettings> {
+  return invoke<VaultSettings>("set_import_source_ref_url_policy", { policy });
 }
 
 export function formatVaultMaintenanceError(error: unknown, actionLabel: string): string {
@@ -82,7 +89,7 @@ export default function VaultMaintenanceDialog({
   const importInProgressFromStore = useImportActivity((state) => state.isImportInProgress);
   const hideModal = useModal((state) => state.hideModal);
   const [settings, setSettings] = useState<VaultSettings>(
-    settingsOverride ?? { integrityCheckOnOpen: true },
+    settingsOverride ?? { integrityCheckOnOpen: true, importSourceRefUrlPolicy: "drop-ref" },
   );
   const [result, setResult] = useState<VaultMaintenanceResult | null>(resultOverride ?? null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -103,7 +110,7 @@ export default function VaultMaintenanceDialog({
       })
       .catch(() => {
         if (!cancelled) {
-          setSettings({ integrityCheckOnOpen: true });
+          setSettings({ integrityCheckOnOpen: true, importSourceRefUrlPolicy: "drop-ref" });
         }
       });
 

@@ -2,9 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { useImportActivity } from "../store/useImportActivity";
 import { useModal } from "../store/useModal";
+import type { SourceRefUrlPolicy } from "../types/vault";
 import FieldMapper, { type ParsedSpell } from "./FieldMapper";
 import BulkConflictSummaryDialog from "./components/BulkConflictSummaryDialog";
 import SpellConflictDiffDialog from "./components/SpellConflictDiffDialog";
+import {
+  getVaultSettings,
+  setImportSourceRefUrlPolicy,
+} from "./components/VaultMaintenanceDialog";
 import type {
   BulkConflictAction,
   ConflictAction,
@@ -132,6 +137,8 @@ type ImportStep =
   | "json-preview"
   | "resolve-json";
 
+const JSON_IMPORT_WARNING_THRESHOLD_BYTES = 10 * 1024 * 1024;
+
 const STEP_TITLES: Record<ImportStep, string> = {
   select: "1. Select Files",
   preview: "2. Preview",
@@ -189,7 +196,7 @@ export async function runWithImportActivity<T>(work: () => Promise<T>): Promise<
 }
 
 export default function ImportWizard() {
-  const { alert: modalAlert } = useModal();
+  const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const [step, setStep] = useState<ImportStep>("select");
   const [files, setFiles] = useState<File[]>([]);
   const [filePayloads, setFilePayloads] = useState<ImportFile[]>([]);
@@ -216,6 +223,8 @@ export default function ImportWizard() {
   const [jsonConflicts, setJsonConflicts] = useState<HashImportConflict[]>([]);
   const [jsonConflictIndex, setJsonConflictIndex] = useState(0);
   const [jsonResolutions, setJsonResolutions] = useState<HashConflictResolution[]>([]);
+  const [sourceRefUrlPolicy, setSourceRefUrlPolicy] = useState<SourceRefUrlPolicy>("drop-ref");
+  const [isSourceRefUrlPolicySaving, setIsSourceRefUrlPolicySaving] = useState(false);
   const [bulkAction, setBulkAction] = useState<BulkConflictAction | null>(null);
   const loadingRef = useRef(false);
 
@@ -250,6 +259,26 @@ export default function ImportWizard() {
     }
     setConflictSelections(selections);
   }, [spellConflicts]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getVaultSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setSourceRefUrlPolicy(settings.importSourceRefUrlPolicy);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSourceRefUrlPolicy("drop-ref");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setConflictAction = (key: string, action: ConflictSelection["action"]) => {
     setConflictSelections((prev) => {
@@ -440,6 +469,38 @@ export default function ImportWizard() {
     }
   };
 
+  const handleSourceRefUrlPolicyChange = async (nextPolicy: SourceRefUrlPolicy) => {
+    const previousPolicy = sourceRefUrlPolicy;
+    setSourceRefUrlPolicy(nextPolicy);
+    setIsSourceRefUrlPolicySaving(true);
+
+    try {
+      const settings = await setImportSourceRefUrlPolicy(nextPolicy);
+      setSourceRefUrlPolicy(settings.importSourceRefUrlPolicy);
+    } catch (error) {
+      setSourceRefUrlPolicy(previousPolicy);
+      await modalAlert(`Import URL policy update failed: ${error}`, "Settings Error", "error");
+    } finally {
+      setIsSourceRefUrlPolicySaving(false);
+    }
+  };
+
+  const confirmLargeJsonPreview = async (file: File): Promise<boolean> => {
+    if (file.size <= JSON_IMPORT_WARNING_THRESHOLD_BYTES) {
+      return true;
+    }
+
+    const sizeInMegabytes = (file.size / (1024 * 1024)).toFixed(2);
+    return modalConfirm(
+      [
+        `${file.name} is ${sizeInMegabytes} MB and exceeds the 10 MB preview warning threshold.`,
+        "Previewing a large JSON import may take longer.",
+        "Files over 100 MB are still rejected by the backend.",
+      ],
+      "Large Import Warning",
+    );
+  };
+
   const goToJsonPreview = async () => {
     if (files.length === 0) return;
     try {
@@ -447,10 +508,15 @@ export default function ImportWizard() {
         await runWithImportActivity(async () => {
           const jsonFile = files.find((f) => f.name.toLowerCase().endsWith(".json"));
           if (!jsonFile) return;
+          const shouldContinue = await confirmLargeJsonPreview(jsonFile);
+          if (!shouldContinue) {
+            return;
+          }
           const text = await jsonFile.text();
           setJsonPayload(text);
           const preview = await invoke<HashPreviewResult>("preview_import_spell_json", {
             payload: text,
+            sourceRefUrlPolicy,
           });
           setJsonPreviewResult(preview);
           setStep("json-preview");
@@ -468,6 +534,7 @@ export default function ImportWizard() {
         await runWithImportActivity(async () => {
           const result = await invoke<HashImportResult>("import_spell_json", {
             payload: jsonPayload,
+              sourceRefUrlPolicy,
           });
           setJsonImportResult(result);
           if (result.conflicts.length === 0) {
@@ -512,6 +579,7 @@ export default function ImportWizard() {
           }));
           const result = await invoke<HashImportResult>("resolve_import_spell_json", {
             payload: jsonPayload,
+            sourceRefUrlPolicy,
             resolveOptions: {
               resolutions,
               defaultAction: null,
@@ -555,6 +623,7 @@ export default function ImportWizard() {
         await runWithImportActivity(async () => {
           const result = await invoke<HashImportResult>("resolve_import_spell_json", {
             payload: jsonPayload,
+            sourceRefUrlPolicy,
             resolveOptions: {
               resolutions: allResolutions,
               defaultAction: null,
@@ -735,6 +804,31 @@ export default function ImportWizard() {
       {/* Step 1: Select Files */}
       {step === "select" && (
         <div className="space-y-4">
+          <div className="rounded-md border border-neutral-800 bg-neutral-900/40 p-3">
+            <label
+              className="mb-2 block text-sm font-medium text-neutral-200"
+              htmlFor="source-ref-url-policy"
+            >
+              Invalid SourceRef URL handling
+            </label>
+            <select
+              id="source-ref-url-policy"
+              data-testid="select-source-ref-url-policy"
+              value={sourceRefUrlPolicy}
+              disabled={loading || isSourceRefUrlPolicySaving}
+              onChange={(event) => {
+                void handleSourceRefUrlPolicyChange(event.target.value as SourceRefUrlPolicy);
+              }}
+              className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+            >
+              <option value="drop-ref">Drop invalid SourceRef entries and continue</option>
+              <option value="reject-spell">Reject the spell if any SourceRef URL is invalid</option>
+            </select>
+            <p className="mt-2 text-xs text-neutral-500" data-testid="source-ref-url-policy-help">
+              Saved to vault settings and reused for future JSON imports.
+            </p>
+          </div>
+
           <input
             type="file"
             multiple

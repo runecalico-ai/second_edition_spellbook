@@ -1,6 +1,6 @@
 use crate::commands::spells::{
     apply_spell_update_with_conn, canonicalize_spell_detail, diff_spells, get_spell_from_conn,
-    log_changes,
+    log_changes, validate_epic_and_quest_spells,
 };
 use crate::commands::vault::{
     run_vault_gc_with_root, write_spell_json_atomically, VaultMaintenanceState,
@@ -8,7 +8,8 @@ use crate::commands::vault::{
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::{
-    CanonicalSpell, SourceRef, BUNDLE_FORMAT_VERSION, CURRENT_SCHEMA_VERSION,
+    validate_tradition_school_sphere_consistency, CanonicalSpell, SourceRef,
+    BUNDLE_FORMAT_VERSION, CURRENT_SCHEMA_VERSION,
 };
 use crate::models::{
     ConflictsResolved, DuplicatesSkipped, ImportArtifact, ImportConflict, ImportConflictField,
@@ -24,10 +25,12 @@ use dirs::data_dir as system_data_dir;
 use regex::Regex;
 use rusqlite::params;
 use rusqlite::OptionalExtension;
+use serde::de::{self, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+use std::fmt;
 use std::sync::Arc;
 use tracing::warn;
 
@@ -37,9 +40,153 @@ use tauri::State;
 
 const MAX_TAGS: usize = 100;
 const MAX_SOURCE_REFS: usize = 50;
+const MAX_IMPORT_PAYLOAD_BYTES: usize = 100 * 1024 * 1024;
+const MAX_IMPORT_BUNDLE_SPELLS: usize = 10_000;
+const MAX_IMPORT_JSON_DEPTH: usize = 50;
 
 /// Allowed URL schemes for SourceRef (import allowlist). Rejects javascript:, data:, ipfs:, etc.
 const ALLOWED_URL_SCHEMES: &[&str] = &["http", "https", "mailto"];
+
+fn validate_import_payload_size(payload: &str) -> Result<(), AppError> {
+    let payload_bytes = payload.len();
+    if payload_bytes > MAX_IMPORT_PAYLOAD_BYTES {
+        return Err(AppError::Import(format!(
+            "Import payload exceeds 100 MB limit ({} bytes)",
+            payload_bytes
+        )));
+    }
+    Ok(())
+}
+
+fn validate_import_json_depth(payload: &str) -> Result<(), AppError> {
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for ch in payload.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' | '[' => {
+                depth += 1;
+                if depth > MAX_IMPORT_JSON_DEPTH {
+                    return Err(AppError::Import(format!(
+                        "Import JSON nesting depth exceeds limit of {}",
+                        MAX_IMPORT_JSON_DEPTH
+                    )));
+                }
+            }
+            '}' | ']' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_import_payload_guardrails(payload: &str) -> Result<(), AppError> {
+    validate_import_payload_size(payload)?;
+    validate_import_json_depth(payload)?;
+    Ok(())
+}
+
+struct SpellCountSeed;
+
+impl<'de> de::DeserializeSeed<'de> for SpellCountSeed {
+    type Value = usize;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(SpellCountVisitor)
+    }
+}
+
+struct SpellCountVisitor;
+
+impl<'de> Visitor<'de> for SpellCountVisitor {
+    type Value = usize;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a spells array")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut count = 0usize;
+        while (seq.next_element::<IgnoredAny>()?).is_some() {
+            count += 1;
+            if count > MAX_IMPORT_BUNDLE_SPELLS {
+                return Err(de::Error::custom(format!(
+                    "Bundle exceeds maximum of 10,000 spells (received more than {})",
+                    MAX_IMPORT_BUNDLE_SPELLS
+                )));
+            }
+        }
+        Ok(count)
+    }
+}
+
+struct TopLevelBundleSpellCountVisitor;
+
+impl<'de> Visitor<'de> for TopLevelBundleSpellCountVisitor {
+    type Value = Option<usize>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a top-level import payload object")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut spell_count = None;
+
+        while let Some(key) = map.next_key::<String>()? {
+            if key == "spells" {
+                spell_count = Some(map.next_value_seed(SpellCountSeed)?);
+            } else {
+                let _: IgnoredAny = map.next_value()?;
+            }
+        }
+
+        Ok(spell_count)
+    }
+}
+
+fn validate_import_bundle_spell_count(payload: &str) -> Result<(), AppError> {
+    let mut deserializer = serde_json::Deserializer::from_str(payload);
+    let spell_count = deserializer
+        .deserialize_any(TopLevelBundleSpellCountVisitor)
+        .map_err(|e| AppError::Import(format!("Invalid JSON: {}", e)))?;
+
+    if let Some(count) = spell_count {
+        if count > MAX_IMPORT_BUNDLE_SPELLS {
+            return Err(AppError::Import(format!(
+                "Bundle exceeds maximum of 10,000 spells (received {})",
+                count
+            )));
+        }
+    }
+
+    Ok(())
+}
 
 /// Validates a SourceRef URL: allowlist http, https, mailto; rejects javascript, data, ipfs, and any other protocol.
 pub fn validate_source_ref_url(url: &str) -> bool {
@@ -192,6 +339,8 @@ fn normalize_truncate_metadata(spell: &mut CanonicalSpell) {
 /// Bundle: requires bundle_format_version; rejects if missing or > supported; rejects if spells not array.
 /// Returns flat list of CanonicalSpell (one for single, or bundle.spells for bundle).
 fn parse_and_classify_payload(payload: &str) -> Result<Vec<CanonicalSpell>, AppError> {
+    validate_import_bundle_spell_count(payload)?;
+
     let value: serde_json::Value = serde_json::from_str(payload)
         .map_err(|e| AppError::Import(format!("Invalid JSON: {}", e)))?;
 
@@ -319,12 +468,30 @@ fn process_spell(spell: &mut CanonicalSpell) -> Result<(String, Vec<String>), Ap
     check_schema_version_warn(spell, &mut warnings);
 
     let imported_hash = spell.id.take().filter(|s| !s.is_empty());
+    validate_tradition_school_sphere_consistency(
+        &spell.name,
+        &spell.tradition,
+        spell.school.as_deref(),
+        spell.sphere.as_deref(),
+    )
+    .map_err(AppError::Import)?;
     let res = spell.normalize(None);
     if res.notes_truncated {
         return Err(AppError::Import(
             "Saving throw notes truncated during migration (exceeded limit)".into(),
         ));
     }
+    let class_list = if spell.class_list.is_empty() {
+        None
+    } else {
+        Some(spell.class_list.join(", "))
+    };
+    validate_epic_and_quest_spells(
+        spell.level,
+        &class_list,
+        spell.is_quest_spell.unwrap_or(0) != 0,
+        spell.is_cantrip.unwrap_or(0) != 0,
+    )?;
     let hash = spell
         .compute_hash()
         .map_err(|e| AppError::Import(format!("Hash/validation: {}", e)))?;
@@ -345,6 +512,7 @@ pub async fn preview_import_spell_json(
     payload: String,
     source_ref_url_policy: Option<String>,
 ) -> Result<PreviewImportSpellJsonResult, AppError> {
+    validate_import_payload_guardrails(&payload)?;
     let policy = parse_source_ref_url_policy(source_ref_url_policy.as_deref());
     let mut spells = parse_and_classify_payload(&payload)?;
     let mut global_warnings = Vec::new();
@@ -864,11 +1032,11 @@ fn apply_import_spell_json_impl(
 
     let mut tx = conn.unchecked_transaction().map_err(AppError::Database)?;
 
-    for item in items {
-        let content_hash = item.content_hash.clone();
-        let name = item.spell.name.clone();
-
+    for mut item in items {
         let res = (|| -> Result<(), AppError> {
+            let (content_hash, _warnings) = process_spell(&mut item.spell)?;
+            item.content_hash = content_hash.clone();
+            let name = item.spell.name.clone();
             let sp = tx.savepoint().map_err(AppError::Database)?;
 
             // 1) Already seen this hash in this batch → merge into that row only (no new insert).
@@ -2606,6 +2774,46 @@ mod tests {
         )
     }
 
+    fn payload_with_exact_bytes(target_bytes: usize) -> String {
+        let prefix = "{\"name\":\"Sized\",\"tradition\":\"ARCANE\",\"level\":1,\"description\":\"X\",\"school\":\"Abjuration\",\"artifacts\":[{\"id\":1,\"type\":\"source\",\"path\":\"";
+        let suffix = "\",\"hash\":\"artifact-hash\"}]}";
+        let path_len = target_bytes
+            .checked_sub(prefix.len() + suffix.len())
+            .expect("target bytes must fit minimal json envelope");
+        format!("{prefix}{}{suffix}", "a".repeat(path_len))
+    }
+
+    fn bundle_payload_with_spell_count(count: usize) -> String {
+        let spells: Vec<String> = (0..count)
+            .map(|index| minimal_spell_json(&format!("Spell {index}")))
+            .collect();
+        format!(
+            r#"{{"bundle_format_version":1,"spells":[{}]}}"#,
+            spells.join(",")
+        )
+    }
+
+    fn payload_with_total_json_depth(total_depth: usize) -> String {
+        assert!(total_depth >= 1, "json depth must be at least 1");
+        let mut nested = "null".to_string();
+        for _ in 1..total_depth {
+            nested = format!("[{nested}]");
+        }
+        format!(
+            r#"{{"name":"Depth","tradition":"ARCANE","level":1,"description":"X","school":"Abjuration","artifacts":{nested}}}"#
+        )
+    }
+
+    fn repeated_text(len: usize) -> String {
+        "x".repeat(len)
+    }
+
+    fn url_with_length(len: usize) -> String {
+        let prefix = "https://example.com/";
+        assert!(len >= prefix.len(), "url length must include scheme prefix");
+        format!("{prefix}{}", "u".repeat(len - prefix.len()))
+    }
+
     fn setup_import_apply_test_db() -> Connection {
         let conn = Connection::open_in_memory().expect("open in-memory sqlite");
         conn.execute(
@@ -2895,6 +3103,27 @@ mod tests {
     }
 
     #[test]
+    fn test_process_spell_rejects_tradition_inconsistent_school_sphere_without_rewriting() {
+        let mut spell = test_spell("Malformed Import", 1, "Desc");
+        spell.sphere = Some("Combat".to_string());
+
+        let err = process_spell(&mut spell).expect_err(
+            "import processing should reject mutually exclusive school/sphere instead of normalizing them away",
+        );
+
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            spell.sphere.as_deref(),
+            Some("Combat"),
+            "rejected import payload must not be silently rewritten"
+        );
+        assert_eq!(spell.id, None, "rejected import should not stamp a content hash");
+    }
+
+    #[test]
     fn test_validate_source_ref_url_allowed() {
         assert!(validate_source_ref_url("http://example.com"));
         assert!(validate_source_ref_url("https://example.com/path"));
@@ -2974,6 +3203,336 @@ mod tests {
             result.spells[0].spell.source_refs[0].url.as_deref(),
             Some("https://example.com/ref")
         );
+    }
+
+    #[test]
+    fn test_preview_rejects_payload_larger_than_100_mb() {
+        let payload = payload_with_exact_bytes((100 * 1024 * 1024) + 1);
+
+        let err = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
+            .expect_err("payloads over 100 MB should be rejected");
+
+        assert!(err.to_string().contains("100 MB"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_preview_accepts_payload_just_below_100_mb() {
+        let payload = payload_with_exact_bytes((100 * 1024 * 1024) - 1);
+
+        let result = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
+            .expect("payload just below 100 MB should be accepted");
+
+        assert_eq!(result.spells.len(), 1);
+        assert!(result.failures.is_empty(), "unexpected failures: {:?}", result.failures);
+    }
+
+    #[test]
+    fn test_preview_accepts_payload_exactly_100_mb() {
+        let payload = payload_with_exact_bytes(100 * 1024 * 1024);
+
+        let result = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
+            .expect("payload at exactly 100 MB should be accepted");
+
+        assert_eq!(result.spells.len(), 1);
+        assert!(result.failures.is_empty(), "unexpected failures: {:?}", result.failures);
+    }
+
+    #[test]
+    fn test_preview_import_rejects_oversized_top_level_text_fields() {
+        let cases = [
+            (
+                "name",
+                json!({
+                    "name": repeated_text(257),
+                    "tradition": "ARCANE",
+                    "level": 1,
+                    "description": "X",
+                    "school": "Abjuration"
+                }),
+                "/name",
+            ),
+            (
+                "description",
+                json!({
+                    "name": "Oversized Description",
+                    "tradition": "ARCANE",
+                    "level": 1,
+                    "description": repeated_text(16_385),
+                    "school": "Abjuration"
+                }),
+                "/description",
+            ),
+            (
+                "author",
+                json!({
+                    "name": "Oversized Author",
+                    "tradition": "ARCANE",
+                    "level": 1,
+                    "description": "X",
+                    "school": "Abjuration",
+                    "author": repeated_text(257)
+                }),
+                "/author",
+            ),
+        ];
+
+        for (field_name, payload, expected_path) in cases {
+            let result = tauri::async_runtime::block_on(preview_import_spell_json(
+                payload.to_string(),
+                None,
+            ))
+            .expect("preview should classify oversized fields as failures");
+
+            assert!(result.spells.is_empty(), "{field_name} should be rejected before preview output");
+            assert_eq!(result.failures.len(), 1, "{field_name} should produce exactly one failure");
+            assert!(
+                result.failures[0].reason.contains(expected_path),
+                "expected {field_name} failure to mention {expected_path}, got: {}",
+                result.failures[0].reason
+            );
+        }
+    }
+
+    #[test]
+    fn test_preview_import_rejects_oversized_source_ref_text_fields() {
+        let cases = [
+            (
+                "system",
+                json!({
+                    "name": "Oversized SourceRef System",
+                    "tradition": "ARCANE",
+                    "level": 1,
+                    "description": "X",
+                    "school": "Abjuration",
+                    "sourceRefs": [{
+                        "system": repeated_text(129),
+                        "book": "PHB"
+                    }]
+                }),
+                "/source_refs/0/system",
+            ),
+            (
+                "book",
+                json!({
+                    "name": "Oversized SourceRef Book",
+                    "tradition": "ARCANE",
+                    "level": 1,
+                    "description": "X",
+                    "school": "Abjuration",
+                    "sourceRefs": [{
+                        "system": "AD&D 2e",
+                        "book": repeated_text(513)
+                    }]
+                }),
+                "/source_refs/0/book",
+            ),
+            (
+                "note",
+                json!({
+                    "name": "Oversized SourceRef Note",
+                    "tradition": "ARCANE",
+                    "level": 1,
+                    "description": "X",
+                    "school": "Abjuration",
+                    "sourceRefs": [{
+                        "system": "AD&D 2e",
+                        "book": "PHB",
+                        "note": repeated_text(2_049)
+                    }]
+                }),
+                "/source_refs/0/note",
+            ),
+            (
+                "url",
+                json!({
+                    "name": "Oversized SourceRef Url",
+                    "tradition": "ARCANE",
+                    "level": 1,
+                    "description": "X",
+                    "school": "Abjuration",
+                    "sourceRefs": [{
+                        "system": "AD&D 2e",
+                        "book": "PHB",
+                        "url": url_with_length(2_049)
+                    }]
+                }),
+                "/source_refs/0/url",
+            ),
+        ];
+
+        for (field_name, payload, expected_path) in cases {
+            let result = tauri::async_runtime::block_on(preview_import_spell_json(
+                payload.to_string(),
+                None,
+            ))
+            .expect("preview should classify oversized SourceRef fields as failures");
+
+            assert!(result.spells.is_empty(), "{field_name} should not survive preview");
+            assert_eq!(result.failures.len(), 1, "{field_name} should produce exactly one failure");
+            assert!(
+                result.failures[0].reason.contains(expected_path),
+                "expected {field_name} failure to mention {expected_path}, got: {}",
+                result.failures[0].reason
+            );
+        }
+    }
+
+    #[test]
+    fn test_import_accepts_exact_boundary_text_fields() {
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
+
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+        let maintenance_state = VaultMaintenanceState::default();
+
+        let mut spell = CanonicalSpell::new(
+            repeated_text(256),
+            2,
+            "ARCANE".to_string(),
+            repeated_text(16_384),
+        );
+        spell.school = Some("Abjuration".to_string());
+        spell.author = Some(repeated_text(256));
+        spell.source_refs = vec![SourceRef {
+            system: Some(repeated_text(128)),
+            book: repeated_text(512),
+            page: None,
+            note: Some(repeated_text(2_048)),
+            url: Some(url_with_length(2_048)),
+        }];
+
+        let preview = tauri::async_runtime::block_on(preview_import_spell_json(
+            serde_json::to_string(&spell).expect("serialize boundary spell"),
+            None,
+        ))
+        .expect("preview should accept exact-boundary spell");
+
+        assert_eq!(preview.spells.len(), 1);
+        assert!(preview.failures.is_empty(), "unexpected preview failures: {:?}", preview.failures);
+
+        let result = apply_import_spell_json_with_maintenance(
+            &conn,
+            temp_dir.path(),
+            &maintenance_state,
+            preview.spells,
+            None,
+        )
+        .expect("import should accept exact-boundary spell");
+
+        assert_eq!(result.imported_count, 1);
+        assert!(result.failures.is_empty(), "unexpected import failures: {:?}", result.failures);
+    }
+
+    #[test]
+    fn test_apply_import_rejects_oversized_top_level_text_fields_on_execution_path() {
+        let conn = setup_import_apply_test_db();
+
+        let oversized_item = PreviewSpellJsonItem {
+            spell: CanonicalSpell {
+                name: repeated_text(257),
+                tradition: "ARCANE".to_string(),
+                level: 1,
+                description: "Valid description".to_string(),
+                school: Some("Abjuration".to_string()),
+                version: "2.0.0".to_string(),
+                ..Default::default()
+            },
+            content_hash: "a".repeat(64),
+            warnings: vec![],
+        };
+
+        let result = apply_import_spell_json_impl(&conn, vec![oversized_item], None)
+            .expect("execution path should classify oversized fields as failures");
+
+        assert_eq!(result.imported_count, 0);
+        assert_eq!(result.failures.len(), 1);
+        assert!(
+            result.failures[0].reason.contains("/name"),
+            "unexpected failure: {}",
+            result.failures[0].reason
+        );
+
+        let spell_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("query spell count");
+        assert_eq!(spell_count, 0, "rejected import must not insert a row");
+    }
+
+    #[test]
+    fn test_apply_import_rejects_epic_divine_spell_on_execution_path() {
+        let conn = setup_import_apply_test_db();
+
+        let invalid_item = PreviewSpellJsonItem {
+            spell: CanonicalSpell {
+                name: "Improper Epic Priest Spell".to_string(),
+                tradition: "ARCANE".to_string(),
+                level: 10,
+                description: "Should be rejected by shared business rules".to_string(),
+                school: Some("Abjuration".to_string()),
+                class_list: vec!["Priest".to_string()],
+                version: "2.0.0".to_string(),
+                ..Default::default()
+            },
+            content_hash: "b".repeat(64),
+            warnings: vec![],
+        };
+
+        let result = apply_import_spell_json_impl(&conn, vec![invalid_item], None)
+            .expect("execution path should classify shared rule violations as failures");
+
+        assert_eq!(result.imported_count, 0);
+        assert_eq!(result.failures.len(), 1);
+        assert!(
+            result.failures[0]
+                .reason
+                .contains("restricted to Arcane casters"),
+            "unexpected failure: {}",
+            result.failures[0].reason
+        );
+
+        let spell_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("query spell count");
+        assert_eq!(spell_count, 0, "invalid import must not insert a row");
+    }
+
+    #[test]
+    fn test_parse_and_classify_payload_rejects_bundle_larger_than_10000_spells() {
+        let payload = bundle_payload_with_spell_count(10_001);
+
+        let err = parse_and_classify_payload(&payload)
+            .expect_err("bundles over 10,000 spells should be rejected");
+
+        assert!(err.to_string().contains("10,000"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_parse_and_classify_payload_accepts_bundle_with_10000_spells() {
+        let payload = bundle_payload_with_spell_count(10_000);
+
+        let spells = parse_and_classify_payload(&payload)
+            .expect("bundle at 10,000 spells should be accepted");
+
+        assert_eq!(spells.len(), 10_000);
+    }
+
+    #[test]
+    fn test_preview_rejects_json_nesting_deeper_than_50_levels() {
+        let payload = payload_with_total_json_depth(51);
+
+        let err = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
+            .expect_err("json deeper than 50 levels should be rejected");
+
+        assert!(err.to_string().contains("depth"), "unexpected error: {err}");
+        assert!(err.to_string().contains("50"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn test_validate_import_json_depth_accepts_50_levels() {
+        let payload = payload_with_total_json_depth(50);
+
+        validate_import_json_depth(&payload).expect("json at 50 levels should be accepted");
     }
     #[test]
     fn test_is_duplicate_source_ref() {

@@ -18,6 +18,7 @@ import { generateRunId, getTestDirname } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 const __dirname = getTestDirname(import.meta.url);
+const LARGE_IMPORT_WARNING_THRESHOLD_BYTES = 10 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Bundle helpers
@@ -48,6 +49,33 @@ function writeSpellBundle(filePath: string, spells: ReturnType<typeof makeSpell>
   return filePath;
 }
 
+function buildSizedSpellBundle(targetBytes: number, overrides?: Partial<ReturnType<typeof makeSpell>>) {
+  const spell = {
+    ...makeSpell("SizedBundle", "", 3),
+    ...overrides,
+  };
+  const bundle = {
+    bundle_format_version: 1,
+    spells: [spell],
+  };
+  const basePayload = JSON.stringify(bundle);
+  const descriptionBytes = targetBytes - Buffer.byteLength(basePayload, "utf-8");
+
+  if (descriptionBytes < 0) {
+    throw new Error(`Target size ${targetBytes} is smaller than base payload ${basePayload.length}`);
+  }
+
+  spell.description = "x".repeat(descriptionBytes);
+  const payload = JSON.stringify(bundle);
+  const payloadBytes = Buffer.byteLength(payload, "utf-8");
+
+  if (payloadBytes !== targetBytes) {
+    throw new Error(`Expected payload to be ${targetBytes} bytes, got ${payloadBytes}`);
+  }
+
+  return payload;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers shared across file — create + import an initial version of a spell
 // so a conflict exists on the second import.
@@ -64,6 +92,142 @@ async function seedSpellInDb(app: SpellbookApp, name: string, description: strin
 test.describe("JSON Import Conflict Resolution", () => {
   test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
   test.slow();
+
+  test("json preview: exactly 10 MB proceeds without warning", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const payload = buildSizedSpellBundle(LARGE_IMPORT_WARNING_THRESHOLD_BYTES);
+
+    await test.step("Open import wizard with exact-threshold bundle", async () => {
+      await app.resetImportWizard();
+      await page.getByTestId("import-file-input").setInputFiles({
+        name: "exact-threshold.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(payload, "utf-8"),
+      });
+
+      await expect(page.getByText("exact-threshold.json")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Preview continues directly to JSON preview", async () => {
+      await page.getByRole("button", { name: "Preview →" }).click();
+
+      await expect(page.getByTestId("modal-dialog")).not.toBeVisible();
+      await expect(page.getByTestId("btn-import-json")).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+  });
+
+  test("json preview: 10 MB + 1 byte requires confirmation before preview", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const payload = buildSizedSpellBundle(LARGE_IMPORT_WARNING_THRESHOLD_BYTES + 1);
+
+    await test.step("Open import wizard with oversized-warning bundle", async () => {
+      await app.resetImportWizard();
+      await page.getByTestId("import-file-input").setInputFiles({
+        name: "warning-threshold.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(payload, "utf-8"),
+      });
+
+      await expect(page.getByText("warning-threshold.json")).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Preview stops on confirmation modal", async () => {
+      await page.getByRole("button", { name: "Preview →" }).click();
+
+      await expect(page.getByTestId("modal-dialog")).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(page.getByTestId("modal-dialog")).toContainText("10 MB");
+    });
+
+    await test.step("Confirming resumes the normal JSON preview flow", async () => {
+      await page.getByTestId("modal-button-confirm").click();
+      await expect(page.getByTestId("btn-import-json")).toBeVisible({ timeout: TIMEOUTS.medium });
+    });
+  });
+
+  test("json import: malicious strings render as text without injected elements", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const maliciousName = `<img src=x onerror=alert(1)>_${runId}`;
+    const maliciousDescription = `<script>alert(1)</script> Imported ${runId}`;
+
+    await test.step("Preview shows malicious strings as plain text", async () => {
+      const tmpDir = path.join(__dirname, `tmp/xss_${runId}`);
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      writeSpellBundle(jsonPath, [makeSpell(maliciousName, maliciousDescription)]);
+
+      await app.resetImportWizard();
+      await page.getByTestId("import-file-input").setInputFiles(jsonPath);
+      await page.getByRole("button", { name: "Preview →" }).click();
+
+      await expect(page.getByTestId("btn-import-json")).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(page.locator('img[src="x"]')).toHaveCount(0);
+      await expect(page.locator("script").filter({ hasText: "alert(1)" })).toHaveCount(0);
+    });
+
+    await test.step("Imported spell remains literal in library and editor views", async () => {
+      await page.getByTestId("btn-import-json").click();
+      await expect(page.getByTestId("btn-import-more")).toBeVisible({ timeout: TIMEOUTS.long });
+
+      await app.openSpell(maliciousName);
+      await expect(page.getByTestId("spell-name-input")).toHaveValue(maliciousName);
+      await expect(page.getByTestId("spell-description-textarea")).toHaveValue(
+        maliciousDescription,
+      );
+      await expect(page.locator('img[src="x"]')).toHaveCount(0);
+      await expect(page.locator("script").filter({ hasText: "alert(1)" })).toHaveCount(0);
+    });
+  });
+
+  test("json preview: persisted reject-spell policy blocks invalid SourceRef URLs", async ({
+    appContext,
+    fileTracker,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const tmpDir = path.join(__dirname, `tmp/policy_${runId}`);
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+
+    writeSpellBundle(jsonPath, [
+      {
+        ...makeSpell(`BadUrl_${runId}`, "Bundle with invalid SourceRef URL"),
+        source_refs: [{ book: "PHB", url: "javascript:alert(1)" }],
+      },
+    ]);
+
+    await test.step("Persist reject-spell policy in the import wizard", async () => {
+      await app.resetImportWizard();
+      await page.getByTestId("select-source-ref-url-policy").selectOption("reject-spell");
+
+      await app.navigate("Library");
+      await app.navigate("Import");
+
+      await expect(page.getByTestId("select-source-ref-url-policy")).toHaveValue(
+        "reject-spell",
+      );
+    });
+
+    await test.step("Preview rejects spells with invalid SourceRef URLs", async () => {
+      await page.getByTestId("import-file-input").setInputFiles(jsonPath);
+      await page.getByRole("button", { name: "Preview →" }).click();
+
+      await expect(page.getByText("1 spell(s) failed validation")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.locator("text=/invalid SourceRef URL/i").first()).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByTestId("btn-import-json")).toBeDisabled();
+    });
+  });
 
   // ─── Test 1: Per-conflict — Keep Existing ──────────────────────────────
   test("per-conflict: Keep Existing preserves original spell", async ({

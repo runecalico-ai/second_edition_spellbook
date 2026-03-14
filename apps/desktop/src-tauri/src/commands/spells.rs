@@ -32,7 +32,7 @@ fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<()
     Ok(())
 }
 
-fn validate_epic_and_quest_spells(
+pub(crate) fn validate_epic_and_quest_spells(
     level: i64,
     class_list: &Option<String>,
     is_quest_spell: bool,
@@ -501,6 +501,18 @@ pub fn canonicalize_spell_detail(
             "Saving throw notes truncated during migration (exceeded 2048 characters)".into(),
         ));
     }
+
+    let class_list = if canonical.class_list.is_empty() {
+        None
+    } else {
+        Some(canonical.class_list.join(", "))
+    };
+    validate_epic_and_quest_spells(
+        canonical.level,
+        &class_list,
+        canonical.is_quest_spell.unwrap_or(0) != 0,
+        canonical.is_cantrip.unwrap_or(0) != 0,
+    )?;
 
     let hash = canonical
         .compute_hash()
@@ -1039,6 +1051,10 @@ mod tests {
     use crate::commands::vault::VaultTestEnvGuard;
     use rusqlite::Connection;
 
+    fn repeated_text(len: usize) -> String {
+        "x".repeat(len)
+    }
+
     #[test]
     fn test_get_spell_from_conn_loads_artifact_by_content_hash_when_hash_set() {
         let conn = setup_get_spell_artifact_test_db();
@@ -1241,6 +1257,111 @@ mod tests {
         assert!(validate_epic_and_quest_spells(10, &Some("Wizard".into()), false, false).is_ok());
         assert!(validate_epic_and_quest_spells(10, &Some("Mage".into()), false, false).is_ok());
         assert!(validate_epic_and_quest_spells(10, &Some("Priest".into()), false, false).is_err());
+    }
+
+    #[test]
+    fn test_canonicalize_spell_detail_rejects_mutually_exclusive_school_and_sphere() {
+        let detail = SpellDetail {
+            name: "Mutually Exclusive".to_string(),
+            level: 1,
+            description: "Invalid direct-write payload".to_string(),
+            school: Some("Abjuration".to_string()),
+            sphere: Some("Combat".to_string()),
+            ..Default::default()
+        };
+
+        let err = canonicalize_spell_detail(detail)
+            .expect_err("direct writes should reject school/sphere combinations that import rejects");
+
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_canonicalize_spell_detail_rejects_oversized_direct_write_text_fields() {
+        let cases = [
+            (
+                "name",
+                SpellDetail {
+                    name: repeated_text(257),
+                    level: 1,
+                    description: "Valid description".to_string(),
+                    school: Some("Abjuration".to_string()),
+                    ..Default::default()
+                },
+                "/name",
+            ),
+            (
+                "description",
+                SpellDetail {
+                    name: "Oversized Description".to_string(),
+                    level: 1,
+                    description: repeated_text(16_385),
+                    school: Some("Abjuration".to_string()),
+                    ..Default::default()
+                },
+                "/description",
+            ),
+            (
+                "source",
+                SpellDetail {
+                    name: "Oversized Source".to_string(),
+                    level: 1,
+                    description: "Valid description".to_string(),
+                    school: Some("Abjuration".to_string()),
+                    source: Some(repeated_text(513)),
+                    ..Default::default()
+                },
+                "/source_refs/0/book",
+            ),
+            (
+                "author",
+                SpellDetail {
+                    name: "Oversized Author".to_string(),
+                    level: 1,
+                    description: "Valid description".to_string(),
+                    school: Some("Abjuration".to_string()),
+                    author: Some(repeated_text(257)),
+                    ..Default::default()
+                },
+                "/author",
+            ),
+        ];
+
+        for (field_name, detail, expected_path) in cases {
+            let err = canonicalize_spell_detail(detail)
+                .expect_err("oversized direct-write fields should be rejected");
+            let message = err.to_string();
+            assert!(
+                message.contains(expected_path),
+                "expected {field_name} error to mention {expected_path}, got: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_canonicalize_spell_detail_accepts_exact_boundary_direct_write_text_fields() {
+        let detail = SpellDetail {
+            name: repeated_text(256),
+            level: 3,
+            description: repeated_text(16_384),
+            school: Some("Abjuration".to_string()),
+            source: Some(repeated_text(512)),
+            author: Some(repeated_text(256)),
+            ..Default::default()
+        };
+
+        let (canonical, hash, _json) =
+            canonicalize_spell_detail(detail).expect("exact-boundary direct-write spell should validate");
+
+        assert_eq!(canonical.name.len(), 256);
+        assert_eq!(canonical.description.len(), 16_384);
+        assert_eq!(canonical.author.as_deref().map(str::len), Some(256));
+        assert_eq!(canonical.source_refs.len(), 1, "direct source should map into a single source_ref");
+        assert_eq!(canonical.source_refs[0].book.len(), 512);
+        assert_eq!(hash.len(), 64, "hash should still be computed for valid boundary input");
     }
 
     /// Minimal schema for get_spell_from_conn artifact read-path tests (spell + artifact only).
@@ -1643,5 +1764,74 @@ mod tests {
         assert_eq!(class_hash, old_hash);
         assert_eq!(artifact_hash, old_hash);
         assert_eq!(change_log_count, 0);
+    }
+
+    #[test]
+    fn test_apply_spell_update_with_conn_rejects_oversized_direct_write_source() {
+        let conn = setup_spell_update_test_db();
+        let initial_detail = SpellDetail {
+            id: Some(1),
+            name: "Oversized Source Update".to_string(),
+            level: 2,
+            description: "Original description".to_string(),
+            school: Some("Abjuration".to_string()),
+            ..Default::default()
+        };
+        let (canonical, hash, json) =
+            canonicalize_spell_detail(initial_detail.clone()).expect("canonicalize initial spell");
+        conn.execute(
+            "INSERT INTO spell (
+                id, name, school, sphere, class_list, level, range, components, material_components,
+                casting_time, duration, area, saving_throw, reversible, description, tags, source,
+                edition, author, license, is_quest_spell, is_cantrip, damage, magic_resistance,
+                schema_version, canonical_data, content_hash
+             ) VALUES (
+                1, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, NULL, NULL,
+                NULL, NULL, NULL, 0, 0, NULL, NULL, ?, ?, ?
+             )",
+            rusqlite::params![
+                initial_detail.name,
+                initial_detail.school,
+                initial_detail.level,
+                initial_detail.description,
+                canonical.schema_version,
+                json,
+                hash,
+            ],
+        )
+        .expect("seed spell row");
+
+        let update = SpellUpdate {
+            id: 1,
+            name: "Oversized Source Update".to_string(),
+            level: 2,
+            description: "Original description".to_string(),
+            school: Some("Abjuration".to_string()),
+            source: Some(repeated_text(513)),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            ..Default::default()
+        };
+
+        let err = apply_spell_update_with_conn(&conn, &update)
+            .expect_err("oversized update source should be rejected");
+        assert!(
+            err.to_string().contains("/source_refs/0/book"),
+            "unexpected error: {err}"
+        );
+
+        let stored_source: Option<String> = conn
+            .query_row("SELECT source FROM spell WHERE id = 1", [], |row| row.get(0))
+            .expect("query source after rejected update");
+        let change_log_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM change_log WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query change log count");
+
+        assert_eq!(stored_source, None, "rejected update must not persist source text");
+        assert_eq!(change_log_count, 0, "rejected update must roll back change log writes");
     }
 }

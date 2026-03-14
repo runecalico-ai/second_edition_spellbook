@@ -65,3 +65,30 @@ def test_handle_export_invalid_format(tmp_path):
     params = {"spells": [], "format": "exe", "output_dir": str(tmp_path)}
     with pytest.raises(ValueError, match="Unsupported export format"):
         handle_export(params)
+
+
+def test_handle_export_html_escapes_spell_name_and_description(tmp_path):
+    spells = [
+        {
+            "name": '<img src=x onerror=alert(1)>',
+            "description": '<script>alert(1)</script> dangerous',
+            "level": 3,
+            "school": "Evocation",
+        }
+    ]
+    params = {
+        "spells": spells,
+        "format": "html",
+        "mode": "single",
+        "layout": "stat-block",
+        "output_dir": str(tmp_path),
+    }
+
+    result = handle_export(params)
+
+    assert result["format"] == "html"
+    content = Path(result["path"]).read_text()
+    assert "&lt;img src=x onerror=alert(1)&gt;" in content
+    assert "&lt;script&gt;alert(1)&lt;/script&gt; dangerous" in content
+    assert '<img src=x onerror=alert(1)>' not in content
+    assert '<script>alert(1)</script>' not in content

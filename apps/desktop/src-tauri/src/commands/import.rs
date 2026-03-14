@@ -2441,6 +2441,61 @@ pub async fn resolve_import_conflicts(
     Ok(result)
 }
 
+/// Resolves the spell ID and artifact path for a given artifact row.
+///
+/// Uses `artifact.spell_content_hash` as the primary identifier (hash-first) and falls back
+/// to `artifact.spell_id` during the migration period before `spell_id` is officially dropped.
+///
+/// Returns `AppError::NotFound` when neither column resolves to a live spell.
+fn resolve_artifact_spell_id(
+    conn: &rusqlite::Connection,
+    artifact_id: i64,
+) -> Result<(i64, String), AppError> {
+    let has_hash_col = table_has_column(conn, "artifact", "spell_content_hash");
+
+    let (db_spell_id, db_spell_hash, path): (Option<i64>, Option<String>, String) =
+        if has_hash_col {
+            conn.query_row(
+                "SELECT spell_id, spell_content_hash, path FROM artifact WHERE id = ?",
+                [artifact_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .map_err(AppError::Database)?
+        } else {
+            conn.query_row(
+                "SELECT spell_id, path FROM artifact WHERE id = ?",
+                [artifact_id],
+                |row| Ok((row.get::<_, Option<i64>>(0)?, None::<String>, row.get(1)?)),
+            )
+            .map_err(AppError::Database)?
+        };
+
+    // Hash-first: look up spell.id by content_hash; fall back to spell_id (migration period).
+    // When spell_id is dropped: remove the `.or(db_spell_id)` fallback arm.
+    let spell_id = if let Some(hash) = db_spell_hash {
+        let found: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM spell WHERE content_hash = ?",
+                [hash.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        found.or(db_spell_id).ok_or_else(|| {
+            AppError::NotFound(
+                "The spell referenced by this artifact is no longer in the library".into(),
+            )
+        })?
+    } else {
+        db_spell_id.ok_or_else(|| {
+            AppError::NotFound(
+                "The spell referenced by this artifact is no longer in the library".into(),
+            )
+        })?
+    };
+
+    Ok((spell_id, path))
+}
+
 #[tauri::command]
 pub async fn reparse_artifact(
     state: State<'_, Arc<Pool>>,
@@ -2452,14 +2507,7 @@ pub async fn reparse_artifact(
         let pool = pool.clone();
         tokio::task::spawn_blocking(move || {
             let conn = pool.get()?;
-            let row: (i64, String) = conn
-                .query_row(
-                    "SELECT spell_id, path FROM artifact WHERE id = ?",
-                    [artifact_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .map_err(AppError::Database)?;
-            Ok::<_, AppError>(row)
+            resolve_artifact_spell_id(&conn, artifact_id)
         })
         .await
         .map_err(|e| AppError::Unknown(e.to_string()))??
@@ -2481,7 +2529,7 @@ pub async fn reparse_artifact(
         })
         .await
         .map_err(|e| AppError::Unknown(e.to_string()))??
-        .ok_or_else(|| AppError::NotFound("Original spell not found".to_string()))?
+        .ok_or_else(|| AppError::NotFound("The spell referenced by this artifact is no longer in the library".to_string()))?
     };
 
     let result = call_sidecar("import", json!({"files": [artifact_path]})).await?;
@@ -4246,5 +4294,118 @@ mod tests {
             msg.contains("Keep Both"),
             "error should suggest Keep Both action, got: {msg}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_artifact_spell_id tests
+    // -----------------------------------------------------------------------
+
+    fn setup_resolve_artifact_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL DEFAULT '',
+                level INTEGER NOT NULL DEFAULT 1,
+                description TEXT NOT NULL DEFAULT '',
+                content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER,
+                spell_content_hash TEXT,
+                path TEXT NOT NULL,
+                type TEXT NOT NULL DEFAULT 'source',
+                hash TEXT NOT NULL DEFAULT 'h',
+                imported_at TEXT NOT NULL DEFAULT '2026-01-01T00:00:00Z'
+            );",
+        )
+        .expect("create test schema");
+        conn
+    }
+
+    #[test]
+    fn test_resolve_artifact_spell_id_by_hash() {
+        let conn = setup_resolve_artifact_db();
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (42, 'hash-xyz')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, spell_content_hash, path) VALUES (1, NULL, 'hash-xyz', 'a.md')",
+            [],
+        )
+        .expect("insert artifact with hash only");
+
+        let (spell_id, path) = resolve_artifact_spell_id(&conn, 1).expect("resolve ok");
+        assert_eq!(spell_id, 42, "should resolve spell_id from hash");
+        assert_eq!(path, "a.md");
+    }
+
+    #[test]
+    fn test_resolve_artifact_spell_id_hash_fallback_to_spell_id() {
+        // Hash set but no matching spell row → fall back to spell_id column
+        let conn = setup_resolve_artifact_db();
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (7, 'different-hash')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, spell_content_hash, path) VALUES (1, 7, 'stale-hash', 'b.md')",
+            [],
+        )
+        .expect("insert artifact with stale hash but valid spell_id");
+
+        let (spell_id, path) = resolve_artifact_spell_id(&conn, 1).expect("resolve ok");
+        assert_eq!(spell_id, 7, "should fall back to spell_id when hash not found");
+        assert_eq!(path, "b.md");
+    }
+
+    #[test]
+    fn test_resolve_artifact_spell_id_not_found_returns_error() {
+        // Neither hash nor spell_id resolves to an existing spell
+        let conn = setup_resolve_artifact_db();
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, spell_content_hash, path) VALUES (1, NULL, 'orphan-hash', 'c.md')",
+            [],
+        )
+        .expect("insert orphaned artifact");
+
+        let result = resolve_artifact_spell_id(&conn, 1);
+        assert!(
+            matches!(result, Err(AppError::NotFound(_))),
+            "should return NotFound when spell is gone"
+        );
+    }
+
+    #[test]
+    fn test_resolve_artifact_spell_id_legacy_no_hash_column() {
+        // Old schema without spell_content_hash column — uses spell_id directly
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER,
+                path TEXT NOT NULL
+            );",
+        )
+        .expect("create legacy schema");
+        conn.execute("INSERT INTO spell (id, content_hash) VALUES (5, 'h')", [])
+            .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (id, spell_id, path) VALUES (1, 5, 'legacy.md')",
+            [],
+        )
+        .expect("insert legacy artifact");
+
+        let (spell_id, path) = resolve_artifact_spell_id(&conn, 1).expect("resolve ok");
+        assert_eq!(spell_id, 5);
+        assert_eq!(path, "legacy.md");
     }
 }

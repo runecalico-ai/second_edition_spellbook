@@ -118,16 +118,16 @@
 
 ## 7. Character Integration
 
-> **Note:** Character Integration and Spell List Integration (above) both operate on the `character_class_spell` table. The split reflects different UI contexts (character sheet vs. class spell management) but the underlying DB migration is shared (Migration 0015). Tasks below focus on the character-sheet UI behavior.
+> **Note:** Character Integration and Spell List Integration (above) both operate on the `character_class_spell` table.
 
-- [ ] 7.1 Update Character Spellbook:
-    - [ ] Reference spells by `content_hash` (pinned version).
-    - [ ] If that hash is missing from the library:
-        - [ ] Show "Spell no longer in library" placeholder.
-        - [ ] Provide "Remove" action to clear the broken reference.
-    - [ ] Implement explicit spell upgrade:
-        - [ ] When character references Hash A and Hash B exists for the same spell name, offer "Upgrade" action.
-        - [ ] On upgrade, update `spell_content_hash` from Hash A to Hash B.
+- [x] 7.1 Update Character Spellbook:
+    - [x] Reference spells by `content_hash` (pinned version).
+    - [x] If that hash is missing from the library:
+        - [x] Show "Spell no longer in library" placeholder.
+        - [x] Provide "Remove" action to clear the broken reference.
+    - [x] Implement explicit spell upgrade:
+        - [x] When character references Hash A and Hash B exists for the same spell name, offer "Upgrade" action.
+        - [x] On upgrade, update `spell_content_hash` from Hash A to Hash B.
 
 ## Security Review
 ### 8. SQL Injection & Input Validation

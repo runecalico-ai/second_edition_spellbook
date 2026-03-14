@@ -200,6 +200,30 @@ fn remove_character_spell_by_hash_with_conn(
     Ok(())
 }
 
+/// Sync helper: update all character_class_spell rows for a class from old_hash to new_hash.
+/// Updates both KNOWN and PREPARED list types in one statement.
+fn upgrade_character_class_spell_with_conn(
+    conn: &Connection,
+    character_class_id: i64,
+    old_hash: &str,
+    new_spell_id: i64,
+    new_hash: &str,
+) -> Result<(), AppError> {
+    let updated = conn.execute(
+        "UPDATE character_class_spell \
+         SET spell_content_hash = ?, spell_id = ? \
+         WHERE character_class_id = ? AND spell_content_hash = ?",
+        params![new_hash, new_spell_id, character_class_id, old_hash],
+    )?;
+    if updated == 0 {
+        return Err(AppError::Unknown(format!(
+            "No character spell entries found with hash {} in class {}",
+            old_hash, character_class_id
+        )));
+    }
+    Ok(())
+}
+
 /// Sync helper: validate PREPARED-known rule and upsert. Used by add_character_spell command and tests.
 fn add_character_spell_with_conn(
     conn: &Connection,
@@ -760,6 +784,30 @@ pub async fn remove_character_spell_by_hash(
 }
 
 #[tauri::command]
+pub async fn upgrade_character_class_spell(
+    state: State<'_, Arc<Pool>>,
+    character_class_id: i64,
+    old_hash: String,
+    new_spell_id: i64,
+    new_hash: String,
+) -> Result<(), AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        upgrade_character_class_spell_with_conn(
+            &conn,
+            character_class_id,
+            &old_hash,
+            new_spell_id,
+            &new_hash,
+        )
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn update_character_spell_notes(
     state: State<'_, Arc<Pool>>,
     character_class_id: i64,
@@ -911,6 +959,53 @@ pub async fn test_seed_character_with_orphan_spell(
             params![character_class_id],
         )?;
         conn.execute("PRAGMA foreign_keys=ON", [])?;
+        Ok::<(), AppError>(())
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+    Ok(())
+}
+
+/// Test-only: seeds a character with one Mage class and one known spell (spell_content_hash set,
+/// matching spell row with spell_name and spell_hash_a) for E2E upgrade scenario tests.
+/// Only use in E2E tests.
+#[tauri::command]
+pub async fn test_seed_character_with_upgradeable_spell(
+    state: State<'_, Arc<Pool>>,
+    character_name: String,
+    spell_name: String,
+    spell_hash_a: String,
+) -> Result<(), AppError> {
+    let pool = state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        if !table_has_column(&conn, "character_class_spell", "spell_content_hash") {
+            return Err(AppError::Unknown(
+                "test_seed_character_with_upgradeable_spell requires spell_content_hash column (Migration 0015)"
+                    .to_string(),
+            ));
+        }
+        conn.execute(
+            "INSERT INTO spell (name, level, description, content_hash, is_quest_spell, is_cantrip) \
+             VALUES (?, 1, 'Test spell for upgrade scenario', ?, 0, 0)",
+            params![spell_name, spell_hash_a],
+        )?;
+        let spell_id_a = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO \"character\" (name, type, notes) VALUES (?, 'PC', NULL)",
+            params![character_name],
+        )?;
+        let character_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO character_class (character_id, class_name, class_label, level) VALUES (?, 'Mage', NULL, 1)",
+            params![character_id],
+        )?;
+        let class_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) \
+             VALUES (?, ?, 'KNOWN', NULL, ?)",
+            params![class_id, spell_id_a, spell_hash_a],
+        )?;
         Ok::<(), AppError>(())
     })
     .await
@@ -1188,6 +1283,67 @@ mod tests {
             spells[0].available_upgrade_hash.is_none(),
             "no upgrade for missing spells"
         );
+    }
+
+    #[test]
+    fn test_upgrade_character_class_spell_updates_hash_and_spell_id() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (1, 'hash-old'), (2, 'hash-new')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) \
+             VALUES (10, 1, 'KNOWN', NULL, 'hash-old')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) \
+             VALUES (10, 1, 'PREPARED', NULL, 'hash-old')",
+            [],
+        )
+        .unwrap();
+
+        upgrade_character_class_spell_with_conn(&conn, 10, "hash-old", 2, "hash-new")
+            .expect("upgrade should succeed");
+
+        let hashes: Vec<String> = conn
+            .prepare("SELECT spell_content_hash FROM character_class_spell WHERE character_class_id = 10 ORDER BY list_type")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            hashes,
+            vec!["hash-new", "hash-new"],
+            "both KNOWN and PREPARED rows should be upgraded to new hash"
+        );
+
+        let spell_ids: Vec<i64> = conn
+            .prepare("SELECT spell_id FROM character_class_spell WHERE character_class_id = 10 ORDER BY list_type")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(spell_ids, vec![2, 2], "both rows should point to new spell_id");
+    }
+
+    #[test]
+    fn test_upgrade_character_class_spell_errors_on_missing_hash() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (1, 'hash-old')",
+            [],
+        )
+        .unwrap();
+        // No character_class_spell row with 'hash-old'
+
+        let result = upgrade_character_class_spell_with_conn(&conn, 10, "hash-old", 1, "hash-new");
+        assert!(result.is_err(), "should fail when no rows match old_hash");
     }
 
     /// Integration-style test: orphan spell_content_hash (no matching spell) returns one entry

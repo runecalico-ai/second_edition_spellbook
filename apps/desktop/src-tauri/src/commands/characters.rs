@@ -33,7 +33,21 @@ fn get_character_class_spells_with_conn(
                         ccs.notes,
                         s.tags,
                         ccs.spell_content_hash,
-                        CASE WHEN s.id IS NULL AND ccs.spell_content_hash IS NOT NULL THEN 1 ELSE 0 END AS missing_from_library
+                        CASE WHEN s.id IS NULL AND ccs.spell_content_hash IS NOT NULL THEN 1 ELSE 0 END AS missing_from_library,
+                        CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
+                            (SELECT s2.content_hash FROM spell s2
+                             WHERE s2.name = s.name
+                               AND s2.content_hash != ccs.spell_content_hash
+                               AND s2.content_hash IS NOT NULL
+                             ORDER BY s2.id DESC LIMIT 1)
+                        ELSE NULL END AS available_upgrade_hash,
+                        CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
+                            (SELECT s2.id FROM spell s2
+                             WHERE s2.name = s.name
+                               AND s2.content_hash != ccs.spell_content_hash
+                               AND s2.content_hash IS NOT NULL
+                             ORDER BY s2.id DESC LIMIT 1)
+                        ELSE NULL END AS available_upgrade_spell_id
                  FROM character_class_spell ccs
                  LEFT JOIN spell s ON
                     (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
@@ -52,7 +66,21 @@ fn get_character_class_spells_with_conn(
                         ccs.notes,
                         s.tags,
                         ccs.spell_content_hash,
-                        CASE WHEN s.id IS NULL AND ccs.spell_content_hash IS NOT NULL THEN 1 ELSE 0 END AS missing_from_library
+                        CASE WHEN s.id IS NULL AND ccs.spell_content_hash IS NOT NULL THEN 1 ELSE 0 END AS missing_from_library,
+                        CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
+                            (SELECT s2.content_hash FROM spell s2
+                             WHERE s2.name = s.name
+                               AND s2.content_hash != ccs.spell_content_hash
+                               AND s2.content_hash IS NOT NULL
+                             ORDER BY s2.id DESC LIMIT 1)
+                        ELSE NULL END AS available_upgrade_hash,
+                        CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
+                            (SELECT s2.id FROM spell s2
+                             WHERE s2.name = s.name
+                               AND s2.content_hash != ccs.spell_content_hash
+                               AND s2.content_hash IS NOT NULL
+                             ORDER BY s2.id DESC LIMIT 1)
+                        ELSE NULL END AS available_upgrade_spell_id
                  FROM character_class_spell ccs
                  LEFT JOIN spell s ON
                     (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
@@ -65,7 +93,7 @@ fn get_character_class_spells_with_conn(
             )
         };
         let mut stmt = conn.prepare(&query)?;
-        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), map_row_14)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), map_row_16)?;
         let mut out = vec![];
         for row in rows {
             out.push(row?);
@@ -109,7 +137,7 @@ fn get_character_class_spells_with_conn(
     }
 }
 
-fn map_row_14(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSpellbookEntry> {
+fn map_row_16(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSpellbookEntry> {
     Ok(CharacterSpellbookEntry {
         character_id: row.get(0)?,
         spell_id: row.get(1)?,
@@ -125,6 +153,8 @@ fn map_row_14(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSpellbookEnt
         tags: row.get(11)?,
         spell_content_hash: row.get(12)?,
         missing_from_library: row.get::<_, i64>(13)? != 0,
+        available_upgrade_hash: row.get(14)?,
+        available_upgrade_spell_id: row.get(15)?,
     })
 }
 
@@ -144,6 +174,8 @@ fn map_row_12(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSpellbookEnt
         tags: row.get(11)?,
         spell_content_hash: None,
         missing_from_library: false,
+        available_upgrade_hash: None,
+        available_upgrade_spell_id: None,
     })
 }
 
@@ -806,6 +838,8 @@ pub async fn get_character_spellbook(
                 tags: row.get(10)?,
                 spell_content_hash: None,
                 missing_from_library: false,
+                available_upgrade_hash: None,
+                available_upgrade_spell_id: None,
             })
         })?;
 
@@ -1023,6 +1057,137 @@ mod tests {
             )
             .expect("count rows");
         assert_eq!(count, 1, "exactly one row must remain for this triple");
+    }
+
+    #[test]
+    fn test_get_character_class_spells_detects_available_upgrade() {
+        // Setup: spell A (hash-a) in character list, spell B (same name, hash-b) in library
+        let conn = setup_character_spell_test_db(true);
+        conn.execute_batch(
+            "ALTER TABLE spell ADD COLUMN name TEXT;
+             ALTER TABLE spell ADD COLUMN level INTEGER;
+             ALTER TABLE spell ADD COLUMN school TEXT;
+             ALTER TABLE spell ADD COLUMN sphere TEXT;
+             ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE spell ADD COLUMN is_cantrip INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE spell ADD COLUMN tags TEXT;",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, content_hash, name, level, school, sphere, is_quest_spell, is_cantrip) \
+             VALUES (1, 'hash-a', 'Fireball', 3, 'Evocation', NULL, 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, content_hash, name, level, school, sphere, is_quest_spell, is_cantrip) \
+             VALUES (2, 'hash-b', 'Fireball', 3, 'Evocation', NULL, 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) \
+             VALUES (99, 1, 'KNOWN', NULL, 'hash-a')",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS character_class (id INTEGER PRIMARY KEY, character_id INTEGER NOT NULL, class_name TEXT, class_label TEXT, level INTEGER);
+             INSERT INTO character_class (id, character_id, class_name, level) VALUES (99, 7, 'Mage', 5);
+             CREATE TABLE IF NOT EXISTS \"character\" (id INTEGER PRIMARY KEY, name TEXT);
+             INSERT INTO \"character\" (id, name) VALUES (7, 'TestChar');",
+        )
+        .unwrap();
+
+        let spells = get_character_class_spells_with_conn(&conn, 99, None).unwrap();
+        assert_eq!(spells.len(), 1);
+        assert_eq!(spells[0].spell_name, "Fireball");
+        assert_eq!(spells[0].spell_content_hash.as_deref(), Some("hash-a"));
+        assert_eq!(
+            spells[0].available_upgrade_hash.as_deref(),
+            Some("hash-b"),
+            "upgrade should point to hash-b (the other Fireball version)"
+        );
+        assert_eq!(spells[0].available_upgrade_spell_id, Some(2));
+        assert!(!spells[0].missing_from_library);
+    }
+
+    #[test]
+    fn test_get_character_class_spells_no_upgrade_when_single_version() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute_batch(
+            "ALTER TABLE spell ADD COLUMN name TEXT;
+             ALTER TABLE spell ADD COLUMN level INTEGER;
+             ALTER TABLE spell ADD COLUMN school TEXT;
+             ALTER TABLE spell ADD COLUMN sphere TEXT;
+             ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE spell ADD COLUMN is_cantrip INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE spell ADD COLUMN tags TEXT;",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, content_hash, name, level, school, sphere, is_quest_spell, is_cantrip) \
+             VALUES (1, 'hash-only', 'Magic Missile', 1, 'Evocation', NULL, 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) \
+             VALUES (88, 1, 'KNOWN', NULL, 'hash-only')",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS character_class (id INTEGER PRIMARY KEY, character_id INTEGER NOT NULL, class_name TEXT, class_label TEXT, level INTEGER);
+             INSERT INTO character_class (id, character_id, class_name, level) VALUES (88, 6, 'Mage', 3);
+             CREATE TABLE IF NOT EXISTS \"character\" (id INTEGER PRIMARY KEY, name TEXT);
+             INSERT INTO \"character\" (id, name) VALUES (6, 'SoloChar');",
+        )
+        .unwrap();
+
+        let spells = get_character_class_spells_with_conn(&conn, 88, None).unwrap();
+        assert_eq!(spells.len(), 1);
+        assert!(
+            spells[0].available_upgrade_hash.is_none(),
+            "no upgrade should be available when only one version exists"
+        );
+        assert!(spells[0].available_upgrade_spell_id.is_none());
+    }
+
+    #[test]
+    fn test_get_character_class_spells_no_upgrade_for_missing_spell() {
+        let conn = setup_character_spell_test_db(true);
+        conn.execute_batch(
+            "ALTER TABLE spell ADD COLUMN name TEXT;
+             ALTER TABLE spell ADD COLUMN level INTEGER;
+             ALTER TABLE spell ADD COLUMN school TEXT;
+             ALTER TABLE spell ADD COLUMN sphere TEXT;
+             ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE spell ADD COLUMN is_cantrip INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE spell ADD COLUMN tags TEXT;",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) \
+             VALUES (77, 0, 'KNOWN', NULL, 'orphan-hash')",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS character_class (id INTEGER PRIMARY KEY, character_id INTEGER NOT NULL, class_name TEXT, class_label TEXT, level INTEGER);
+             INSERT INTO character_class (id, character_id, class_name, level) VALUES (77, 5, 'Mage', 1);
+             CREATE TABLE IF NOT EXISTS \"character\" (id INTEGER PRIMARY KEY, name TEXT);
+             INSERT INTO \"character\" (id, name) VALUES (5, 'OrphanChar');",
+        )
+        .unwrap();
+
+        let spells = get_character_class_spells_with_conn(&conn, 77, None).unwrap();
+        assert_eq!(spells.len(), 1);
+        assert!(spells[0].missing_from_library, "should be marked missing");
+        assert!(
+            spells[0].available_upgrade_hash.is_none(),
+            "no upgrade for missing spells"
+        );
     }
 
     /// Integration-style test: orphan spell_content_hash (no matching spell) returns one entry

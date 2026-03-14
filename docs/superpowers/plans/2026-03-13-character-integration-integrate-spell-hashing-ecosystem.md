@@ -1,6 +1,6 @@
 # Character Integration Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Complete Task 7 of `integrate-spell-hashing-ecosystem` so character spellbook entries offer an explicit "Upgrade" action when a newer version of the same-name spell is in the library.
 
@@ -49,11 +49,11 @@
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/models/character.rs:85-100`
 
-- [ ] **Step 1: Read the current model**
+- [x] **Step 1: Read the current model**
 
 Read `apps/desktop/src-tauri/src/models/character.rs` lines 82–100 to confirm the current struct fields before editing.
 
-- [ ] **Step 2: Add 2 new fields to `CharacterSpellbookEntry`**
+- [x] **Step 2: Add 2 new fields to `CharacterSpellbookEntry`**
 
 Add after `missing_from_library: bool,`:
 
@@ -88,7 +88,7 @@ pub struct CharacterSpellbookEntry {
 }
 ```
 
-- [ ] **Step 3: Verify compilation will fail (expected)**
+- [x] **Step 3: Verify compilation will fail (expected)**
 
 Run: `cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml`
 
@@ -101,7 +101,7 @@ Expected: **Compilation errors** — `map_row_14` and `map_row_12` do not popula
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/characters.rs:21-148`
 
-- [ ] **Step 1: Write failing test for upgrade detection**
+- [x] **Step 1: Write failing test for upgrade detection**
 
 In the `#[cfg(test)]` block (around line 887 in `characters.rs`), add:
 
@@ -226,7 +226,7 @@ Run: `cargo test characters:: --manifest-path apps/desktop/src-tauri/Cargo.toml 
 
 Expected: FAIL — `available_upgrade_hash` and `available_upgrade_spell_id` are not yet populated.
 
-- [ ] **Step 2: Rename `map_row_14` to `map_row_16` and update its column reads**
+- [x] **Step 2: Rename `map_row_14` to `map_row_16` and update its column reads**
 
 Find `fn map_row_14` (around line 112) and replace it with `map_row_16` that reads 16 columns:
 
@@ -278,7 +278,7 @@ fn map_row_12(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSpellbookEnt
 }
 ```
 
-- [ ] **Step 3: Update the hash-path SQL query to include upgrade detection columns**
+- [x] **Step 3: Update the hash-path SQL query to include upgrade detection columns**
 
 In `get_character_class_spells_with_conn`, find the two SQL string literals (the one with `list_type` filter and the one without). Both must be updated. Replace the column list in both queries.
 
@@ -375,7 +375,7 @@ Update the `query_map` call to use `map_row_16`:
 let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), map_row_16)?;
 ```
 
-- [ ] **Step 4: Run tests to verify detection works**
+- [x] **Step 4: Run tests to verify detection works**
 
 Run: `cargo test characters:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 
@@ -383,7 +383,7 @@ Expected: All existing tests PASS. The 3 new upgrade tests PASS.
 
 If any existing test fails, it's because `setup_character_spell_test_db` doesn't create the `character_class` or `"character"` tables — adjust the new tests to match the existing test schema helper exactly (or add the character/class rows within the new tests as shown above).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/models/character.rs apps/desktop/src-tauri/src/commands/characters.rs
@@ -398,7 +398,7 @@ git commit -m "feat: extend CharacterSpellbookEntry with upgrade detection field
 - Modify: `apps/desktop/src-tauri/src/commands/characters.rs` (append commands)
 - Modify: `apps/desktop/src-tauri/src/lib.rs` (register 2 new commands)
 
-- [ ] **Step 1: Write failing test for upgrade command**
+- [x] **Step 1: Write failing test for upgrade command**
 
 In the `#[cfg(test)]` block, add:
 
@@ -462,7 +462,7 @@ Run: `cargo test test_upgrade_character_class_spell --manifest-path apps/desktop
 
 Expected: FAIL — `upgrade_character_class_spell_with_conn` does not exist yet.
 
-- [ ] **Step 2: Implement `upgrade_character_class_spell_with_conn` sync helper**
+- [x] **Step 2: Implement `upgrade_character_class_spell_with_conn` sync helper**
 
 Add after `remove_character_spell_by_hash_with_conn` (around line 169):
 
@@ -492,7 +492,7 @@ fn upgrade_character_class_spell_with_conn(
 }
 ```
 
-- [ ] **Step 3: Add the Tauri command**
+- [x] **Step 3: Add the Tauri command**
 
 Add after the `remove_character_spell_by_hash` command (around line 728):
 
@@ -522,7 +522,7 @@ pub async fn upgrade_character_class_spell(
 }
 ```
 
-- [ ] **Step 4: Add the E2E seed helper command**
+- [x] **Step 4: Add the E2E seed helper command**
 
 Add after `test_seed_character_with_orphan_spell` (around line 885):
 
@@ -579,7 +579,7 @@ pub async fn test_seed_character_with_upgradeable_spell(
 }
 ```
 
-- [ ] **Step 5: Register both commands in `lib.rs`**
+- [x] **Step 5: Register both commands in `lib.rs`**
 
 Read `apps/desktop/src-tauri/src/lib.rs` to find the `invoke_handler` block. Add `upgrade_character_class_spell` and `test_seed_character_with_upgradeable_spell` next to the other character commands:
 
@@ -597,13 +597,13 @@ upgrade_character_class_spell,
 test_seed_character_with_upgradeable_spell,
 ```
 
-- [ ] **Step 6: Run all character tests**
+- [x] **Step 6: Run all character tests**
 
 Run: `cargo test characters:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 
 Expected: ALL tests PASS, including the 5 new tests added in Tasks 2 and 3.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/characters.rs apps/desktop/src-tauri/src/lib.rs
@@ -620,11 +620,11 @@ git commit -m "feat: add upgrade_character_class_spell command and upgrade detec
 - Modify: `apps/desktop/src/types/character.ts:43-58`
 - Modify: `apps/desktop/src/ui/CharacterEditor.tsx` (spell row section, around line 910–960)
 
-- [ ] **Step 1: Read current TypeScript type**
+- [x] **Step 1: Read current TypeScript type**
 
 Read `apps/desktop/src/types/character.ts` lines 43–58 to confirm current `CharacterSpellbookEntry` interface before editing.
 
-- [ ] **Step 2: Add new fields to `CharacterSpellbookEntry` TypeScript interface**
+- [x] **Step 2: Add new fields to `CharacterSpellbookEntry` TypeScript interface**
 
 Add after `missingFromLibrary?: boolean;`:
 
@@ -656,11 +656,11 @@ export interface CharacterSpellbookEntry {
 }
 ```
 
-- [ ] **Step 3: Read the spell row rendering in CharacterEditor.tsx**
+- [x] **Step 3: Read the spell row rendering in CharacterEditor.tsx**
 
 Read `apps/desktop/src/ui/CharacterEditor.tsx` lines 905–965 to locate the exact position of the button group (the `<div className="flex items-center gap-2">` that holds the notes input and Remove button).
 
-- [ ] **Step 4: Add "Upgrade" button to the spell row**
+- [x] **Step 4: Add "Upgrade" button to the spell row**
 
 Inside the button group `<div className="flex items-center gap-2">`, add the Upgrade button **before** the Remove button, but only when `!missing && spell.availableUpgradeHash && spell.availableUpgradeSpellId`:
 
@@ -693,19 +693,19 @@ Inside the button group `<div className="flex items-center gap-2">`, add the Upg
 
 Place this immediately before the existing Remove button (`<button ... onClick={handleRemove}`).
 
-- [ ] **Step 5: Verify TypeScript compilation**
+- [x] **Step 5: Verify TypeScript compilation**
 
 Run: `cd apps/desktop && pnpm tsc --noEmit`
 
 Expected: No errors. If any errors appear about `availableUpgradeHash` or `availableUpgradeSpellId`, fix the type mismatch.
 
-- [ ] **Step 6: Run frontend lint**
+- [x] **Step 6: Run frontend lint**
 
 Run: `cd apps/desktop && pnpm lint` (or equivalent biome check)
 
 Expected: No new lint errors.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/desktop/src/types/character.ts apps/desktop/src/ui/CharacterEditor.tsx
@@ -724,11 +724,11 @@ git commit -m "feat: add Upgrade button to character spellbook entry row"
 > **Prerequisite:** Backend and frontend are committed. Rebuild binary before running E2E tests.
 > Run: `cd apps/desktop && pnpm tauri:build --debug`
 
-- [ ] **Step 1: Read the existing edge-case tests**
+- [x] **Step 1: Read the existing edge-case tests**
 
 Read `apps/desktop/tests/character_edge_cases.spec.ts` lines 1–30 to understand imports and test structure.
 
-- [ ] **Step 2: Add upgrade E2E test to `character_edge_cases.spec.ts`**
+- [x] **Step 2: Add upgrade E2E test to `character_edge_cases.spec.ts`**
 
 Add a new `test.describe("upgrade-flow")` block after the existing `"missing-library"` describe block:
 
@@ -846,13 +846,13 @@ test.describe("upgrade-flow", () => {
 });
 ```
 
-- [ ] **Step 3: Rebuild the application binary**
+- [x] **Step 3: Rebuild the application binary**
 
 Run: `cd apps/desktop && pnpm tauri:build --debug`
 
 Expected: Build succeeds. Both Rust backend and frontend bundle are compiled.
 
-- [ ] **Step 4: Run the new upgrade E2E test in isolation**
+- [x] **Step 4: Run the new upgrade E2E test in isolation**
 
 Run: `cd apps/desktop && npx playwright test character_edge_cases.spec.ts --grep "upgrade-flow"`
 
@@ -862,13 +862,13 @@ Expected: PASS. If it fails, check for:
 - Missing `data-testid` on the Upgrade button
 - Settlement timing issues (increase `page.waitForTimeout` after setup if needed)
 
-- [ ] **Step 5: Run the full edge-cases suite to check for regressions**
+- [x] **Step 5: Run the full edge-cases suite to check for regressions**
 
 Run: `cd apps/desktop && npx playwright test character_edge_cases.spec.ts`
 
 Expected: ALL tests PASS (existing missing-library tests + new upgrade test).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/desktop/tests/character_edge_cases.spec.ts
@@ -881,31 +881,31 @@ git commit -m "test: E2E upgrade flow for character spellbook hash upgrade"
 
 **Files:** Review only — no edits.
 
-- [ ] **Step 1: Run the full Rust test suite**
+- [x] **Step 1: Run the full Rust test suite**
 
 Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`
 
 Expected: PASS — no regressions in any module.
 
-- [ ] **Step 2: Run targeted character command tests**
+- [x] **Step 2: Run targeted character command tests**
 
 Run: `cargo test characters:: --manifest-path apps/desktop/src-tauri/Cargo.toml`
 
 Expected: PASS — all 5 new tests + all existing character tests pass.
 
-- [ ] **Step 3: Run TypeScript type check**
+- [x] **Step 3: Run TypeScript type check**
 
 Run: `cd apps/desktop && pnpm tsc --noEmit`
 
 Expected: No errors.
 
-- [ ] **Step 4: Run frontend lint**
+- [x] **Step 4: Run frontend lint**
 
 Run: `cd apps/desktop && pnpm lint`
 
 Expected: No new errors.
 
-- [ ] **Step 5: Run full E2E character edge-cases suite**
+- [x] **Step 5: Run full E2E character edge-cases suite**
 
 Run: `cd apps/desktop && npx playwright test character_edge_cases.spec.ts`
 
@@ -927,15 +927,15 @@ Read these files before reviewing:
 - `apps/desktop/src/ui/CharacterEditor.tsx` (spell row section)
 
 Checklist:
-- [ ] Character spellbook reads use `spell_content_hash` (hash-first), with `spell_id` fallback ✓ (pre-existing)
-- [ ] "Spell no longer in library" placeholder shown when `missingFromLibrary` is true ✓ (pre-existing)
-- [ ] "Remove" action clears orphan reference ✓ (pre-existing)
-- [ ] `available_upgrade_hash` and `available_upgrade_spell_id` populated when same-name different-hash spell exists
-- [ ] "Upgrade" button only shown when upgrade is available and spell is NOT missing from library
-- [ ] On upgrade, `spell_content_hash` updated to new hash for ALL list types (KNOWN and PREPARED) in the same class
-- [ ] `spell_id` updated alongside `spell_content_hash` (dual-column write rule)
-- [ ] No upgrade offered for missing-from-library spells
-- [ ] `data-testid` on Upgrade button follows `btn-upgrade-spell-{spellId}` convention
+- [x] Character spellbook reads use `spell_content_hash` (hash-first), with `spell_id` fallback ✓ (pre-existing)
+- [x] "Spell no longer in library" placeholder shown when `missingFromLibrary` is true ✓ (pre-existing)
+- [x] "Remove" action clears orphan reference ✓ (pre-existing)
+- [x] `available_upgrade_hash` and `available_upgrade_spell_id` populated when same-name different-hash spell exists
+- [x] "Upgrade" button only shown when upgrade is available and spell is NOT missing from library
+- [x] On upgrade, `spell_content_hash` updated to new hash for ALL list types (KNOWN and PREPARED) in the same class
+- [x] `spell_id` updated alongside `spell_content_hash` (dual-column write rule)
+- [x] No upgrade offered for missing-from-library spells
+- [x] `data-testid` on Upgrade button follows `btn-upgrade-spell-{spellId}` convention
 
 Save findings to: `openspec/changes/integrate-spell-hashing-ecosystem/review-task-7_2026_03_13_three-pass.md`
 
@@ -950,15 +950,15 @@ Read these files:
 - `apps/desktop/src-tauri/src/models/character.rs` (CharacterSpellbookEntry struct)
 
 Checklist:
-- [ ] `upgrade_character_class_spell_with_conn` uses parameterized SQL (no string injection)
-- [ ] Returns error when 0 rows match `old_hash` — no silent no-op
-- [ ] Updates both KNOWN and PREPARED in a single UPDATE (no partial update risk)
-- [ ] `test_seed_character_with_upgradeable_spell` guard for missing column is present
-- [ ] The upgrade detection subquery uses `ORDER BY s2.id DESC LIMIT 1` — deterministic (picks newest spell id)
-- [ ] No upgrade returned for `spell_content_hash IS NULL` rows (legacy path)
-- [ ] `map_row_16` reads column 14 as `Option<String>` and column 15 as `Option<i64>` — matches SQL column types
-- [ ] `map_row_12` (legacy path) sets both new fields to `None` — no panic
-- [ ] New commands registered in `lib.rs`
+- [x] `upgrade_character_class_spell_with_conn` uses parameterized SQL (no string injection)
+- [x] Returns error when 0 rows match `old_hash` — no silent no-op
+- [x] Updates both KNOWN and PREPARED in a single UPDATE (no partial update risk)
+- [x] `test_seed_character_with_upgradeable_spell` guard for missing column is present
+- [x] The upgrade detection subquery uses `ORDER BY s2.id DESC LIMIT 1` — deterministic (picks newest spell id)
+- [x] No upgrade returned for `spell_content_hash IS NULL` rows (legacy path)
+- [x] `map_row_16` reads column 14 as `Option<String>` and column 15 as `Option<i64>` — matches SQL column types
+- [x] `map_row_12` (legacy path) sets both new fields to `None` — no panic
+- [x] New commands registered in `lib.rs`
 
 Save findings to: `openspec/changes/integrate-spell-hashing-ecosystem/review-task-7_2026_03_13_three-pass.md` (append to existing file)
 
@@ -973,14 +973,14 @@ Read these files:
 - `apps/desktop/tests/character_edge_cases.spec.ts` (new upgrade test)
 
 Checklist:
-- [ ] Rust unit tests prove spec contract (upgrade detected, no upgrade for single version, no upgrade for missing spell)
-- [ ] `test_upgrade_character_class_spell_updates_hash_and_spell_id` asserts BOTH KNOWN and PREPARED are updated
-- [ ] `test_upgrade_character_class_spell_errors_on_missing_hash` proves error case
-- [ ] E2E upgrade test seeds deterministic data (unique runId in spell name and hashes)
-- [ ] E2E test verifies: Upgrade button visible before action, no error modal after action, spell still resolves after upgrade
-- [ ] E2E test cleans up character after completion
-- [ ] No `page.waitForTimeout` values longer than 2000ms in non-startup context
-- [ ] Upgrade button `data-testid` pattern is consistent with existing remove button pattern
+- [x] Rust unit tests prove spec contract (upgrade detected, no upgrade for single version, no upgrade for missing spell)
+- [x] `test_upgrade_character_class_spell_updates_hash_and_spell_id` asserts BOTH KNOWN and PREPARED are updated
+- [x] `test_upgrade_character_class_spell_errors_on_missing_hash` proves error case
+- [x] E2E upgrade test seeds deterministic data (unique runId in spell name and hashes)
+- [x] E2E test verifies: Upgrade button visible before action, no error modal after action, spell still resolves after upgrade
+- [x] E2E test cleans up character after completion
+- [x] No `page.waitForTimeout` values longer than 2000ms in non-startup context
+- [x] Upgrade button `data-testid` pattern is consistent with existing remove button pattern
 
 Save findings to: `openspec/changes/integrate-spell-hashing-ecosystem/review-task-7_2026_03_13_three-pass.md` (append to existing file)
 
@@ -991,7 +991,7 @@ Save findings to: `openspec/changes/integrate-spell-hashing-ecosystem/review-tas
 **Files:**
 - Modify: `openspec/changes/integrate-spell-hashing-ecosystem/tasks.md`
 
-- [ ] **Step 1: Only if all three review passes give Approved status**
+- [x] **Step 1: Only if all three review passes give Approved status**
 
 Update `tasks.md` Task 7 section:
 
@@ -1010,7 +1010,7 @@ Update `tasks.md` Task 7 section:
         - [x] On upgrade, update `spell_content_hash` from Hash A to Hash B.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add openspec/changes/integrate-spell-hashing-ecosystem/tasks.md openspec/changes/integrate-spell-hashing-ecosystem/review-task-7_2026_03_13_three-pass.md

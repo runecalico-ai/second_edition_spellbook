@@ -1,6 +1,6 @@
 # Artifact Hash Read Paths Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Complete task 6.2 — expose `spell_content_hash` from artifact rows, update `reparse_artifact` to use hash-first spell lookup, and add a grace placeholder in the SpellEditor for unverified (null-hash) artifacts.
 
@@ -33,7 +33,7 @@
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/models/spell.rs:120-131`
 
-- [ ] **Step 1: Write a failing test that accesses the new field**
+- [x] **Step 1: Write a failing test that accesses the new field**
 
 In `apps/desktop/src-tauri/src/commands/spells.rs`, at the bottom of the `#[cfg(test)]` mod (after the existing artifact tests, around line 1235), add:
 
@@ -84,7 +84,7 @@ fn test_get_spell_from_conn_artifact_null_spell_content_hash_for_legacy() {
 }
 ```
 
-- [ ] **Step 2: Run the tests to confirm they fail to compile**
+- [x] **Step 2: Run the tests to confirm they fail to compile**
 
 ```powershell
 cd apps/desktop/src-tauri
@@ -92,7 +92,7 @@ cargo test test_get_spell_from_conn_artifact_exposes_spell_content_hash 2>&1 | h
 ```
 Expected: compile error — `no field 'spell_content_hash' on type 'SpellArtifact'`
 
-- [ ] **Step 3: Add `spell_content_hash` field to `SpellArtifact`**
+- [x] **Step 3: Add `spell_content_hash` field to `SpellArtifact`**
 
 In `apps/desktop/src-tauri/src/models/spell.rs`, update the struct:
 
@@ -111,7 +111,7 @@ pub struct SpellArtifact {
 }
 ```
 
-- [ ] **Step 4: Update the three construction sites in `get_spell_from_conn` (spells.rs)**
+- [x] **Step 4: Update the three construction sites in `get_spell_from_conn` (spells.rs)**
 
 **Site A** — `(Some(sid), Some(h))` branch, `artifact_has_hash_column = true` (around line 169):
 
@@ -175,7 +175,7 @@ let rows = stmt.query_map([sid], |row| {
 })?;
 ```
 
-- [ ] **Step 5: Run all artifact tests to verify they pass**
+- [x] **Step 5: Run all artifact tests to verify they pass**
 
 ```powershell
 cd apps/desktop/src-tauri
@@ -183,7 +183,7 @@ cargo test spells::tests 2>&1 | tail -20
 ```
 Expected: all pass, including the two new tests. Existing tests that assert on `artifact.path` still pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/models/spell.rs apps/desktop/src-tauri/src/commands/spells.rs
@@ -208,7 +208,7 @@ The helper:
 - Falls back to `spell_id` column when hash lookup fails or column absent
 - Returns a descriptive "no longer in library" error if neither resolves
 
-- [ ] **Step 1: Write the four failing unit tests**
+- [x] **Step 1: Write the four failing unit tests**
 
 Append to the `#[cfg(test)]` mod in `apps/desktop/src-tauri/src/commands/import.rs` (search for the existing test block; add after the last test):
 
@@ -327,7 +327,7 @@ fn test_resolve_artifact_spell_id_legacy_no_hash_column() {
 }
 ```
 
-- [ ] **Step 2: Run tests to confirm they fail (function not yet defined)**
+- [x] **Step 2: Run tests to confirm they fail (function not yet defined)**
 
 ```powershell
 cd apps/desktop/src-tauri
@@ -335,7 +335,7 @@ cargo test test_resolve_artifact_spell_id 2>&1 | head -20
 ```
 Expected: compile error — `cannot find function 'resolve_artifact_spell_id'`
 
-- [ ] **Step 3: Implement `resolve_artifact_spell_id` in `import.rs`**
+- [x] **Step 3: Implement `resolve_artifact_spell_id` in `import.rs`**
 
 Add the following function **before** the `#[tauri::command] pub async fn reparse_artifact` definition (around line 2443). It is `pub(crate)` only for test access but is only used locally:
 
@@ -396,7 +396,7 @@ fn resolve_artifact_spell_id(
 }
 ```
 
-- [ ] **Step 4: Run the four new tests**
+- [x] **Step 4: Run the four new tests**
 
 ```powershell
 cd apps/desktop/src-tauri
@@ -404,7 +404,7 @@ cargo test test_resolve_artifact_spell_id 2>&1 | tail -20
 ```
 Expected: 4 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/commands/import.rs
@@ -420,7 +420,7 @@ git commit -m "feat: add resolve_artifact_spell_id helper with hash-first spell 
 
 **Pre-condition (TDD):** The four tests from Task 2 (`test_resolve_artifact_spell_id_*`) are the failing-test gate for this wiring task. They directly exercise the helper that replaces the inline query. No additional tests are needed before making the Task 3 changes — the Task 2 tests serve as the pre-existing failing specifications.
 
-- [ ] **Step 1: Replace the first spawn_blocking block in `reparse_artifact`**
+- [x] **Step 1: Replace the first spawn_blocking block in `reparse_artifact`**
 
 Find the existing block:
 
@@ -457,7 +457,7 @@ Replace it with:
     };
 ```
 
-- [ ] **Step 2: Update the `_original_spell` error message to match the new wording**
+- [x] **Step 2: Update the `_original_spell` error message to match the new wording**
 
 Find:
 ```rust
@@ -470,7 +470,7 @@ Replace with:
 
 This keeps error messages consistent from the helper and the spell validation step.
 
-- [ ] **Step 3: Run all existing import tests to confirm no regressions**
+- [x] **Step 3: Run all existing import tests to confirm no regressions**
 
 ```powershell
 cd apps/desktop/src-tauri
@@ -478,7 +478,7 @@ cargo test import:: 2>&1 | tail -30
 ```
 Expected: all pass. No warnings about unused fields.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/commands/import.rs
@@ -496,7 +496,7 @@ git commit -m "feat: reparse_artifact uses hash-first spell resolution via resol
 **Files:**
 - Modify: `apps/desktop/src/types/spell.ts:62-69`
 
-- [ ] **Step 1: Add the field**
+- [x] **Step 1: Add the field**
 
 In `apps/desktop/src/types/spell.ts`, update the `SpellArtifact` interface:
 
@@ -512,7 +512,7 @@ export interface SpellArtifact {
 }
 ```
 
-- [ ] **Step 2: Verify TypeScript compiles cleanly**
+- [x] **Step 2: Verify TypeScript compiles cleanly**
 
 ```powershell
 cd apps/desktop
@@ -520,7 +520,7 @@ pnpm tsc --noEmit 2>&1 | tail -20
 ```
 Expected: no errors (the new field is optional, so no call sites break).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```powershell
 git add apps/desktop/src/types/spell.ts
@@ -540,7 +540,7 @@ The scenario: an artifact loaded with `spellContentHash == null` means it was im
 
 To keep the badge testable without SpellEditor's full routing/IPC/modal infrastructure, extract the artifact row rendering into a standalone `ArtifactRow` component. SpellEditor then uses `ArtifactRow`. Tests for the badge render against the real component.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `apps/desktop/src/ui/components/ArtifactRow.test.tsx`:
 
@@ -581,7 +581,7 @@ describe("ArtifactRow", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to confirm it fails (module not found)**
+- [x] **Step 2: Run the test to confirm it fails (module not found)**
 
 ```powershell
 cd apps/desktop
@@ -589,7 +589,7 @@ pnpm vitest run src/ui/components/ArtifactRow.test.tsx 2>&1 | tail -20
 ```
 Expected: error — `Cannot find module './ArtifactRow'` (component not yet created)
 
-- [ ] **Step 3: Create `ArtifactRow.tsx`**
+- [x] **Step 3: Create `ArtifactRow.tsx`**
 
 Create `apps/desktop/src/ui/components/ArtifactRow.tsx`:
 
@@ -625,7 +625,7 @@ export default function ArtifactRow({ artifact: art }: ArtifactRowProps) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to confirm they pass**
+- [x] **Step 4: Run the tests to confirm they pass**
 
 ```powershell
 cd apps/desktop
@@ -633,7 +633,7 @@ pnpm vitest run src/ui/components/ArtifactRow.test.tsx 2>&1 | tail -20
 ```
 Expected: 3 PASS
 
-- [ ] **Step 5: Replace inline artifact row JSX in SpellEditor with `<ArtifactRow />`**
+- [x] **Step 5: Replace inline artifact row JSX in SpellEditor with `<ArtifactRow />`**
 
 In `apps/desktop/src/ui/SpellEditor.tsx`, add the import at the top with other component imports:
 
@@ -666,7 +666,7 @@ Replace with:
             ))}
 ```
 
-- [ ] **Step 6: Run frontend type-check and all vitest tests**
+- [x] **Step 6: Run frontend type-check and all vitest tests**
 
 ```powershell
 cd apps/desktop
@@ -675,7 +675,7 @@ pnpm vitest run --reporter=verbose 2>&1 | tail -30
 ```
 Expected: no TS errors; all vitest tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add apps/desktop/src/ui/components/ArtifactRow.tsx apps/desktop/src/ui/components/ArtifactRow.test.tsx apps/desktop/src/ui/SpellEditor.tsx
@@ -686,7 +686,7 @@ git commit -m "feat: extract ArtifactRow component with not-hash-verified badge 
 
 ## Final Verification
 
-- [ ] **Run full backend test suite**
+- [x] **Run full backend test suite**
 
 ```powershell
 cd apps/desktop/src-tauri
@@ -694,7 +694,7 @@ cargo test 2>&1 | tail -40
 ```
 Expected: all pass (or pre-existing vault_env_lock PoisonError noise, documented in task 6 review).
 
-- [ ] **Run frontend build**
+- [x] **Run frontend build**
 
 ```powershell
 cd apps/desktop
@@ -702,7 +702,7 @@ pnpm tsc --noEmit
 ```
 Expected: clean.
 
-- [ ] **Mark tasks.md items complete**
+- [x] **Mark tasks.md items complete**
 
 In `openspec/changes/integrate-spell-hashing-ecosystem/tasks.md`, mark both 6.2 sub-items `[x]`:
 ```markdown
@@ -711,7 +711,7 @@ In `openspec/changes/integrate-spell-hashing-ecosystem/tasks.md`, mark both 6.2 
     - [x] Implement grace placeholder for artifact UI when referenced `spell_content_hash` does not exist in the library.
 ```
 
-- [ ] **Final commit**
+- [x] **Final commit**
 
 ```powershell
 git add openspec/changes/integrate-spell-hashing-ecosystem/tasks.md

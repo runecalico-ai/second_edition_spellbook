@@ -112,9 +112,9 @@
     - [x] Add index: `CREATE INDEX idx_artifact_spell_content_hash ON artifact(spell_content_hash)`.
     - [x] Use `spell_content_hash` for reads/joins; keep `spell_id` for migration period (see design).
     - [x] Note: `artifact.hash` is the artifact's own file hash; `artifact.spell_content_hash` is the referenced spell's canonical content hash (see design Decision #5).
-- [ ] 6.2 Follow-up tracking
-    - [ ] Update frontend/backend read paths to load artifacts by `spell_content_hash` instead of `spell_id` before `spell_id` is officially dropped.
-    - [ ] Implement grace placeholder for artifact UI when referenced `spell_content_hash` does not exist in the library.
+- [x] 6.2 Follow-up tracking
+    - [x] Update frontend/backend read paths to load artifacts by `spell_content_hash` instead of `spell_id` before `spell_id` is officially dropped.
+    - [x] Implement grace placeholder for artifact UI when referenced `spell_content_hash` does not exist in the library.
 
 ## 7. Character Integration
 

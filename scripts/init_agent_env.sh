@@ -36,9 +36,16 @@ sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3.14 python3.14-venv python3.14-dev
 
 echo "--> Setting up Node.js 24 and pnpm 10..."
-# Install Node.js via NodeSource
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+# Install nvm
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+# Load nvm for the current session
+export NVM_DIR="$HOME/.nvm"
+# shellcheck source=/dev/null
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+# Install and use Node.js 24
+nvm install 24
+nvm use 24
+nvm alias default 24
 
 # Install pnpm 10
 sudo npm install -g pnpm@10
@@ -68,6 +75,9 @@ echo "--> Initializing JS environment (apps/desktop)..."
 cd apps/desktop
 pnpm install --frozen-lockfile
 cd ../..
+
+echo "--> Installing openSpec CLI globally..."
+npm install -g @fission-ai/openspec@latest
 
 echo "================================================================"
 echo "Environment initialization complete!"

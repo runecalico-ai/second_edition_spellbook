@@ -124,6 +124,7 @@ pub struct SpellArtifact {
     pub path: String,
     pub hash: String,
     pub imported_at: String,
+    pub spell_content_hash: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]

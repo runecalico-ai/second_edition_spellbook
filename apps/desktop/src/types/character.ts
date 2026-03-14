@@ -55,6 +55,8 @@ export interface CharacterSpellbookEntry {
   tags?: string | null;
   spellContentHash?: string | null;
   missingFromLibrary?: boolean;
+  availableUpgradeHash?: string | null;
+  availableUpgradeSpellId?: number | null;
 }
 
 export interface BundleClassSpell {

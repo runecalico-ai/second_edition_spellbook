@@ -192,32 +192,27 @@ test.describe("Character Edge Cases & Hardening", () => {
       await expect(page.getByRole("link", { name: charName })).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
-      await page.waitForTimeout(2000);
-      if (
-        await page
-          .getByTestId("modal-dialog")
-          .isVisible({ timeout: 2000 })
-          .catch(() => false)
-      ) {
+      const modal = page.getByTestId("modal-dialog");
+      try {
+        await modal.waitFor({ state: "visible", timeout: 2000 });
         await page.getByTestId("modal-button-dismiss").click();
-        await page.waitForTimeout(300);
+      } catch (e) {
+        // Did not trigger - ignore.
       }
     });
 
     await test.step("Open CharacterEditor and assert missing-library row", async () => {
       await app.openCharacterEditor(charName);
-      if (
-        await page
-          .getByTestId("modal-dialog")
-          .isVisible({ timeout: 2000 })
-          .catch(() => false)
-      ) {
+      const modal = page.getByTestId("modal-dialog");
+      try {
+        await modal.waitFor({ state: "visible", timeout: 2000 });
         await page.getByTestId("modal-button-dismiss").click();
-        await page.waitForTimeout(300);
+      } catch (e) {
+        // Did not trigger - ignore.
       }
       const mageSection = page.locator('[aria-label="Class section for Mage"]');
       await mageSection.getByRole("button", { name: "KNOWN" }).click();
-      await page.waitForTimeout(500);
+
       await expect(page.getByText("Spell no longer in library")).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
@@ -254,37 +249,32 @@ test.describe("Character Edge Cases & Hardening", () => {
       await expect(page.getByRole("link", { name: charName })).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
-      await page.waitForTimeout(2000);
-      if (
-        await page
-          .getByTestId("modal-dialog")
-          .isVisible({ timeout: 2000 })
-          .catch(() => false)
-      ) {
+      const modal = page.getByTestId("modal-dialog");
+      try {
+        await modal.waitFor({ state: "visible", timeout: 2000 });
         await page.getByTestId("modal-button-dismiss").click();
-        await page.waitForTimeout(300);
+      } catch (e) {
+        // Did not trigger - ignore.
       }
     });
 
     await test.step("Open CharacterEditor, click remove on missing row, assert row disappears", async () => {
       await app.openCharacterEditor(charName);
-      if (
-        await page
-          .getByTestId("modal-dialog")
-          .isVisible({ timeout: 2000 })
-          .catch(() => false)
-      ) {
+      const modal = page.getByTestId("modal-dialog");
+      try {
+        await modal.waitFor({ state: "visible", timeout: 2000 });
         await page.getByTestId("modal-button-dismiss").click();
-        await page.waitForTimeout(300);
+      } catch (e) {
+        // Did not trigger - ignore.
       }
       const mageSection = page.locator('[aria-label="Class section for Mage"]');
       await mageSection.getByRole("button", { name: "KNOWN" }).click();
-      await page.waitForTimeout(300);
+
       const missingRow = app.getMissingSpellRow();
       await expect(missingRow).toBeVisible({ timeout: TIMEOUTS.medium });
       const removeBtn = missingRow.locator("[data-testid^='btn-remove-spell-hash-']");
       await removeBtn.click();
-      await page.waitForTimeout(500);
+
       await expect(missingRow).not.toBeVisible();
       await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
     });
@@ -335,6 +325,13 @@ test.describe("Character Edge Cases & Hardening", () => {
 
     await test.step("Verify row renders as normal and can be removed", async () => {
       await app.openCharacterEditor(charName);
+      const modal = page.getByTestId("modal-dialog");
+      try {
+        await modal.waitFor({ state: "visible", timeout: 2000 });
+        await page.getByTestId("modal-button-dismiss").click();
+      } catch (e) {
+        // Did not trigger - ignore.
+      }
       const mageSection = page.locator('[aria-label="Class section for Mage"]');
       await mageSection.getByRole("button", { name: "KNOWN" }).click();
       await page.waitForTimeout(500);
@@ -415,33 +412,27 @@ test.describe("Character Edge Cases & Hardening", () => {
         await expect(page.getByRole("link", { name: charName })).toBeVisible({
           timeout: TIMEOUTS.medium,
         });
-        await page.waitForTimeout(2000);
-
-        if (
-          await page
-            .getByTestId("modal-dialog")
-            .isVisible({ timeout: 2000 })
-            .catch(() => false)
-        ) {
+        const modal = page.getByTestId("modal-dialog");
+        try {
+          await modal.waitFor({ state: "visible", timeout: 2000 });
           await page.getByTestId("modal-button-dismiss").click();
-          await page.waitForTimeout(300);
+        } catch (e) {
+          // Did not trigger - ignore.
         }
       });
 
       await test.step("Open CharacterEditor and verify Upgrade button appears on the spell row", async () => {
         await app.openCharacterEditor(charName);
-        if (
-          await page
-            .getByTestId("modal-dialog")
-            .isVisible({ timeout: 2000 })
-            .catch(() => false)
-        ) {
+        const modal = page.getByTestId("modal-dialog");
+        try {
+          await modal.waitFor({ state: "visible", timeout: 2000 });
           await page.getByTestId("modal-button-dismiss").click();
-          await page.waitForTimeout(300);
+        } catch (e) {
+          // Did not trigger - ignore.
         }
         const mageSection = page.locator('[aria-label="Class section for Mage"]');
         await mageSection.getByRole("button", { name: "KNOWN" }).click();
-        await page.waitForTimeout(500);
+
 
         await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
 
@@ -454,7 +445,7 @@ test.describe("Character Edge Cases & Hardening", () => {
       await test.step("Click Upgrade and verify spell still resolves without errors", async () => {
         const upgradeBtn = page.locator("[data-testid^='btn-upgrade-spell-']");
         await upgradeBtn.click();
-        await page.waitForTimeout(800);
+
 
         const modalVisible = await page
           .getByTestId("modal-dialog")

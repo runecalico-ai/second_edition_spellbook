@@ -95,7 +95,7 @@ school: "Evocation"
 
 ## 3. Import Logic & Deduplication
 
-When importing a bundle (JSON or Markdown), the system performs the following logic to prevent duplicate spells in the database.
+When importing a bundle (JSON or Markdown), the system performs the following logic to handle identity and prevent unwanted duplicate spells.
 
 ### 3.1 Character Collision
 1. **Match**: Checks for existing character by `name`.
@@ -103,19 +103,16 @@ When importing a bundle (JSON or Markdown), the system performs the following lo
    - If **Overwrite** is selected: Updates existing character identity, clears old classes/spells, and inserts new ones.
    - If **Create New** is selected: Creates a new character with `(Imported)` appended to the name.
 
-### 3.2 Spell Deduplication
-Since bundles contain full spell definitions, importing a character could introduce duplicate spells into the global library. We prevent this by checking:
+### 3.2 Spell Deduplication and Versioning
+The Spellbook application identifies spells universally by their **Canonical Content Hash** (a SHA-256 fingerprint of the core rules content of the spell, ignoring metadata like tags or source references). This ensures precise spell versioning.
 
-**Match Criteria**:
-- `name` (case-sensitive exact match)
-- `level`
-- `source` (treating `null` as empty string)
-
-**Algorithm**:
-1. For each spell in the bundle:
-   - Query DB: `SELECT id FROM spell WHERE name=? AND level=? AND IFNULL(source, '')=?`
-   - **If found**: Use the existing `spell_id`. Link it to the character.
-   - **If not found**: Insert the spell as a new record in the `spell` table. Use the new `spell_id`.
-2. Insert `character_class_spell` link using the resolved `spell_id`, `listType`, and `notes`.
-
-This ensures that if you import 5 characters who all know "Fireball" (PHB), only one "Fireball" record exists in your database.
+**Resolution Algorithm**:
+1. For each spell in the import batch, its `content_hash` is computed.
+2. The system checks the local database for an existing spell with that `content_hash`.
+3. **If the exact hash exists**:
+   - The core spell is considered a duplicate and skipped automatically.
+   - However, any **metadata** (e.g., new `tags` or `source_refs` attached to the imported version) is merged into the existing local spell, up to cardinality limits (tags: 100, source_refs: 50).
+4. **If the exact hash does NOT exist, but the `name` matches an existing spell**:
+   - This triggers a **Conflict Resolution** prompt for the user (see [Import/Export User Guide](user/import_export.md) for details).
+5. **If neither hash nor name exists**:
+   - The spell is inserted as a brand new record into the global library.

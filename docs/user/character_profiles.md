@@ -67,6 +67,8 @@ Use the search box to filter characters by:
 - **JSON**: Full character data for backup/transfer
 - **Markdown**: Human-readable format
 
+For details on importing and exporting bundles, including conflict resolution and spell versioning, see [Importing and Exporting](import_export.md).
+
 ### Missing spell references and export/print
 If a character has any **"Spell no longer in library"** entries in their spell list (e.g. the spell was removed from the library or the reference was broken), **Print Sheet**, **Print Pack**, and **Export Character** (JSON/bundle) are blocked. The app will show an error instead of producing the file. To proceed:
 1. In the Character Editor, remove the broken entries using **Remove** next to each "Spell no longer in library" row, or

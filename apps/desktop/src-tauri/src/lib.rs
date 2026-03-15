@@ -5,6 +5,7 @@ pub mod models;
 pub mod sidecar;
 pub mod utils;
 
+use commands::vault::VaultMaintenanceState;
 use commands::*;
 use db::init_db;
 use std::path::PathBuf;
@@ -33,6 +34,7 @@ pub fn run() {
             let pool = init_db(resource_dir.as_deref(), true)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
             app.manage(Arc::new(pool));
+            app.manage(Arc::new(VaultMaintenanceState::default()));
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())
@@ -67,7 +69,15 @@ pub fn run() {
             get_character_class_spells,
             add_character_spell,
             remove_character_spell,
+            remove_character_spell_by_hash,
+            upgrade_character_class_spell,
+            #[cfg(debug_assertions)]
+            test_seed_character_with_upgradeable_spell,
             update_character_spell_notes,
+            #[cfg(debug_assertions)]
+            test_seed_spell,
+            #[cfg(debug_assertions)]
+            test_seed_character_with_orphan_spell,
             get_character_spellbook,
             update_character_spell,
             search_keyword,
@@ -78,14 +88,24 @@ pub fn run() {
             delete_saved_search,
             chat_answer,
             preview_import,
+            preview_import_spell_json,
+            import_spell_json,
+            resolve_import_spell_json,
             import_files,
             resolve_import_conflicts,
             reparse_artifact,
             export_spells,
+            export_spell_as_json,
+            export_spell_bundle_json,
             print_spell,
             print_spellbook,
             backup_vault,
             restore_vault,
+            get_vault_settings,
+            run_vault_integrity_check,
+            set_import_source_ref_url_policy,
+            set_vault_integrity_check_on_open,
+            optimize_vault,
             export_character_bundle,
             export_character_markdown_zip,
             import_character_bundle,
@@ -94,6 +114,7 @@ pub fn run() {
             export_character_sheet,
             export_character_spellbook_pack,
             search_characters,
+            // Prerequisite for ecosystem hash integration (Migration 0015, hash-based import/export).
             crate::models::canonical_spell::migrate_all_spells_to_v2,
         ])
         .run(tauri::generate_context!())

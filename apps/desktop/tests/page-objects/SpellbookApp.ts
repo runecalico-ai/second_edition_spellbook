@@ -351,6 +351,11 @@ export class SpellbookApp {
     return this.page.getByRole("row", { name: spellName });
   }
 
+  /** Get the missing-library placeholder row in the character class spell list */
+  getMissingSpellRow() {
+    return this.page.getByTestId("spell-row-missing");
+  }
+
   /** Open character editor by name */
   async openCharacterEditor(name: string): Promise<void> {
     console.log(`Opening character editor: ${name}`);
@@ -761,5 +766,72 @@ export class SpellbookApp {
     const slug = spellName.replace(/\s+/g, "-").toLowerCase();
     await this.page.getByTestId(`btn-remove-${slug}`).click();
     await expect(this.page.getByTestId(`spellbook-row-${slug}`)).not.toBeVisible();
+  }
+
+  /**
+   * Import a `.json` spell bundle through the JSON import wizard path.
+   * Navigates to Import, sets the file input to `filePath`, clicks Preview,
+   * then clicks Import. Stops at the json-preview step with the Import button
+   * available — does NOT resolve conflicts (call resolveNextConflict separately).
+   *
+   * Returns once either the result screen or the resolve-json conflict screen is visible.
+   */
+  async importJsonFile(filePath: string): Promise<void> {
+    console.log(`Importing JSON file: ${filePath}`);
+    await this.resetImportWizard();
+
+    const fileInput = this.page.locator(SELECTORS.fileInput);
+    await expect(fileInput).toBeVisible({ timeout: TIMEOUTS.medium });
+    await fileInput.setInputFiles(filePath);
+
+    // Wait for file selection to register
+    await expect(this.page.getByText(path.basename(filePath))).toBeVisible({
+      timeout: TIMEOUTS.short,
+    });
+
+    // Click the Preview button (which calls goToJsonPreview for .json files)
+    await this.page.getByRole("button", { name: "Preview →" }).click();
+
+    // Wait for json-preview step
+    await expect(this.page.getByTestId("btn-import-json")).toBeVisible({
+      timeout: TIMEOUTS.medium,
+    });
+
+    // Click Import to kick off import_spell_json
+    await this.page.getByTestId("btn-import-json").click();
+
+    // Wait for either: result screen (no conflicts) or resolve-json (has conflicts)
+    await expect(
+      this.page
+        .locator('[data-testid="conflict-progress"]')
+        .or(this.page.locator('[data-testid="btn-bulk-skip-all"]'))
+        .or(this.page.locator('[data-testid="btn-import-more"]')),
+    ).toBeVisible({ timeout: TIMEOUTS.long });
+  }
+
+  /**
+   * Click a conflict resolution button on the per-conflict dialog.
+   * @param action - "keep_existing" | "replace_with_new" | "keep_both"
+   * @param applyToAll - If true, checks the Apply to All toggle first
+   */
+  async resolveNextConflict(
+    action: "keep_existing" | "replace_with_new" | "keep_both",
+    applyToAll = false,
+  ): Promise<void> {
+    if (applyToAll) {
+      const toggle = this.page.getByTestId("toggle-apply-to-all");
+      await expect(toggle).toBeVisible({ timeout: TIMEOUTS.short });
+      if (!(await toggle.isChecked())) {
+        await toggle.check();
+      }
+    }
+
+    const testIdMap: Record<string, string> = {
+      keep_existing: "btn-keep-existing-json",
+      replace_with_new: "btn-replace-with-new",
+      keep_both: "btn-keep-both",
+    };
+
+    await this.page.getByTestId(testIdMap[action]).click();
   }
 }

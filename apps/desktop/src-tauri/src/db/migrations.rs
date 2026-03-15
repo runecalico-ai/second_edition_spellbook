@@ -2,6 +2,44 @@ use crate::error::AppError;
 use rusqlite::Connection;
 use tracing::{info, warn};
 
+fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    let sql = format!(
+        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
+        table.replace('\'', "''")
+    );
+    conn.query_row(&sql, [column], |_| Ok(())).is_ok()
+}
+
+/// Applies migration 0015: hash reference columns and indexes.
+///
+/// Column creation happens here (not in the SQL file) so we can run ADD COLUMN
+/// only when missing, keeping the migration idempotent on DBs that were
+/// partially upgraded. The SQL file (phase 2) assumes these columns already
+/// exist and only runs backfills and index creation. The expected non-unique
+/// index on character_class_spell(spell_content_hash) is
+/// `idx_ccs_spell_content_hash`.
+///
+/// For artifact: `artifact.hash` is the artifact file hash; `artifact.spell_content_hash`
+/// is the referenced spell's canonical content hash (Decision #5).
+fn apply_hash_reference_columns_migration(conn: &Connection) -> Result<(), AppError> {
+    if !has_column(conn, "character_class_spell", "spell_content_hash") {
+        conn.execute(
+            "ALTER TABLE character_class_spell ADD COLUMN spell_content_hash TEXT",
+            [],
+        )?;
+    }
+    if !has_column(conn, "artifact", "spell_content_hash") {
+        conn.execute(
+            "ALTER TABLE artifact ADD COLUMN spell_content_hash TEXT",
+            [],
+        )?;
+    }
+
+    let sql = include_str!("../../../../../db/migrations/0015_add_hash_reference_columns.sql");
+    conn.execute_batch(sql)?;
+    Ok(())
+}
+
 pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
     let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     info!(version, "DB migration start");
@@ -108,7 +146,430 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 13", [])?;
     }
 
-    info!(version = 13, "DB migration complete");
+    if version < 14 {
+        info!("Applying migration 0014");
+        let sql = include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 14", [])?;
+    }
+
+    if version < 15 {
+        info!("Applying migration 0015");
+        apply_hash_reference_columns_migration(conn)?;
+        conn.execute("PRAGMA user_version = 15", [])?;
+    }
+
+    info!(version = 15, "DB migration complete");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_migration_0015_creates_task_5_index_names() {
+        let conn = Connection::open_in_memory().expect("open db");
+        load_migrations(&conn).expect("load migrations");
+
+        let partial_indexes = vec![
+            "idx_ccs_spell_content_hash",
+            "idx_artifact_spell_content_hash",
+            "idx_ccs_character_hash_list",
+        ];
+
+        for index in partial_indexes {
+            let sql: String = conn
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+                    rusqlite::params![index],
+                    |row| row.get(0),
+                )
+                .expect("query index sql");
+
+            assert!(
+                sql.contains("WHERE spell_content_hash IS NOT NULL"),
+                "Index {} must be a partial index, got SQL: {}",
+                index,
+                sql
+            );
+        }
+    }
+
+    #[test]
+    fn test_load_migrations_adds_hash_reference_columns() {
+        let conn = Connection::open_in_memory().expect("open db");
+
+        load_migrations(&conn).expect("load migrations");
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("query user_version");
+
+        assert_eq!(version, 15);
+        assert!(has_column(
+            &conn,
+            "character_class_spell",
+            "spell_content_hash"
+        ));
+        assert!(has_column(&conn, "artifact", "spell_content_hash"));
+
+        let index_exists = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_ccs_character_hash_list'",
+                [],
+                |row| row.get::<_, i32>(0),
+            )
+            .is_ok();
+        assert!(
+            index_exists,
+            "idx_ccs_character_hash_list must exist after migration 0015"
+        );
+    }
+
+    #[test]
+    fn test_migration_0015_backfills_existing_hash_references() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_hash TEXT
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            PRAGMA user_version = 14;
+
+            INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes)
+            VALUES (7, 1, 'KNOWN', NULL);
+            INSERT INTO artifact (type, hash, spell_id, path, metadata, imported_at)
+            VALUES ('source', 'artifact-hash', 1, 'spell.md', NULL, '2026-03-08T00:00:00Z');
+            "#,
+        )
+        .expect("seed version 14 schema");
+
+        load_migrations(&conn).expect("apply migration 0015");
+
+        let character_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query character hash");
+        let artifact_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query artifact hash");
+
+        assert_eq!(character_hash, "hash-1");
+        assert_eq!(artifact_hash, "hash-1");
+    }
+
+    /// Orphan character_class_spell row (spell_id points to non-existent spell) keeps
+    /// spell_content_hash NULL after migration; backfill subquery returns NULL.
+    #[test]
+    fn test_migration_0015_orphan_spell_id_keeps_hash_null() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT);
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            PRAGMA user_version = 14;
+
+            INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes)
+            VALUES (7, 1, 'KNOWN', NULL), (8, 999, 'KNOWN', NULL);
+            "#,
+        )
+        .expect("seed version 14 with orphan spell_id=999");
+
+        load_migrations(&conn).expect("apply migration 0015");
+
+        let orphan_hash: Option<String> = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE character_class_id = 8 AND spell_id = 999",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query orphan row");
+        assert!(
+            orphan_hash.is_none(),
+            "orphan row (spell_id=999) must keep spell_content_hash NULL, got {:?}",
+            orphan_hash
+        );
+    }
+
+    /// Orphan artifact row (spell_id points to non-existent spell) keeps spell_content_hash NULL.
+    #[test]
+    fn test_migration_0015_orphan_artifact_spell_id_keeps_hash_null() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT);
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            PRAGMA user_version = 14;
+
+            INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
+            INSERT INTO artifact (type, hash, spell_id, path) VALUES ('source', 'file-hash', 999, 'orphan.md');
+            "#,
+        )
+        .expect("seed version 14 with orphan artifact spell_id=999");
+
+        load_migrations(&conn).expect("apply migration 0015");
+
+        let artifact_hash: Option<String> = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE spell_id = 999",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query orphan artifact");
+        assert!(
+            artifact_hash.is_none(),
+            "orphan artifact (spell_id=999) must keep spell_content_hash NULL, got {:?}",
+            artifact_hash
+        );
+    }
+
+    /// Backfill only updates WHERE spell_content_hash IS NULL; pre-set hash is preserved.
+    #[test]
+    fn test_migration_0015_backfill_does_not_overwrite_existing_hash() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT);
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                spell_content_hash TEXT
+            );
+            PRAGMA user_version = 14;
+
+            INSERT INTO spell (id, content_hash) VALUES (1, 'hash-1');
+            INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+            VALUES (7, 1, 'KNOWN', NULL, 'existing');
+            INSERT INTO artifact (type, hash, spell_id, path, spell_content_hash)
+            VALUES ('source', 'artifact-hash', 1, 'spell.md', 'existing-artifact-hash');
+            "#,
+        )
+        .expect("seed version 14 with pre-set spell_content_hash");
+
+        load_migrations(&conn).expect("apply migration 0015");
+
+        let preserved: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE character_class_id = 7",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query row");
+        assert_eq!(
+            preserved, "existing",
+            "backfill must not overwrite existing spell_content_hash"
+        );
+        let artifact_preserved: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query artifact row");
+        assert_eq!(
+            artifact_preserved, "existing-artifact-hash",
+            "backfill must not overwrite existing artifact.spell_content_hash"
+        );
+    }
+
+    #[test]
+    fn test_migration_0015_is_idempotent_when_columns_already_exist() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_hash TEXT
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER NOT NULL,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                spell_id INTEGER,
+                path TEXT,
+                metadata TEXT,
+                imported_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                spell_content_hash TEXT
+            );
+            PRAGMA user_version = 14;
+            "#,
+        )
+        .expect("seed version 14 schema with hash columns");
+
+        load_migrations(&conn).expect("apply idempotent migration 0015");
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("query user_version");
+        assert_eq!(version, 15);
+        assert!(has_column(
+            &conn,
+            "character_class_spell",
+            "spell_content_hash"
+        ));
+        assert!(has_column(&conn, "artifact", "spell_content_hash"));
+    }
+
+    /// Benchmarks migration 0014 FTS rebuild with 10k spells; must complete in < 60s.
+    #[test]
+    #[ignore]
+    fn test_bench_fts_rebuild_10000_spells_migration_0014() {
+        use std::time::Instant;
+
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_hash TEXT,
+                name TEXT,
+                description TEXT,
+                material_components TEXT,
+                tags TEXT,
+                source TEXT,
+                author TEXT,
+                canonical_data TEXT
+            );
+            PRAGMA user_version = 13;
+        "#,
+        )
+        .expect("create spell table at user_version 13");
+
+        let sample_canonical_data = r#"{
+            "name": "Dummy Spell",
+            "description": "A very long detailed description representing a realistic spell size...",
+            "materialComponents": "Bat guano and sulfur.",
+            "tags": ["Fire", "Evocation", "Wizard"],
+            "source": "Player's Handbook",
+            "author": "Gygax",
+            "range": { "type": "touch" },
+            "duration": { "type": "instantaneous" },
+            "area": { "type": "singleTarget" },
+            "castingTime": { "type": "action", "value": 1 },
+            "savingThrow": { "type": "none" },
+            "damage": [],
+            "magicResistance": false,
+            "experienceComponent": false
+        }"#;
+
+        let mut stmt = conn
+            .prepare("INSERT INTO spell (name, description, canonical_data) VALUES (?1, ?2, ?3)")
+            .expect("prepare insert");
+        for i in 0..10000 {
+            stmt.execute(rusqlite::params![
+                format!("Dummy Spell {}", i),
+                "A very long detailed description representing a realistic spell size...",
+                sample_canonical_data
+            ])
+            .expect("insert spell");
+        }
+
+        let sql = include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
+
+        let start = Instant::now();
+        conn.execute_batch(sql).expect("apply migration 0014");
+        let elapsed = start.elapsed();
+
+        // SELECT COUNT(*) FROM spell_fts would hit the content table (spell), which lacks
+        // canonical_* columns; spell_fts_docsize has one row per FTS document.
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM spell_fts_docsize", [], |row| {
+                row.get(0)
+            })
+            .expect("count spell_fts");
+        assert_eq!(
+            count, 10000,
+            "Should have repopulated 10000 spells into FTS"
+        );
+
+        assert!(
+            elapsed.as_secs() < 60,
+            "FTS rebuild for 10k spells must take < 60 seconds, took {:?}",
+            elapsed
+        );
+    }
 }

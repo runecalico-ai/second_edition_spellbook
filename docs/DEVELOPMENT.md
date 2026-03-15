@@ -127,13 +127,18 @@ We enforce strict formatting and type safety across all languages. Run these bef
 
 | Language | Tool | Command (from `apps/desktop`) |
 | :--- | :--- | :--- |
-| **JS/TS (Check)** | Biome | `pnpm lint` |
+| **JS/TS (Check)** | Biome + Knip | `pnpm lint` |
+| **JS/TS (Biome only)** | Biome | `pnpm run lint:biome` |
+| **JS/TS (Knip only)** | Knip | `pnpm run knip` |
 | **JS/TS (Types)** | `tsc` | `pnpm tsc --noEmit` |
 | **JS/TS (Format)**| Biome | `pnpm format` |
 | **Rust** | Rustfmt | `cargo fmt` (in `src-tauri`) |
 | **Python** | Ruff | `ruff format .` (in `services/ml`) |
 
+
+`pnpm lint` runs Biome first and then Knip. Knip is configured so CI fails only for unused dependencies/devDependencies; unused exports and files are reported for optional cleanup.
+
 ---
 
 ## Specifications (OpenSpec)
-For detailed planning and architectural shifts, refer to the [OpenSpec Instructions](../openspec/AGENTS.md). All significant changes must follow the OpenSpec proposal workflow.
+For detailed planning and architectural shifts, refer to the [OpenSpec Project Guide](../openspec/project.md). All significant changes must follow the OpenSpec proposal workflow.

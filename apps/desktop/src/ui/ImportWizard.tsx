@@ -1,7 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useImportActivity } from "../store/useImportActivity";
 import { useModal } from "../store/useModal";
+import type { SourceRefUrlPolicy } from "../types/vault";
 import FieldMapper, { type ParsedSpell } from "./FieldMapper";
+import BulkConflictSummaryDialog from "./components/BulkConflictSummaryDialog";
+import SpellConflictDiffDialog from "./components/SpellConflictDiffDialog";
+import { getVaultSettings, setImportSourceRefUrlPolicy } from "./components/VaultMaintenanceDialog";
+import type {
+  BulkConflictAction,
+  ConflictAction,
+  HashConflictResolution,
+  HashImportConflict,
+  HashImportResult,
+  HashPreviewResult,
+} from "../types/import-types";
 
 type ImportFile = {
   name: string;
@@ -111,7 +124,17 @@ type PreviewResult = {
   conflicts: ImportConflict[];
 };
 
-type ImportStep = "select" | "preview" | "map" | "confirm" | "resolve" | "result";
+type ImportStep =
+  | "select"
+  | "preview"
+  | "map"
+  | "confirm"
+  | "resolve"
+  | "result"
+  | "json-preview"
+  | "resolve-json";
+
+const JSON_IMPORT_WARNING_THRESHOLD_BYTES = 10 * 1024 * 1024;
 
 const STEP_TITLES: Record<ImportStep, string> = {
   select: "1. Select Files",
@@ -120,6 +143,8 @@ const STEP_TITLES: Record<ImportStep, string> = {
   confirm: "4. Confirm",
   resolve: "5. Resolve Conflicts",
   result: "6. Complete",
+  "json-preview": "2. JSON Preview",
+  "resolve-json": "3. Resolve Conflicts",
 };
 
 type ConflictSelection = {
@@ -158,8 +183,17 @@ const conflictFieldLabels: Record<string, string> = {
 const getConflictKey = (conflict: SpellConflict, index: number) =>
   conflict.existing.id ? `${conflict.existing.id}-${index}` : `${conflict.incoming.name}-${index}`;
 
+export async function runWithImportActivity<T>(work: () => Promise<T>): Promise<T> {
+  useImportActivity.getState().beginImportActivity();
+  try {
+    return await work();
+  } finally {
+    useImportActivity.getState().endImportActivity();
+  }
+}
+
 export default function ImportWizard() {
-  const { alert: modalAlert } = useModal();
+  const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const [step, setStep] = useState<ImportStep>("select");
   const [files, setFiles] = useState<File[]>([]);
   const [filePayloads, setFilePayloads] = useState<ImportFile[]>([]);
@@ -177,6 +211,19 @@ export default function ImportWizard() {
   const [resolveResult, setResolveResult] = useState<ResolveImportResult | null>(null);
   const [showHighLevelWarning, setShowHighLevelWarning] = useState(false);
   const [suppressWarning, setSuppressWarning] = useState(false);
+
+  // ── JSON import state ───────────────────────────────────────────────────
+  const [isJsonImport, setIsJsonImport] = useState(false);
+  const [jsonPayload, setJsonPayload] = useState<string>("");
+  const [jsonPreviewResult, setJsonPreviewResult] = useState<HashPreviewResult | null>(null);
+  const [jsonImportResult, setJsonImportResult] = useState<HashImportResult | null>(null);
+  const [jsonConflicts, setJsonConflicts] = useState<HashImportConflict[]>([]);
+  const [jsonConflictIndex, setJsonConflictIndex] = useState(0);
+  const [jsonResolutions, setJsonResolutions] = useState<HashConflictResolution[]>([]);
+  const [sourceRefUrlPolicy, setSourceRefUrlPolicy] = useState<SourceRefUrlPolicy>("drop-ref");
+  const [isSourceRefUrlPolicySaving, setIsSourceRefUrlPolicySaving] = useState(false);
+  const [bulkAction, setBulkAction] = useState<BulkConflictAction | null>(null);
+  const loadingRef = useRef(false);
 
   const hasLowConfidence = (spells: ParsedSpell[]): boolean => {
     return spells.some((spell) => {
@@ -209,6 +256,26 @@ export default function ImportWizard() {
     }
     setConflictSelections(selections);
   }, [spellConflicts]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getVaultSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setSourceRefUrlPolicy(settings.importSourceRefUrlPolicy);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSourceRefUrlPolicy("drop-ref");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setConflictAction = (key: string, action: ConflictSelection["action"]) => {
     setConflictSelections((prev) => {
@@ -366,40 +433,238 @@ export default function ImportWizard() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+      const selectedFiles = Array.from(e.target.files);
+      setFiles(selectedFiles);
       setResult(null);
       setStep("select");
+      // Detect JSON import mode
+      const hasJson = selectedFiles.some((f) => f.name.toLowerCase().endsWith(".json"));
+      setIsJsonImport(hasJson);
+      // Reset JSON state on new selection
+      setJsonPayload("");
+      setJsonPreviewResult(null);
+      setJsonImportResult(null);
+      setJsonConflicts([]);
+      setJsonConflictIndex(0);
+      setJsonResolutions([]);
+      setBulkAction(null);
+    }
+  };
+
+  const withLoadingGuard = async (work: () => Promise<void>) => {
+    if (loadingRef.current) {
+      return;
+    }
+
+    loadingRef.current = true;
+    setLoading(true);
+    try {
+      await work();
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  const handleSourceRefUrlPolicyChange = async (nextPolicy: SourceRefUrlPolicy) => {
+    const previousPolicy = sourceRefUrlPolicy;
+    setSourceRefUrlPolicy(nextPolicy);
+    setIsSourceRefUrlPolicySaving(true);
+
+    try {
+      const settings = await setImportSourceRefUrlPolicy(nextPolicy);
+      setSourceRefUrlPolicy(settings.importSourceRefUrlPolicy);
+    } catch (error) {
+      setSourceRefUrlPolicy(previousPolicy);
+      await modalAlert(`Import URL policy update failed: ${error}`, "Settings Error", "error");
+    } finally {
+      setIsSourceRefUrlPolicySaving(false);
+    }
+  };
+
+  const confirmLargeJsonPreview = async (file: File): Promise<boolean> => {
+    if (file.size <= JSON_IMPORT_WARNING_THRESHOLD_BYTES) {
+      return true;
+    }
+
+    const sizeInMegabytes = (file.size / (1024 * 1024)).toFixed(2);
+    return modalConfirm(
+      [
+        `${file.name} is ${sizeInMegabytes} MB and exceeds the 10 MB preview warning threshold.`,
+        "Previewing a large JSON import may take longer.",
+        "Files over 100 MB are still rejected by the backend.",
+      ],
+      "Large Import Warning",
+    );
+  };
+
+  const goToJsonPreview = async () => {
+    if (files.length === 0) return;
+    try {
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const jsonFile = files.find((f) => f.name.toLowerCase().endsWith(".json"));
+          if (!jsonFile) return;
+          const shouldContinue = await confirmLargeJsonPreview(jsonFile);
+          if (!shouldContinue) {
+            return;
+          }
+          const text = await jsonFile.text();
+          setJsonPayload(text);
+          const preview = await invoke<HashPreviewResult>("preview_import_spell_json", {
+            payload: text,
+            sourceRefUrlPolicy,
+          });
+          setJsonPreviewResult(preview);
+          setStep("json-preview");
+        });
+      });
+    } catch (e) {
+      console.error("JSON preview failed:", e);
+      await modalAlert(`JSON preview failed: ${e}`, "Preview Error", "error");
+    }
+  };
+
+  const doJsonImport = async () => {
+    try {
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const result = await invoke<HashImportResult>("import_spell_json", {
+            payload: jsonPayload,
+            sourceRefUrlPolicy,
+          });
+          setJsonImportResult(result);
+          if (result.conflicts.length === 0) {
+            setStep("result");
+          } else {
+            setJsonConflicts(result.conflicts);
+            setJsonConflictIndex(0);
+            setJsonResolutions([]);
+            setBulkAction(null);
+            setStep("resolve-json");
+          }
+        });
+      });
+    } catch (e) {
+      console.error("JSON import failed:", e);
+      await modalAlert(`JSON import failed: ${e}`, "Import Error", "error");
+    }
+  };
+
+  const handleBulkAction = async (action: BulkConflictAction) => {
+    if (action === "review_each") {
+      // setState for 'review_each' is already set by the JSX onAction handler.
+      // Just reset conflict traversal state so per-conflict dialog starts at index 0.
+      setJsonConflictIndex(0);
+      setJsonResolutions([]);
+      return;
+    }
+    const conflictActionMap: Record<string, ConflictAction> = {
+      skip_all: "keep_existing",
+      replace_all: "replace_with_new",
+      keep_all: "keep_both",
+    };
+    const mappedAction = conflictActionMap[action];
+    if (!mappedAction) return;
+    try {
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const resolutions: HashConflictResolution[] = jsonConflicts.map((c) => ({
+            existingId: c.existingId,
+            incomingContentHash: c.incomingContentHash,
+            action: mappedAction,
+          }));
+          const result = await invoke<HashImportResult>("resolve_import_spell_json", {
+            payload: jsonPayload,
+            sourceRefUrlPolicy,
+            resolveOptions: {
+              resolutions,
+              defaultAction: null,
+            },
+          });
+          setJsonImportResult(result);
+          setStep("result");
+        });
+      });
+    } catch (e) {
+      console.error("Bulk conflict resolution failed:", e);
+      await modalAlert(`Bulk resolution failed: ${e}`, "Resolution Error", "error");
+    }
+  };
+
+  const handleConflictResolve = async (resolution: HashConflictResolution, applyToAll: boolean) => {
+    let allResolutions: HashConflictResolution[];
+    if (applyToAll) {
+      // Apply same action to current and all remaining conflicts
+      const remainingConflicts = jsonConflicts.slice(jsonConflictIndex);
+      allResolutions = [
+        ...jsonResolutions,
+        ...remainingConflicts.map((c) => ({
+          existingId: c.existingId,
+          incomingContentHash: c.incomingContentHash,
+          action: resolution.action,
+        })),
+      ];
+    } else {
+      allResolutions = [...jsonResolutions, resolution];
+      const nextIndex = jsonConflictIndex + 1;
+      if (nextIndex < jsonConflicts.length) {
+        setJsonResolutions(allResolutions);
+        setJsonConflictIndex(nextIndex);
+        return; // Wait for next conflict
+      }
+    }
+    // All conflicts resolved — submit
+    try {
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const result = await invoke<HashImportResult>("resolve_import_spell_json", {
+            payload: jsonPayload,
+            sourceRefUrlPolicy,
+            resolveOptions: {
+              resolutions: allResolutions,
+              defaultAction: null,
+            },
+          });
+          setJsonImportResult(result);
+          setStep("result");
+        });
+      });
+    } catch (e) {
+      console.error("Conflict resolution failed:", e);
+      await modalAlert(`Conflict resolution failed: ${e}`, "Resolution Error", "error");
     }
   };
 
   const goToPreview = async () => {
     if (files.length === 0) return;
-    setLoading(true);
     try {
-      const payloads = await Promise.all(
-        files.map(async (f) => {
-          const buf = await f.arrayBuffer();
-          return { name: f.name, content: Array.from(new Uint8Array(buf)) };
-        }),
-      );
-      setFilePayloads(payloads);
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const payloads = await Promise.all(
+            files.map(async (f) => {
+              const buf = await f.arrayBuffer();
+              return { name: f.name, content: Array.from(new Uint8Array(buf)) };
+            }),
+          );
+          setFilePayloads(payloads);
 
-      const response = await invoke<PreviewResult>("preview_import", { files: payloads });
-      setPreviewSpells(response.spells);
-      setPreviewArtifacts(response.artifacts);
-      setPreviewConflicts(response.conflicts);
+          const response = await invoke<PreviewResult>("preview_import", { files: payloads });
+          setPreviewSpells(response.spells);
+          setPreviewArtifacts(response.artifacts);
+          setPreviewConflicts(response.conflicts);
 
-      const hasHighLevel = response.spells.some((s) => (s.level || 0) >= 10 || s.isQuestSpell);
-      if (hasHighLevel && !suppressWarning) {
-        setShowHighLevelWarning(true);
-      }
+          const hasHighLevel = response.spells.some((s) => (s.level || 0) >= 10 || s.isQuestSpell);
+          if (hasHighLevel && !suppressWarning) {
+            setShowHighLevelWarning(true);
+          }
 
-      setStep("preview");
+          setStep("preview");
+        });
+      });
     } catch (e) {
       console.error("Preview failed:", e);
       await modalAlert(`Preview failed: ${e}`, "Preview Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -418,67 +683,69 @@ export default function ImportWizard() {
   };
 
   const doImport = async () => {
-    setLoading(true);
     try {
-      setResolveResult(null);
-      const response = await invoke<ImportResult>("import_files", {
-        files: filePayloads,
-        allowOverwrite,
-        spells: mappedSpells,
-        artifacts: previewArtifacts,
-        conflicts: previewConflicts,
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          setResolveResult(null);
+          const response = await invoke<ImportResult>("import_files", {
+            files: filePayloads,
+            allowOverwrite,
+            spells: mappedSpells,
+            artifacts: previewArtifacts,
+            conflicts: previewConflicts,
+          });
+          setResult(response);
+          const conflicts = spellConflictsOnly(response.conflicts);
+          setSpellConflicts(conflicts);
+          if (conflicts.length > 0) {
+            setStep("resolve");
+          } else {
+            setStep("result");
+          }
+        });
       });
-      setResult(response);
-      const conflicts = spellConflictsOnly(response.conflicts);
-      setSpellConflicts(conflicts);
-      if (conflicts.length > 0) {
-        setStep("resolve");
-      } else {
-        setStep("result");
-      }
     } catch (e) {
       console.error("Import failed:", e);
       await modalAlert(`Import failed: ${e}`, "Import Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
   const resolveConflicts = async () => {
-    setLoading(true);
     try {
-      const resolutions = spellConflicts.map((conflict, index) => {
-        const key = getConflictKey(conflict, index);
-        const selection = conflictSelections[key];
-        const existingId = conflict.existing.id;
-        if (!existingId) {
-          throw new Error("Missing existing spell id.");
-        }
-        if (!selection || selection.action === "skip") {
-          return { action: "skip", existingId: existingId };
-        }
-        const resolvedSpell =
-          selection.action === "overwrite"
-            ? spellDetailToUpdate(conflict.incoming, existingId)
-            : mergeConflictSpell(conflict, selection);
-        return {
-          action: selection.action,
-          existingId: existingId,
-          spell: resolvedSpell,
-          artifact: conflict.artifact,
-        };
-      });
+      await withLoadingGuard(async () => {
+        await runWithImportActivity(async () => {
+          const resolutions = spellConflicts.map((conflict, index) => {
+            const key = getConflictKey(conflict, index);
+            const selection = conflictSelections[key];
+            const existingId = conflict.existing.id;
+            if (!existingId) {
+              throw new Error("Missing existing spell id.");
+            }
+            if (!selection || selection.action === "skip") {
+              return { action: "skip", existingId: existingId };
+            }
+            const resolvedSpell =
+              selection.action === "overwrite"
+                ? spellDetailToUpdate(conflict.incoming, existingId)
+                : mergeConflictSpell(conflict, selection);
+            return {
+              action: selection.action,
+              existingId: existingId,
+              spell: resolvedSpell,
+              artifact: conflict.artifact,
+            };
+          });
 
-      const response = await invoke<ResolveImportResult>("resolve_import_conflicts", {
-        resolutions,
+          const response = await invoke<ResolveImportResult>("resolve_import_conflicts", {
+            resolutions,
+          });
+          setResolveResult(response);
+          setStep("result");
+        });
       });
-      setResolveResult(response);
-      setStep("result");
     } catch (e) {
       console.error("Conflict resolution failed:", e);
       await modalAlert(`Conflict resolution failed: ${e}`, "Resolution Error", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -494,6 +761,15 @@ export default function ImportWizard() {
     setSpellConflicts([]);
     setConflictSelections({});
     setResolveResult(null);
+    // Reset JSON state
+    setIsJsonImport(false);
+    setJsonPayload("");
+    setJsonPreviewResult(null);
+    setJsonImportResult(null);
+    setJsonConflicts([]);
+    setJsonConflictIndex(0);
+    setJsonResolutions([]);
+    setBulkAction(null);
   };
 
   const previewParseConflicts = parseConflicts(previewConflicts);
@@ -502,30 +778,62 @@ export default function ImportWizard() {
 
   return (
     <div className="space-y-4">
-      {/* Step Indicator */}
-      <div className="flex gap-2 text-xs">
-        {(Object.keys(STEP_TITLES) as ImportStep[]).map((s) => (
-          <div
-            key={s}
-            className={`px-2 py-1 rounded ${
-              s === step ? "bg-blue-600 text-white" : "bg-neutral-800 text-neutral-500"
-            }`}
-          >
-            {STEP_TITLES[s]}
-          </div>
-        ))}
+      {/* Step Indicator — only show steps relevant to current import mode */}
+      <div className="flex gap-2 text-xs flex-wrap">
+        {(Object.keys(STEP_TITLES) as ImportStep[])
+          .filter((s) =>
+            isJsonImport
+              ? ["select", "json-preview", "resolve-json", "result"].includes(s)
+              : !["json-preview", "resolve-json"].includes(s),
+          )
+          .map((s) => (
+            <div
+              key={s}
+              className={`px-2 py-1 rounded ${
+                s === step ? "bg-blue-600 text-white" : "bg-neutral-800 text-neutral-500"
+              }`}
+            >
+              {STEP_TITLES[s]}
+            </div>
+          ))}
       </div>
 
       {/* Step 1: Select Files */}
       {step === "select" && (
         <div className="space-y-4">
+          <div className="rounded-md border border-neutral-800 bg-neutral-900/40 p-3">
+            <label
+              className="mb-2 block text-sm font-medium text-neutral-200"
+              htmlFor="source-ref-url-policy"
+            >
+              Invalid SourceRef URL handling
+            </label>
+            <select
+              id="source-ref-url-policy"
+              data-testid="select-source-ref-url-policy"
+              value={sourceRefUrlPolicy}
+              disabled={loading || isSourceRefUrlPolicySaving}
+              onChange={(event) => {
+                void handleSourceRefUrlPolicyChange(event.target.value as SourceRefUrlPolicy);
+              }}
+              className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+            >
+              <option value="drop-ref">Drop invalid SourceRef entries and continue</option>
+              <option value="reject-spell">Reject the spell if any SourceRef URL is invalid</option>
+            </select>
+            <p className="mt-2 text-xs text-neutral-500" data-testid="source-ref-url-policy-help">
+              Saved to vault settings and reused for future JSON imports.
+            </p>
+          </div>
+
           <input
             type="file"
             multiple
-            accept=".md,.pdf,.docx"
+            accept=".md,.pdf,.docx,.json"
             data-testid="import-file-input"
             aria-label="Select files to import"
             onChange={handleFileChange}
+            disabled={loading}
             className="block w-full text-sm text-neutral-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-neutral-800 file:text-neutral-300 hover:file:bg-neutral-700"
           />
           {files.length > 0 && (
@@ -542,7 +850,7 @@ export default function ImportWizard() {
               <button
                 type="button"
                 data-testid="btn-preview-import"
-                onClick={goToPreview}
+                onClick={isJsonImport ? goToJsonPreview : goToPreview}
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 disabled:opacity-50"
               >
@@ -553,7 +861,61 @@ export default function ImportWizard() {
         </div>
       )}
 
-      {/* Step 2: Preview */}
+      {/* Step JSON-2: JSON Preview (only for .json files) */}
+      {step === "json-preview" && (
+        <div className="space-y-4">
+          <div className="p-3 bg-neutral-900/50 border border-neutral-800 rounded">
+            <div className="text-sm font-semibold">
+              Found {jsonPreviewResult?.spells.length ?? 0} spell(s) in JSON
+            </div>
+            {jsonPreviewResult && jsonPreviewResult.failures.length > 0 && (
+              <div className="text-xs text-red-400 mt-1">
+                {jsonPreviewResult.failures.length} spell(s) failed validation
+              </div>
+            )}
+          </div>
+
+          {jsonPreviewResult && jsonPreviewResult.warnings.length > 0 && (
+            <div className="p-3 bg-yellow-900/20 border border-yellow-900 rounded text-yellow-400 text-sm">
+              ⚠️ {jsonPreviewResult.warnings.join("; ")}
+            </div>
+          )}
+
+          {jsonPreviewResult && jsonPreviewResult.failures.length > 0 && (
+            <div className="max-h-32 overflow-auto bg-neutral-950 border border-red-900/50 rounded p-2">
+              <div className="text-xs text-red-400 font-semibold mb-1">Validation failures:</div>
+              {jsonPreviewResult.failures.map((f, i) => (
+                <div key={`${i}-${f.spellName}`} className="text-xs text-red-300">
+                  <span className="font-medium">{f.spellName}</span>: {f.reason}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-testid="btn-back-to-select-json"
+              onClick={() => setStep("select")}
+              disabled={loading}
+              className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
+            >
+              ← Back
+            </button>
+            <button
+              type="button"
+              data-testid="btn-import-json"
+              onClick={doJsonImport}
+              disabled={loading || (jsonPreviewResult?.spells.length ?? 0) === 0}
+              className="px-4 py-2 bg-green-600 rounded hover:bg-green-500 disabled:opacity-50 font-semibold"
+            >
+              {loading ? "Importing…" : `Import ${jsonPreviewResult?.spells.length ?? 0} Spell(s)`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Preview (legacy – md/pdf/docx) */}
       {step === "preview" && (
         <div className="space-y-4">
           <div className="p-3 bg-neutral-900/50 border border-neutral-800 rounded">
@@ -627,6 +989,7 @@ export default function ImportWizard() {
               type="button"
               data-testid="btn-back-to-select"
               onClick={() => setStep("select")}
+              disabled={loading}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
               ← Back
@@ -723,6 +1086,7 @@ export default function ImportWizard() {
               type="button"
               data-testid="btn-back-to-preview"
               onClick={() => setStep("preview")}
+              disabled={loading}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
               ← Back
@@ -880,6 +1244,7 @@ export default function ImportWizard() {
             <button
               type="button"
               onClick={() => setStep("confirm")}
+              disabled={loading}
               className="px-3 py-2 bg-neutral-800 rounded hover:bg-neutral-700"
             >
               ← Back
@@ -897,8 +1262,95 @@ export default function ImportWizard() {
         </div>
       )}
 
-      {/* Step 6: Result */}
-      {step === "result" && result && (
+      {/* Step resolve-json: Hash-based conflict resolution */}
+      {step === "resolve-json" &&
+        (() => {
+          const BULK_THRESHOLD = 10;
+          const showBulk =
+            jsonConflicts.length >= BULK_THRESHOLD &&
+            bulkAction === null &&
+            jsonConflictIndex === 0 &&
+            jsonResolutions.length === 0;
+
+          if (showBulk) {
+            return (
+              <BulkConflictSummaryDialog
+                conflictCount={jsonConflicts.length}
+                disabled={loading}
+                onAction={(action) => {
+                  setBulkAction(action);
+                  void handleBulkAction(action);
+                }}
+              />
+            );
+          }
+
+          const currentConflict = jsonConflicts[jsonConflictIndex];
+          if (!currentConflict) return null;
+
+          return (
+            <SpellConflictDiffDialog
+              conflict={currentConflict}
+              conflictIndex={jsonConflictIndex}
+              totalConflicts={jsonConflicts.length}
+              disabled={loading}
+              onResolve={handleConflictResolve}
+            />
+          );
+        })()}
+
+      {/* Step 6a: Result — JSON import */}
+      {step === "result" && isJsonImport && jsonImportResult && (
+        <div className="space-y-4">
+          <div className="p-3 bg-green-900/20 border border-green-900 rounded">
+            <div className="text-sm font-semibold text-green-200">Import Complete</div>
+            <div className="text-xs text-neutral-400 mt-2 space-y-1">
+              <div>✅ Imported: {jsonImportResult.importedCount} spell(s)</div>
+              <div>
+                ⏭️ Duplicates skipped: {jsonImportResult.duplicatesSkipped.total}
+                {jsonImportResult.duplicatesSkipped.mergedCount > 0 &&
+                  ` (${jsonImportResult.duplicatesSkipped.mergedCount} with metadata merged)`}
+              </div>
+              {jsonImportResult.conflictsResolved && (
+                <div>
+                  🔀 Conflicts resolved: {jsonImportResult.conflictsResolved.keepExistingCount}{" "}
+                  kept, {jsonImportResult.conflictsResolved.replaceCount} replaced,{" "}
+                  {jsonImportResult.conflictsResolved.keepBothCount} kept both
+                </div>
+              )}
+              {jsonImportResult.failures.length > 0 && (
+                <div>❌ Failures: {jsonImportResult.failures.length}</div>
+              )}
+              {jsonImportResult.warnings.length > 0 && (
+                <div>⚠️ Warnings: {jsonImportResult.warnings.length}</div>
+              )}
+            </div>
+          </div>
+
+          {jsonImportResult.failures.length > 0 && (
+            <div className="max-h-32 overflow-auto bg-neutral-950 border border-red-900/50 rounded p-2">
+              <div className="text-xs text-red-400 font-semibold mb-1">Failures:</div>
+              {jsonImportResult.failures.map((f, i) => (
+                <div key={`${i}-${f.spellName}`} className="text-xs text-red-300">
+                  <span className="font-medium">{f.spellName}</span>: {f.reason}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            data-testid="btn-import-more"
+            onClick={reset}
+            className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500"
+          >
+            Import More Files
+          </button>
+        </div>
+      )}
+
+      {/* Step 6b: Result — legacy import (md/pdf/docx) */}
+      {step === "result" && !isJsonImport && result && (
         <div className="space-y-4">
           <div className="p-3 bg-green-900/20 border border-green-900 rounded text-green-400">
             Imported spells: {result.spells.length}

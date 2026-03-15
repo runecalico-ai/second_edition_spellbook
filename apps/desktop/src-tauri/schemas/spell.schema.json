@@ -13,7 +13,8 @@
     "name": {
       "type": "string",
       "description": "The name of the spell.",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 256
     },
     "tradition": {
       "type": "string",
@@ -235,7 +236,8 @@
     "description": {
       "type": "string",
       "description": "Full description of the spell.",
-      "minLength": 1
+      "minLength": 1,
+      "maxLength": 16384
     },
     "tags": {
       "type": "array",
@@ -254,11 +256,13 @@
         "properties": {
           "system": {
             "type": "string",
-            "description": "Game system (e.g. 'AD&D 2e')."
+            "description": "Game system (e.g. 'AD&D 2e').",
+            "maxLength": 128
           },
           "book": {
             "type": "string",
-            "description": "Book title or collection name (e.g. 'Player's Handbook', 'Homebrew')."
+            "description": "Book title or collection name (e.g. 'Player's Handbook', 'Homebrew').",
+            "maxLength": 512
           },
           "page": {
             "type": ["integer", "string", "null"],
@@ -266,7 +270,13 @@
           },
           "note": {
             "type": ["string", "null"],
-            "description": "Additional notes (e.g. 'errata')."
+            "description": "Additional notes (e.g. 'errata').",
+            "maxLength": 2048
+          },
+          "url": {
+            "type": ["string", "null"],
+            "description": "Optional URL for the source reference.",
+            "maxLength": 2048
           }
         },
         "required": ["book"]
@@ -279,7 +289,8 @@
     },
     "author": {
       "type": "string",
-      "description": "Author credit."
+      "description": "Author credit.",
+      "maxLength": 256
     },
     "version": {
       "type": "string",

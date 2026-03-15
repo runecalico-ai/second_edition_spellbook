@@ -11,15 +11,14 @@ This repository houses the local-only AD&D 2e spellbook app. The desktop client 
 - Rust toolchain (stable)
 - Python 3.14 (for the `services/ml` sidecar)
 - Tauri 2 CLI: `npm i -g @tauri-apps/cli@latest` (or use npx)
-- Pandoc (for PDF export)
 
-2) Install JS deps
+1) Install JS deps
 ```bash
 cd apps/desktop
 pnpm install   # or npm install
 ```
 
-3) Run in desktop mode
+1) Run in desktop mode
 ```bash
 pnpm tauri:dev
 ```

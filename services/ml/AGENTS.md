@@ -99,3 +99,4 @@ pytest tests/
 1. **Unused imports**: Run `ruff check --fix` to auto-remove
 2. **Unused variables**: Extract parameters only when you need them
 3. **Type hints**: Include them for all public functions and methods
+

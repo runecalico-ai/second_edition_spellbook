@@ -95,6 +95,10 @@ pub struct CharacterSpellbookEntry {
     pub known: i64,
     pub notes: Option<String>,
     pub tags: Option<String>,
+    pub spell_content_hash: Option<String>,
+    pub missing_from_library: bool,
+    pub available_upgrade_hash: Option<String>,
+    pub available_upgrade_spell_id: Option<i64>,
 }
 
 #[derive(Serialize)]

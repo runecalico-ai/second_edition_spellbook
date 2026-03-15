@@ -1,0 +1,142 @@
+   Compiling spellbook-desktop v0.1.0 (C:\Users\vitki\OneDrive\GitHub\runecalico-ai\second_edition_spellbook\apps\desktop\src-tauri)
+error: this `impl` can be derived
+  --> src\commands\import.rs:77:1
+   |
+77 | / impl Default for SourceRefUrlPolicy {
+78 | |     fn default() -> Self {
+79 | |         SourceRefUrlPolicy::DropRef
+80 | |     }
+81 | | }
+   | |_^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#derivable_impls
+   = note: `-D clippy::derivable-impls` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::derivable_impls)]`
+help: replace the manual implementation with a derive attribute and mark the default variant
+   |
+72 + #[derive(Default)]
+73 | pub enum SourceRefUrlPolicy {
+74 ~     #[default]
+75 ~     DropRef,
+   |
+
+error: called `iter().cloned().collect()` on a slice to create a `Vec`. Calling `to_vec()` is both faster and more readable
+   --> src\commands\import.rs:175:43
+    |
+175 |     let mut tags: Vec<String> = spell.tags.iter().cloned().collect();
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `.to_vec()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#iter_cloned_collect
+    = note: `-D clippy::iter-cloned-collect` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::iter_cloned_collect)]`
+
+error: very complex type used. Consider factoring parts into `type` definitions
+   --> src\commands\import.rs:402:6
+    |
+402 |   ) -> (
+    |  ______^
+403 | |     String,
+404 | |     Option<String>,
+405 | |     Option<String>,
+...   |
+426 | |     i64,
+427 | | ) {
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#type_complexity
+    = note: `-D clippy::type-complexity` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`
+
+error: redundant closure
+   --> src\commands\import.rs:714:18
+    |
+714 |         .map_err(|e| AppError::Import(e))?;
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the tuple variant itself: `AppError::Import`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#redundant_closure
+    = note: `-D clippy::redundant-closure` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::redundant_closure)]`
+
+error: redundant closure
+   --> src\commands\import.rs:715:57
+    |
+715 |     let stored_hash = item.spell.compute_hash().map_err(|e| AppError::Import(e))?;
+    |                                                         ^^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the tuple variant itself: `AppError::Import`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#redundant_closure
+
+error: deref on an immutable reference
+   --> src\commands\import.rs:798:29
+    |
+798 |         if table_has_column(&*tx, "character_class_spell", "spell_content_hash") {
+    |                             ^^^^ help: if you would like to reborrow, try removing `&*`: `tx`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#borrow_deref_ref
+    = note: `-D clippy::borrow-deref-ref` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::borrow_deref_ref)]`
+
+error: deref on an immutable reference
+   --> src\commands\import.rs:807:29
+    |
+807 |         if table_has_column(&*tx, "artifact", "spell_content_hash") {
+    |                             ^^^^ help: if you would like to reborrow, try removing `&*`: `tx`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#borrow_deref_ref
+
+error: this `map_or` can be simplified
+   --> src\commands\import.rs:923:17
+    |
+923 | /                 existing_by_hash.as_ref().map_or(false, |(spell_id, _, _)| {
+924 | |                     resolve_options.as_ref().map_or(false, |o| {
+925 | |                         o.resolutions.iter().any(|r| {
+926 | |                             r.action == "replace_with_new"
+...   |
+930 | |                     })
+931 | |                 });
+    | |__________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#unnecessary_map_or
+    = note: `-D clippy::unnecessary-map-or` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_map_or)]`
+help: use is_some_and instead
+    |
+923 -                 existing_by_hash.as_ref().map_or(false, |(spell_id, _, _)| {
+923 +                 existing_by_hash.as_ref().is_some_and(|(spell_id, _, _)| {
+    |
+
+error: this `map_or` can be simplified
+   --> src\commands\import.rs:924:21
+    |
+924 | /                     resolve_options.as_ref().map_or(false, |o| {
+925 | |                         o.resolutions.iter().any(|r| {
+926 | |                             r.action == "replace_with_new"
+927 | |                                 && r.incoming_content_hash == content_hash
+928 | |                                 && r.existing_id != *spell_id
+929 | |                         })
+930 | |                     })
+    | |______________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#unnecessary_map_or
+help: use is_some_and instead
+    |
+924 -                     resolve_options.as_ref().map_or(false, |o| {
+924 +                     resolve_options.as_ref().is_some_and(|o| {
+    |
+
+error: redundant closure
+    --> src\commands\import.rs:1073:26
+     |
+1073 |                 .map_err(|e| AppError::Import(e))?;
+     |                          ^^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the tuple variant itself: `AppError::Import`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#redundant_closure
+
+error: redundant closure
+    --> src\commands\import.rs:1074:65
+     |
+1074 |             let stored_hash = item.spell.compute_hash().map_err(|e| AppError::Import(e))?;
+     |                                                                 ^^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the tuple variant itself: `AppError::Import`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#redundant_closure
+
+error: could not compile `spellbook-desktop` (lib) due to 11 previous errors

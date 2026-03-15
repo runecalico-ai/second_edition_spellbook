@@ -20,9 +20,11 @@ Update all major application subsystems to use canonical hashes:
 
 ### In Scope
 -   Search implementation (FTS5 virtual table, indexing triggers)
+-   Strict Content-Addressable Deduplication: Use canonical JCS hashing to ensure that identical spell content results in the same hash, preventing duplicate definitions across the ecosystem.
 -   Import/Export logic with hash-based deduplication
 -   Import Conflict Resolution UI (diff view, resolution options)
 -   Vault implementation (hash-based file storage)
+-   SourceRef handling aligned with canonical schema: `source_refs` remains optional; each `SourceRef` requires `book` and may include `system`, `page`, `note`, and optional `url` metadata for external links.
 -   Spell List verification and migration
 -   Character spellbook integration
 -   Artifact table: migrate spell references to content hash (see design)

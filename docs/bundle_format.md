@@ -104,7 +104,7 @@ When importing a bundle (JSON or Markdown), the system performs the following lo
    - If **Create New** is selected: Creates a new character with `(Imported)` appended to the name.
 
 ### 3.2 Spell Deduplication and Versioning
-The Spellbook application identifies spells universally by their **Canonical Content Hash** (a SHA-256 fingerprint of the core rules content of the spell, ignoring metadata like tags or source references). This ensures precise spell versioning.
+The Spellbook application identifies spells universally by their **Canonical Content Hash** (a SHA-256 fingerprint of the core rules content of the spell, ignoring metadata such as source references (book/page citations)). This ensures precise spell versioning.
 
 **Resolution Algorithm**:
 1. For each spell in the import batch, its `content_hash` is computed.

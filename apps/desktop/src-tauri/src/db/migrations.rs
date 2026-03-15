@@ -557,9 +557,14 @@ mod tests {
         // SELECT COUNT(*) FROM spell_fts would hit the content table (spell), which lacks
         // canonical_* columns; spell_fts_docsize has one row per FTS document.
         let count: i32 = conn
-            .query_row("SELECT COUNT(*) FROM spell_fts_docsize", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM spell_fts_docsize", [], |row| {
+                row.get(0)
+            })
             .expect("count spell_fts");
-        assert_eq!(count, 10000, "Should have repopulated 10000 spells into FTS");
+        assert_eq!(
+            count, 10000,
+            "Should have repopulated 10000 spells into FTS"
+        );
 
         assert!(
             elapsed.as_secs() < 60,

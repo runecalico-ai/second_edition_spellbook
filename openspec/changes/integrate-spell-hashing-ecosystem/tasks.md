@@ -158,10 +158,10 @@
         - [x] Optional `reject-spell`: reject entire spell if any SourceRef URL fails validation.
 
 ## 10. Performance Validation
-- [ ] 10.1 Benchmark vault GC:
-    - [ ] Verify GC for 10,000 vault files completes in < 30 seconds.
-- [ ] 10.2 Benchmark FTS rebuild:
-    - [ ] Verify Migration 0014 FTS rebuild/repopulate for 10,000 spells completes in < 60 seconds.
+- [x] 10.1 Benchmark vault GC:
+    - [x] Verify GC for 10,000 vault files completes in < 30 seconds.
+- [x] 10.2 Benchmark FTS rebuild:
+    - [x] Verify Migration 0014 FTS rebuild/repopulate for 10,000 spells completes in < 60 seconds.
 
 ## 11. Documentation
 - [ ] 11.1 User documentation:

@@ -1890,4 +1890,82 @@ mod tests {
         assert!(!data_dir.join("spells.old").exists());
         assert!(!data_dir.join("vault-settings.json.old").exists());
     }
+
+    #[test]
+    #[ignore]
+    fn test_bench_vault_gc_10000() {
+        use crate::models::canonical_spell::CanonicalSpell;
+        use std::time::Instant;
+
+        let env = VaultTestEnvGuard::new_temp().expect("temp env");
+        let conn = rusqlite::Connection::open_in_memory().expect("open db");
+
+        // Minimal schema for vault logic compatibility
+        conn.execute(
+            "CREATE TABLE spell (id INTEGER PRIMARY KEY, content_hash TEXT, canonical_data TEXT)",
+            [],
+        )
+        .expect("create spell table");
+        conn.execute(
+            "CREATE TABLE character_class_spell (id INTEGER PRIMARY KEY, spell_content_hash TEXT)",
+            [],
+        )
+        .expect("create character_class_spell table");
+        conn.execute(
+            "CREATE TABLE artifact (id INTEGER PRIMARY KEY, spell_content_hash TEXT)",
+            [],
+        )
+        .expect("create artifact table");
+
+        let mut total_files_generated = 0;
+
+        // 1. Generate 9000 Live Spells
+        for i in 0..9000 {
+            let mut spell = CanonicalSpell::new(
+                format!("Live Spell {i}"),
+                1,
+                "ARCANE".to_string(),
+                "Test".to_string(),
+            );
+            spell.school = Some("Abjuration".to_string());
+            let hash = spell.compute_hash().expect("compute hash for live spell");
+            let json = serde_json::to_string(&spell).expect("serialize spell");
+            conn.execute(
+                "INSERT INTO spell (content_hash, canonical_data) VALUES (?1, ?2)",
+                rusqlite::params![&hash, &json],
+            )
+            .expect("insert spell");
+            super::write_spell_json_atomically(env.path(), &hash, &json).expect("write spell file");
+            total_files_generated += 1;
+        }
+
+        // 2. Generate 1000 Orphan Files
+        for i in 0..1000 {
+            let orphan_hash = format!("orphan-hash-{i:06}");
+            let orphan_path = super::spell_file_path_in_root(env.path(), &orphan_hash);
+            if i == 0 {
+                // spells dir already exists from live spell writes; ensure for orphan path
+                std::fs::create_dir_all(orphan_path.parent().expect("orphan path has parent"))
+                    .expect("create spells dir");
+            }
+            std::fs::write(&orphan_path, "{}").expect("write orphan file");
+            total_files_generated += 1;
+        }
+
+        assert_eq!(total_files_generated, 10000, "Ensure 10k files exist");
+
+        // Benchmark
+        let start = Instant::now();
+        let summary = super::run_vault_gc_with_root(&conn, env.path()).expect("gc finished");
+        let elapsed = start.elapsed();
+
+        assert_eq!(summary.deleted_count, 1000);
+        assert_eq!(summary.retained_count, 9000);
+
+        assert!(
+            elapsed.as_secs() < 30,
+            "Vault GC on 10k files must complete in < 30 seconds, took {:?}",
+            elapsed
+        );
+    }
 }

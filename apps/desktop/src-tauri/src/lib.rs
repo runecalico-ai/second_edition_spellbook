@@ -71,9 +71,12 @@ pub fn run() {
             remove_character_spell,
             remove_character_spell_by_hash,
             upgrade_character_class_spell,
+            #[cfg(debug_assertions)]
             test_seed_character_with_upgradeable_spell,
             update_character_spell_notes,
+            #[cfg(debug_assertions)]
             test_seed_spell,
+            #[cfg(debug_assertions)]
             test_seed_character_with_orphan_spell,
             get_character_spellbook,
             update_character_spell,

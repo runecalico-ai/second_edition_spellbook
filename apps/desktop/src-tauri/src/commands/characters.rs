@@ -39,6 +39,7 @@ fn get_character_class_spells_with_conn(
                              WHERE s2.name = s.name
                                AND s2.content_hash != ccs.spell_content_hash
                                AND s2.content_hash IS NOT NULL
+                               AND s2.id > s.id
                              ORDER BY s2.id DESC LIMIT 1)
                         ELSE NULL END AS available_upgrade_hash,
                         CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
@@ -46,6 +47,7 @@ fn get_character_class_spells_with_conn(
                              WHERE s2.name = s.name
                                AND s2.content_hash != ccs.spell_content_hash
                                AND s2.content_hash IS NOT NULL
+                               AND s2.id > s.id
                              ORDER BY s2.id DESC LIMIT 1)
                         ELSE NULL END AS available_upgrade_spell_id
                  FROM character_class_spell ccs
@@ -72,6 +74,7 @@ fn get_character_class_spells_with_conn(
                              WHERE s2.name = s.name
                                AND s2.content_hash != ccs.spell_content_hash
                                AND s2.content_hash IS NOT NULL
+                               AND s2.id > s.id
                              ORDER BY s2.id DESC LIMIT 1)
                         ELSE NULL END AS available_upgrade_hash,
                         CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
@@ -79,6 +82,7 @@ fn get_character_class_spells_with_conn(
                              WHERE s2.name = s.name
                                AND s2.content_hash != ccs.spell_content_hash
                                AND s2.content_hash IS NOT NULL
+                               AND s2.id > s.id
                              ORDER BY s2.id DESC LIMIT 1)
                         ELSE NULL END AS available_upgrade_spell_id
                  FROM character_class_spell ccs
@@ -209,6 +213,22 @@ fn upgrade_character_class_spell_with_conn(
     new_spell_id: i64,
     new_hash: &str,
 ) -> Result<(), AppError> {
+    // Validate that new_spell_id maps to new_hash
+    let actual_hash: Option<String> = conn
+        .query_row(
+            "SELECT content_hash FROM spell WHERE id = ?",
+            [new_spell_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .flatten();
+
+    if actual_hash.as_deref() != Some(new_hash) {
+        return Err(AppError::Unknown(
+            "Provided new_hash does not match the actual spell's content_hash".to_string(),
+        ));
+    }
+
     let updated = conn.execute(
         "UPDATE character_class_spell \
          SET spell_content_hash = ?, spell_id = ? \
@@ -905,6 +925,7 @@ pub async fn get_character_spellbook(
 
 /// Test-only: inserts a spell row by name and content_hash for E2E (e.g. restoring an orphan).
 /// Only use in E2E tests.
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn test_seed_spell(
     state: State<'_, Arc<Pool>>,
@@ -928,6 +949,7 @@ pub async fn test_seed_spell(
 /// Test-only: seeds a character with one class and one orphan spell row (spell_content_hash
 /// set, no matching spell row) for E2E missing-library placeholder tests.
 /// Only use in E2E tests; creates data that would not occur in production without CASCADE disabled.
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn test_seed_character_with_orphan_spell(
     state: State<'_, Arc<Pool>>,
@@ -969,6 +991,7 @@ pub async fn test_seed_character_with_orphan_spell(
 /// Test-only: seeds a character with one Mage class and one known spell (spell_content_hash set,
 /// matching spell row with spell_name and spell_hash_a) for E2E upgrade scenario tests.
 /// Only use in E2E tests.
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn test_seed_character_with_upgradeable_spell(
     state: State<'_, Arc<Pool>>,

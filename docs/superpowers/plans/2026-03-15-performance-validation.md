@@ -17,7 +17,7 @@
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/vault.rs:1880-1894`
 
-- [ ] **Step 1: Write the vault GC benchmark test structure**
+- [x] **Step 1: Write the vault GC benchmark test structure**
 
 Add the following benchmark test to the `mod tests` block at the end of `apps/desktop/src-tauri/src/commands/vault.rs`:
 
@@ -87,12 +87,12 @@ Add the following benchmark test to the `mod tests` block at the end of `apps/de
     }
 ```
 
-- [ ] **Step 2: Run test to verify it executes and passes benchmark**
+- [x] **Step 2: Run test to verify it executes and passes benchmark**
 
 Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml test_bench_vault_gc_10000 -- --ignored --nocapture`
 Expected: PASS and finishes in under 30 seconds.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/vault.rs
@@ -106,7 +106,7 @@ git commit -m "test: add vault gc benchmark for 10000 files"
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/db/migrations.rs:490-497`
 
-- [ ] **Step 1: Write the FTS rebuild benchmark test**
+- [x] **Step 1: Write the FTS rebuild benchmark test**
 
 Add the following benchmark to the `mod tests` block at the end of `apps/desktop/src-tauri/src/db/migrations.rs`:
 
@@ -183,14 +183,18 @@ Add the following benchmark to the `mod tests` block at the end of `apps/desktop
     }
 ```
 
-- [ ] **Step 2: Run test to verify it executes and passes benchmark**
+- [x] **Step 2: Run test to verify it executes and passes benchmark**
 
 Run: `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml test_bench_fts_rebuild_10000_spells_migration_0014 -- --ignored --nocapture`
 Expected: PASS and finishes in under 60 seconds.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/db/migrations.rs
 git commit -m "test: add fts rebuild benchmark for migration 0014"
 ```
+
+---
+
+**Status:** Complete (2026-03-15). PR #88.

@@ -493,4 +493,78 @@ mod tests {
         ));
         assert!(has_column(&conn, "artifact", "spell_content_hash"));
     }
+
+    /// Benchmarks migration 0014 FTS rebuild with 10k spells; must complete in < 60s.
+    #[test]
+    #[ignore]
+    fn test_bench_fts_rebuild_10000_spells_migration_0014() {
+        use std::time::Instant;
+
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_hash TEXT,
+                name TEXT,
+                description TEXT,
+                material_components TEXT,
+                tags TEXT,
+                source TEXT,
+                author TEXT,
+                canonical_data TEXT
+            );
+            PRAGMA user_version = 13;
+        "#,
+        )
+        .expect("create spell table at user_version 13");
+
+        let sample_canonical_data = r#"{
+            "name": "Dummy Spell",
+            "description": "A very long detailed description representing a realistic spell size...",
+            "materialComponents": "Bat guano and sulfur.",
+            "tags": ["Fire", "Evocation", "Wizard"],
+            "source": "Player's Handbook",
+            "author": "Gygax",
+            "range": { "type": "touch" },
+            "duration": { "type": "instantaneous" },
+            "area": { "type": "singleTarget" },
+            "castingTime": { "type": "action", "value": 1 },
+            "savingThrow": { "type": "none" },
+            "damage": [],
+            "magicResistance": false,
+            "experienceComponent": false
+        }"#;
+
+        let mut stmt = conn
+            .prepare("INSERT INTO spell (name, description, canonical_data) VALUES (?1, ?2, ?3)")
+            .expect("prepare insert");
+        for i in 0..10000 {
+            stmt.execute(rusqlite::params![
+                format!("Dummy Spell {}", i),
+                "A very long detailed description representing a realistic spell size...",
+                sample_canonical_data
+            ])
+            .expect("insert spell");
+        }
+
+        let sql = include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
+
+        let start = Instant::now();
+        conn.execute_batch(sql).expect("apply migration 0014");
+        let elapsed = start.elapsed();
+
+        // SELECT COUNT(*) FROM spell_fts would hit the content table (spell), which lacks
+        // canonical_* columns; spell_fts_docsize has one row per FTS document.
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM spell_fts_docsize", [], |row| row.get(0))
+            .expect("count spell_fts");
+        assert_eq!(count, 10000, "Should have repopulated 10000 spells into FTS");
+
+        assert!(
+            elapsed.as_secs() < 60,
+            "FTS rebuild for 10k spells must take < 60 seconds, took {:?}",
+            elapsed
+        );
+    }
 }

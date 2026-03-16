@@ -11,13 +11,6 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tauri::State;
 
-fn table_has_column(conn: &rusqlite::Connection, table: &str, column: &str) -> bool {
-    let sql = format!(
-        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
-        table.replace('\'', "''")
-    );
-    conn.query_row(&sql, [column], |_| Ok(())).is_ok()
-}
 
 // Helper to fetch bundle data (synchronous, for use in spawn_blocking)
 fn fetch_character_bundle(
@@ -80,7 +73,7 @@ fn fetch_character_bundle(
         let class_data = class_row?;
 
         // 4. Get Spells for this class
-        let use_hash = table_has_column(conn, "character_class_spell", "spell_content_hash");
+        let use_hash = crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
         if use_hash {
             let missing_count: i64 = conn.query_row(
                 "SELECT COUNT(*)
@@ -387,7 +380,7 @@ fn import_character_bundle_logic(
                 tx.last_insert_rowid()
             };
 
-            if table_has_column(tx, "character_class_spell", "spell_content_hash") {
+            if crate::db::table_has_column(tx, "character_class_spell", "spell_content_hash") {
                 let spell_content_hash: Option<String> = tx
                     .query_row(
                         "SELECT content_hash FROM spell WHERE id = ?",

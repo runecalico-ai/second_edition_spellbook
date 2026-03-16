@@ -161,7 +161,7 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
     // matches but spell_content_hash belongs to a different spell.
     // artifact.hash = file hash (we return it); spell_content_hash = spell ref (we filter by it).
     // When spell_id is dropped: keep only spell_content_hash = ? branch; remove legacy OR and (sid, None) arm.
-    let artifact_has_hash_column = table_has_column(conn, "artifact", "spell_content_hash");
+    let artifact_has_hash_column = crate::db::table_has_column(conn, "artifact", "spell_content_hash");
     let artifacts: Vec<SpellArtifact> = match (spell.id, spell.content_hash.as_deref()) {
         (Some(sid), Some(h)) => {
             if artifact_has_hash_column {
@@ -384,17 +384,6 @@ pub(crate) fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, 
     changes
 }
 
-fn table_has_column(conn: &Connection, table: &str, column: &str) -> bool {
-    let sql = format!(
-        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
-        table.replace('\'', "''")
-    );
-    let mut stmt = match conn.prepare(&sql) {
-        Ok(stmt) => stmt,
-        Err(_) => return false,
-    };
-    stmt.query_row([column], |_| Ok(())).is_ok()
-}
 
 fn cascade_spell_content_hash_refs(
     conn: &Connection,
@@ -408,13 +397,13 @@ fn cascade_spell_content_hash_refs(
         return Ok(());
     }
 
-    if table_has_column(conn, "character_class_spell", "spell_content_hash") {
+    if crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash") {
         conn.execute(
             "UPDATE character_class_spell SET spell_content_hash = ? WHERE spell_content_hash = ?",
             params![new_hash, old_hash],
         )?;
     }
-    if table_has_column(conn, "artifact", "spell_content_hash") {
+    if crate::db::table_has_column(conn, "artifact", "spell_content_hash") {
         conn.execute(
             "UPDATE artifact SET spell_content_hash = ? WHERE spell_content_hash = ?",
             params![new_hash, old_hash],

@@ -653,18 +653,6 @@ fn canonical_spell_to_flat_row(
     )
 }
 
-/// Returns true if the table has a column with the given name (case-sensitive).
-fn table_has_column(conn: &rusqlite::Connection, table: &str, column: &str) -> bool {
-    let sql = format!(
-        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
-        table.replace('\'', "''")
-    );
-    let mut stmt = match conn.prepare(&sql) {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
-    stmt.query_row(params![column], |_| Ok(())).is_ok()
-}
 
 /// Build change_log entries from old spell row vs incoming canonical spell (for Replace with New).
 fn diff_canonical_vs_detail(
@@ -958,7 +946,7 @@ fn replace_with_new_impl(
     )?;
 
     if let Some(old_h) = old_hash {
-        if table_has_column(tx, "character_class_spell", "spell_content_hash") {
+        if crate::db::table_has_column(tx, "character_class_spell", "spell_content_hash") {
             let n = tx.execute(
                 "UPDATE character_class_spell SET spell_content_hash = ? WHERE spell_content_hash = ?",
                 params![&stored_hash, old_h],
@@ -967,7 +955,7 @@ fn replace_with_new_impl(
                 // optional: log if we want
             }
         }
-        if table_has_column(tx, "artifact", "spell_content_hash") {
+        if crate::db::table_has_column(tx, "artifact", "spell_content_hash") {
             let _ = tx.execute(
                 "UPDATE artifact SET spell_content_hash = ? WHERE spell_content_hash = ?",
                 params![&stored_hash, old_h],
@@ -1474,7 +1462,7 @@ fn upsert_import_artifact(
     spell_content_hash: &str,
     artifact: &ImportArtifact,
 ) -> Result<(), AppError> {
-    if table_has_column(conn, "artifact", "spell_content_hash") {
+    if crate::db::table_has_column(conn, "artifact", "spell_content_hash") {
         let updated = conn.execute(
             "UPDATE artifact
              SET type = ?, hash = ?, imported_at = ?, spell_content_hash = ?
@@ -1623,13 +1611,13 @@ fn apply_legacy_conflict_resolution_update(
 
     if let Some(old_hash) = old_hash.as_deref() {
         if old_hash != new_hash {
-            if table_has_column(conn, "character_class_spell", "spell_content_hash") {
+            if crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash") {
                 conn.execute(
                     "UPDATE character_class_spell SET spell_content_hash = ? WHERE spell_content_hash = ?",
                     params![new_hash, old_hash],
                 )?;
             }
-            if table_has_column(conn, "artifact", "spell_content_hash") {
+            if crate::db::table_has_column(conn, "artifact", "spell_content_hash") {
                 conn.execute(
                     "UPDATE artifact SET spell_content_hash = ? WHERE spell_content_hash = ?",
                     params![new_hash, old_hash],
@@ -2619,7 +2607,7 @@ fn resolve_artifact_spell_id(
     conn: &rusqlite::Connection,
     artifact_id: i64,
 ) -> Result<(i64, String), AppError> {
-    let has_hash_col = table_has_column(conn, "artifact", "spell_content_hash");
+    let has_hash_col = crate::db::table_has_column(conn, "artifact", "spell_content_hash");
 
     let (db_spell_id, db_spell_hash, path): (Option<i64>, Option<String>, String) = if has_hash_col
     {

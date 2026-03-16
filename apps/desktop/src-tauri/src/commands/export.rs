@@ -37,20 +37,13 @@ fn app_data_dir() -> Result<PathBuf, AppError> {
     Ok(dir)
 }
 
-fn table_has_column(conn: &rusqlite::Connection, table: &str, column: &str) -> bool {
-    let sql = format!(
-        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
-        table.replace('\'', "''")
-    );
-    conn.query_row(&sql, [column], |_| Ok(())).is_ok()
-}
 
 fn load_character_printable_spells(
     conn: &rusqlite::Connection,
     character_id: i64,
     class_name: Option<&str>,
 ) -> Result<Vec<PrintableSpellbookEntry>, AppError> {
-    let use_hash = table_has_column(conn, "character_class_spell", "spell_content_hash");
+    let use_hash = crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
 
     if use_hash {
         let missing_query = if class_name.is_some() {

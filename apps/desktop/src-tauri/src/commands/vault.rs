@@ -539,17 +539,6 @@ pub struct VaultGcSummary {
     pub integrity: VaultIntegritySummary,
 }
 
-fn table_has_column(conn: &rusqlite::Connection, table: &str, column: &str) -> bool {
-    let sql = format!(
-        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
-        table.replace('\'', "''")
-    );
-    let mut stmt = match conn.prepare(&sql) {
-        Ok(stmt) => stmt,
-        Err(_) => return false,
-    };
-    stmt.query_row([column], |_| Ok(())).is_ok()
-}
 
 fn record_unrecoverable(
     summary: &mut VaultIntegritySummary,
@@ -699,7 +688,7 @@ fn collect_live_content_hashes(conn: &rusqlite::Connection) -> Result<HashSet<St
         live_hashes.insert(row?);
     }
 
-    if table_has_column(conn, "artifact", "spell_content_hash") {
+    if crate::db::table_has_column(conn, "artifact", "spell_content_hash") {
         let mut artifact_stmt = conn.prepare(
             "SELECT spell_content_hash FROM artifact WHERE spell_content_hash IS NOT NULL",
         )?;
@@ -709,7 +698,7 @@ fn collect_live_content_hashes(conn: &rusqlite::Connection) -> Result<HashSet<St
         }
     }
 
-    if table_has_column(conn, "character_class_spell", "spell_content_hash") {
+    if crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash") {
         let mut ccs_stmt = conn.prepare(
             "SELECT spell_content_hash FROM character_class_spell WHERE spell_content_hash IS NOT NULL",
         )?;

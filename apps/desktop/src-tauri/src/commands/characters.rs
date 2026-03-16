@@ -9,13 +9,6 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::sync::Arc;
 use tauri::State;
 
-fn table_has_column(conn: &Connection, table: &str, column: &str) -> bool {
-    let sql = format!(
-        "SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1",
-        table.replace('\'', "''")
-    );
-    conn.query_row(&sql, [column], |_| Ok(())).is_ok()
-}
 
 /// Sync helper for building character class spell list. Used by the command and by tests.
 fn get_character_class_spells_with_conn(
@@ -23,7 +16,7 @@ fn get_character_class_spells_with_conn(
     character_class_id: i64,
     list_type: Option<&str>,
 ) -> Result<Vec<CharacterSpellbookEntry>, AppError> {
-    let use_hash = table_has_column(conn, "character_class_spell", "spell_content_hash");
+    let use_hash = crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
     if use_hash {
         let (query, params): (String, Vec<Box<dyn ToSql>>) = if let Some(lt) = list_type {
             (
@@ -254,7 +247,7 @@ fn add_character_spell_with_conn(
 ) -> Result<(), AppError> {
     // C1.1.6 Ensure integrity: Validate Prepared spells must be Known
     if list_type == "PREPARED" {
-        let use_hash = table_has_column(conn, "character_class_spell", "spell_content_hash");
+        let use_hash = crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
         let known_exists: bool = if use_hash {
             let spell_content_hash: Option<String> = conn
                 .query_row(
@@ -302,7 +295,7 @@ fn upsert_character_class_spell_with_hash(
     list_type: &str,
     notes: Option<&str>,
 ) -> Result<(), AppError> {
-    if table_has_column(conn, "character_class_spell", "spell_content_hash") {
+    if crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash") {
         let spell_content_hash: Option<String> = conn
             .query_row(
                 "SELECT content_hash FROM spell WHERE id = ?",
@@ -731,7 +724,7 @@ pub async fn remove_character_spell(
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let use_hash = table_has_column(&conn, "character_class_spell", "spell_content_hash");
+        let use_hash = crate::db::table_has_column(&conn, "character_class_spell", "spell_content_hash");
 
         let mut deleted = 0;
         if use_hash {
@@ -838,7 +831,7 @@ pub async fn update_character_spell_notes(
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let use_hash = table_has_column(&conn, "character_class_spell", "spell_content_hash");
+        let use_hash = crate::db::table_has_column(&conn, "character_class_spell", "spell_content_hash");
 
         let mut updated = 0;
         if use_hash {
@@ -959,7 +952,7 @@ pub async fn test_seed_character_with_orphan_spell(
     let name = character_name;
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        if !table_has_column(&conn, "character_class_spell", "spell_content_hash") {
+        if !crate::db::table_has_column(&conn, "character_class_spell", "spell_content_hash") {
             return Err(AppError::Unknown(
                 "test_seed_character_with_orphan_spell requires spell_content_hash column (Migration 0015)"
                     .to_string(),
@@ -1002,7 +995,7 @@ pub async fn test_seed_character_with_upgradeable_spell(
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        if !table_has_column(&conn, "character_class_spell", "spell_content_hash") {
+        if !crate::db::table_has_column(&conn, "character_class_spell", "spell_content_hash") {
             return Err(AppError::Unknown(
                 "test_seed_character_with_upgradeable_spell requires spell_content_hash column (Migration 0015)"
                     .to_string(),

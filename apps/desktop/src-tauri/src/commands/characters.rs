@@ -202,14 +202,16 @@ fn remove_character_spell_by_hash_with_conn(
 /// Sync helper: update all character_class_spell rows for a class from old_hash to new_hash.
 /// Updates both KNOWN and PREPARED list types in one statement.
 fn upgrade_character_class_spell_with_conn(
-    conn: &Connection,
+    conn: &mut Connection,
     character_class_id: i64,
     old_hash: &str,
     new_spell_id: i64,
     new_hash: &str,
 ) -> Result<(), AppError> {
-    // Validate that new_spell_id maps to new_hash
-    let actual_hash: Option<String> = conn
+    let sp = conn.savepoint()?;
+
+    // Validate that new_spell_id maps to new_hash (inside savepoint for atomicity)
+    let actual_hash: Option<String> = sp
         .query_row(
             "SELECT content_hash FROM spell WHERE id = ?",
             [new_spell_id],
@@ -224,7 +226,7 @@ fn upgrade_character_class_spell_with_conn(
         ));
     }
 
-    let updated = conn.execute(
+    let updated = sp.execute(
         "UPDATE character_class_spell \
          SET spell_content_hash = ?, spell_id = ? \
          WHERE character_class_id = ? AND spell_content_hash = ?",
@@ -236,6 +238,8 @@ fn upgrade_character_class_spell_with_conn(
             old_hash, character_class_id
         )));
     }
+
+    sp.commit()?;
     Ok(())
 }
 
@@ -808,9 +812,9 @@ pub async fn upgrade_character_class_spell(
 ) -> Result<(), AppError> {
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
         upgrade_character_class_spell_with_conn(
-            &conn,
+            &mut conn,
             character_class_id,
             &old_hash,
             new_spell_id,
@@ -1305,7 +1309,7 @@ mod tests {
 
     #[test]
     fn test_upgrade_character_class_spell_updates_hash_and_spell_id() {
-        let conn = setup_character_spell_test_db(true);
+        let mut conn = setup_character_spell_test_db(true);
         conn.execute(
             "INSERT INTO spell (id, content_hash) VALUES (1, 'hash-old'), (2, 'hash-new')",
             [],
@@ -1324,7 +1328,7 @@ mod tests {
         )
         .unwrap();
 
-        upgrade_character_class_spell_with_conn(&conn, 10, "hash-old", 2, "hash-new")
+        upgrade_character_class_spell_with_conn(&mut conn, 10, "hash-old", 2, "hash-new")
             .expect("upgrade should succeed");
 
         let hashes: Vec<String> = conn
@@ -1356,7 +1360,7 @@ mod tests {
 
     #[test]
     fn test_upgrade_character_class_spell_errors_on_missing_hash() {
-        let conn = setup_character_spell_test_db(true);
+        let mut conn = setup_character_spell_test_db(true);
         conn.execute(
             "INSERT INTO spell (id, content_hash) VALUES (1, 'hash-old')",
             [],
@@ -1364,8 +1368,57 @@ mod tests {
         .unwrap();
         // No character_class_spell row with 'hash-old'
 
-        let result = upgrade_character_class_spell_with_conn(&conn, 10, "hash-old", 1, "hash-new");
+        let result = upgrade_character_class_spell_with_conn(&mut conn, 10, "hash-old", 1, "hash-new");
         assert!(result.is_err(), "should fail when no rows match old_hash");
+    }
+
+    #[test]
+    fn test_upgrade_spell_is_atomic() {
+        let mut conn = setup_character_spell_test_db(true);
+        conn.execute(
+            "INSERT INTO spell (id, content_hash) VALUES (1, 'hash-old'), (2, 'hash-new')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) \
+             VALUES (10, 1, 'KNOWN', NULL, 'hash-old')",
+            [],
+        )
+        .unwrap();
+
+        // Happy path: both validate + update succeed atomically
+        upgrade_character_class_spell_with_conn(&mut conn, 10, "hash-old", 2, "hash-new")
+            .expect("upgrade should succeed");
+
+        let hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE character_class_id = 10",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(hash, "hash-new");
+
+        // Mismatched new_hash must fail without partial update
+        let result =
+            upgrade_character_class_spell_with_conn(&mut conn, 10, "hash-new", 2, "wrong-hash");
+        assert!(
+            result.is_err(),
+            "should fail when new_hash does not match spell's content_hash"
+        );
+        // Row should remain unchanged (still hash-new)
+        let hash_after: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE character_class_id = 10",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            hash_after, "hash-new",
+            "row should be unchanged after failed upgrade"
+        );
     }
 
     /// Integration-style test: orphan spell_content_hash (no matching spell) returns one entry

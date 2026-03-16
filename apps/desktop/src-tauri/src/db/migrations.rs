@@ -15,13 +15,13 @@ use tracing::{info, warn};
 /// For artifact: `artifact.hash` is the artifact file hash; `artifact.spell_content_hash`
 /// is the referenced spell's canonical content hash (Decision #5).
 fn apply_hash_reference_columns_migration(conn: &Connection) -> Result<(), AppError> {
-    if !super::utils::table_has_column(conn, "character_class_spell", "spell_content_hash") {
+    if !crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash") {
         conn.execute(
             "ALTER TABLE character_class_spell ADD COLUMN spell_content_hash TEXT",
             [],
         )?;
     }
-    if !super::utils::table_has_column(conn, "artifact", "spell_content_hash") {
+    if !crate::db::table_has_column(conn, "artifact", "spell_content_hash") {
         conn.execute(
             "ALTER TABLE artifact ADD COLUMN spell_content_hash TEXT",
             [],
@@ -201,12 +201,12 @@ mod tests {
             .expect("query user_version");
 
         assert_eq!(version, 15);
-        assert!(super::utils::table_has_column(
+        assert!(crate::db::table_has_column(
             &conn,
             "character_class_spell",
             "spell_content_hash"
         ));
-        assert!(super::utils::table_has_column(&conn, "artifact", "spell_content_hash"));
+        assert!(crate::db::table_has_column(&conn, "artifact", "spell_content_hash"));
 
         let index_exists = conn
             .query_row(
@@ -479,12 +479,12 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("query user_version");
         assert_eq!(version, 15);
-        assert!(super::utils::table_has_column(
+        assert!(crate::db::table_has_column(
             &conn,
             "character_class_spell",
             "spell_content_hash"
         ));
-        assert!(super::utils::table_has_column(&conn, "artifact", "spell_content_hash"));
+        assert!(crate::db::table_has_column(&conn, "artifact", "spell_content_hash"));
     }
 
     /// Benchmarks migration 0014 FTS rebuild with 10k spells; must complete in < 60s.

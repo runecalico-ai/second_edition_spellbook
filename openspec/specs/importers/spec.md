@@ -109,7 +109,7 @@ When a duplicate is detected by `content_hash` (hash match, skip insert), the ap
 - **AND** if the merged count exceeds 50, existing refs SHALL be kept first, then new refs appended up to the limit
 
 ### Requirement: Interchange ID
-Exported spells MUST use their Content Hash as the ID. Export MUST always use the current app schema version (`CURRENT_SCHEMA_VERSION`).
+Exported spells MUST use their Content Hash as the ID. Export MUST always use the current app schema version (`CURRENT_SCHEMA_VERSION`); downgrading exports for older recipients is out of scope.
 
 #### Scenario: Export Transformation
 - GIVEN a spell with Hash "abc"
@@ -142,15 +142,32 @@ Import MUST validate schema and bundle format versions before processing.
 - THEN import MUST reject the entire bundle.
 
 #### Scenario: Accept Current or Lower Schema Version
-- GIVEN the app's current schema version
+- GIVEN the app's current schema version (from code)
 - WHEN importing a spell with schema version equal to or lower than the app's
-- THEN import MUST accept the spell and process normally.
+- THEN import MUST accept the spell and process normally (including migration to the current version before hashing).
+
+#### Scenario: Reject Missing Bundle Format Version in Bundle Export
+- GIVEN a bundle JSON containing a `spells` array that omits `bundle_format_version` entirely
+- WHEN importing
+- THEN import MUST reject the bundle
+- AND error message MUST indicate missing required field.
+
+#### Scenario: Accept Missing Bundle Format Version in Single-Spell Export
+- GIVEN a single-spell JSON object that omits `bundle_format_version` entirely
+- WHEN importing
+- THEN import MUST process the spell normally without erroring for the missing bundle field.
 
 #### Scenario: Bundle vs Single-Spell Detection
 - GIVEN an import JSON payload
 - WHEN the importer inspects the top-level structure
 - THEN if a top-level `spells` key exists and is an array, the payload MUST be treated as a bundle (require `bundle_format_version`)
 - AND if no top-level `spells` array exists, the payload MUST be treated as a single-spell export.
+
+#### Scenario: Reject Malformed Bundle Shape
+- GIVEN an import JSON payload with top-level `spells` key present but not an array
+- WHEN importing
+- THEN import MUST reject the payload as malformed bundle input
+- AND error message MUST indicate `spells` must be an array when present.
 
 #### Scenario: Tampered Import Hash
 - GIVEN imported spell with `content_hash` field "X"
@@ -174,8 +191,10 @@ All `SourceRef` URLs MUST be validated upon import.
 #### Scenario: Protocol Allowlist
 - GIVEN a SourceRef with URL "javascript:alert(1)"
 - WHEN importing
-- THEN the system MUST apply configured URL policy
-- AND the default policy (`drop-ref`) MUST reject that SourceRef but continue importing the spell with a warning.
+- THEN the system MUST apply configured URL policy (`import.sourceRefUrlPolicy`)
+- AND the default policy (`drop-ref`) MUST reject that SourceRef but continue importing the spell with a warning
+- AND if policy is `reject-spell`, the system MUST reject the spell
+- AND error message MUST indicate unsupported protocol.
 - ALLOWED: `http:`, `https:`, `mailto:`.
 - REJECTED: `javascript:`, `data:`, `ipfs:`, and all other protocols.
 
@@ -183,8 +202,13 @@ All `SourceRef` URLs MUST be validated upon import.
 - GIVEN a bundle containing two spells with identical computed hash
 - WHEN importing
 - THEN spells MUST be processed in document order
-- AND the first spell MUST be inserted
-- AND the second spell MUST be treated as a duplicate of the first.
+- AND the first spell MUST be inserted (or deduplicated against the DB)
+- AND the second spell MUST be treated as a duplicate of the first (skip insertion, merge metadata).
+
+#### Scenario: XSS Prevention
+- GIVEN a SourceRef with URL containing HTML tags
+- WHEN importing
+- THEN the system MUST sanitize the string before storage or display.
 
 ### Requirement: Import Provenance Tracking
 The application SHALL track the origin of imported spells by storing the source file path, file type, and a unique content hash.
@@ -206,17 +230,20 @@ Artifacts that reference spells MUST use the spell's canonical content hash for 
 - GIVEN an artifact row with `spell_content_hash` H
 - AND the spell with hash H no longer exists in the `spell` table
 - WHEN the artifact is loaded
-- THEN the system MUST handle the missing reference gracefully.
+- THEN the system MUST handle the missing reference gracefully (show placeholder or log warning)
+- AND MUST NOT crash.
 
 #### Scenario: Cascading Update on Replace
 - GIVEN an artifact row with `spell_content_hash` = Hash A
 - WHEN a "Replace with New" import changes the referenced spell from Hash A to Hash B
-- THEN `artifact.spell_content_hash` MUST be updated to Hash B via an application-level UPDATE.
+- THEN `artifact.spell_content_hash` MUST be updated to Hash B via an application-level UPDATE
+- NOTE: This is NOT handled by SQLite FK cascade — `spell_id` on the same row is preserved, so the FK does not fire. The application is responsible for this update.
 
 #### Scenario: GC Safety
 - GIVEN a spell deleted from the DB (hash H no longer referenced by any spell row)
 - WHEN vault GC runs
-- THEN GC MUST check `artifact.spell_content_hash` as well when determining whether a vault file is still referenced.
+- THEN GC MUST check `artifact.spell_content_hash` as well when determining whether a vault file is still referenced
+- NOTE: If an artifact still references hash H, the vault GC MUST NOT delete `spells/H.json`.
 
 ### Requirement: Artifact Spell Hash Index
 The database MUST include an index on `artifact.spell_content_hash` to support fast lookups during Vault GC and cascading updates.
@@ -232,7 +259,13 @@ During the Migration 0015 transition period, `spell_id` is retained alongside `s
 #### Scenario: Dual-Column Write on Insert
 - GIVEN a new artifact being created that references a spell
 - WHEN the insert occurs during the Migration 0015 transition period
-- THEN the system MUST populate BOTH `spell_id` and `spell_content_hash` on the new `artifact` row.
+- THEN the system MUST populate BOTH `spell_id` and `spell_content_hash` on the new `artifact` row (assuming the referenced spell has both).
+
+#### Scenario: Future spell_id Drop
+- GIVEN a future migration that drops `spell_id` from `artifact`
+- WHEN that migration runs
+- THEN the SQLite FK cascade (`ON DELETE CASCADE` from `spell.id`) will no longer apply
+- AND the application MUST implement explicit artifact cleanup when a spell is deleted
 
 ### Requirement: Reparse from Artifact
 The application SHALL allow users to re-run the parsing logic on a previously imported artifact to update or correct spell records.

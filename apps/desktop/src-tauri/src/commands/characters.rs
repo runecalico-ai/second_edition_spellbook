@@ -9,6 +9,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::sync::Arc;
 use tauri::State;
 
+const LIST_TYPE_KNOWN: &str = "KNOWN";
+const LIST_TYPE_PREPARED: &str = "PREPARED";
 
 /// Sync helper for building character class spell list. Used by the command and by tests.
 fn get_character_class_spells_with_conn(
@@ -188,7 +190,7 @@ fn remove_character_spell_by_hash_with_conn(
         "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = ?",
         params![character_class_id, spell_content_hash, list_type],
     )?;
-    if list_type == "KNOWN" {
+    if list_type == LIST_TYPE_KNOWN {
         conn.execute(
             "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = 'PREPARED'",
             params![character_class_id, spell_content_hash],
@@ -246,7 +248,7 @@ fn add_character_spell_with_conn(
     notes: Option<&str>,
 ) -> Result<(), AppError> {
     // C1.1.6 Ensure integrity: Validate Prepared spells must be Known
-    if list_type == "PREPARED" {
+    if list_type == LIST_TYPE_PREPARED {
         let use_hash = crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
         let known_exists: bool = if use_hash {
             let spell_content_hash: Option<String> = conn
@@ -741,7 +743,7 @@ pub async fn remove_character_spell(
                     "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = ?",
                     params![character_class_id, hash, list_type],
                 )?;
-                if deleted > 0 && list_type == "KNOWN" {
+                if deleted > 0 && list_type == LIST_TYPE_KNOWN {
                     conn.execute(
                         "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = 'PREPARED'",
                         params![character_class_id, hash],
@@ -757,7 +759,7 @@ pub async fn remove_character_spell(
                 params![character_class_id, spell_id, list_type],
             )?;
 
-            if list_type == "KNOWN" {
+            if list_type == LIST_TYPE_KNOWN {
                 conn.execute(
                     "DELETE FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'PREPARED'",
                     params![character_class_id, spell_id],

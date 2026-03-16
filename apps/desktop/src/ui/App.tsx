@@ -5,11 +5,12 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import type { ShowModalOptions } from "../store/useModal";
 import { useModal } from "../store/useModal";
 import Modal from "./components/Modal";
-import VaultMaintenanceDialog, {
+import {
   formatVaultIntegritySummary,
   getVaultSettings,
   runVaultIntegrityCheck,
-} from "./components/VaultMaintenanceDialog";
+} from "../api/vault";
+import VaultMaintenanceDialog from "./components/VaultMaintenanceDialog";
 import type { VaultIntegritySummary } from "../types/vault";
 
 export function formatUnknownError(error: unknown): string {

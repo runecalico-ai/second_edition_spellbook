@@ -6,7 +6,7 @@ import type { SourceRefUrlPolicy } from "../types/vault";
 import FieldMapper, { type ParsedSpell } from "./FieldMapper";
 import BulkConflictSummaryDialog from "./components/BulkConflictSummaryDialog";
 import SpellConflictDiffDialog from "./components/SpellConflictDiffDialog";
-import { getVaultSettings, setImportSourceRefUrlPolicy } from "./components/VaultMaintenanceDialog";
+import { getVaultSettings, setImportSourceRefUrlPolicy } from "../api/vault";
 import type {
   BulkConflictAction,
   ConflictAction,
@@ -183,6 +183,18 @@ const conflictFieldLabels: Record<string, string> = {
 const getConflictKey = (conflict: SpellConflict, index: number) =>
   conflict.existing.id ? `${conflict.existing.id}-${index}` : `${conflict.incoming.name}-${index}`;
 
+/** Returns the import mode for a file selection, or "mixed" if files span types. */
+export function detectImportFileType(files: File[]): "json" | "markdown" | "mixed" {
+  if (files.length === 0) return "markdown";
+  const allJson = files.every((f) => f.name.toLowerCase().endsWith(".json"));
+  if (allJson) return "json";
+  const allMd = files.every(
+    (f) => f.name.toLowerCase().endsWith(".md") || f.name.toLowerCase().endsWith(".txt"),
+  );
+  if (allMd) return "markdown";
+  return "mixed";
+}
+
 export async function runWithImportActivity<T>(work: () => Promise<T>): Promise<T> {
   useImportActivity.getState().beginImportActivity();
   try {
@@ -223,6 +235,7 @@ export default function ImportWizard() {
   const [sourceRefUrlPolicy, setSourceRefUrlPolicy] = useState<SourceRefUrlPolicy>("drop-ref");
   const [isSourceRefUrlPolicySaving, setIsSourceRefUrlPolicySaving] = useState(false);
   const [bulkAction, setBulkAction] = useState<BulkConflictAction | null>(null);
+  const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const loadingRef = useRef(false);
 
   const hasLowConfidence = (spells: ParsedSpell[]): boolean => {
@@ -432,23 +445,29 @@ export default function ImportWizard() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files);
-      setFiles(selectedFiles);
-      setResult(null);
-      setStep("select");
-      // Detect JSON import mode
-      const hasJson = selectedFiles.some((f) => f.name.toLowerCase().endsWith(".json"));
-      setIsJsonImport(hasJson);
-      // Reset JSON state on new selection
-      setJsonPayload("");
-      setJsonPreviewResult(null);
-      setJsonImportResult(null);
-      setJsonConflicts([]);
-      setJsonConflictIndex(0);
-      setJsonResolutions([]);
-      setBulkAction(null);
+    if (!e.target.files) return;
+    const selectedFiles = Array.from(e.target.files);
+    const fileType = detectImportFileType(selectedFiles);
+
+    if (fileType === "mixed") {
+      setFileTypeError("Please select files of one type only (.json or .md).");
+      setFiles([]);
+      return;
     }
+
+    setFileTypeError(null);
+    setFiles(selectedFiles);
+    setResult(null);
+    setStep("select");
+    setIsJsonImport(fileType === "json");
+    // Reset JSON state on new selection
+    setJsonPayload("");
+    setJsonPreviewResult(null);
+    setJsonImportResult(null);
+    setJsonConflicts([]);
+    setJsonConflictIndex(0);
+    setJsonResolutions([]);
+    setBulkAction(null);
   };
 
   const withLoadingGuard = async (work: () => Promise<void>) => {
@@ -752,6 +771,7 @@ export default function ImportWizard() {
   const reset = () => {
     setStep("select");
     setFiles([]);
+    setFileTypeError(null);
     setFilePayloads([]);
     setPreviewSpells([]);
     setMappedSpells([]);
@@ -836,6 +856,11 @@ export default function ImportWizard() {
             disabled={loading}
             className="block w-full text-sm text-neutral-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-neutral-800 file:text-neutral-300 hover:file:bg-neutral-700"
           />
+          {fileTypeError && (
+            <p className="text-sm text-red-400" data-testid="file-type-error">
+              {fileTypeError}
+            </p>
+          )}
           {files.length > 0 && (
             <>
               <pre

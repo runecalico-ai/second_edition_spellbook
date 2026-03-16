@@ -178,7 +178,6 @@ test.describe("Character Edge Cases & Hardening", () => {
 
     await test.step("Setup: seed character with orphan spell row (no matching spell in library)", async () => {
       await app.navigate("Characters");
-      await page.waitForTimeout(500);
       await page.evaluate(async (name: string) => {
         const inv = (
           window as Window & {
@@ -193,22 +192,20 @@ test.describe("Character Edge Cases & Hardening", () => {
         timeout: TIMEOUTS.medium,
       });
       const modal = page.getByTestId("modal-dialog");
-      try {
-        await modal.waitFor({ state: "visible", timeout: 2000 });
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
         await page.getByTestId("modal-button-dismiss").click();
-      } catch (e) {
-        // Did not trigger - ignore.
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
       }
     });
 
     await test.step("Open CharacterEditor and assert missing-library row", async () => {
       await app.openCharacterEditor(charName);
       const modal = page.getByTestId("modal-dialog");
-      try {
-        await modal.waitFor({ state: "visible", timeout: 2000 });
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
         await page.getByTestId("modal-button-dismiss").click();
-      } catch (e) {
-        // Did not trigger - ignore.
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
       }
       const mageSection = page.locator('[aria-label="Class section for Mage"]');
       await mageSection.getByRole("button", { name: "KNOWN" }).click();
@@ -235,7 +232,6 @@ test.describe("Character Edge Cases & Hardening", () => {
 
     await test.step("Setup: seed character with orphan spell row", async () => {
       await app.navigate("Characters");
-      await page.waitForTimeout(500);
       await page.evaluate(async (name: string) => {
         const inv = (
           window as Window & {
@@ -250,22 +246,20 @@ test.describe("Character Edge Cases & Hardening", () => {
         timeout: TIMEOUTS.medium,
       });
       const modal = page.getByTestId("modal-dialog");
-      try {
-        await modal.waitFor({ state: "visible", timeout: 2000 });
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
         await page.getByTestId("modal-button-dismiss").click();
-      } catch (e) {
-        // Did not trigger - ignore.
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
       }
     });
 
     await test.step("Open CharacterEditor, click remove on missing row, assert row disappears", async () => {
       await app.openCharacterEditor(charName);
       const modal = page.getByTestId("modal-dialog");
-      try {
-        await modal.waitFor({ state: "visible", timeout: 2000 });
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
         await page.getByTestId("modal-button-dismiss").click();
-      } catch (e) {
-        // Did not trigger - ignore.
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
       }
       const mageSection = page.locator('[aria-label="Class section for Mage"]');
       await mageSection.getByRole("button", { name: "KNOWN" }).click();
@@ -293,7 +287,6 @@ test.describe("Character Edge Cases & Hardening", () => {
 
     await test.step("Setup: seed orphan row and then restore it with a live spell", async () => {
       await app.navigate("Characters");
-      await page.waitForTimeout(500);
       await page.evaluate(async (name: string) => {
         const inv = (
           window as Window & {
@@ -326,17 +319,15 @@ test.describe("Character Edge Cases & Hardening", () => {
     await test.step("Verify row renders as normal and can be removed", async () => {
       await app.openCharacterEditor(charName);
       const modal = page.getByTestId("modal-dialog");
-      try {
-        await modal.waitFor({ state: "visible", timeout: 2000 });
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
         await page.getByTestId("modal-button-dismiss").click();
-      } catch (e) {
-        // Did not trigger - ignore.
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
       }
       const mageSection = page.locator('[aria-label="Class section for Mage"]');
       await mageSection.getByRole("button", { name: "KNOWN" }).click();
-      await page.waitForTimeout(500);
       const row = page.getByTestId("spell-row-Restored E2E Spell");
-      await expect(row).toBeVisible();
+      await expect(row).toBeVisible({ timeout: TIMEOUTS.medium });
 
       await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
 
@@ -364,8 +355,6 @@ test.describe("Character Edge Cases & Hardening", () => {
 
       await test.step("Setup: seed character with spell Hash A and library spell Hash B (same name)", async () => {
         await app.navigate("Characters");
-        await page.waitForTimeout(500);
-
         await page.evaluate(
           async ({
             name,
@@ -413,22 +402,20 @@ test.describe("Character Edge Cases & Hardening", () => {
           timeout: TIMEOUTS.medium,
         });
         const modal = page.getByTestId("modal-dialog");
-        try {
-          await modal.waitFor({ state: "visible", timeout: 2000 });
+        const isModalVisible = await modal.isVisible();
+        if (isModalVisible) {
           await page.getByTestId("modal-button-dismiss").click();
-        } catch (e) {
-          // Did not trigger - ignore.
+          await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
         }
       });
 
       await test.step("Open CharacterEditor and verify Upgrade button appears on the spell row", async () => {
         await app.openCharacterEditor(charName);
         const modal = page.getByTestId("modal-dialog");
-        try {
-          await modal.waitFor({ state: "visible", timeout: 2000 });
+        const isModalVisible = await modal.isVisible();
+        if (isModalVisible) {
           await page.getByTestId("modal-button-dismiss").click();
-        } catch (e) {
-          // Did not trigger - ignore.
+          await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
         }
         const mageSection = page.locator('[aria-label="Class section for Mage"]');
         await mageSection.getByRole("button", { name: "KNOWN" }).click();

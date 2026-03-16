@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import VaultMaintenanceDialog, {
   formatVaultIntegritySummary,
@@ -33,6 +33,10 @@ function createSummary(overrides: Partial<VaultIntegritySummary> = {}): VaultInt
 }
 
 describe("VaultMaintenanceDialog", () => {
+  beforeEach(() => {
+    invokeMock.mockClear();
+  });
+
   it("shows Optimize Vault and disables it while import is in progress", () => {
     const html = renderToStaticMarkup(
       <VaultMaintenanceDialog isImportInProgress={true} settings={defaultSettings} result={null} />,
@@ -54,6 +58,7 @@ describe("VaultMaintenanceDialog", () => {
     await optimizeVault();
 
     expect(invokeMock).toHaveBeenCalledWith("optimize_vault");
+    expect(invokeMock).toHaveBeenCalledTimes(1);
   });
 
   it("toggles integrity-on-open and persists via IPC", async () => {

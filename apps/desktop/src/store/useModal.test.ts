@@ -1,18 +1,37 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useModal } from "./useModal";
 
+const resetStore = () =>
+  useModal.setState({
+    isOpen: false,
+    type: "info",
+    title: "",
+    message: "",
+    buttons: [],
+    customContent: undefined,
+    dismissible: true,
+    onClose: undefined,
+    queuedModal: undefined,
+  });
+
 describe("useModal", () => {
-  afterEach(() => {
-    useModal.setState({
-      isOpen: false,
-      type: "info",
-      title: "",
-      message: "",
-      buttons: [],
-      customContent: undefined,
-      dismissible: true,
-      onClose: undefined,
-    });
+  beforeEach(resetStore);
+  afterEach(resetStore);
+
+  it("showModalIfIdle is atomic — second concurrent call is queued", () => {
+    const { showModalIfIdle, hideModal } = useModal.getState();
+
+    // Simulate two synchronous calls before any re-render
+    const r1 = showModalIfIdle({ title: "First", message: "a", type: "info", buttons: [] });
+    const r2 = showModalIfIdle({ title: "Second", message: "b", type: "info", buttons: [] });
+
+    expect(r1).toBe(true); // First caller wins
+    expect(r2).toBe(false); // Second caller is queued
+    expect(useModal.getState().title).toBe("First");
+    expect(useModal.getState().queuedModal?.title).toBe("Second");
+
+    hideModal();
+    expect(useModal.getState().title).toBe("Second");
   });
 
   it("queues an idle-only modal until the active modal closes", () => {

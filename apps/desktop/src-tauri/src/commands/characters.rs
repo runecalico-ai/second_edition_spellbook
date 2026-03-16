@@ -32,6 +32,8 @@ fn get_character_class_spells_with_conn(
                         CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
                             (SELECT s2.content_hash FROM spell s2
                              WHERE s2.name = s.name
+                               AND COALESCE(s2.school, '') = COALESCE(s.school, '')
+                               AND COALESCE(s2.sphere, '') = COALESCE(s.sphere, '')
                                AND s2.content_hash != ccs.spell_content_hash
                                AND s2.content_hash IS NOT NULL
                                AND s2.id > s.id
@@ -40,6 +42,8 @@ fn get_character_class_spells_with_conn(
                         CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
                             (SELECT s2.id FROM spell s2
                              WHERE s2.name = s.name
+                               AND COALESCE(s2.school, '') = COALESCE(s.school, '')
+                               AND COALESCE(s2.sphere, '') = COALESCE(s.sphere, '')
                                AND s2.content_hash != ccs.spell_content_hash
                                AND s2.content_hash IS NOT NULL
                                AND s2.id > s.id
@@ -67,6 +71,8 @@ fn get_character_class_spells_with_conn(
                         CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
                             (SELECT s2.content_hash FROM spell s2
                              WHERE s2.name = s.name
+                               AND COALESCE(s2.school, '') = COALESCE(s.school, '')
+                               AND COALESCE(s2.sphere, '') = COALESCE(s.sphere, '')
                                AND s2.content_hash != ccs.spell_content_hash
                                AND s2.content_hash IS NOT NULL
                                AND s2.id > s.id
@@ -75,6 +81,8 @@ fn get_character_class_spells_with_conn(
                         CASE WHEN s.id IS NOT NULL AND ccs.spell_content_hash IS NOT NULL THEN
                             (SELECT s2.id FROM spell s2
                              WHERE s2.name = s.name
+                               AND COALESCE(s2.school, '') = COALESCE(s.school, '')
+                               AND COALESCE(s2.sphere, '') = COALESCE(s.sphere, '')
                                AND s2.content_hash != ccs.spell_content_hash
                                AND s2.content_hash IS NOT NULL
                                AND s2.id > s.id
@@ -1271,6 +1279,57 @@ mod tests {
         assert!(
             spells[0].available_upgrade_hash.is_none(),
             "no upgrade should be available when only one version exists"
+        );
+        assert!(spells[0].available_upgrade_spell_id.is_none());
+    }
+
+    #[test]
+    fn test_upgrade_detection_respects_school() {
+        // Two spells named "Fireball" with different schools: only same-school spells are upgrades.
+        let conn = setup_character_spell_test_db(true);
+        conn.execute_batch(
+            "ALTER TABLE spell ADD COLUMN name TEXT;
+             ALTER TABLE spell ADD COLUMN level INTEGER;
+             ALTER TABLE spell ADD COLUMN school TEXT;
+             ALTER TABLE spell ADD COLUMN sphere TEXT;
+             ALTER TABLE spell ADD COLUMN is_quest_spell INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE spell ADD COLUMN is_cantrip INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE spell ADD COLUMN tags TEXT;",
+        )
+        .unwrap();
+        // id=1: Evocation Fireball (the one in the character's list)
+        conn.execute(
+            "INSERT INTO spell (id, content_hash, name, level, school, sphere, is_quest_spell, is_cantrip) \
+             VALUES (1, 'hash-evoc', 'Fireball', 3, 'Evocation', NULL, 0, 0)",
+            [],
+        )
+        .unwrap();
+        // id=2: Transmutation Fireball (different school — must NOT be proposed as upgrade)
+        conn.execute(
+            "INSERT INTO spell (id, content_hash, name, level, school, sphere, is_quest_spell, is_cantrip) \
+             VALUES (2, 'hash-trans', 'Fireball', 3, 'Transmutation', NULL, 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) \
+             VALUES (55, 1, 'KNOWN', NULL, 'hash-evoc')",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS character_class (id INTEGER PRIMARY KEY, character_id INTEGER NOT NULL, class_name TEXT, class_label TEXT, level INTEGER);
+             INSERT INTO character_class (id, character_id, class_name, level) VALUES (55, 5, 'Mage', 5);
+             CREATE TABLE IF NOT EXISTS \"character\" (id INTEGER PRIMARY KEY, name TEXT);
+             INSERT INTO \"character\" (id, name) VALUES (5, 'TestChar');",
+        )
+        .unwrap();
+
+        let spells = get_character_class_spells_with_conn(&conn, 55, None).unwrap();
+        assert_eq!(spells.len(), 1);
+        assert!(
+            spells[0].available_upgrade_hash.is_none(),
+            "Transmutation Fireball must not be proposed as upgrade for Evocation Fireball"
         );
         assert!(spells[0].available_upgrade_spell_id.is_none());
     }

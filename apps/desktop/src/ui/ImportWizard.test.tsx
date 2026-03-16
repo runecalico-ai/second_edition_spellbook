@@ -1,6 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runWithImportActivity } from "./ImportWizard";
+import { detectImportFileType, runWithImportActivity } from "./ImportWizard";
 import { useImportActivity } from "../store/useImportActivity";
+
+describe("detectImportFileType", () => {
+  it("returns json for all-.json files", () => {
+    const files = [new File([], "a.json"), new File([], "b.JSON")];
+    expect(detectImportFileType(files)).toBe("json");
+  });
+
+  it("returns markdown for all-.md files", () => {
+    const files = [new File([], "a.md"), new File([], "b.md")];
+    expect(detectImportFileType(files)).toBe("markdown");
+  });
+
+  it("returns markdown for all-.txt files", () => {
+    const files = [new File([], "a.txt"), new File([], "b.txt")];
+    expect(detectImportFileType(files)).toBe("markdown");
+  });
+
+  it("returns mixed for a .json and .md combination", () => {
+    const files = [new File([], "a.json"), new File([], "b.md")];
+    expect(detectImportFileType(files)).toBe("mixed");
+  });
+
+  it("returns mixed for any partially-JSON selection", () => {
+    const files = [new File([], "a.json"), new File([], "b.json"), new File([], "c.md")];
+    expect(detectImportFileType(files)).toBe("mixed");
+  });
+});
 
 describe("runWithImportActivity", () => {
   beforeEach(() => {

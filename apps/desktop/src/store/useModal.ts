@@ -49,12 +49,16 @@ export const useModal = create<ModalStore>((set, get) => ({
   },
 
   showModalIfIdle: (options) => {
-    if (get().isOpen) {
-      set({ queuedModal: options });
-      return false;
-    }
-    set({ ...options, isOpen: true, queuedModal: undefined });
-    return true;
+    let wasIdle = false;
+    set((state) => {
+      if (state.isOpen) {
+        wasIdle = false;
+        return { queuedModal: options };
+      }
+      wasIdle = true;
+      return { ...options, isOpen: true, queuedModal: undefined };
+    });
+    return wasIdle;
   },
 
   hideModal: () => {

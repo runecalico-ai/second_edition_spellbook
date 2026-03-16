@@ -1259,15 +1259,18 @@ fn apply_import_spell_json_impl(
         }
     }
 
+    // Commit the database transaction first so the DB is consistent before touching the filesystem.
+    tx.commit().map_err(AppError::Database)?;
+
     let root = app_data_dir()?;
-    let written_paths = write_pending_vault_files(
+    if let Err(err) = write_pending_vault_files(
         &root,
         vault_spell_json_to_refresh
             .iter()
             .map(|(content_hash, canonical_json)| (content_hash.as_str(), canonical_json.as_str())),
-    )?;
-    if let Err(err) = tx.commit().map_err(AppError::Database) {
-        cleanup_written_vault_files(&written_paths);
+    ) {
+        // Best-effort: vault files are non-critical metadata; log and surface the error
+        // but do not attempt to roll back the already-committed DB transaction.
         return Err(err);
     }
 
@@ -3793,27 +3796,34 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_import_rolls_back_when_vault_write_fails() {
+    fn test_apply_import_db_commit_before_vault_write() {
+        // DB is committed first; vault write is a best-effort follow-up.
+        // If vault write fails, the error is surfaced but the DB row remains committed.
         let long_root = std::env::temp_dir()
             .join("spellbook-import")
             .join("a".repeat(240));
         let _env = VaultTestEnvGuard::with_root(long_root.clone()).expect("set isolated vault env");
 
         let conn = setup_import_apply_test_db();
+        create_artifact_table_for_get_spell(&conn);
         let incoming_item = preview_item_for_test(test_spell(
             "Vault Import Failure",
             4,
-            "Should not commit when vault write fails",
+            "DB committed even when vault write fails",
         ));
 
         let err = apply_import_spell_json_impl(&conn, vec![incoming_item], None)
-            .expect_err("vault write failure should roll back json import");
+            .expect_err("vault write failure should surface an error");
         assert!(err.to_string().contains("Windows path length"));
 
+        // DB row should be committed even though vault file write failed
         let spell_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
             .expect("query spell count");
-        assert_eq!(spell_count, 0, "json import should roll back the DB row");
+        assert_eq!(
+            spell_count, 1,
+            "DB transaction is committed before vault write; spell row must be present"
+        );
     }
 
     #[test]

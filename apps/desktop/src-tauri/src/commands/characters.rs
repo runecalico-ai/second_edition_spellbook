@@ -245,17 +245,19 @@ fn upgrade_character_class_spell_with_conn(
 
 /// Sync helper: validate PREPARED-known rule and upsert. Used by add_character_spell command and tests.
 fn add_character_spell_with_conn(
-    conn: &Connection,
+    conn: &mut Connection,
     character_class_id: i64,
     spell_id: i64,
     list_type: &str,
     notes: Option<&str>,
 ) -> Result<(), AppError> {
+    let sp = conn.savepoint()?;
+
     // C1.1.6 Ensure integrity: Validate Prepared spells must be Known
     if list_type == LIST_TYPE_PREPARED {
-        let use_hash = crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
+        let use_hash = crate::db::table_has_column(&sp, "character_class_spell", "spell_content_hash");
         let known_exists: bool = if use_hash {
-            let spell_content_hash: Option<String> = conn
+            let spell_content_hash: Option<String> = sp
                 .query_row(
                     "SELECT content_hash FROM spell WHERE id = ?",
                     [spell_id],
@@ -264,20 +266,20 @@ fn add_character_spell_with_conn(
                 .optional()?
                 .flatten();
             if let Some(hash) = spell_content_hash.as_deref() {
-                conn.query_row(
+                sp.query_row(
                     "SELECT EXISTS(SELECT 1 FROM character_class_spell WHERE character_class_id = ? AND spell_content_hash = ? AND list_type = 'KNOWN')",
                     params![character_class_id, hash],
                     |row| row.get(0),
                 )?
             } else {
-                conn.query_row(
+                sp.query_row(
                     "SELECT EXISTS(SELECT 1 FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'KNOWN')",
                     params![character_class_id, spell_id],
                     |row| row.get(0),
                 )?
             }
         } else {
-            conn.query_row(
+            sp.query_row(
                 "SELECT EXISTS(SELECT 1 FROM character_class_spell WHERE character_class_id = ? AND spell_id = ? AND list_type = 'KNOWN')",
                 params![character_class_id, spell_id],
                 |row| row.get(0),
@@ -291,7 +293,9 @@ fn add_character_spell_with_conn(
         }
     }
 
-    upsert_character_class_spell_with_hash(conn, character_class_id, spell_id, list_type, notes)
+    upsert_character_class_spell_with_hash(&sp, character_class_id, spell_id, list_type, notes)?;
+    sp.commit()?;
+    Ok(())
 }
 
 fn upsert_character_class_spell_with_hash(
@@ -705,9 +709,9 @@ pub async fn add_character_spell(
 ) -> Result<(), AppError> {
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
         add_character_spell_with_conn(
-            &conn,
+            &mut conn,
             character_class_id,
             spell_id,
             &list_type,
@@ -1612,7 +1616,7 @@ mod tests {
     /// adding PREPARED by spell_id 5 should succeed once validation uses hash.
     #[test]
     fn test_add_prepared_spell_succeeds_when_known_row_matches_by_hash() {
-        let conn = setup_character_spell_test_db(true);
+        let mut conn = setup_character_spell_test_db(true);
         conn.execute(
             "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) VALUES (7, 0, 'KNOWN', NULL, 'restored-hash')",
             [],
@@ -1624,7 +1628,7 @@ mod tests {
         )
         .expect("seed spell row with restored hash");
 
-        add_character_spell_with_conn(&conn, 7, 5, "PREPARED", None)
+        add_character_spell_with_conn(&mut conn, 7, 5, "PREPARED", None)
             .expect("add PREPARED should succeed when KNOWN matches by hash");
 
         let count: i64 = conn

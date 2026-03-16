@@ -715,8 +715,8 @@ function ClassSpellList({
   }, [loadSpells]);
 
   const filteredSpells = spells.filter((s) => {
-    if (activeTab === "KNOWN") return s.known === 1;
-    return s.prepared === 1;
+    if (activeTab === "KNOWN") return s.known;
+    return s.prepared;
   });
 
   return (
@@ -834,7 +834,7 @@ function ClassSpellList({
               charClass={charClass}
               onAdded={loadSpells}
               listType={activeTab}
-              knownSpells={spells.filter((s) => s.known === 1)}
+              knownSpells={spells.filter((s) => s.known)}
             />
           )}
         </div>
@@ -1004,8 +1004,8 @@ interface PickerSpell {
   level: number;
   school?: string | null;
   sphere?: string | null;
-  isQuestSpell: number;
-  isCantrip: number;
+  isQuestSpell: boolean;
+  isCantrip: boolean;
   tags?: string | null;
 }
 
@@ -1074,8 +1074,8 @@ function SpellPicker({
           if (filters.levelMin !== undefined && sLevel < filters.levelMin) return false;
           if (filters.levelMax !== undefined && sLevel > filters.levelMax) return false;
 
-          const isQuest = s.isQuestSpell === 1;
-          const isCantrip = s.isCantrip === 1;
+          const isQuest = s.isQuestSpell;
+          const isCantrip = s.isCantrip;
 
           if (filters.isQuestSpell && !isQuest) return false;
           if (filters.isCantrip && !isCantrip) return false;
@@ -1363,12 +1363,12 @@ function SpellPicker({
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">{spell.name}</span>
-                        {spell.isQuestSpell === 1 && (
+                        {spell.isQuestSpell && (
                           <span className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
                             Q
                           </span>
                         )}
-                        {spell.isCantrip === 1 && (
+                        {spell.isCantrip && (
                           <span className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                             C
                           </span>

@@ -164,12 +164,12 @@
     - [x] Verify Migration 0014 FTS rebuild/repopulate for 10,000 spells completes in < 60 seconds.
 
 ## 11. Documentation
-- [ ] 11.1 User documentation:
-    - [ ] Update import/export documentation:
-        - [ ] Explain hash-based deduplication (duplicates skipped automatically).
-        - [ ] Document spell versioning with hashes.
-        - [ ] Document conflict resolution: Keep Existing, Replace with New, Keep Both (numeric suffix (1), (2), …), Apply to All (current session only).
-        - [ ] Provide examples of import scenarios (new spells, duplicates, updated versions).
-    - [ ] Create vault documentation:
-        - [ ] Explain hash-based file naming (`spells/{content_hash}.json`).
-        - [ ] Document vault integrity checks.
+- [x] 11.1 User documentation:
+    - [x] Update import/export documentation:
+        - [x] Explain hash-based deduplication (duplicates skipped automatically).
+        - [x] Document spell versioning with hashes.
+        - [x] Document conflict resolution: Keep Existing, Replace with New, Keep Both (numeric suffix (1), (2), …), Apply to All (current session only).
+        - [x] Provide examples of import scenarios (new spells, duplicates, updated versions).
+    - [x] Create vault documentation:
+        - [x] Explain hash-based file naming (`spells/{content_hash}.json`).
+        - [x] Document vault integrity checks.

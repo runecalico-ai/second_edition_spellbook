@@ -420,7 +420,6 @@ test.describe("Character Edge Cases & Hardening", () => {
         const mageSection = page.locator('[aria-label="Class section for Mage"]');
         await mageSection.getByRole("button", { name: "KNOWN" }).click();
 
-
         await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
 
         const upgradeBtn = page.locator("[data-testid^='btn-upgrade-spell-']");
@@ -432,7 +431,6 @@ test.describe("Character Edge Cases & Hardening", () => {
       await test.step("Click Upgrade and verify spell still resolves without errors", async () => {
         const upgradeBtn = page.locator("[data-testid^='btn-upgrade-spell-']");
         await upgradeBtn.click();
-
 
         const modalVisible = await page
           .getByTestId("modal-dialog")

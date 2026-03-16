@@ -42,3 +42,6 @@ apps/desktop/playwright-report/
 
 *storybook.log
 storybook-static
+
+# Local Claude Settings
+.claude/settings.local.json

@@ -2,7 +2,6 @@ use crate::error::AppError;
 use rusqlite::Connection;
 use tracing::{info, warn};
 
-
 /// Applies migration 0015: hash reference columns and indexes.
 ///
 /// Column creation happens here (not in the SQL file) so we can run ADD COLUMN
@@ -206,7 +205,11 @@ mod tests {
             "character_class_spell",
             "spell_content_hash"
         ));
-        assert!(crate::db::table_has_column(&conn, "artifact", "spell_content_hash"));
+        assert!(crate::db::table_has_column(
+            &conn,
+            "artifact",
+            "spell_content_hash"
+        ));
 
         let index_exists = conn
             .query_row(
@@ -484,7 +487,11 @@ mod tests {
             "character_class_spell",
             "spell_content_hash"
         ));
-        assert!(crate::db::table_has_column(&conn, "artifact", "spell_content_hash"));
+        assert!(crate::db::table_has_column(
+            &conn,
+            "artifact",
+            "spell_content_hash"
+        ));
     }
 
     /// Benchmarks migration 0014 FTS rebuild with 10k spells; must complete in < 60s.

@@ -37,7 +37,6 @@ fn app_data_dir() -> Result<PathBuf, AppError> {
     Ok(dir)
 }
 
-
 fn load_character_printable_spells(
     conn: &rusqlite::Connection,
     character_id: i64,

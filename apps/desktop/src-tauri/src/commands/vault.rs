@@ -539,7 +539,6 @@ pub struct VaultGcSummary {
     pub integrity: VaultIntegritySummary,
 }
 
-
 fn record_unrecoverable(
     summary: &mut VaultIntegritySummary,
     content_hash: &str,

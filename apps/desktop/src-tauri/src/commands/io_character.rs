@@ -11,7 +11,6 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tauri::State;
 
-
 // Helper to fetch bundle data (synchronous, for use in spawn_blocking)
 fn fetch_character_bundle(
     conn: &rusqlite::Connection,
@@ -73,7 +72,8 @@ fn fetch_character_bundle(
         let class_data = class_row?;
 
         // 4. Get Spells for this class
-        let use_hash = crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
+        let use_hash =
+            crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
         if use_hash {
             let missing_count: i64 = conn.query_row(
                 "SELECT COUNT(*)

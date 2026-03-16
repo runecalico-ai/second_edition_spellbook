@@ -12,6 +12,8 @@ include_only = ["PATH", "HOME"]
 
 [features]
 shell_snapshot = true
+multi_agent = true
+powershell_utf8 = false
 
 [profiles.deep_review]
 model = "gpt-5.4"

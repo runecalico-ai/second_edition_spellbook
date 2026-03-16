@@ -33,7 +33,7 @@
 - Modify: `apps/desktop/src-tauri/src/commands/io_character.rs` (remove local copy)
 - Modify: `apps/desktop/src-tauri/src/commands/import.rs` (remove local copy)
 
-- [ ] **Step 1: Create `db/utils.rs`**
+- [x] **Step 1: Create `db/utils.rs`**
 
 ```rust
 // apps/desktop/src-tauri/src/db/utils.rs
@@ -51,7 +51,7 @@ pub fn table_has_column(conn: &Connection, table: &str, column: &str) -> bool {
 }
 ```
 
-- [ ] **Step 2: Register the module and re-export**
+- [x] **Step 2: Register the module and re-export**
 
 In `apps/desktop/src-tauri/src/db/mod.rs`, add:
 ```rust
@@ -63,7 +63,7 @@ pub use pool::{app_data_dir, init_db, Pool};
 pub use utils::table_has_column;
 ```
 
-- [ ] **Step 3: Update `db/migrations.rs`**
+- [x] **Step 3: Update `db/migrations.rs`**
 
 Replace the local `has_column` function (lines 5–11) with an import from the parent module:
 ```rust
@@ -73,7 +73,7 @@ Replace the local `has_column` function (lines 5–11) with an import from the p
 
 Search for `has_column(` and replace with `super::utils::table_has_column(`.
 
-- [ ] **Step 4: Update each command file**
+- [x] **Step 4: Update each command file**
 
 For each of the 6 command files, remove the local `fn table_has_column(...)` definition and replace every call to `table_has_column(` with `crate::db::table_has_column(`. The function signature is identical so no call-site changes are needed beyond the namespace.
 
@@ -85,7 +85,7 @@ Files to update:
 - `commands/io_character.rs` — remove duplicate, update call sites
 - `commands/import.rs` — remove duplicate, update call sites
 
-- [ ] **Step 5: Verify compilation**
+- [x] **Step 5: Verify compilation**
 
 ```bash
 cd apps/desktop
@@ -93,7 +93,7 @@ cargo check
 ```
 Expected: no errors. All files should compile cleanly.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/db/utils.rs \
@@ -117,14 +117,14 @@ git commit -m "refactor(db): extract table_has_column to shared db utility"
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/characters.rs`
 
-- [ ] **Step 1: Add constants at the top of `characters.rs`** (after the `use` block)
+- [x] **Step 1: Add constants at the top of `characters.rs`** (after the `use` block)
 
 ```rust
 const LIST_TYPE_KNOWN: &str = "KNOWN";
 const LIST_TYPE_PREPARED: &str = "PREPARED";
 ```
 
-- [ ] **Step 2: Replace string literals**
+- [x] **Step 2: Replace string literals**
 
 Search `characters.rs` for every occurrence of `"KNOWN"` and `"PREPARED"` in non-SQL contexts (i.e., in `if list_type ==`, `list_type.as_str()` comparisons, return value checks) and replace with the constants. Leave SQL string literals (inside `"..."` query strings) unchanged — SQLite needs the raw strings.
 
@@ -146,7 +146,7 @@ if list_type == "KNOWN" {
 if list_type == LIST_TYPE_KNOWN {
 ```
 
-- [ ] **Step 3: Compile check**
+- [x] **Step 3: Compile check**
 
 ```bash
 cd apps/desktop
@@ -154,7 +154,7 @@ cargo check
 ```
 Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/characters.rs
@@ -172,7 +172,7 @@ git commit -m "refactor(characters): define KNOWN/PREPARED constants"
 - Modify: `apps/desktop/src/types/character.ts`
 - Modify: any call sites in `apps/desktop/src/ui/CharacterEditor.tsx` or other UI files that break
 
-- [ ] **Step 1: Update the Rust struct fields to `bool`**
+- [x] **Step 1: Update the Rust struct fields to `bool`**
 
 In `apps/desktop/src-tauri/src/models/character.rs`, change `CharacterSpellbookEntry` (currently lines 85-102):
 ```rust
@@ -190,7 +190,7 @@ In `apps/desktop/src-tauri/src/models/character.rs`, change `CharacterSpellbookE
 
 rusqlite's `FromSql` for `bool` reads SQLite INTEGER columns: 0 → `false`, non-zero → `true`. The `row.get(N)?` calls in `map_row_16` and `map_row_12` in `characters.rs` will now infer `bool` automatically via the struct field type — no explicit type annotation needed.
 
-- [ ] **Step 2: Verify Rust compilation**
+- [x] **Step 2: Verify Rust compilation**
 
 ```bash
 cd apps/desktop
@@ -199,7 +199,7 @@ cargo check
 
 If any code reads these fields as `i64` (e.g., `entry.is_quest_spell == 1`), the compiler will flag them. Fix each: `entry.is_quest_spell` (now `bool`) should be used directly or compared with `== true`.
 
-- [ ] **Step 3: Update the TypeScript interface**
+- [x] **Step 3: Update the TypeScript interface**
 
 In `apps/desktop/src/types/character.ts`, change `CharacterSpellbookEntry`:
 ```typescript
@@ -215,7 +215,7 @@ In `apps/desktop/src/types/character.ts`, change `CharacterSpellbookEntry`:
   known: boolean;
 ```
 
-- [ ] **Step 4: Fix TypeScript call sites**
+- [x] **Step 4: Fix TypeScript call sites**
 
 ```bash
 cd apps/desktop
@@ -224,7 +224,7 @@ pnpm typecheck
 
 For comparisons like `entry.prepared === 1`, change to `entry.prepared`. For places that must pass an integer to `invoke()` (e.g., `comEnabled: character.comEnabled ? 1 : 0`), the explicit conversion is correct and unchanged. Fix each type error.
 
-- [ ] **Step 5: Run unit tests**
+- [x] **Step 5: Run unit tests**
 
 ```bash
 cd apps/desktop
@@ -232,7 +232,7 @@ pnpm test:unit
 ```
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/models/character.rs \
@@ -252,7 +252,7 @@ git commit -m "fix(types): CharacterSpellbookEntry boolean flags as bool/boolean
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/characters.rs`
 
-- [ ] **Step 1: Write a failing test (Rust)**
+- [x] **Step 1: Write a failing test (Rust)**
 
 Add inside the `#[cfg(test)]` block of `characters.rs`:
 ```rust
@@ -268,7 +268,7 @@ fn test_upgrade_spell_is_atomic() {
 Run it: `cargo test -p spellbook-desktop test_upgrade_spell_is_atomic -- --nocapture`
 Expected: test compiles and passes (this is more a regression guard than a pre-fail test since the race is non-deterministic).
 
-- [ ] **Step 2: Wrap the two-operation body in a savepoint**
+- [x] **Step 2: Wrap the two-operation body in a savepoint**
 
 In `upgrade_character_class_spell_with_conn`, replace the direct `query_row` + `execute` pair with:
 
@@ -316,7 +316,7 @@ fn upgrade_character_class_spell_with_conn(
 }
 ```
 
-- [ ] **Step 3: Verify compilation and test**
+- [x] **Step 3: Verify compilation and test**
 
 ```bash
 cd apps/desktop
@@ -325,7 +325,7 @@ cargo test -p spellbook-desktop test_upgrade_spell_is_atomic
 ```
 Expected: compiles cleanly, test passes.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/characters.rs
@@ -341,7 +341,7 @@ git commit -m "fix(characters): wrap spell upgrade validate+update in savepoint"
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/characters.rs`
 
-- [ ] **Step 1: Open `add_character_spell_with_conn` and identify the two-phase region**
+- [x] **Step 1: Open `add_character_spell_with_conn` and identify the two-phase region**
 
 The function currently:
 1. Optionally reads the spell's `content_hash` (if hash columns exist)
@@ -350,7 +350,7 @@ The function currently:
 
 All three steps must be inside the same savepoint.
 
-- [ ] **Step 2: Wrap in savepoint**
+- [x] **Step 2: Wrap in savepoint**
 
 ```rust
 fn add_character_spell_with_conn(
@@ -416,14 +416,14 @@ Note: `rusqlite::Savepoint` implements `Deref<Target = Connection>`, so all `con
 
 **Important:** `add_character_spell_with_conn` calls a helper such as `upsert_character_class_spell_with_hash(conn, ...)` near the end of the function. Change that call to `upsert_character_class_spell_with_hash(&sp, ...)` so the upsert happens inside the savepoint. Since `&Savepoint` auto-derefs to `&Connection`, the helper's signature does not change.
 
-- [ ] **Step 3: Verify compilation**
+- [x] **Step 3: Verify compilation**
 
 ```bash
 cd apps/desktop
 cargo check
 ```
 
-- [ ] **Step 4: Run existing character tests**
+- [x] **Step 4: Run existing character tests**
 
 ```bash
 cd apps/desktop
@@ -431,7 +431,7 @@ cargo test -p spellbook-desktop characters
 ```
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/characters.rs
@@ -447,7 +447,7 @@ git commit -m "fix(characters): wrap PREPARED integrity check and upsert in save
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/import.rs`
 
-- [ ] **Step 0: Write a test first**
+- [x] **Step 0: Write a test first**
 
 Add a test in `apps/desktop/src-tauri/src/commands/import.rs` `#[cfg(test)]` section:
 ```rust
@@ -466,11 +466,11 @@ fn test_import_db_commit_before_vault_write() {
 
 Note: a pure unit test for write-failure is difficult without filesystem injection. At minimum, write a test that verifies the happy path (spell + artifact are both present after successful import), then ensure the reorder doesn't break it.
 
-- [ ] **Step 1: Read the existing commit / write sequence**
+- [x] **Step 1: Read the existing commit / write sequence**
 
 In `apps/desktop/src-tauri/src/commands/import.rs`, search for `tx.commit()` and `write_pending_vault_files` (or the vault write function name). Note the exact order and variable names. The current order is likely: write files → commit transaction. Confirm before changing.
 
-- [ ] **Step 2: Reorder — commit first, then write files**
+- [x] **Step 2: Reorder — commit first, then write files**
 
 The corrected sequence should be:
 ```rust
@@ -493,14 +493,14 @@ for (path, content) in pending_vault_writes {
 
 If the original code already has a `cleanup_written_vault_files` helper, use it in the error handler.
 
-- [ ] **Step 3: Verify compilation**
+- [x] **Step 3: Verify compilation**
 
 ```bash
 cd apps/desktop
 cargo check
 ```
 
-- [ ] **Step 4: Run import-related tests**
+- [x] **Step 4: Run import-related tests**
 
 ```bash
 cd apps/desktop
@@ -508,7 +508,7 @@ cargo test -p spellbook-desktop import
 ```
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/import.rs
@@ -524,7 +524,7 @@ git commit -m "fix(import): commit DB transaction before writing vault files"
 **Files:**
 - Modify: `apps/desktop/src/store/useModal.ts`
 
-- [ ] **Step 1: Write a unit test**
+- [x] **Step 1: Write a unit test**
 
 In `apps/desktop/src/store/useModal.test.ts`, add:
 ```typescript
@@ -548,7 +548,7 @@ test("showModalIfIdle is atomic — second concurrent call is queued", () => {
 Run: `cd apps/desktop && pnpm test:unit -- --reporter verbose`
 Expected: test passes (the current implementation already handles this correctly in synchronous calls).
 
-- [ ] **Step 2: Rewrite `showModalIfIdle` to use an atomic updater**
+- [x] **Step 2: Rewrite `showModalIfIdle` to use an atomic updater**
 
 Replace the current implementation:
 ```typescript
@@ -580,7 +580,7 @@ showModalIfIdle: (options) => {
 },
 ```
 
-- [ ] **Step 3: Run unit tests**
+- [x] **Step 3: Run unit tests**
 
 ```bash
 cd apps/desktop
@@ -588,7 +588,7 @@ pnpm test:unit
 ```
 Expected: all pass including the new test.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/desktop/src/store/useModal.ts apps/desktop/src/store/useModal.test.ts
@@ -606,7 +606,7 @@ git commit -m "fix(modal): make showModalIfIdle atomic with Zustand functional u
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/characters.rs`
 
-- [ ] **Step 1: Write a failing test**
+- [x] **Step 1: Write a failing test**
 
 Look at the existing test helpers in the `#[cfg(test)]` section of `characters.rs` — there are helpers like `test_seed_spell` and `test_seed_character_with_upgradeable_spell`. Use the same DB setup pattern. Add:
 
@@ -638,7 +638,7 @@ fn test_upgrade_detection_respects_school() {
 Run: `cargo test -p spellbook-desktop test_upgrade_detection_respects_school -- --nocapture`
 Expected: FAIL (the current query returns the Transmutation spell as an upgrade candidate).
 
-- [ ] **Step 2: Add school/sphere/tradition guard to all 4 subqueries**
+- [x] **Step 2: Add school/sphere/tradition guard to all 4 subqueries**
 
 There are **4 occurrences** to update (2 branches × 2 subqueries per branch). In `get_character_class_spells_with_conn` (`characters.rs`):
 
@@ -668,20 +668,20 @@ There are **4 occurrences** to update (2 branches × 2 subqueries per branch). I
 
 Search for `WHERE s2.name = s.name` in `characters.rs` — there should be exactly 4 matches. Add the school/sphere conditions to each.
 
-- [ ] **Step 3: Run the test**
+- [x] **Step 3: Run the test**
 
 ```bash
 cargo test -p spellbook-desktop test_upgrade_detection_respects_school
 ```
 Expected: PASS.
 
-- [ ] **Step 4: Compile check**
+- [x] **Step 4: Compile check**
 
 ```bash
 cargo check
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/characters.rs
@@ -697,7 +697,7 @@ git commit -m "fix(characters): restrict upgrade detection to same school/sphere
 **Files:**
 - Modify: `apps/desktop/src/ui/ImportWizard.tsx`
 
-- [ ] **Step 1: Write a unit test**
+- [x] **Step 1: Write a unit test**
 
 In `apps/desktop/src/ui/ImportWizard.test.tsx`, add a test for mixed selection:
 ```typescript
@@ -712,7 +712,7 @@ test("selecting mixed .json and .md files is rejected with an error", async () =
 Run: `pnpm test:unit`
 Expected: FAIL (no mixed-type guard exists yet).
 
-- [ ] **Step 2: Update `handleFileChange`**
+- [x] **Step 2: Update `handleFileChange`**
 
 ```typescript
 const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -746,7 +746,7 @@ const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 };
 ```
 
-- [ ] **Step 3: Run the unit test**
+- [x] **Step 3: Run the unit test**
 
 ```bash
 cd apps/desktop
@@ -754,7 +754,7 @@ pnpm test:unit
 ```
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/desktop/src/ui/ImportWizard.tsx apps/desktop/src/ui/ImportWizard.test.tsx
@@ -772,14 +772,14 @@ git commit -m "fix(import): reject mixed .json/.md file selection"
 **Files:**
 - Modify: `apps/desktop/tests/character_edge_cases.spec.ts`
 
-- [ ] **Step 1: Identify all fixed sleeps after navigation**
+- [x] **Step 1: Identify all fixed sleeps after navigation**
 
 Search for `waitForTimeout` in `character_edge_cases.spec.ts`:
 ```bash
 grep -n "waitForTimeout" apps/desktop/tests/character_edge_cases.spec.ts
 ```
 
-- [ ] **Step 2: Replace each `waitForTimeout(500)` after navigation**
+- [x] **Step 2: Replace each `waitForTimeout(500)` after navigation**
 
 **Note on `tests/AGENTS.md`:** Section 6.1 of the E2E guide endorses a "500ms settlement wait" after navigation. However, this guidance conflicts with the E2E test best practices guide which discourages fixed sleeps, and recent commits (`7a8719b`) have moved toward deterministic waits. The project intent is to replace fixed sleeps with element-based waits. The settlement guidance in 6.1 is for cases where `app.navigate()` does not already include settlement — check whether `SpellbookApp.navigate()` in `page-objects/SpellbookApp.ts` already waits for specific UI elements (if it does, the extra `waitForTimeout` is truly redundant).
 
@@ -799,7 +799,7 @@ await expect(page.getByRole("link", { name: charName })).toBeVisible({
 
 Read `SpellbookApp.navigate()` in `page-objects/SpellbookApp.ts` first to understand what it already waits for, then verify the specific element each test needs immediately after navigation and wait for that instead of a fixed sleep. Do NOT just swap `waitForTimeout(500)` for `waitForTimeout(0)` — remove the sleep entirely and replace with an element wait.
 
-- [ ] **Step 3: Run E2E tests locally** *(requires debug build)*
+- [x] **Step 3: Run E2E tests locally** *(requires debug build)*
 
 ```bash
 cd apps/desktop
@@ -808,7 +808,7 @@ npx playwright test character_edge_cases --reporter=list
 ```
 Expected: tests pass without timing-related failures.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/desktop/tests/character_edge_cases.spec.ts
@@ -826,7 +826,7 @@ The `dialog-handler.ts` utility already provides `handleCustomModal` for the Rea
 **Files:**
 - Modify: `apps/desktop/tests/character_edge_cases.spec.ts`
 
-- [ ] **Step 1: Identify all try/catch modal dismissal blocks**
+- [x] **Step 1: Identify all try/catch modal dismissal blocks**
 
 Search:
 ```bash
@@ -834,7 +834,7 @@ grep -n "modal.waitFor" apps/desktop/tests/character_edge_cases.spec.ts
 ```
 Expected: ~6 occurrences.
 
-- [ ] **Step 2: Replace the pattern with conditional `handleCustomModal`**
+- [x] **Step 2: Replace the pattern with conditional `handleCustomModal`**
 
 The existing pattern:
 ```typescript
@@ -860,7 +860,7 @@ if (isModalVisible) {
 
 This is deterministic: `isVisible()` is synchronous and returns the current state without a timeout. If the modal is not present at the moment of the check, we skip dismissal. If it is present, we dismiss it and wait for it to close.
 
-- [ ] **Step 3: Run E2E tests**
+- [x] **Step 3: Run E2E tests**
 
 ```bash
 cd apps/desktop
@@ -868,7 +868,7 @@ npx playwright test character_edge_cases --reporter=list
 ```
 Expected: all pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/desktop/tests/character_edge_cases.spec.ts
@@ -884,7 +884,7 @@ git commit -m "test(e2e): replace silent modal try/catch with deterministic visi
 **Files:**
 - Modify: `apps/desktop/src/store/useModal.test.ts`
 
-- [ ] **Step 1: Add `beforeEach` reset**
+- [x] **Step 1: Add `beforeEach` reset**
 
 In `useModal.test.ts`, the existing `afterEach` (lines 5-16) resets: `isOpen, type, title, message, buttons, customContent, dismissible, onClose`. Extract it into a shared function and also call it in `beforeEach`:
 
@@ -909,7 +909,7 @@ afterEach(resetStore);
 
 The reset object must exactly match the `initialState` defined in `useModal.ts` plus `queuedModal: undefined`.
 
-- [ ] **Step 2: Run unit tests**
+- [x] **Step 2: Run unit tests**
 
 ```bash
 cd apps/desktop
@@ -917,7 +917,7 @@ pnpm test:unit -- --reporter verbose
 ```
 Expected: all tests pass; no order-dependent failures.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/desktop/src/store/useModal.test.ts
@@ -935,11 +935,11 @@ git commit -m "test(unit): reset modal store in beforeEach for test isolation"
 **Files:**
 - Modify: `apps/desktop/src/ui/components/VaultMaintenanceDialog.test.tsx`
 
-- [ ] **Step 1: Locate the optimize_vault test**
+- [x] **Step 1: Locate the optimize_vault test**
 
 Find the test that asserts `invokeMock.toHaveBeenCalledWith("optimize_vault")` in `VaultMaintenanceDialog.test.tsx`.
 
-- [ ] **Step 2: Add call count guard**
+- [x] **Step 2: Add call count guard**
 
 After the existing `toHaveBeenCalledWith` assertion, add:
 ```typescript
@@ -950,7 +950,7 @@ expect(invokeMock).toHaveBeenCalledTimes(1);
 
 Read the test's `beforeEach` / setup to count how many `invoke` calls the test fixture makes before the action under test, then assert the correct total count.
 
-- [ ] **Step 3: Run unit tests**
+- [x] **Step 3: Run unit tests**
 
 ```bash
 cd apps/desktop
@@ -958,7 +958,7 @@ pnpm test:unit
 ```
 Expected: all pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/VaultMaintenanceDialog.test.tsx
@@ -977,7 +977,7 @@ git commit -m "test(unit): add invoke call count assertion to VaultMaintenanceDi
 - Modify: `apps/desktop/src/ui/App.tsx` (re-import from new location)
 - Modify: `apps/desktop/src/ui/ImportWizard.tsx` (also imports service functions from `VaultMaintenanceDialog`)
 
-- [ ] **Step 1: Read which functions are exported from `VaultMaintenanceDialog.tsx`**
+- [x] **Step 1: Read which functions are exported from `VaultMaintenanceDialog.tsx`**
 
 Run:
 ```bash
@@ -986,7 +986,7 @@ grep -n "^export" apps/desktop/src/ui/components/VaultMaintenanceDialog.tsx
 
 Note all exported non-component symbols (currently: `getVaultSettings`, `runVaultIntegrityCheck`, and possibly others like `optimizeVault`, `toggleIntegrityCheckOnOpen`, `formatVaultMaintenanceError`). All of these will move to `src/api/vault.ts`.
 
-- [ ] **Step 2: Create `src/api/vault.ts`**
+- [x] **Step 2: Create `src/api/vault.ts`**
 
 ```typescript
 // apps/desktop/src/api/vault.ts
@@ -1010,7 +1010,7 @@ export async function runVaultIntegrityCheck(): Promise<VaultIntegritySummary> {
 
 The import path from `src/api/vault.ts` to `src/types/vault.ts` is `"../types/vault"` (one level up, not two).
 
-- [ ] **Step 3: Update `VaultMaintenanceDialog.tsx`**
+- [x] **Step 3: Update `VaultMaintenanceDialog.tsx`**
 
 Remove all exported service functions from the top of the file and add an import:
 ```typescript
@@ -1018,15 +1018,15 @@ import { getVaultSettings, runVaultIntegrityCheck } from "../../api/vault";
 ```
 (The component is at `src/ui/components/`, two levels up to `src/`, then `api/vault`.)
 
-- [ ] **Step 4: Update `App.tsx`**
+- [x] **Step 4: Update `App.tsx`**
 
 Change the import of service functions from `./components/VaultMaintenanceDialog` to `../api/vault`.
 
-- [ ] **Step 5: Update `ImportWizard.tsx`**
+- [x] **Step 5: Update `ImportWizard.tsx`**
 
 `ImportWizard.tsx` also imports service functions from `./components/VaultMaintenanceDialog` (e.g., `getVaultSettings`). Update to import from `./components/../../../api/vault` or the correct relative path: `"../api/vault"` (since `ImportWizard.tsx` is at `src/ui/`, one level up to `src/`, then `api/vault`).
 
-- [ ] **Step 4: Typecheck and test**
+- [x] **Step 4: Typecheck and test**
 
 ```bash
 cd apps/desktop
@@ -1035,7 +1035,7 @@ pnpm test:unit
 ```
 Expected: no type errors, all tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/desktop/src/api/vault.ts \
@@ -1051,11 +1051,11 @@ git commit -m "refactor(vault): extract service functions from VaultMaintenanceD
 
 After completing each chunk, verify:
 
-- [ ] `cargo check` passes with no warnings (backend chunks)
-- [ ] `pnpm typecheck` passes (frontend chunks)
-- [ ] `pnpm test:unit` passes (frontend chunks)
-- [ ] `pnpm lint` passes for modified files
-- [ ] E2E tests pass on Windows after debug rebuild (test flakiness chunks)
+- [x] `cargo check` passes with no warnings (backend chunks)
+- [x] `pnpm typecheck` passes (frontend chunks)
+- [x] `pnpm test:unit` passes (frontend chunks)
+- [x] `pnpm lint` passes for modified files
+- [x] E2E tests pass on Windows after debug rebuild (test flakiness chunks)
 
 ## What Was Not Included
 

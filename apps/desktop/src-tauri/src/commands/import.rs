@@ -653,7 +653,6 @@ fn canonical_spell_to_flat_row(
     )
 }
 
-
 /// Build change_log entries from old spell row vs incoming canonical spell (for Replace with New).
 fn diff_canonical_vs_detail(
     old: &SpellDetail,
@@ -1263,16 +1262,14 @@ fn apply_import_spell_json_impl(
     tx.commit().map_err(AppError::Database)?;
 
     let root = app_data_dir()?;
-    if let Err(err) = write_pending_vault_files(
+    // Best-effort: vault files are non-critical metadata; surface the error but do not
+    // attempt to roll back the already-committed DB transaction.
+    write_pending_vault_files(
         &root,
         vault_spell_json_to_refresh
             .iter()
             .map(|(content_hash, canonical_json)| (content_hash.as_str(), canonical_json.as_str())),
-    ) {
-        // Best-effort: vault files are non-critical metadata; log and surface the error
-        // but do not attempt to roll back the already-committed DB transaction.
-        return Err(err);
-    }
+    )?;
 
     Ok(ImportSpellJsonResult {
         imported_count,

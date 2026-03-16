@@ -263,7 +263,8 @@ fn add_character_spell_with_conn(
 
     // C1.1.6 Ensure integrity: Validate Prepared spells must be Known
     if list_type == LIST_TYPE_PREPARED {
-        let use_hash = crate::db::table_has_column(&sp, "character_class_spell", "spell_content_hash");
+        let use_hash =
+            crate::db::table_has_column(&sp, "character_class_spell", "spell_content_hash");
         let known_exists: bool = if use_hash {
             let spell_content_hash: Option<String> = sp
                 .query_row(
@@ -1431,7 +1432,8 @@ mod tests {
         .unwrap();
         // No character_class_spell row with 'hash-old'
 
-        let result = upgrade_character_class_spell_with_conn(&mut conn, 10, "hash-old", 1, "hash-new");
+        let result =
+            upgrade_character_class_spell_with_conn(&mut conn, 10, "hash-old", 1, "hash-new");
         assert!(result.is_err(), "should fail when no rows match old_hash");
     }
 

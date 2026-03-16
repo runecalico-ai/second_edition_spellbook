@@ -161,7 +161,8 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
     // matches but spell_content_hash belongs to a different spell.
     // artifact.hash = file hash (we return it); spell_content_hash = spell ref (we filter by it).
     // When spell_id is dropped: keep only spell_content_hash = ? branch; remove legacy OR and (sid, None) arm.
-    let artifact_has_hash_column = crate::db::table_has_column(conn, "artifact", "spell_content_hash");
+    let artifact_has_hash_column =
+        crate::db::table_has_column(conn, "artifact", "spell_content_hash");
     let artifacts: Vec<SpellArtifact> = match (spell.id, spell.content_hash.as_deref()) {
         (Some(sid), Some(h)) => {
             if artifact_has_hash_column {
@@ -383,7 +384,6 @@ pub(crate) fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, 
 
     changes
 }
-
 
 fn cascade_spell_content_hash_refs(
     conn: &Connection,

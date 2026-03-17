@@ -63,6 +63,7 @@ import {
   createDefaultDetailDirty,
 } from "./detailDirty";
 import { decideCanonicalField } from "./canonicalFieldDecision";
+import ArtifactRow from "./components/ArtifactRow";
 import { WarningBanner } from "./components/WarningBanner";
 
 type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
@@ -2634,16 +2635,7 @@ export default function SpellEditor() {
               </button>
             </div>
             {form.artifacts?.map((art) => (
-              <div key={art.id} className="text-xs space-y-1 text-neutral-500">
-                <div className="flex justify-between">
-                  <span className="font-semibold text-neutral-400">
-                    Type: {art.type.toUpperCase()}
-                  </span>
-                  <span>Imported: {new Date(art.importedAt).toLocaleString()}</span>
-                </div>
-                <div className="truncate">Path: {art.path}</div>
-                <div className="font-mono text-[10px] opacity-70">SHA256: {art.hash}</div>
-              </div>
+              <ArtifactRow key={art.id} artifact={art} />
             ))}
           </div>
         )}

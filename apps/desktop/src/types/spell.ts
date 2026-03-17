@@ -66,6 +66,7 @@ export interface SpellArtifact {
   path: string;
   hash: string;
   importedAt: string;
+  spellContentHash?: string | null;
 }
 
 export type SpellUpdate = SpellDetail & {

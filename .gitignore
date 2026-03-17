@@ -34,6 +34,7 @@ venv/
 .venv/
 .ruff_cache/
 .pytest_cache/
+.worktrees/
 apps/desktop/tests/screenshots/
 apps/desktop/tests/snapshots/
 apps/desktop/tests/tmp/
@@ -41,3 +42,6 @@ apps/desktop/playwright-report/
 
 *storybook.log
 storybook-static
+
+# Local Claude Settings
+.claude/settings.local.json

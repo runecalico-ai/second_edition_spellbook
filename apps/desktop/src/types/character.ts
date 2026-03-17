@@ -47,12 +47,16 @@ export interface CharacterSpellbookEntry {
   spellLevel: number;
   spellSchool?: string | null;
   spellSphere?: string | null;
-  isQuestSpell: number;
-  isCantrip: number;
-  prepared: number;
-  known: number;
+  isQuestSpell: boolean;
+  isCantrip: boolean;
+  prepared: boolean;
+  known: boolean;
   notes?: string | null;
   tags?: string | null;
+  spellContentHash?: string | null;
+  missingFromLibrary?: boolean;
+  availableUpgradeHash?: string | null;
+  availableUpgradeSpellId?: number | null;
 }
 
 export interface BundleClassSpell {

@@ -89,12 +89,16 @@ pub struct CharacterSpellbookEntry {
     pub spell_level: i64,
     pub spell_school: Option<String>,
     pub spell_sphere: Option<String>,
-    pub is_quest_spell: i64,
-    pub is_cantrip: i64,
-    pub prepared: i64,
-    pub known: i64,
+    pub is_quest_spell: bool,
+    pub is_cantrip: bool,
+    pub prepared: bool,
+    pub known: bool,
     pub notes: Option<String>,
     pub tags: Option<String>,
+    pub spell_content_hash: Option<String>,
+    pub missing_from_library: bool,
+    pub available_upgrade_hash: Option<String>,
+    pub available_upgrade_spell_id: Option<i64>,
 }
 
 #[derive(Serialize)]

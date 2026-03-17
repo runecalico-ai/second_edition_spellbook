@@ -72,7 +72,40 @@ fn fetch_character_bundle(
         let class_data = class_row?;
 
         // 4. Get Spells for this class
-        let mut stmt = conn.prepare(
+        let use_hash =
+            crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash");
+        if use_hash {
+            let missing_count: i64 = conn.query_row(
+                "SELECT COUNT(*)
+                 FROM character_class_spell ccs
+                 LEFT JOIN spell s ON
+                    (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
+                    OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)
+                 WHERE ccs.character_class_id = ? AND s.id IS NULL",
+                params![class_data.id],
+                |row| row.get(0),
+            )?;
+            if missing_count > 0 {
+                return Err(AppError::Export(
+                    "Cannot export character bundle because one or more spell-list entries reference spells that are no longer in the library."
+                        .to_string(),
+                ));
+            }
+        }
+
+        let query = if use_hash {
+            "SELECT s.id, s.name, s.level, s.school, s.sphere, s.range, s.components,
+                    s.material_components, s.casting_time, s.duration, s.area, s.saving_throw,
+                    s.reversible, s.description, s.tags, s.source, s.edition, s.author,
+                    s.license, s.is_quest_spell, s.is_cantrip, s.class_list,
+                    s.damage, s.magic_resistance, s.schema_version,
+                    ccs.list_type, ccs.notes
+             FROM character_class_spell ccs
+             JOIN spell s ON
+                (ccs.spell_content_hash IS NOT NULL AND s.content_hash = ccs.spell_content_hash)
+                OR (ccs.spell_content_hash IS NULL AND s.id = ccs.spell_id)
+             WHERE ccs.character_class_id = ?"
+        } else {
             "SELECT s.id, s.name, s.level, s.school, s.sphere, s.range, s.components,
                     s.material_components, s.casting_time, s.duration, s.area, s.saving_throw,
                     s.reversible, s.description, s.tags, s.source, s.edition, s.author,
@@ -81,8 +114,9 @@ fn fetch_character_bundle(
                     ccs.list_type, ccs.notes
              FROM character_class_spell ccs
              JOIN spell s ON s.id = ccs.spell_id
-             WHERE ccs.character_class_id = ?",
-        )?;
+             WHERE ccs.character_class_id = ?"
+        };
+        let mut stmt = conn.prepare(query)?;
 
         let spell_rows = stmt.query_map(params![class_data.id], |row| {
             let spell = SpellDetail {
@@ -346,10 +380,26 @@ fn import_character_bundle_logic(
                 tx.last_insert_rowid()
             };
 
-            tx.execute(
-               "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes) VALUES (?, ?, ?, ?)",
-                params![class_id, final_spell_id, spell_entry.list_type, spell_entry.notes],
-            )?;
+            if crate::db::table_has_column(tx, "character_class_spell", "spell_content_hash") {
+                let spell_content_hash: Option<String> = tx
+                    .query_row(
+                        "SELECT content_hash FROM spell WHERE id = ?",
+                        [final_spell_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .flatten();
+
+                tx.execute(
+                    "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash) VALUES (?, ?, ?, ?, ?)",
+                    params![class_id, final_spell_id, spell_entry.list_type, spell_entry.notes, spell_content_hash],
+                )?;
+            } else {
+                tx.execute(
+                    "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes) VALUES (?, ?, ?, ?)",
+                    params![class_id, final_spell_id, spell_entry.list_type, spell_entry.notes],
+                )?;
+            }
         }
     }
 
@@ -460,4 +510,204 @@ pub async fn import_character_markdown_zip(
     let id = import_res?;
 
     Ok(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_bundle_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("open in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE \"character\" (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                race TEXT,
+                alignment TEXT,
+                com_enabled INTEGER NOT NULL DEFAULT 0,
+                notes TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE character_ability (
+                id INTEGER PRIMARY KEY,
+                character_id INTEGER NOT NULL,
+                str INTEGER,
+                dex INTEGER,
+                con INTEGER,
+                int INTEGER,
+                wis INTEGER,
+                cha INTEGER,
+                com INTEGER
+            );
+            CREATE TABLE character_class (
+                id INTEGER PRIMARY KEY,
+                character_id INTEGER NOT NULL,
+                class_name TEXT NOT NULL,
+                class_label TEXT,
+                level INTEGER NOT NULL
+            );
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                level INTEGER NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER NOT NULL DEFAULT 0,
+                is_cantrip INTEGER NOT NULL DEFAULT 0,
+                class_list TEXT,
+                damage TEXT,
+                magic_resistance TEXT,
+                schema_version INTEGER,
+                canonical_data TEXT,
+                content_hash TEXT
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY,
+                character_class_id INTEGER NOT NULL,
+                spell_id INTEGER,
+                list_type TEXT NOT NULL,
+                notes TEXT,
+                spell_content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY,
+                type TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                metadata TEXT
+            );",
+        )
+        .expect("create schema");
+        conn
+    }
+
+    fn sample_bundle() -> CharacterBundle {
+        CharacterBundle {
+            format: "adnd2e-character".to_string(),
+            format_version: "1.0.0".to_string(),
+            name: "Mordenkainen".to_string(),
+            character_type: "PC".to_string(),
+            race: Some("Human".to_string()),
+            alignment: Some("Neutral".to_string()),
+            com_enabled: 0,
+            notes: Some("Archmage".to_string()),
+            created_at: None,
+            updated_at: None,
+            abilities: None,
+            classes: vec![BundleClass {
+                class_name: "Mage".to_string(),
+                class_label: None,
+                level: 12,
+                spells: vec![BundleClassSpell {
+                    spell: SpellDetail {
+                        name: "Lightning Bolt".to_string(),
+                        level: 3,
+                        description: "A stroke of lightning.".to_string(),
+                        school: Some("Evocation".to_string()),
+                        source: Some("PHB".to_string()),
+                        schema_version: Some(2),
+                        ..Default::default()
+                    },
+                    list_type: "KNOWN".to_string(),
+                    notes: Some("combat staple".to_string()),
+                }],
+            }],
+        }
+    }
+
+    #[test]
+    fn test_fetch_character_bundle_resolves_hash_first_when_spell_id_stale() {
+        let conn = setup_bundle_db();
+        conn.execute(
+            "INSERT INTO \"character\" (id, name, type, com_enabled) VALUES (1, 'Test', 'PC', 0)",
+            [],
+        )
+        .expect("insert character");
+        conn.execute(
+            "INSERT INTO character_class (id, character_id, class_name, class_label, level) VALUES (7, 1, 'Mage', NULL, 9)",
+            [],
+        )
+        .expect("insert class");
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, school, source, content_hash, is_quest_spell, is_cantrip)
+             VALUES (42, 'Magic Missile', 1, 'Force darts', 'Evocation', 'PHB', 'hash-mm', 0, 0)",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+             VALUES (7, 9999, 'KNOWN', 'restored', 'hash-mm')",
+            [],
+        )
+        .expect("insert character spell row");
+
+        let bundle = fetch_character_bundle(&conn, 1).expect("fetch bundle");
+        assert_eq!(bundle.classes.len(), 1);
+        assert_eq!(bundle.classes[0].spells.len(), 1);
+        assert_eq!(bundle.classes[0].spells[0].spell.name, "Magic Missile");
+        assert_eq!(
+            bundle.classes[0].spells[0].notes.as_deref(),
+            Some("restored")
+        );
+    }
+
+    #[test]
+    fn test_fetch_character_bundle_rejects_orphaned_hash_rows() {
+        let conn = setup_bundle_db();
+        conn.execute(
+            "INSERT INTO \"character\" (id, name, type, com_enabled) VALUES (1, 'Test', 'PC', 0)",
+            [],
+        )
+        .expect("insert character");
+        conn.execute(
+            "INSERT INTO character_class (id, character_id, class_name, class_label, level) VALUES (8, 1, 'Mage', NULL, 9)",
+            [],
+        )
+        .expect("insert class");
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, notes, spell_content_hash)
+             VALUES (8, 0, 'KNOWN', NULL, 'missing-hash')",
+            [],
+        )
+        .expect("insert orphaned character spell row");
+
+        let err = fetch_character_bundle(&conn, 1)
+            .expect_err("orphaned hash row should fail bundle export");
+        assert!(err
+            .to_string()
+            .contains("reference spells that are no longer in the library"));
+    }
+
+    #[test]
+    fn test_import_character_bundle_logic_populates_spell_content_hash() {
+        let mut conn = setup_bundle_db();
+        let tx = conn.transaction().expect("open tx");
+        import_character_bundle_logic(&tx, sample_bundle(), ImportOptions { overwrite: false })
+            .expect("import bundle");
+        tx.commit().expect("commit");
+
+        let count_with_hash: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM character_class_spell WHERE spell_content_hash IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count hashes");
+        assert_eq!(count_with_hash, 1);
+    }
 }

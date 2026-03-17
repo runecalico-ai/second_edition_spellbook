@@ -96,6 +96,26 @@ During spell validation, the system handles version mismatches as follows:
 > [!NOTE]
 > The system uses **warnings instead of hard errors** to maximize compatibility and allow gradual migration across multiple application versions.
 
+### Bulk migration trigger
+
+The v2 schema bulk migration must be run **before** any hash-based references or hash-based import/export are used. Treat it as a **hard prerequisite** for:
+
+- **Hash-reference migrations** (e.g. Migration 0015 backfill of `spell_content_hash`) — these rely on v2 content hashes.
+- **Hash-based import/export behavior** — export/import that keys or deduplicates by content hash assumes all spells have been migrated to v2 and re-hashed.
+
+**Tauri command**: `migrate_all_spells_to_v2`  
+**Frontend invocation**: `migrateAllSpellsToV2` (via Tauri `invoke`).
+
+**When to run**: Before enabling or depending on hash-based references (Migration 0015) or hash-based import/export. Run it once after upgrading to a version that introduces v2 hashes, so that all existing spells are normalized to v2 and get stable content hashes.
+
+**Options for running**:
+
+1. **Settings UI** — If the application exposes a control to run the bulk migration (e.g. under Settings), use it. *As of this writing, the app may not yet provide this; if not, use manual invocation until it is implemented.*
+2. **First launch after upgrade** — If the application implements an automatic run on first launch after an upgrade, the migration will run without user action. *If this is not implemented, manual invocation is required.*
+3. **Manual invocation** — Call the Tauri command from the frontend (e.g. `invoke('migrate_all_spells_to_v2')`) when needed. This is the guaranteed way to run the migration regardless of UI or first-launch support.
+
+Until the app provides a Settings entry or first-launch trigger, **manual invocation** of `migrateAllSpellsToV2` is recommended when preparing the database for hash-based features.
+
 ---
 
 ## Breaking Changes: v1 → v2

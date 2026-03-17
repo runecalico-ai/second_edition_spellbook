@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures/test-fixtures";
+import { TIMEOUTS } from "./fixtures/constants";
 import { generateRunId } from "./fixtures/test-utils";
-import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { SELECTORS, SpellbookApp } from "./page-objects/SpellbookApp";
 
 test.describe("Character Edge Cases & Hardening", () => {
   test.beforeEach(async ({ appContext }) => {
@@ -165,5 +166,284 @@ test.describe("Character Edge Cases & Hardening", () => {
     // Cleanup
     await app.navigate("Characters");
     await app.deleteCharacterFromList(charName);
+  });
+
+  test("missing-library: shows placeholder and remove button when spell is removed from library", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const charName = `MissingLibChar_${runId}`;
+
+    await test.step("Setup: seed character with orphan spell row (no matching spell in library)", async () => {
+      await app.navigate("Characters");
+      await page.evaluate(async (name: string) => {
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_character_with_orphan_spell", { characterName: name });
+      }, charName);
+      await page.reload();
+      await expect(page.getByRole("link", { name: charName })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      const modal = page.getByTestId("modal-dialog");
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
+        await page.getByTestId("modal-button-dismiss").click();
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
+      }
+    });
+
+    await test.step("Open CharacterEditor and assert missing-library row", async () => {
+      await app.openCharacterEditor(charName);
+      const modal = page.getByTestId("modal-dialog");
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
+        await page.getByTestId("modal-button-dismiss").click();
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
+      }
+      const mageSection = page.locator('[aria-label="Class section for Mage"]');
+      await mageSection.getByRole("button", { name: "KNOWN" }).click();
+
+      await expect(page.getByText("Spell no longer in library")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      const missingRow = app.getMissingSpellRow();
+      await expect(missingRow).toBeVisible();
+      await expect(missingRow.locator("[data-testid^='btn-remove-spell-hash-']")).toBeVisible();
+    });
+
+    await app.navigate("Characters");
+    await app.deleteCharacterFromList(charName);
+  });
+
+  test("missing-library: removing missing-library row removes placeholder", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const charName = `MissingLibRemoveChar_${runId}`;
+
+    await test.step("Setup: seed character with orphan spell row", async () => {
+      await app.navigate("Characters");
+      await page.evaluate(async (name: string) => {
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_character_with_orphan_spell", { characterName: name });
+      }, charName);
+      await page.reload();
+      await expect(page.getByRole("link", { name: charName })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      const modal = page.getByTestId("modal-dialog");
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
+        await page.getByTestId("modal-button-dismiss").click();
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
+      }
+    });
+
+    await test.step("Open CharacterEditor, click remove on missing row, assert row disappears", async () => {
+      await app.openCharacterEditor(charName);
+      const modal = page.getByTestId("modal-dialog");
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
+        await page.getByTestId("modal-button-dismiss").click();
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
+      }
+      const mageSection = page.locator('[aria-label="Class section for Mage"]');
+      await mageSection.getByRole("button", { name: "KNOWN" }).click();
+
+      const missingRow = app.getMissingSpellRow();
+      await expect(missingRow).toBeVisible({ timeout: TIMEOUTS.medium });
+      const removeBtn = missingRow.locator("[data-testid^='btn-remove-spell-hash-']");
+      await removeBtn.click();
+
+      await expect(missingRow).not.toBeVisible();
+      await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
+    });
+
+    await app.navigate("Characters");
+    await app.deleteCharacterFromList(charName);
+  });
+
+  test("restored-row: removing a recovered hash-backed row works from normal UI path", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const charName = `RestoredRowChar_${runId}`;
+
+    await test.step("Setup: seed orphan row and then restore it with a live spell", async () => {
+      await app.navigate("Characters");
+      await page.evaluate(async (name: string) => {
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_character_with_orphan_spell", { characterName: name });
+      }, charName);
+
+      await page.evaluate(async () => {
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_spell", {
+          name: "Restored E2E Spell",
+          hash: "e2e-orphan-hash",
+        });
+      });
+
+      await page.reload();
+      await expect(page.getByRole("link", { name: charName })).toBeVisible({
+        timeout: 5000,
+      });
+    });
+
+    await test.step("Verify row renders as normal and can be removed", async () => {
+      await app.openCharacterEditor(charName);
+      const modal = page.getByTestId("modal-dialog");
+      const isModalVisible = await modal.isVisible();
+      if (isModalVisible) {
+        await page.getByTestId("modal-button-dismiss").click();
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
+      }
+      const mageSection = page.locator('[aria-label="Class section for Mage"]');
+      await mageSection.getByRole("button", { name: "KNOWN" }).click();
+      const row = page.getByTestId("spell-row-Restored E2E Spell");
+      await expect(row).toBeVisible({ timeout: TIMEOUTS.medium });
+
+      await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
+
+      const removeBtn = row.locator("[data-testid^='btn-remove-spell-']");
+      await removeBtn.click();
+
+      await expect(row).not.toBeVisible();
+    });
+
+    await app.navigate("Characters");
+    await app.deleteCharacterFromList(charName);
+  });
+
+  test.describe("upgrade-flow", () => {
+    test("upgrade: Upgrade button appears and upgrades spell hash to newer version", async ({
+      appContext,
+    }) => {
+      const { page } = appContext;
+      const app = new SpellbookApp(page);
+      const runId = generateRunId();
+      const charName = `UpgradeChar_${runId}`;
+      const spellName = `Upgradeable Spell ${runId}`;
+      const hashA = `hash-upgrade-a-${runId}`;
+      const hashB = `hash-upgrade-b-${runId}`;
+
+      await test.step("Setup: seed character with spell Hash A and library spell Hash B (same name)", async () => {
+        await app.navigate("Characters");
+        await page.evaluate(
+          async ({
+            name,
+            spell,
+            hash,
+          }: {
+            name: string;
+            spell: string;
+            hash: string;
+          }) => {
+            const inv = (
+              window as Window & {
+                __TAURI_INTERNALS__?: {
+                  invoke: (c: string, a?: object) => Promise<unknown>;
+                };
+              }
+            ).__TAURI_INTERNALS__?.invoke;
+            if (!inv) throw new Error("Tauri invoke not available");
+            await inv("test_seed_character_with_upgradeable_spell", {
+              characterName: name,
+              spellName: spell,
+              spellHashA: hash,
+            });
+          },
+          { name: charName, spell: spellName, hash: hashA },
+        );
+
+        await page.evaluate(
+          async ({ name, hash }: { name: string; hash: string }) => {
+            const inv = (
+              window as Window & {
+                __TAURI_INTERNALS__?: {
+                  invoke: (c: string, a?: object) => Promise<unknown>;
+                };
+              }
+            ).__TAURI_INTERNALS__?.invoke;
+            if (!inv) throw new Error("Tauri invoke not available");
+            await inv("test_seed_spell", { name, hash });
+          },
+          { name: spellName, hash: hashB },
+        );
+
+        await page.reload();
+        await expect(page.getByRole("link", { name: charName })).toBeVisible({
+          timeout: TIMEOUTS.medium,
+        });
+        const modal = page.getByTestId("modal-dialog");
+        const isModalVisible = await modal.isVisible();
+        if (isModalVisible) {
+          await page.getByTestId("modal-button-dismiss").click();
+          await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
+        }
+      });
+
+      await test.step("Open CharacterEditor and verify Upgrade button appears on the spell row", async () => {
+        await app.openCharacterEditor(charName);
+        const modal = page.getByTestId("modal-dialog");
+        const isModalVisible = await modal.isVisible();
+        if (isModalVisible) {
+          await page.getByTestId("modal-button-dismiss").click();
+          await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.short });
+        }
+        const mageSection = page.locator('[aria-label="Class section for Mage"]');
+        await mageSection.getByRole("button", { name: "KNOWN" }).click();
+
+        await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
+
+        const upgradeBtn = page.locator("[data-testid^='btn-upgrade-spell-']");
+        await expect(upgradeBtn).toBeVisible({
+          timeout: TIMEOUTS.medium,
+        });
+      });
+
+      await test.step("Click Upgrade and verify spell still resolves without errors", async () => {
+        const upgradeBtn = page.locator("[data-testid^='btn-upgrade-spell-']");
+        await upgradeBtn.click();
+
+        const modalVisible = await page
+          .getByTestId("modal-dialog")
+          .isVisible({ timeout: 1000 })
+          .catch(() => false);
+        expect(modalVisible).toBe(false);
+
+        await expect(page.getByText("Spell no longer in library")).not.toBeVisible();
+        await expect(page.getByText(spellName)).toBeVisible({ timeout: TIMEOUTS.medium });
+      });
+
+      await app.navigate("Characters");
+      await app.deleteCharacterFromList(charName);
+    });
   });
 });

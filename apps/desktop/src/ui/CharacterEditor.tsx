@@ -696,6 +696,7 @@ function ClassSpellList({
   const [spells, setSpells] = useState<CharacterSpellbookEntry[]>([]);
   const [activeTab, setActiveTab] = useState<"KNOWN" | "PREPARED">("KNOWN");
   const [selectedRemoveIds, setSelectedRemoveIds] = useState<Set<number>>(new Set());
+  const [selectedRemoveHashes, setSelectedRemoveHashes] = useState<Set<string>>(new Set());
   const [isCollapsed, setIsCollapsed] = useState(!canCast(charClass.className));
 
   const loadSpells = useCallback(async () => {
@@ -714,8 +715,8 @@ function ClassSpellList({
   }, [loadSpells]);
 
   const filteredSpells = spells.filter((s) => {
-    if (activeTab === "KNOWN") return s.known === 1;
-    return s.prepared === 1;
+    if (activeTab === "KNOWN") return s.known;
+    return s.prepared;
   });
 
   return (
@@ -778,6 +779,7 @@ function ClassSpellList({
                   onClick={() => {
                     setActiveTab(tab);
                     setSelectedRemoveIds(new Set());
+                    setSelectedRemoveHashes(new Set());
                   }}
                   className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${
                     activeTab === tab
@@ -792,15 +794,13 @@ function ClassSpellList({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!isCollapsed && selectedRemoveIds.size > 0 && (
+          {!isCollapsed && (selectedRemoveIds.size > 0 || selectedRemoveHashes.size > 0) && (
             <button
               type="button"
               onClick={async (e) => {
                 e.stopPropagation();
-                if (
-                  !(await modalConfirm(`Remove ${selectedRemoveIds.size} spells?`, "Bulk Remove"))
-                )
-                  return;
+                const total = selectedRemoveIds.size + selectedRemoveHashes.size;
+                if (!(await modalConfirm(`Remove ${total} spells?`, "Bulk Remove"))) return;
                 try {
                   for (const spellId of selectedRemoveIds) {
                     await invoke("remove_character_spell", {
@@ -809,7 +809,15 @@ function ClassSpellList({
                       listType: activeTab,
                     });
                   }
+                  for (const spellContentHash of selectedRemoveHashes) {
+                    await invoke("remove_character_spell_by_hash", {
+                      characterClassId: charClass.id,
+                      spellContentHash,
+                      listType: activeTab,
+                    });
+                  }
                   setSelectedRemoveIds(new Set());
+                  setSelectedRemoveHashes(new Set());
                   loadSpells();
                 } catch (e) {
                   modalAlert(`Bulk remove failed: ${e}`, "Error", "error");
@@ -818,7 +826,7 @@ function ClassSpellList({
               data-testid="btn-bulk-remove-spells"
               className="px-2 py-1 bg-red-900/20 hover:bg-red-900/40 text-red-500 border border-red-500/30 rounded text-xs transition-all"
             >
-              REMOVE {selectedRemoveIds.size}
+              REMOVE {selectedRemoveIds.size + selectedRemoveHashes.size}
             </button>
           )}
           {!isCollapsed && (
@@ -826,7 +834,7 @@ function ClassSpellList({
               charClass={charClass}
               onAdded={loadSpells}
               listType={activeTab}
-              knownSpells={spells.filter((s) => s.known === 1)}
+              knownSpells={spells.filter((s) => s.known)}
             />
           )}
         </div>
@@ -834,92 +842,151 @@ function ClassSpellList({
 
       {!isCollapsed && (
         <div className="flex-1 overflow-auto p-4 space-y-2 min-h-[200px]">
-          {filteredSpells.map((spell) => (
-            <div
-              key={`${spell.spellId}-${activeTab}`}
-              data-testid={`spell-row-${spell.spellName}`}
-              className="flex items-center gap-3 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/50 group hover:border-neutral-700 transition-all"
-            >
-              <input
-                type="checkbox"
-                data-testid={`checkbox-select-spell-${spell.spellId}`}
-                className="rounded border-neutral-800 bg-neutral-900 text-blue-600 focus:ring-0 h-3.5 w-3.5"
-                checked={selectedRemoveIds.has(spell.spellId)}
-                onChange={() => {
-                  const next = new Set(selectedRemoveIds);
-                  if (next.has(spell.spellId)) next.delete(spell.spellId);
-                  else next.add(spell.spellId);
-                  setSelectedRemoveIds(next);
-                }}
-              />
-              <div className="flex flex-col flex-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] bg-neutral-800 px-1 rounded font-mono text-neutral-500">
-                      L{spell.spellLevel}
-                    </span>
-                    <span className="text-sm font-medium">{spell.spellName}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="bg-transparent border-b border-neutral-800 text-[10px] text-neutral-400 focus:text-white focus:border-blue-500 outline-none px-1 py-0.5 transition-all w-32 placeholder:text-neutral-700"
-                      placeholder="Add notes..."
-                      data-testid={`input-spell-notes-${spell.spellId}`}
-                      value={spell.notes || ""}
-                      onChange={async (e) => {
-                        try {
-                          await invoke("update_character_spell_notes", {
-                            characterClassId: charClass.id,
-                            spellId: spell.spellId,
-                            listType: activeTab,
-                            notes: e.target.value,
-                          });
-                          loadSpells();
-                        } catch (err) {
-                          console.error(err);
+          {filteredSpells.map((spell) => {
+            const missing = spell.missingFromLibrary === true;
+            const rowKey = missing ? (spell.spellContentHash ?? "") : String(spell.spellId);
+            const displayName = missing ? "Spell no longer in library" : spell.spellName;
+            const isSelected = missing
+              ? spell.spellContentHash != null && selectedRemoveHashes.has(spell.spellContentHash)
+              : selectedRemoveIds.has(spell.spellId);
+            const toggleSelection = () => {
+              if (missing && spell.spellContentHash != null) {
+                const next = new Set(selectedRemoveHashes);
+                if (next.has(spell.spellContentHash)) next.delete(spell.spellContentHash);
+                else next.add(spell.spellContentHash);
+                setSelectedRemoveHashes(next);
+              } else {
+                const next = new Set(selectedRemoveIds);
+                if (next.has(spell.spellId)) next.delete(spell.spellId);
+                else next.add(spell.spellId);
+                setSelectedRemoveIds(next);
+              }
+            };
+            const handleRemove = async () => {
+              try {
+                if (missing && spell.spellContentHash) {
+                  await invoke("remove_character_spell_by_hash", {
+                    characterClassId: charClass.id,
+                    spellContentHash: spell.spellContentHash,
+                    listType: activeTab,
+                  });
+                } else {
+                  await invoke("remove_character_spell", {
+                    characterClassId: charClass.id,
+                    spellId: spell.spellId,
+                    listType: activeTab,
+                  });
+                }
+                loadSpells();
+              } catch (e) {
+                modalAlert(`Failed: ${e}`, "Error", "error");
+              }
+            };
+            return (
+              <div
+                key={rowKey}
+                data-testid={missing ? "spell-row-missing" : `spell-row-${spell.spellName}`}
+                className="flex items-center gap-3 bg-neutral-950/40 p-3 rounded-lg border border-neutral-800/50 group hover:border-neutral-700 transition-all"
+              >
+                <input
+                  type="checkbox"
+                  data-testid={
+                    missing
+                      ? `checkbox-select-spell-hash-${spell.spellContentHash ?? "unknown"}`
+                      : `checkbox-select-spell-${spell.spellId}`
+                  }
+                  className="rounded border-neutral-800 bg-neutral-900 text-blue-600 focus:ring-0 h-3.5 w-3.5"
+                  checked={isSelected}
+                  onChange={toggleSelection}
+                />
+                <div className="flex flex-col flex-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] bg-neutral-800 px-1 rounded font-mono text-neutral-500">
+                        L{spell.spellLevel}
+                      </span>
+                      <span className="text-sm font-medium">{displayName}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!missing && (
+                        <input
+                          className="bg-transparent border-b border-neutral-800 text-[10px] text-neutral-400 focus:text-white focus:border-blue-500 outline-none px-1 py-0.5 transition-all w-32 placeholder:text-neutral-700"
+                          placeholder="Add notes..."
+                          data-testid={`input-spell-notes-${spell.spellId}`}
+                          value={spell.notes || ""}
+                          onChange={async (e) => {
+                            try {
+                              await invoke("update_character_spell_notes", {
+                                characterClassId: charClass.id,
+                                spellId: spell.spellId,
+                                listType: activeTab,
+                                notes: e.target.value,
+                              });
+                              loadSpells();
+                            } catch (err) {
+                              console.error(err);
+                            }
+                          }}
+                        />
+                      )}
+                      {!missing && spell.availableUpgradeHash && spell.availableUpgradeSpellId && (
+                        <button
+                          type="button"
+                          data-testid={`btn-upgrade-spell-${spell.spellId}`}
+                          onClick={async () => {
+                            try {
+                              await invoke("upgrade_character_class_spell", {
+                                characterClassId: charClass.id,
+                                oldHash: spell.spellContentHash,
+                                newSpellId: spell.availableUpgradeSpellId,
+                                newHash: spell.availableUpgradeHash,
+                              });
+                              loadSpells();
+                            } catch (e) {
+                              modalAlert(`Failed to upgrade spell: ${e}`, "Error", "error");
+                            }
+                          }}
+                          className="text-yellow-500 hover:text-yellow-300 transition-colors text-[10px] font-mono uppercase"
+                          aria-label="Upgrade to newer version"
+                          title="Upgrade to newer version of this spell"
+                        >
+                          ↑ Upgrade
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        data-testid={
+                          missing
+                            ? `btn-remove-spell-hash-${spell.spellContentHash ?? "unknown"}`
+                            : `btn-remove-spell-${spell.spellId}`
                         }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      data-testid={`btn-remove-spell-${spell.spellId}`}
-                      onClick={async () => {
-                        try {
-                          await invoke("remove_character_spell", {
-                            characterClassId: charClass.id,
-                            spellId: spell.spellId,
-                            listType: activeTab,
-                          });
-                          loadSpells();
-                        } catch (e) {
-                          modalAlert(`Failed: ${e}`, "Error", "error");
-                        }
-                      }}
-                      className="text-neutral-700 hover:text-red-500 transition-colors"
-                    >
-                      <svg
-                        role="img"
-                        aria-label="Remove spell"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                        onClick={handleRemove}
+                        className="text-neutral-700 hover:text-red-500 transition-colors"
                       >
-                        <path d="M3 6h18" />
-                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                      </svg>
-                    </button>
+                        <svg
+                          role="img"
+                          aria-label="Remove spell"
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {filteredSpells.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center p-8 text-neutral-600 italic text-sm">
               No {activeTab.toLowerCase()} spells.
@@ -937,8 +1004,8 @@ interface PickerSpell {
   level: number;
   school?: string | null;
   sphere?: string | null;
-  isQuestSpell: number;
-  isCantrip: number;
+  isQuestSpell: boolean;
+  isCantrip: boolean;
   tags?: string | null;
 }
 
@@ -1007,8 +1074,8 @@ function SpellPicker({
           if (filters.levelMin !== undefined && sLevel < filters.levelMin) return false;
           if (filters.levelMax !== undefined && sLevel > filters.levelMax) return false;
 
-          const isQuest = s.isQuestSpell === 1;
-          const isCantrip = s.isCantrip === 1;
+          const isQuest = s.isQuestSpell;
+          const isCantrip = s.isCantrip;
 
           if (filters.isQuestSpell && !isQuest) return false;
           if (filters.isCantrip && !isCantrip) return false;
@@ -1296,12 +1363,12 @@ function SpellPicker({
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">{spell.name}</span>
-                        {spell.isQuestSpell === 1 && (
+                        {spell.isQuestSpell && (
                           <span className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
                             Q
                           </span>
                         )}
-                        {spell.isCantrip === 1 && (
+                        {spell.isCantrip && (
                           <span className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
                             C
                           </span>

@@ -1,12 +1,98 @@
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "classnames";
+import { useCallback, useEffect } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
+import type { ShowModalOptions } from "../store/useModal";
 import { useModal } from "../store/useModal";
 import Modal from "./components/Modal";
+import {
+  formatVaultIntegritySummary,
+  getVaultSettings,
+  runVaultIntegrityCheck,
+} from "../api/vault";
+import VaultMaintenanceDialog from "./components/VaultMaintenanceDialog";
+import type { VaultIntegritySummary } from "../types/vault";
+
+export function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+export function createVaultStartupWarningModal(
+  summary: VaultIntegritySummary,
+  handlers: {
+    onOpenVaultMaintenance: () => void;
+    onDismiss: () => void;
+  },
+): ShowModalOptions {
+  return {
+    title: "Vault Integrity Check",
+    message: formatVaultIntegritySummary(summary),
+    type:
+      summary.unrecoverable.length > 0 || summary.warningCount > 0 || summary.repairedCount > 0
+        ? "warning"
+        : "info",
+    dismissible: true,
+    buttons: [
+      {
+        label: "Dismiss",
+        variant: "secondary",
+        onClick: handlers.onDismiss,
+      },
+      {
+        label: "Open Vault Maintenance",
+        variant: "primary",
+        onClick: handlers.onOpenVaultMaintenance,
+      },
+    ],
+  };
+}
+
+export function createVaultStartupFailureModal(
+  error: unknown,
+  handlers: {
+    onOpenVaultMaintenance: () => void;
+    onDismiss: () => void;
+  },
+): ShowModalOptions {
+  return {
+    title: "Vault Warning",
+    message: [`Vault integrity startup check failed: ${formatUnknownError(error)}`],
+    type: "warning",
+    dismissible: true,
+    buttons: [
+      {
+        label: "Dismiss",
+        variant: "secondary",
+        onClick: handlers.onDismiss,
+      },
+      {
+        label: "Open Vault Maintenance",
+        variant: "primary",
+        onClick: handlers.onOpenVaultMaintenance,
+      },
+    ],
+  };
+}
 
 export default function App() {
   const { pathname } = useLocation();
-  const { alert: modalAlert, confirm: modalConfirm } = useModal();
+  const {
+    alert: modalAlert,
+    confirm: modalConfirm,
+    showModal,
+    showModalIfIdle,
+    hideModal,
+  } = useModal();
 
   const Tab = ({ to, label }: { to: string; label: string }) => (
     <Link
@@ -57,6 +143,62 @@ export default function App() {
     }
   };
 
+  const openVaultMaintenance = useCallback(() => {
+    showModal({
+      title: "Vault Maintenance",
+      message: "",
+      type: "info",
+      dismissible: false,
+      buttons: [],
+      customContent: <VaultMaintenanceDialog />,
+    });
+  }, [showModal]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const settings = await getVaultSettings();
+        if (!settings.integrityCheckOnOpen || cancelled) {
+          return;
+        }
+
+        const summary = await runVaultIntegrityCheck();
+        if (cancelled) {
+          return;
+        }
+
+        if (
+          summary.warningCount > 0 ||
+          summary.repairedCount > 0 ||
+          summary.reexportedCount > 0 ||
+          summary.unrecoverable.length > 0
+        ) {
+          showModalIfIdle(
+            createVaultStartupWarningModal(summary, {
+              onOpenVaultMaintenance: openVaultMaintenance,
+              onDismiss: hideModal,
+            }),
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          showModalIfIdle(
+            createVaultStartupFailureModal(error, {
+              onOpenVaultMaintenance: openVaultMaintenance,
+              onDismiss: hideModal,
+            }),
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hideModal, openVaultMaintenance, showModalIfIdle]);
+
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-4">
       <header className="flex items-center justify-between">
@@ -70,6 +212,14 @@ export default function App() {
               className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
             >
               Backup
+            </button>
+            <button
+              type="button"
+              data-testid="btn-vault-maintenance"
+              onClick={openVaultMaintenance}
+              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+            >
+              Vault
             </button>
             <button
               type="button"

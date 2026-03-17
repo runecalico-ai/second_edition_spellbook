@@ -1,3 +1,4 @@
+use crate::commands::vault::export_spell_to_vault_by_hash;
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
@@ -31,7 +32,7 @@ fn validate_spell_fields(name: &str, level: i64, description: &str) -> Result<()
     Ok(())
 }
 
-fn validate_epic_and_quest_spells(
+pub(crate) fn validate_epic_and_quest_spells(
     level: i64,
     class_list: &Option<String>,
     is_quest_spell: bool,
@@ -155,30 +156,78 @@ pub fn get_spell_from_conn(conn: &Connection, id: i64) -> Result<Option<SpellDet
         .optional()?
         .ok_or_else(|| AppError::NotFound("Spell not found".into()))?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
-    )?;
-    let artifact_rows = stmt.query_map([id], |row| {
-        Ok(SpellArtifact {
-            id: row.get(0)?,
-            spell_id: row.get(1)?,
-            r#type: row.get(2)?,
-            path: row.get(3)?,
-            hash: row.get(4)?,
-            imported_at: row.get(5)?,
-        })
-    })?;
+    // Hash-first: load artifacts by spell content hash; fallback to spell_id only when
+    // spell_content_hash IS NULL (migration-period legacy). Exclude rows whose spell_id
+    // matches but spell_content_hash belongs to a different spell.
+    // artifact.hash = file hash (we return it); spell_content_hash = spell ref (we filter by it).
+    // When spell_id is dropped: keep only spell_content_hash = ? branch; remove legacy OR and (sid, None) arm.
+    let artifact_has_hash_column =
+        crate::db::table_has_column(conn, "artifact", "spell_content_hash");
+    let artifacts: Vec<SpellArtifact> = match (spell.id, spell.content_hash.as_deref()) {
+        (Some(sid), Some(h)) => {
+            if artifact_has_hash_column {
+                let mut stmt = conn.prepare(
+                    "SELECT id, spell_id, type, path, hash, imported_at, spell_content_hash FROM artifact
+                     WHERE (spell_content_hash IS NOT NULL AND spell_content_hash = ?)
+                        OR (spell_content_hash IS NULL AND spell_id = ?)",
+                )?;
+                let rows = stmt.query_map(rusqlite::params![h, sid], |row| {
+                    let spell_id: i64 = row.get::<_, Option<i64>>(1)?.unwrap_or(sid);
+                    Ok(SpellArtifact {
+                        id: row.get(0)?,
+                        spell_id,
+                        r#type: row.get(2)?,
+                        path: row.get(3)?,
+                        hash: row.get(4)?,
+                        imported_at: row.get(5)?,
+                        spell_content_hash: row.get(6)?,
+                    })
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
+                )?;
+                let rows = stmt.query_map([sid], |row| {
+                    Ok(SpellArtifact {
+                        id: row.get(0)?,
+                        spell_id: row.get::<_, Option<i64>>(1)?.unwrap_or(sid),
+                        r#type: row.get(2)?,
+                        path: row.get(3)?,
+                        hash: row.get(4)?,
+                        imported_at: row.get(5)?,
+                        spell_content_hash: None,
+                    })
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            }
+        }
+        (Some(sid), None) => {
+            let mut stmt = conn.prepare(
+                "SELECT id, spell_id, type, path, hash, imported_at FROM artifact WHERE spell_id = ?",
+            )?;
+            let rows = stmt.query_map([sid], |row| {
+                Ok(SpellArtifact {
+                    id: row.get(0)?,
+                    spell_id: row.get(1)?,
+                    r#type: row.get(2)?,
+                    path: row.get(3)?,
+                    hash: row.get(4)?,
+                    imported_at: row.get(5)?,
+                    spell_content_hash: None,
+                })
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+        (None, _) => vec![],
+    };
 
-    let mut artifacts = vec![];
-    for artifact in artifact_rows {
-        artifacts.push(artifact?);
-    }
     spell.artifacts = Some(artifacts);
 
     Ok(Some(spell))
 }
 
-fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, String)> {
+pub(crate) fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, String)> {
     let mut changes = vec![];
 
     if old.name != new.name {
@@ -336,66 +385,36 @@ fn diff_spells(old: &SpellDetail, new: &SpellUpdate) -> Vec<(String, String, Str
     changes
 }
 
-pub fn canonicalize_spell_detail(
-    detail: SpellDetail,
-) -> Result<(CanonicalSpell, String, String), AppError> {
-    let mut canonical = CanonicalSpell::try_from(detail).map_err(AppError::Validation)?;
-
-    // Normalize BEFORE hashing/serializing to ensure the stored data is clean
-    let res = canonical.normalize(None);
-    if res.notes_truncated {
-        return Err(AppError::Validation(
-            "Saving throw notes truncated during migration (exceeded 2048 characters)".into(),
-        ));
+fn cascade_spell_content_hash_refs(
+    conn: &Connection,
+    old_hash: Option<&str>,
+    new_hash: &str,
+) -> Result<(), AppError> {
+    let Some(old_hash) = old_hash else {
+        return Ok(());
+    };
+    if old_hash == new_hash {
+        return Ok(());
     }
 
-    let hash = canonical
-        .compute_hash()
-        .map_err(|e| AppError::Validation(format!("Hash error: {}", e)))?;
-
-    // Store FULL JSON (with metadata) but normalized
-    // Fix: Set id to hash so it's included in the canonical_data JSON in the DB
-    canonical.id = Some(hash.clone());
-
-    let json = serde_json::to_string(&canonical)
-        .map_err(|e| AppError::Validation(format!("JSON error: {}", e)))?;
-
-    Ok((canonical, hash, json))
-}
-
-fn log_changes(
-    conn: &Connection,
-    spell_id: i64,
-    changes: Vec<(String, String, String)>,
-) -> Result<(), AppError> {
-    for (field, old_val, new_val) in changes {
+    if crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash") {
         conn.execute(
-            "INSERT INTO change_log (spell_id, field, old_value, new_value) VALUES (?, ?, ?, ?)",
-            params![spell_id, field, old_val, new_val],
+            "UPDATE character_class_spell SET spell_content_hash = ? WHERE spell_content_hash = ?",
+            params![new_hash, old_hash],
+        )?;
+    }
+    if crate::db::table_has_column(conn, "artifact", "spell_content_hash") {
+        conn.execute(
+            "UPDATE artifact SET spell_content_hash = ? WHERE spell_content_hash = ?",
+            params![new_hash, old_hash],
         )?;
     }
     Ok(())
 }
 
-pub fn apply_spell_update_with_conn(
-    conn: &Connection,
-    spell: &SpellUpdate,
-) -> Result<i64, AppError> {
-    validate_spell_fields(&spell.name, spell.level, &spell.description)?;
-    validate_epic_and_quest_spells(
-        spell.level,
-        &spell.class_list,
-        spell.is_quest_spell != 0,
-        spell.is_cantrip != 0,
-    )?;
-
-    if let Some(old_spell) = get_spell_from_conn(conn, spell.id)? {
-        let changes = diff_spells(&old_spell, spell);
-        log_changes(conn, spell.id, changes)?;
-    }
-
-    let detail = SpellDetail {
-        id: Some(spell.id),
+fn spell_detail_to_update(spell: &SpellDetail, id: i64) -> SpellUpdate {
+    SpellUpdate {
+        id,
         name: spell.name.clone(),
         school: spell.school.clone(),
         sphere: spell.sphere.clone(),
@@ -419,10 +438,6 @@ pub fn apply_spell_update_with_conn(
         license: spell.license.clone(),
         is_quest_spell: spell.is_quest_spell,
         is_cantrip: spell.is_cantrip,
-        schema_version: None, // Will be populated/upgraded by canonicalize_spell_detail
-        artifacts: None,
-        canonical_data: None,
-        content_hash: None,
         range_spec: spell.range_spec.clone(),
         components_spec: spell.components_spec.clone(),
         material_components_spec: spell.material_components_spec.clone(),
@@ -432,50 +447,196 @@ pub fn apply_spell_update_with_conn(
         saving_throw_spec: spell.saving_throw_spec.clone(),
         damage_spec: spell.damage_spec.clone(),
         magic_resistance_spec: spell.magic_resistance_spec.clone(),
-    };
-    let (canonical, hash, json) = canonicalize_spell_detail(detail)?;
+    }
+}
 
-    conn.execute(
-        "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
-         components=?, material_components=?, casting_time=?, duration=?, area=?,
-         saving_throw=?, damage=?, magic_resistance=?, reversible=?, description=?,
-         tags=?, source=?, edition=?, author=?, license=?, is_quest_spell=?,
-         is_cantrip=?, updated_at=?, canonical_data=?, content_hash=?,
-         schema_version=? WHERE id=?",
-        params![
-            spell.name,
-            spell.school,
-            spell.sphere,
-            spell.class_list,
-            spell.level,
-            spell.range,
-            spell.components,
-            spell.material_components,
-            spell.casting_time,
-            spell.duration,
-            spell.area,
-            spell.saving_throw,
-            spell.damage,
-            spell.magic_resistance,
-            spell.reversible.unwrap_or(0),
-            spell.description,
-            spell.tags,
-            spell.source,
-            spell.edition,
-            spell.author,
-            spell.license,
-            spell.is_quest_spell,
-            spell.is_cantrip,
-            Utc::now().to_rfc3339(),
-            json,
-            hash,
-            canonical.schema_version,
-            spell.id,
-        ],
+fn rollback_savepoint(conn: &Connection, savepoint_name: &str) {
+    let _ = conn.execute_batch(&format!(
+        "ROLLBACK TO SAVEPOINT {savepoint_name};
+         RELEASE SAVEPOINT {savepoint_name};"
+    ));
+}
+
+fn run_in_savepoint<T, F>(
+    conn: &Connection,
+    savepoint_name: &str,
+    operation: F,
+) -> Result<T, AppError>
+where
+    F: FnOnce() -> Result<T, AppError>,
+{
+    conn.execute_batch(&format!("SAVEPOINT {savepoint_name};"))?;
+    match operation() {
+        Ok(value) => {
+            conn.execute_batch(&format!("RELEASE SAVEPOINT {savepoint_name};"))?;
+            Ok(value)
+        }
+        Err(err) => {
+            rollback_savepoint(conn, savepoint_name);
+            Err(err)
+        }
+    }
+}
+
+pub fn canonicalize_spell_detail(
+    detail: SpellDetail,
+) -> Result<(CanonicalSpell, String, String), AppError> {
+    let mut canonical = CanonicalSpell::try_from(detail).map_err(AppError::Validation)?;
+
+    // Normalize BEFORE hashing/serializing to ensure the stored data is clean
+    let res = canonical.normalize(None);
+    if res.notes_truncated {
+        return Err(AppError::Validation(
+            "Saving throw notes truncated during migration (exceeded 2048 characters)".into(),
+        ));
+    }
+
+    let class_list = if canonical.class_list.is_empty() {
+        None
+    } else {
+        Some(canonical.class_list.join(", "))
+    };
+    validate_epic_and_quest_spells(
+        canonical.level,
+        &class_list,
+        canonical.is_quest_spell.unwrap_or(0) != 0,
+        canonical.is_cantrip.unwrap_or(0) != 0,
     )?;
 
-    migration_manager::sync_check_spell(conn, spell.id);
-    Ok(spell.id)
+    let hash = canonical
+        .compute_hash()
+        .map_err(|e| AppError::Validation(format!("Hash error: {}", e)))?;
+
+    // Store FULL JSON (with metadata) but normalized
+    // Fix: Set id to hash so it's included in the canonical_data JSON in the DB
+    canonical.id = Some(hash.clone());
+
+    let json = serde_json::to_string(&canonical)
+        .map_err(|e| AppError::Validation(format!("JSON error: {}", e)))?;
+
+    Ok((canonical, hash, json))
+}
+
+pub(crate) fn log_changes(
+    conn: &Connection,
+    spell_id: i64,
+    changes: Vec<(String, String, String)>,
+) -> Result<(), AppError> {
+    for (field, old_val, new_val) in changes {
+        conn.execute(
+            "INSERT INTO change_log (spell_id, field, old_value, new_value) VALUES (?, ?, ?, ?)",
+            params![spell_id, field, old_val, new_val],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn apply_spell_update_with_conn(
+    conn: &Connection,
+    spell: &SpellUpdate,
+) -> Result<i64, AppError> {
+    run_in_savepoint(conn, "spell_update_write", || {
+        validate_spell_fields(&spell.name, spell.level, &spell.description)?;
+        validate_epic_and_quest_spells(
+            spell.level,
+            &spell.class_list,
+            spell.is_quest_spell != 0,
+            spell.is_cantrip != 0,
+        )?;
+
+        let old_hash = if let Some(old_spell) = get_spell_from_conn(conn, spell.id)? {
+            let changes = diff_spells(&old_spell, spell);
+            log_changes(conn, spell.id, changes)?;
+            old_spell.content_hash
+        } else {
+            None
+        };
+
+        let detail = SpellDetail {
+            id: Some(spell.id),
+            name: spell.name.clone(),
+            school: spell.school.clone(),
+            sphere: spell.sphere.clone(),
+            class_list: spell.class_list.clone(),
+            level: spell.level,
+            range: spell.range.clone(),
+            components: spell.components.clone(),
+            material_components: spell.material_components.clone(),
+            casting_time: spell.casting_time.clone(),
+            duration: spell.duration.clone(),
+            area: spell.area.clone(),
+            saving_throw: spell.saving_throw.clone(),
+            damage: spell.damage.clone(),
+            magic_resistance: spell.magic_resistance.clone(),
+            reversible: spell.reversible,
+            description: spell.description.clone(),
+            tags: spell.tags.clone(),
+            source: spell.source.clone(),
+            edition: spell.edition.clone(),
+            author: spell.author.clone(),
+            license: spell.license.clone(),
+            is_quest_spell: spell.is_quest_spell,
+            is_cantrip: spell.is_cantrip,
+            schema_version: None, // Will be populated/upgraded by canonicalize_spell_detail
+            artifacts: None,
+            canonical_data: None,
+            content_hash: None,
+            range_spec: spell.range_spec.clone(),
+            components_spec: spell.components_spec.clone(),
+            material_components_spec: spell.material_components_spec.clone(),
+            casting_time_spec: spell.casting_time_spec.clone(),
+            duration_spec: spell.duration_spec.clone(),
+            area_spec: spell.area_spec.clone(),
+            saving_throw_spec: spell.saving_throw_spec.clone(),
+            damage_spec: spell.damage_spec.clone(),
+            magic_resistance_spec: spell.magic_resistance_spec.clone(),
+        };
+        let (canonical, hash, json) = canonicalize_spell_detail(detail)?;
+
+        conn.execute(
+            "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
+             components=?, material_components=?, casting_time=?, duration=?, area=?,
+             saving_throw=?, damage=?, magic_resistance=?, reversible=?, description=?,
+             tags=?, source=?, edition=?, author=?, license=?, is_quest_spell=?,
+             is_cantrip=?, updated_at=?, canonical_data=?, content_hash=?,
+             schema_version=? WHERE id=?",
+            params![
+                spell.name,
+                spell.school,
+                spell.sphere,
+                spell.class_list,
+                spell.level,
+                spell.range,
+                spell.components,
+                spell.material_components,
+                spell.casting_time,
+                spell.duration,
+                spell.area,
+                spell.saving_throw,
+                spell.damage,
+                spell.magic_resistance,
+                spell.reversible.unwrap_or(0),
+                spell.description,
+                spell.tags,
+                spell.source,
+                spell.edition,
+                spell.author,
+                spell.license,
+                spell.is_quest_spell,
+                spell.is_cantrip,
+                Utc::now().to_rfc3339(),
+                json,
+                hash,
+                canonical.schema_version,
+                spell.id,
+            ],
+        )?;
+        cascade_spell_content_hash_refs(conn, old_hash.as_deref(), &hash)?;
+
+        migration_manager::sync_check_spell(conn, spell.id);
+        export_spell_to_vault_by_hash(conn, &hash)?;
+        Ok(spell.id)
+    })
 }
 
 /// Recursively convert object keys from snake_case to camelCase for IPC.
@@ -720,43 +881,47 @@ pub async fn create_spell(
         let (canonical, hash, json) = canonicalize_spell_detail(detail)?;
 
         let conn = pool.get()?;
-        conn.execute(
-            "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
-             material_components, casting_time, duration, area, saving_throw, damage,
-             magic_resistance, reversible, description, tags, source, edition, author,
-             license, is_quest_spell, is_cantrip, canonical_data, content_hash,
-             schema_version)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            params![
-                spell.name,
-                spell.school,
-                spell.sphere,
-                spell.class_list,
-                spell.level,
-                spell.range,
-                spell.components,
-                spell.material_components,
-                spell.casting_time,
-                spell.duration,
-                spell.area,
-                spell.saving_throw,
-                spell.damage,
-                spell.magic_resistance,
-                spell.reversible.unwrap_or(0),
-                spell.description,
-                spell.tags,
-                spell.source,
-                spell.edition,
-                spell.author,
-                spell.license,
-                spell.is_quest_spell,
-                spell.is_cantrip,
-                json,
-                hash,
-                canonical.schema_version,
-            ],
-        )?;
-        Ok::<i64, AppError>(conn.last_insert_rowid())
+        run_in_savepoint(&conn, "spell_create_write", || {
+            conn.execute(
+                "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
+                 material_components, casting_time, duration, area, saving_throw, damage,
+                 magic_resistance, reversible, description, tags, source, edition, author,
+                 license, is_quest_spell, is_cantrip, canonical_data, content_hash,
+                 schema_version)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                params![
+                    spell.name,
+                    spell.school,
+                    spell.sphere,
+                    spell.class_list,
+                    spell.level,
+                    spell.range,
+                    spell.components,
+                    spell.material_components,
+                    spell.casting_time,
+                    spell.duration,
+                    spell.area,
+                    spell.saving_throw,
+                    spell.damage,
+                    spell.magic_resistance,
+                    spell.reversible.unwrap_or(0),
+                    spell.description,
+                    spell.tags,
+                    spell.source,
+                    spell.edition,
+                    spell.author,
+                    spell.license,
+                    spell.is_quest_spell,
+                    spell.is_cantrip,
+                    json,
+                    hash,
+                    canonical.schema_version,
+                ],
+            )?;
+            let spell_id = conn.last_insert_rowid();
+            export_spell_to_vault_by_hash(&conn, &hash)?;
+            Ok::<i64, AppError>(spell_id)
+        })
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -814,83 +979,51 @@ pub async fn upsert_spell(
         let (canonical, hash, json) = canonicalize_spell_detail(spell.clone())?;
 
         let spell_id = if let Some(id) = spell.id {
-            conn.execute(
-                "UPDATE spell SET name=?, school=?, sphere=?, class_list=?, level=?, range=?,
-                 components=?, material_components=?, casting_time=?, duration=?, area=?,
-                 saving_throw=?, damage=?, magic_resistance=?, reversible=?, description=?,
-                 tags=?, source=?, edition=?, author=?, license=?, is_quest_spell=?,
-                 is_cantrip=?, updated_at=?, canonical_data=?, content_hash=?,
-                 schema_version=? WHERE id=?",
-                params![
-                    spell.name,
-                    spell.school,
-                    spell.sphere,
-                    spell.class_list,
-                    spell.level,
-                    spell.range,
-                    spell.components,
-                    spell.material_components,
-                    spell.casting_time,
-                    spell.duration,
-                    spell.area,
-                    spell.saving_throw,
-                    spell.damage,
-                    spell.magic_resistance,
-                    spell.reversible.unwrap_or(0),
-                    spell.description,
-                    spell.tags,
-                    spell.source,
-                    spell.edition,
-                    spell.author,
-                    spell.license,
-                    spell.is_quest_spell,
-                    spell.is_cantrip,
-                    Utc::now().to_rfc3339(),
-                    json,
-                    hash,
-                    canonical.schema_version,
-                    id,
-                ],
-            )?;
+            let update = spell_detail_to_update(&spell, id);
+            apply_spell_update_with_conn(&conn, &update)?;
             id
         } else {
-            conn.execute(
-                "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
-                 material_components, casting_time, duration, area, saving_throw, damage,
-                 magic_resistance, reversible, description, tags, source, edition, author,
-                 license, is_quest_spell, is_cantrip, canonical_data, content_hash,
-                 schema_version)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                params![
-                    spell.name,
-                    spell.school,
-                    spell.sphere,
-                    spell.class_list,
-                    spell.level,
-                    spell.range,
-                    spell.components,
-                    spell.material_components,
-                    spell.casting_time,
-                    spell.duration,
-                    spell.area,
-                    spell.saving_throw,
-                    spell.damage,
-                    spell.magic_resistance,
-                    spell.reversible.unwrap_or(0),
-                    spell.description,
-                    spell.tags,
-                    spell.source,
-                    spell.edition,
-                    spell.author,
-                    spell.license,
-                    spell.is_quest_spell,
-                    spell.is_cantrip,
-                    json,
-                    hash,
-                    canonical.schema_version,
-                ],
-            )?;
-            conn.last_insert_rowid()
+            run_in_savepoint(&conn, "spell_upsert_insert_write", || {
+                conn.execute(
+                    "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
+                     material_components, casting_time, duration, area, saving_throw, damage,
+                     magic_resistance, reversible, description, tags, source, edition, author,
+                     license, is_quest_spell, is_cantrip, canonical_data, content_hash,
+                     schema_version)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    params![
+                        spell.name,
+                        spell.school,
+                        spell.sphere,
+                        spell.class_list,
+                        spell.level,
+                        spell.range,
+                        spell.components,
+                        spell.material_components,
+                        spell.casting_time,
+                        spell.duration,
+                        spell.area,
+                        spell.saving_throw,
+                        spell.damage,
+                        spell.magic_resistance,
+                        spell.reversible.unwrap_or(0),
+                        spell.description,
+                        spell.tags,
+                        spell.source,
+                        spell.edition,
+                        spell.author,
+                        spell.license,
+                        spell.is_quest_spell,
+                        spell.is_cantrip,
+                        json,
+                        hash,
+                        canonical.schema_version,
+                    ],
+                )?;
+                let id = conn.last_insert_rowid();
+                export_spell_to_vault_by_hash(&conn, &hash)?;
+                Ok::<i64, AppError>(id)
+            })?
         };
         migration_manager::sync_check_spell(&conn, spell_id);
         Ok::<i64, AppError>(spell_id)
@@ -904,6 +1037,206 @@ pub async fn upsert_spell(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::vault::VaultTestEnvGuard;
+    use rusqlite::Connection;
+
+    fn repeated_text(len: usize) -> String {
+        "x".repeat(len)
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_loads_artifact_by_content_hash_when_hash_set() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (NULL, 'source', 'a.md', 'ah', '2026-01-01T00:00:00Z', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert artifact keyed by hash only");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
+        let artifacts = detail.artifacts.expect("artifacts loaded");
+        assert_eq!(
+            artifacts.len(),
+            1,
+            "artifact with spell_content_hash=spell hash must be loaded"
+        );
+        assert_eq!(artifacts[0].path, "a.md");
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_excludes_artifact_when_spell_id_matches_but_hash_different() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (1, 'source', 'wrong.md', 'ah', '2026-01-01T00:00:00Z', 'other-spell-hash')",
+            [],
+        )
+        .expect("insert artifact with stale spell_id but different spell_content_hash");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
+        let artifacts = detail.artifacts.unwrap_or_default();
+        assert!(artifacts.is_empty(), "artifact whose spell_content_hash belongs to another spell must not leak into this spell");
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_legacy_fallback_loads_artifact_when_hash_null() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (1, 'source', 'legacy.md', 'ah', '2026-01-01T00:00:00Z', NULL)",
+            [],
+        )
+        .expect("insert legacy artifact with spell_id only");
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
+        let artifacts = detail.artifacts.expect("artifacts loaded");
+        assert_eq!(
+            artifacts.len(),
+            1,
+            "legacy artifact with spell_content_hash NULL but spell_id match must be loaded"
+        );
+        assert_eq!(artifacts[0].path, "legacy.md");
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_legacy_artifact_schema_without_hash_column() {
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                level INTEGER NOT NULL,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER NOT NULL DEFAULT 0,
+                is_cantrip INTEGER NOT NULL DEFAULT 0,
+                damage TEXT,
+                magic_resistance TEXT,
+                schema_version INTEGER,
+                updated_at TEXT,
+                canonical_data TEXT,
+                content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .expect("create legacy spell+artifact test schema");
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (1, 'source', 'legacy-schema.md', 'ah', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .expect("insert legacy artifact row");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at) VALUES (1, 'errata', 'legacy-schema-2.md', 'bh', '2026-01-01T00:00:01Z')",
+            [],
+        )
+        .expect("insert second legacy artifact row");
+
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
+        let artifacts = detail.artifacts.expect("artifacts loaded");
+        assert_eq!(
+            artifacts.len(),
+            2,
+            "legacy artifact schema should still load all matching rows by spell_id fallback"
+        );
+        assert_eq!(artifacts[0].path, "legacy-schema.md");
+        assert_eq!(artifacts[1].path, "legacy-schema-2.md");
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_artifact_exposes_spell_content_hash() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (NULL, 'source', 'a.md', 'ah', '2026-01-01T00:00:00Z', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert artifact with spell_content_hash set");
+
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
+        let artifact = &detail.artifacts.expect("loaded")[0];
+        assert_eq!(
+            artifact.spell_content_hash,
+            Some("spell-hash-1".to_string()),
+            "artifact should expose spell_content_hash when column is populated"
+        );
+    }
+
+    #[test]
+    fn test_get_spell_from_conn_artifact_null_spell_content_hash_for_legacy() {
+        let conn = setup_get_spell_artifact_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Test', 1, 'Desc', 'spell-hash-1')",
+            [],
+        )
+        .expect("insert spell");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash) VALUES (1, 'source', 'legacy.md', 'ah', '2026-01-01T00:00:00Z', NULL)",
+            [],
+        )
+        .expect("insert legacy artifact with null spell_content_hash");
+
+        let detail = get_spell_from_conn(&conn, 1)
+            .expect("get spell")
+            .expect("some");
+        let artifact = &detail.artifacts.expect("loaded")[0];
+        assert_eq!(
+            artifact.spell_content_hash, None,
+            "legacy artifact (NULL spell_content_hash) should return None"
+        );
+    }
 
     #[test]
     fn test_validate_cantrip_level() {
@@ -937,5 +1270,597 @@ mod tests {
         assert!(validate_epic_and_quest_spells(10, &Some("Wizard".into()), false, false).is_ok());
         assert!(validate_epic_and_quest_spells(10, &Some("Mage".into()), false, false).is_ok());
         assert!(validate_epic_and_quest_spells(10, &Some("Priest".into()), false, false).is_err());
+    }
+
+    #[test]
+    fn test_canonicalize_spell_detail_rejects_mutually_exclusive_school_and_sphere() {
+        let detail = SpellDetail {
+            name: "Mutually Exclusive".to_string(),
+            level: 1,
+            description: "Invalid direct-write payload".to_string(),
+            school: Some("Abjuration".to_string()),
+            sphere: Some("Combat".to_string()),
+            ..Default::default()
+        };
+
+        let err = canonicalize_spell_detail(detail).expect_err(
+            "direct writes should reject school/sphere combinations that import rejects",
+        );
+
+        assert!(
+            err.to_string().contains("mutually exclusive"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_canonicalize_spell_detail_rejects_oversized_direct_write_text_fields() {
+        let cases = [
+            (
+                "name",
+                SpellDetail {
+                    name: repeated_text(257),
+                    level: 1,
+                    description: "Valid description".to_string(),
+                    school: Some("Abjuration".to_string()),
+                    ..Default::default()
+                },
+                "/name",
+            ),
+            (
+                "description",
+                SpellDetail {
+                    name: "Oversized Description".to_string(),
+                    level: 1,
+                    description: repeated_text(16_385),
+                    school: Some("Abjuration".to_string()),
+                    ..Default::default()
+                },
+                "/description",
+            ),
+            (
+                "source",
+                SpellDetail {
+                    name: "Oversized Source".to_string(),
+                    level: 1,
+                    description: "Valid description".to_string(),
+                    school: Some("Abjuration".to_string()),
+                    source: Some(repeated_text(513)),
+                    ..Default::default()
+                },
+                "/source_refs/0/book",
+            ),
+            (
+                "author",
+                SpellDetail {
+                    name: "Oversized Author".to_string(),
+                    level: 1,
+                    description: "Valid description".to_string(),
+                    school: Some("Abjuration".to_string()),
+                    author: Some(repeated_text(257)),
+                    ..Default::default()
+                },
+                "/author",
+            ),
+        ];
+
+        for (field_name, detail, expected_path) in cases {
+            let err = canonicalize_spell_detail(detail)
+                .expect_err("oversized direct-write fields should be rejected");
+            let message = err.to_string();
+            assert!(
+                message.contains(expected_path),
+                "expected {field_name} error to mention {expected_path}, got: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_canonicalize_spell_detail_accepts_exact_boundary_direct_write_text_fields() {
+        let detail = SpellDetail {
+            name: repeated_text(256),
+            level: 3,
+            description: repeated_text(16_384),
+            school: Some("Abjuration".to_string()),
+            source: Some(repeated_text(512)),
+            author: Some(repeated_text(256)),
+            ..Default::default()
+        };
+
+        let (canonical, hash, _json) = canonicalize_spell_detail(detail)
+            .expect("exact-boundary direct-write spell should validate");
+
+        assert_eq!(canonical.name.len(), 256);
+        assert_eq!(canonical.description.len(), 16_384);
+        assert_eq!(canonical.author.as_deref().map(str::len), Some(256));
+        assert_eq!(
+            canonical.source_refs.len(),
+            1,
+            "direct source should map into a single source_ref"
+        );
+        assert_eq!(canonical.source_refs[0].book.len(), 512);
+        assert_eq!(
+            hash.len(),
+            64,
+            "hash should still be computed for valid boundary input"
+        );
+    }
+
+    /// Minimal schema for get_spell_from_conn artifact read-path tests (spell + artifact only).
+    fn setup_get_spell_artifact_test_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                level INTEGER NOT NULL,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER NOT NULL DEFAULT 0,
+                is_cantrip INTEGER NOT NULL DEFAULT 0,
+                damage TEXT,
+                magic_resistance TEXT,
+                schema_version INTEGER,
+                updated_at TEXT,
+                canonical_data TEXT,
+                content_hash TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL,
+                spell_content_hash TEXT
+            );
+            "#,
+        )
+        .expect("create spell+artifact test schema");
+        conn
+    }
+
+    fn setup_spell_update_test_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                school TEXT,
+                sphere TEXT,
+                class_list TEXT,
+                level INTEGER NOT NULL,
+                range TEXT,
+                components TEXT,
+                material_components TEXT,
+                casting_time TEXT,
+                duration TEXT,
+                area TEXT,
+                saving_throw TEXT,
+                reversible INTEGER,
+                description TEXT NOT NULL,
+                tags TEXT,
+                source TEXT,
+                edition TEXT,
+                author TEXT,
+                license TEXT,
+                is_quest_spell INTEGER NOT NULL DEFAULT 0,
+                is_cantrip INTEGER NOT NULL DEFAULT 0,
+                damage TEXT,
+                magic_resistance TEXT,
+                schema_version INTEGER,
+                updated_at TEXT,
+                canonical_data TEXT,
+                content_hash TEXT
+            );
+            CREATE TABLE change_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER NOT NULL,
+                field TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT
+            );
+            CREATE TABLE artifact (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                path TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                imported_at TEXT NOT NULL,
+                spell_content_hash TEXT
+            );
+            CREATE TABLE character_class_spell (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                spell_id INTEGER NOT NULL,
+                character_class_id INTEGER NOT NULL,
+                spell_content_hash TEXT
+            );
+            "#,
+        )
+        .expect("create spell test schema");
+        conn
+    }
+
+    #[test]
+    fn test_apply_spell_update_with_conn_persists_vault_file() {
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
+
+        let conn = setup_spell_update_test_db();
+        let initial_detail = SpellDetail {
+            id: Some(1),
+            name: "Vaulted Spell".to_string(),
+            level: 3,
+            description: "Original description".to_string(),
+            school: Some("Abjuration".to_string()),
+            ..Default::default()
+        };
+        let (canonical, hash, json) =
+            canonicalize_spell_detail(initial_detail.clone()).expect("canonicalize initial spell");
+        conn.execute(
+            "INSERT INTO spell (
+                id, name, school, sphere, class_list, level, range, components, material_components,
+                casting_time, duration, area, saving_throw, reversible, description, tags, source,
+                edition, author, license, is_quest_spell, is_cantrip, damage, magic_resistance,
+                schema_version, canonical_data, content_hash
+             ) VALUES (
+                1, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, NULL, NULL,
+                NULL, NULL, NULL, 0, 0, NULL, NULL, ?, ?, ?
+             )",
+            rusqlite::params![
+                initial_detail.name,
+                initial_detail.school,
+                initial_detail.level,
+                initial_detail.description,
+                canonical.schema_version,
+                json,
+                hash,
+            ],
+        )
+        .expect("seed spell row");
+
+        let update = SpellUpdate {
+            id: 1,
+            name: "Vaulted Spell".to_string(),
+            level: 3,
+            description: "Updated description".to_string(),
+            school: Some("Abjuration".to_string()),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            ..Default::default()
+        };
+
+        apply_spell_update_with_conn(&conn, &update).expect("update spell");
+
+        let updated_hash: String = conn
+            .query_row("SELECT content_hash FROM spell WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query updated hash");
+        let vault_file = temp_dir
+            .path()
+            .join("spells")
+            .join(format!("{updated_hash}.json"));
+        assert!(
+            vault_file.exists(),
+            "spell update should materialize the corresponding vault file"
+        );
+    }
+
+    #[test]
+    fn test_apply_spell_update_with_conn_cascades_hash_references() {
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
+
+        let conn = setup_spell_update_test_db();
+        let initial_detail = SpellDetail {
+            id: Some(1),
+            name: "Cascade Spell".to_string(),
+            level: 3,
+            description: "Original description".to_string(),
+            school: Some("Abjuration".to_string()),
+            ..Default::default()
+        };
+        let (canonical, old_hash, json) =
+            canonicalize_spell_detail(initial_detail.clone()).expect("canonicalize initial spell");
+        conn.execute(
+            "INSERT INTO spell (
+                id, name, school, sphere, class_list, level, range, components, material_components,
+                casting_time, duration, area, saving_throw, reversible, description, tags, source,
+                edition, author, license, is_quest_spell, is_cantrip, damage, magic_resistance,
+                schema_version, canonical_data, content_hash
+             ) VALUES (
+                1, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, NULL, NULL,
+                NULL, NULL, NULL, 0, 0, NULL, NULL, ?, ?, ?
+             )",
+            rusqlite::params![
+                initial_detail.name,
+                initial_detail.school,
+                initial_detail.level,
+                initial_detail.description,
+                canonical.schema_version,
+                json,
+                old_hash,
+            ],
+        )
+        .expect("seed spell row");
+        conn.execute(
+            "INSERT INTO character_class_spell (spell_id, character_class_id, spell_content_hash)
+             VALUES (1, 7, ?1)",
+            [old_hash.as_str()],
+        )
+        .expect("seed character class reference");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash)
+             VALUES (1, 'source', 'spells/cascade.md', 'artifact-hash', '2026-03-08T00:00:00Z', ?1)",
+            [old_hash.as_str()],
+        )
+        .expect("seed artifact reference");
+
+        let update = SpellUpdate {
+            id: 1,
+            name: "Cascade Spell".to_string(),
+            level: 3,
+            description: "Updated description".to_string(),
+            school: Some("Abjuration".to_string()),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            ..Default::default()
+        };
+
+        apply_spell_update_with_conn(&conn, &update).expect("update spell");
+
+        let new_hash: String = conn
+            .query_row("SELECT content_hash FROM spell WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query updated hash");
+        assert_ne!(new_hash, old_hash, "test update should produce a new hash");
+
+        let class_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query class hash");
+        let artifact_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query artifact hash");
+
+        assert_eq!(class_hash, new_hash);
+        assert_eq!(artifact_hash, new_hash);
+    }
+
+    #[test]
+    fn test_run_in_savepoint_rolls_back_and_releases_on_error() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute("CREATE TABLE test_tx (value TEXT NOT NULL)", [])
+            .expect("create test table");
+
+        let err = run_in_savepoint(&conn, "test_tx_write", || {
+            conn.execute("INSERT INTO test_tx (value) VALUES ('pending')", [])?;
+            Err::<(), AppError>(AppError::Validation("boom".to_string()))
+        })
+        .expect_err("savepoint should bubble error");
+        assert!(err.to_string().contains("boom"));
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM test_tx", [], |row| row.get(0))
+            .expect("query row count");
+        assert_eq!(count, 0, "savepoint should roll back failed writes");
+
+        run_in_savepoint(&conn, "test_tx_write", || {
+            conn.execute("INSERT INTO test_tx (value) VALUES ('committed')", [])?;
+            Ok::<(), AppError>(())
+        })
+        .expect("savepoint should be reusable after rollback");
+
+        let stored: String = conn
+            .query_row("SELECT value FROM test_tx", [], |row| row.get(0))
+            .expect("query committed value");
+        assert_eq!(stored, "committed");
+    }
+
+    #[test]
+    fn test_apply_spell_update_with_conn_rolls_back_on_vault_export_failure() {
+        let long_root = std::env::temp_dir()
+            .join("spellbook-backend")
+            .join("a".repeat(240));
+        let _env = VaultTestEnvGuard::with_root(long_root.clone()).expect("set isolated vault env");
+
+        let conn = setup_spell_update_test_db();
+        let initial_detail = SpellDetail {
+            id: Some(1),
+            name: "Rollback Spell".to_string(),
+            level: 3,
+            description: "Original description".to_string(),
+            school: Some("Abjuration".to_string()),
+            ..Default::default()
+        };
+        let (canonical, old_hash, json) =
+            canonicalize_spell_detail(initial_detail.clone()).expect("canonicalize initial spell");
+        conn.execute(
+            "INSERT INTO spell (
+                id, name, school, sphere, class_list, level, range, components, material_components,
+                casting_time, duration, area, saving_throw, reversible, description, tags, source,
+                edition, author, license, is_quest_spell, is_cantrip, damage, magic_resistance,
+                schema_version, canonical_data, content_hash
+             ) VALUES (
+                1, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, NULL, NULL,
+                NULL, NULL, NULL, 0, 0, NULL, NULL, ?, ?, ?
+             )",
+            rusqlite::params![
+                initial_detail.name,
+                initial_detail.school,
+                initial_detail.level,
+                initial_detail.description,
+                canonical.schema_version,
+                json,
+                old_hash,
+            ],
+        )
+        .expect("seed spell row");
+        conn.execute(
+            "INSERT INTO character_class_spell (spell_id, character_class_id, spell_content_hash)
+             VALUES (1, 7, ?1)",
+            [old_hash.as_str()],
+        )
+        .expect("seed character class reference");
+        conn.execute(
+            "INSERT INTO artifact (spell_id, type, path, hash, imported_at, spell_content_hash)
+             VALUES (1, 'source', 'spells/rollback.md', 'artifact-hash', '2026-03-08T00:00:00Z', ?1)",
+            [old_hash.as_str()],
+        )
+        .expect("seed artifact reference");
+
+        let update = SpellUpdate {
+            id: 1,
+            name: "Rollback Spell".to_string(),
+            level: 3,
+            description: "Updated description".to_string(),
+            school: Some("Abjuration".to_string()),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            ..Default::default()
+        };
+
+        let err =
+            apply_spell_update_with_conn(&conn, &update).expect_err("vault export should fail");
+        assert!(err.to_string().contains("Windows path length"));
+
+        let stored_description: String = conn
+            .query_row("SELECT description FROM spell WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query rolled back description");
+        let stored_hash: String = conn
+            .query_row("SELECT content_hash FROM spell WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query rolled back hash");
+        let class_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM character_class_spell WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query rolled back class hash");
+        let artifact_hash: String = conn
+            .query_row(
+                "SELECT spell_content_hash FROM artifact WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query rolled back artifact hash");
+        let change_log_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM change_log WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query change log count");
+
+        assert_eq!(stored_description, "Original description");
+        assert_eq!(stored_hash, old_hash);
+        assert_eq!(class_hash, old_hash);
+        assert_eq!(artifact_hash, old_hash);
+        assert_eq!(change_log_count, 0);
+    }
+
+    #[test]
+    fn test_apply_spell_update_with_conn_rejects_oversized_direct_write_source() {
+        let conn = setup_spell_update_test_db();
+        let initial_detail = SpellDetail {
+            id: Some(1),
+            name: "Oversized Source Update".to_string(),
+            level: 2,
+            description: "Original description".to_string(),
+            school: Some("Abjuration".to_string()),
+            ..Default::default()
+        };
+        let (canonical, hash, json) =
+            canonicalize_spell_detail(initial_detail.clone()).expect("canonicalize initial spell");
+        conn.execute(
+            "INSERT INTO spell (
+                id, name, school, sphere, class_list, level, range, components, material_components,
+                casting_time, duration, area, saving_throw, reversible, description, tags, source,
+                edition, author, license, is_quest_spell, is_cantrip, damage, magic_resistance,
+                schema_version, canonical_data, content_hash
+             ) VALUES (
+                1, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, NULL, NULL,
+                NULL, NULL, NULL, 0, 0, NULL, NULL, ?, ?, ?
+             )",
+            rusqlite::params![
+                initial_detail.name,
+                initial_detail.school,
+                initial_detail.level,
+                initial_detail.description,
+                canonical.schema_version,
+                json,
+                hash,
+            ],
+        )
+        .expect("seed spell row");
+
+        let update = SpellUpdate {
+            id: 1,
+            name: "Oversized Source Update".to_string(),
+            level: 2,
+            description: "Original description".to_string(),
+            school: Some("Abjuration".to_string()),
+            source: Some(repeated_text(513)),
+            is_quest_spell: 0,
+            is_cantrip: 0,
+            ..Default::default()
+        };
+
+        let err = apply_spell_update_with_conn(&conn, &update)
+            .expect_err("oversized update source should be rejected");
+        assert!(
+            err.to_string().contains("/source_refs/0/book"),
+            "unexpected error: {err}"
+        );
+
+        let stored_source: Option<String> = conn
+            .query_row("SELECT source FROM spell WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("query source after rejected update");
+        let change_log_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM change_log WHERE spell_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query change log count");
+
+        assert_eq!(
+            stored_source, None,
+            "rejected update must not persist source text"
+        );
+        assert_eq!(
+            change_log_count, 0,
+            "rejected update must roll back change log writes"
+        );
     }
 }

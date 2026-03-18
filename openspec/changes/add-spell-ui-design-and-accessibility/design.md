@@ -1,199 +1,279 @@
 ## Context
 
-The application currently uses Tailwind CSS with `darkMode: 'class'` configured, but lacks a theme switching mechanism. The UI is hardcoded to dark mode (e.g., `bg-neutral-950 text-neutral-100` in `index.html`), and Storybook has background addons configured but no theme switcher.
+This change originally centered on theme support, but the finalized spec split is broader and cleaner:
+- `library` owns spell-editor and library-facing UX behavior
+- `frontend-standards` owns cross-app accessibility and resize behavior
+- `theme-and-feedback` owns global theme and transient feedback patterns
 
-This design adds comprehensive theme support to enable users to switch between light and dark modes, with proper persistence and system preference detection. It also integrates theme switching into Storybook for component development and visual regression testing.
+The application is currently dark-first, with many hardcoded dark-mode utility classes in edited surfaces and no explicit light/system theme flow. It also mixes modal and inline feedback patterns, and some accessibility expectations are implied in task lists rather than expressed as formal requirements.
+
+This design aligns the implementation plan with the rewritten specs so that proposal, design, tasks, verification, and spec files all describe the same change boundaries.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Implement a theme system (light/dark) that persists user preference
-- Add theme toggle UI component accessible throughout the application
-- Respect system preference on first load (prefers-color-scheme)
-- Integrate theme switching into Storybook for component development
-- Ensure theme changes apply consistently across all components
-- Maintain WCAG 2.1 AA color contrast in both themes
-- Support theme switching via keyboard navigation
+- Make spell creation and editing feedback clearer and more consistent
+- Distinguish empty-library, empty-search, and empty-character-spellbook states
+- Formalize cross-app accessibility behavior for labels, errors, focus, and keyboard navigation
+- Add a consistent Light / Dark / System theme model with persistence
+- Replace interruptive feedback in targeted flows with a non-modal notification pattern where appropriate
+- Ensure verification covers both real interaction flows and screenshot isolation flows
 
 **Non-Goals:**
-- Custom theme color customization (beyond light/dark)
-- Per-component theme overrides
-- Theme transitions/animations (can be added later)
-- Theme-aware images or illustrations (out of scope for this change)
+- Redefining backend save or hash contracts
+- Reworking structured data semantics from the dependent structured-data change
+- Full application-wide redesign beyond touched surfaces
+- Adding new external UI dependencies for icons, notifications, or tooltips unless separately justified
+
+## Design Overview
+
+### 1. `library`: Spell Editor and Library UX
+This spec area covers what users experience directly while creating, editing, searching, and reviewing spells.
+
+Key decisions:
+- Validation becomes **field-level and inline**, not modal-driven.
+- Save feedback becomes **in-context**, with transient success messaging after completion.
+- Empty states are separated by cause:
+  - no spells in the library
+  - no search/filter matches
+  - no spells in a character spellbook
+- The existing hash display is retained but refined into a clearer card-like presentation with non-modal clipboard confirmation.
+- Loading guidance is phrased in terms of **user-visible behavior**, not assumptions about synchronous implementation.
+
+Why this split matters:
+- It keeps spell-flow UX requirements close to the components they change.
+- It avoids leaking backend assumptions into UI requirements.
+
+### 2. `frontend-standards`: Cross-App Accessibility and Resize Rules
+This spec area covers rules that should be applied consistently across touched flows, rather than only in the spell editor.
+
+Key decisions:
+- Visible labels remain the default accessible naming mechanism.
+- `aria-label` is reserved for controls lacking sufficient visible naming.
+- Error/help associations must be explicit and programmatic.
+- Keyboard behavior, focus trapping, and focus return are treated as platform-level expectations.
+- Resize handling is defined around the supported desktop minimum width of 900px, with wrapping or stacking for grouped controls rather than horizontal overflow.
+
+Why this split matters:
+- It avoids repeating accessibility rules inside feature-specific specs.
+- It gives implementation and review work a stable place to anchor cross-app interaction expectations.
+
+### 3. `theme-and-feedback`: Global Theme and Transient Feedback
+This spec area covers theme state, theme controls, and transient feedback mechanisms that are broader than the library itself.
+
+Key decisions:
+- Theme state is `light | dark | system`.
+- First load resolves from OS preference when no explicit preference exists.
+- Explicit theme choice persists locally and updates immediately.
+- A single theme toggle cycles through supported states and exposes an accessible action label.
+- Short-lived success/warning/error feedback uses a non-modal notification pattern where no immediate decision is required.
+- Tooltips remain supplemental; they do not become the only way to understand critical state.
+- Focus-preserving events such as clipboard copy use live-region announcements.
+
+Why this split matters:
+- Theme, notifications, tooltips, and live regions are shared UI patterns, not library-only behavior.
+- This keeps global behavior out of feature-specific specs.
 
 ## Decisions
 
 ### 1. Theme State Management: Zustand Store
-**Decision**: Use Zustand store for theme state management.
+**Decision**: Use a Zustand store for theme state.
 
 **Rationale**:
-- Application already uses Zustand for state management (`store/useModal`)
-- Simple, lightweight solution for global theme state
-- Easy to persist to localStorage
-- No need for React Context overhead
+- The application already uses Zustand.
+- Theme changes need reactive UI state plus local persistence.
+- This avoids introducing another state mechanism for a small global concern.
 
-**Alternatives Considered**:
-- React Context: More boilerplate, potential re-render issues
-- localStorage only: No reactive updates across components
-- CSS custom properties: Less flexible for JavaScript-driven theme switching
+**Alternatives considered**:
+- React Context: workable, but more boilerplate for a simple shared state
+- localStorage only: persistence without reactive state
 
-### 2. Theme Persistence: localStorage + System Preference
-**Decision**: Store theme preference in localStorage, but default to system preference (`prefers-color-scheme`) on first visit.
+### 2. Theme Resolution: Persisted Preference with System Fallback
+**Decision**: Persist explicit theme choice, but resolve to OS preference when no choice exists or when mode is `system`.
 
 **Rationale**:
-- Respects user's OS-level preference initially
-- Persists user's explicit choice after first toggle
-- Works offline (no server-side preference needed)
-- Standard pattern for theme management
+- It respects operating-system preference by default.
+- It preserves explicit user intent after selection.
+- It keeps first-load behavior and later interaction behavior coherent.
 
-**Implementation**:
-- Check `localStorage.getItem('theme')` first
-- If not set, use `window.matchMedia('(prefers-color-scheme: dark)')`
-- Apply theme class to `<html>` element (not `<body>` for better CSS cascade)
-
-**Alternatives Considered**:
-- Always use system preference: Doesn't persist user choice
-- Always default to dark: Ignores user's system preference
-- Server-side preference: Overkill for desktop app, adds complexity
-
-### 3. Theme Application: HTML Element Class
-**Decision**: Apply theme class (`dark`) to the `<html>` element, not `<body>`.
+### 3. Theme Application: Class on `<html>`
+**Decision**: Apply theme state through the `dark` class on the root HTML element.
 
 **Rationale**:
-- Tailwind's `darkMode: 'class'` expects class on `<html>`
-- Better CSS cascade (affects all descendants)
-- Consistent with Tailwind best practices
-- Works with Storybook's HTML structure
+- Aligns with Tailwind's `darkMode: 'class'`
+- Minimizes implementation complexity
+- Supports immediate pre-hydration theme application
 
-**Alternatives Considered**:
-- `<body>` element: Works but less standard for Tailwind
-- Data attribute: Requires Tailwind config change
-- CSS custom properties: More complex, less Tailwind-native
-
-### 4. Storybook Theme Integration: Decorator + Toolbar Addon
-**Decision**: Use Storybook decorator to sync theme with application state, and add toolbar addon for manual theme switching.
+### 4. Non-Modal Feedback Preferred for Short-Lived Status
+**Decision**: For successful save, clipboard copy, and similar non-decision outcomes, prefer transient non-modal feedback over modal interruption.
 
 **Rationale**:
-- Decorator ensures Storybook components render with correct theme
-- Toolbar addon provides visual theme switcher in Storybook UI
-- Allows testing components in both themes during development
-- Supports visual regression testing in both themes
+- These events do not require user confirmation
+- Modal interruption is unnecessarily disruptive for high-frequency actions
+- The feedback can remain accessible through role/status and live-region support
 
-**Implementation**:
-- Create decorator that reads theme from Zustand store or localStorage
-- Add `@storybook/addon-toolbars` (or use built-in theme addon if available)
-- Sync toolbar selection with HTML class application
+**Boundary**:
+- Confirmations and destructive decisions still belong in modal/dialog patterns where appropriate
 
-**Alternatives Considered**:
-- Backgrounds addon only: Less intuitive, doesn't match app behavior
-- Manual class toggling: No UI, developer-unfriendly
-- Separate Storybook theme system: Diverges from app implementation
-
-### 5. Theme Toggle Component: Icon Button with ARIA Label
-**Decision**: Create a theme toggle button component with sun/moon icons and proper ARIA labels.
+### 4a. Toast Renders on Destination View After Navigation
+**Decision**: When a save (or other navigating action) succeeds, the handler triggers the notification store and then navigates. The notification renders on the destination view (Library), not on the editor.
 
 **Rationale**:
-- Clear visual indicator of current theme
-- Accessible via keyboard and screen readers
-- Standard UX pattern (sun = light, moon = dark)
-- Can be placed in navigation or settings
+- The Zustand notification store persists across route changes — no special timing or delay logic is needed
+- Avoids "navigate on dismiss" or "delay-before-nav" complexity
+- Standard SPA flash-message pattern; matches how modals are already queued globally
 
-**Accessibility**:
-- `aria-label` describing action ("Switch to light mode" / "Switch to dark mode")
-- `aria-pressed` to indicate current state
-- Keyboard accessible (Enter/Space to toggle)
-- Visible focus indicator (2px outline per WCAG)
+### 5. Feedback Decision Policy
+**Decision**: Standardize on a feedback decision model rather than standardizing on modal alerts.
 
-**Alternatives Considered**:
-- Dropdown select: More verbose, less common pattern
-- Toggle switch: Less intuitive for theme switching
-- Text-only button: Less visually clear
+**Use modals for**:
+- destructive or irreversible confirmations
+- blocking choices the user must make before work can continue
+- rare high-severity errors that require explicit acknowledgment
 
-### 6. Color Contrast: Verify Both Themes Meet WCAG 2.1 AA
-**Decision**: Ensure all text and interactive elements meet WCAG 2.1 AA contrast ratios in both themes.
+**Use non-modal feedback for**:
+- successful saves
+- clipboard copy success
+- add-to-library or add-to-character confirmation
+- validation guidance that can be resolved in place
+- other transient status updates that do not require an immediate decision
 
 **Rationale**:
-- Required by accessibility spec
-- Prevents regressions when switching themes
-- Critical for users with visual impairments
+- Modal alerts are appropriate for decisions, not routine status
+- Repeated modal interruption degrades flow in editor-heavy workflows
+- Non-modal feedback preserves context while remaining accessible through status and live-region patterns
 
-**Implementation**:
-- Use Tailwind's built-in neutral colors (already high contrast)
-- Test with contrast checker tools (e.g., Storybook a11y addon)
-- Document contrast ratios in design system if custom colors added
+### 6. Tooltip Scope Stays Narrow
+**Decision**: Tooltips are allowed only as supplemental hints.
 
-**Alternatives Considered**:
-- WCAG AAA: Stricter but may limit design flexibility
-- Custom contrast ratios: Non-standard, harder to maintain
+**Rationale**:
+- Critical meaning must not depend on hover behavior
+- Disabled-action explanations and copy hints may benefit from tooltips, but keyboard and assistive technology users still need an equivalent discoverable path
+
+### 7. Loading and Save Guidance Must Stay User-Facing
+**Decision**: The design describes when feedback should appear to users, not backend contracts such as null-hash fallback persistence.
+
+**Rationale**:
+- This change is about UX and interaction quality
+- Backend timeout behavior belongs in a backend or persistence-oriented change if it needs to exist at all
+
+### 8. Two-Channel Live-Region Model
+**Decision**: Maintain two distinct announcement channels rather than a single mechanism.
+
+| Channel | Implementation | Used for |
+|---------|---------------|---------|
+| Toast container | `role="status"` / `aria-live="polite"` on the notification portal | Save success, clipboard copy, all visual toasts |
+| Hidden live region | A single `<div aria-live="polite">` mounted in `App.tsx`, visually hidden | Theme change announcements only |
+
+**Rationale**:
+- Theme changes are intentionally silent-visual — the user can see the theme change, so no toast is needed. AT users still require an announcement.
+- Adding `aria-live` to the toast container handles all other cases because every toast is a meaningful status event.
+- Two small, purpose-scoped mechanisms are cleaner than a single mechanism that requires per-event routing logic.
+
+**Alternatives considered**:
+- Single hidden live region for everything: loses the visual + AT alignment for toasts
+- Toast container only with `aria-live`: works for all cases except the silent-visual theme announcement
+
+## Verification Strategy
+
+### Real Interaction Verification
+These behaviors should be tested through actual flows:
+- theme preference persistence
+- system theme fallback and in-session system-mode updates
+- save success feedback
+- empty-library, empty-search, and empty-character-spellbook states
+- keyboard navigation and focus behavior
+
+### Screenshot Isolation Verification
+Direct theme-class toggling is acceptable for visual regression isolation, because it lets tests capture:
+- light and dark presentation of the same screen
+- hash-display states
+- empty-state layouts
+- structured-input presentation states
+
+This screenshot strategy supplements, but does not replace, testing the real theme-selection flow.
 
 ## Risks / Trade-offs
 
-### Risk: Flash of Wrong Theme (FOIT)
-**Mitigation**: 
-- Apply theme class synchronously in `<head>` before React hydration
-- Use inline script in `index.html` to set theme immediately
-- Minimize delay between page load and theme application
-
-### Risk: Theme State Desync Between App and Storybook
-**Mitigation**:
-- Use same Zustand store pattern in Storybook decorator
-- Share localStorage key between app and Storybook
-- Document that Storybook theme should match app theme for accurate previews
-
-### Risk: Performance Impact of Theme Switching
-**Mitigation**:
-- Theme switching only changes CSS classes (minimal cost)
-- No re-renders needed if using CSS variables or Tailwind classes
-- Test with large component trees to verify performance
-
 ### Risk: Incomplete Theme Coverage
+Hardcoded dark-only classes are already present in edited surfaces.
+
 **Mitigation**:
-- Audit all components for hardcoded colors
-- Use Tailwind's theme-aware utilities (`bg-neutral-950` vs `bg-white`)
-- Create theme testing checklist in tasks.md
+- Audit touched components for light-mode counterparts
+- Treat muted text and border colors as explicit contrast risks
+- Verify both themes for the specific surfaces covered by this change
 
-### Trade-off: System Preference vs User Preference
-**Decision**: Default to system preference, but persist user choice.
+### Risk: Feedback Pattern Fragmentation
+The app already mixes alerts, modals, and inline feedback.
 
-**Rationale**: Best of both worlds - respects system initially, but remembers explicit user choice.
+**Mitigation**:
+- Apply the non-modal notification pattern only where the specs now require it
+- Avoid broad unrelated notification refactors outside this change
 
-## Migration Plan
+### Risk: Accessibility Rules Drift Between Features
+If accessibility guidance remains embedded in feature-specific docs only, implementations will diverge.
 
-### Phase 1: Theme Infrastructure
-1. Create Zustand theme store (`store/useTheme.ts`)
-2. Add theme initialization script to `index.html` (inline, before React)
-3. Create theme toggle component (`ui/components/ThemeToggle.tsx`)
-4. Update `main.tsx` to initialize theme store
+**Mitigation**:
+- Centralize shared rules in `frontend-standards`
+- Keep feature-specific specs focused on behavior unique to the spell/library flows
 
-### Phase 2: Application Integration
-1. Add theme toggle to navigation/header (`ui/App.tsx`)
-2. Remove hardcoded dark classes from `index.html`
-3. Update all components to use theme-aware Tailwind classes
-4. Test theme switching across all pages
+## Migration / Implementation Shape
 
-### Phase 3: Storybook Integration
-1. Install `@storybook/addon-toolbars` (if not using built-in theme addon)
-2. Create Storybook decorator for theme application
-3. Update `.storybook/preview.ts` with theme toolbar
-4. Test components in both themes in Storybook
+### Phase 1: Spec-Aligned Infrastructure
+1. Add root theme support (`darkMode: 'class'`, theme store, theme bootstrap script)
+2. Add reusable non-modal notification support
+3. Add any minimal tooltip/live-region utilities needed by touched flows
 
-### Phase 4: Accessibility & Testing
-1. Verify keyboard navigation for theme toggle
-2. Test screen reader announcements
-3. Verify color contrast in both themes (WCAG 2.1 AA)
-4. Add E2E test for theme switching workflow
+### Phase 2: Spell and Library UX
+1. Refine spell-editor validation presentation
+2. Refine save feedback and success flow
+3. Refine hash display and clipboard feedback
+4. Implement distinct empty states
 
-### Rollback Strategy
-- If theme system causes issues, can revert to hardcoded dark mode
-- Remove theme store, restore `index.html` classes
-- Storybook changes are isolated, can be reverted independently
+### Phase 3: Cross-App Accessibility and Resize Work
+1. Update modal focus trapping and focus return
+2. Audit accessible names, field associations, and error wiring
+3. Adjust constrained-width layouts for touched structured/grouped controls
+
+### Phase 4: Verification
+1. Add E2E coverage for the revised workflows
+2. Add theme-flow verification
+3. Capture light/dark screenshot baselines for affected views
 
 ## Open Questions
 
-1. **Theme Transition Animation**: Should theme changes animate (fade/transition)? Currently out of scope, but could be added later.
+1. **Theme transition motion**
+   Should theme changes remain instant, or should they animate in a future change? Current decision: out of scope.
 
-2. **Theme Persistence Scope**: Should theme preference sync across multiple app instances? Currently localStorage is per-instance (acceptable for desktop app).
+2. **Feedback scope**
+   Should the non-modal notification pattern stay limited to the flows in this change, or become the default application-wide feedback model later? Current decision: limit scope to touched flows.
 
-3. **Storybook Theme Default**: Should Storybook default to system preference or app's persisted preference? Recommendation: Use app's persisted preference for consistency.
+3. **Theme coverage breadth**
+   This change covers edited surfaces and targeted flows, not necessarily every page in the application. If broader theme rollout is needed later, it should be scoped as follow-up work.
 
-4. **Component Theme Testing**: Should visual regression tests run in both themes? Recommendation: Yes, add to tasks.md as follow-up work.
+---
+
+## Light Theme Palette Guidance
+
+These palette guidelines remain relevant to the `theme-and-feedback` spec area and should be applied to surfaces touched by this change.
+
+| Role | Light class | Dark class | Notes |
+|------|-------------|------------|-------|
+| bg-base | `bg-neutral-50` | `dark:bg-neutral-900` | Main app background |
+| bg-surface | `bg-white` | `dark:bg-neutral-800` | Cards, panels, modals |
+| bg-elevated | `bg-neutral-100` | `dark:bg-neutral-700` | Inputs and secondary surfaces |
+| bg-hover | `bg-neutral-200` | `dark:bg-neutral-700` | Hover states |
+| border | `border-neutral-300` | `dark:border-neutral-700` | Default borders |
+| border-strong | `border-neutral-400` | `dark:border-neutral-600` | Input borders |
+| border-focus | `border-blue-600` | `dark:border-blue-500` | Focus ring |
+| text-primary | `text-neutral-900` | `dark:text-neutral-100` | Primary text |
+| text-secondary | `text-neutral-700` | `dark:text-neutral-300` | Secondary text |
+| text-muted | `text-neutral-600` | `dark:text-neutral-400` | Minimum muted text target for light mode |
+| accent | `bg-blue-600` | `dark:bg-blue-600` | Primary actions |
+| accent-text | `text-blue-700` | `dark:text-blue-400` | Links and interactive text |
+| success-text | `text-green-700` | `dark:text-green-500` | Success state text |
+| warning-text | `text-amber-700` | `dark:text-yellow-500` | Warning state text |
+| error-text | `text-red-700` | `dark:text-red-500` | Error state text |
+| error-bg | `bg-red-50` | `dark:bg-red-950` | Error backgrounds |
+
+**Implementation note**: Any text currently using `text-neutral-400` or `text-neutral-500` on surfaces that will become light-theme visible should be reviewed carefully for contrast.

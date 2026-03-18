@@ -1,36 +1,63 @@
 # Add Spell UI Design and Accessibility
 
 ## Why
-While Spec #3 provided the functional components for structured spell data, the application needs a polished, user-friendly, and accessible interface.
-1.  **UX Gaps**: Loading states, empty states, and error feedback are often overlooked.
-2.  **Accessibility**: The application must be usable by everyone (WCAG 2.1 AA compliance).
-3.  **Visual Consistency**: Structured inputs need to match the application's design system.
-4.  **Responsive**: The editor must work on different screen sizes.
+The structured spell editing work now exists, but the surrounding user experience remains uneven. This change tightens the spell editor and library UX, formalizes cross-app accessibility expectations, and adds a consistent theme and transient-feedback model.
+
+The main gaps are:
+1. **Spell workflow polish**: validation, save feedback, hash presentation, and empty states are inconsistent or under-specified.
+2. **Accessibility consistency**: focus handling, field associations, keyboard behavior, and resize safety need explicit cross-app standards.
+3. **Theme and transient feedback**: light mode, system theme behavior, non-modal notifications, tooltips, and live announcements were previously described only in tasks or design notes, not in formal requirements.
 
 ## What Changes
-Implement a comprehensive UI polish layer on top of the structured data components:
-1.  **Visual Design**: Precise specifications for layout, spacing, and component styling.
-2.  **Responsive Behavior**: Adapt layouts for mobile, tablet, and desktop.
-3.  **Accessibility**: Ensure keyboard navigation, screen reader support, and color contrast.
-4.  **UX Patterns**: Implement standard loading, empty, and error states.
-5.  **E2E Testing**: Verify complete user workflows.
+This change is now split across three spec areas:
+
+1. **`library`**
+   Covers spell-editor and library-facing behavior:
+   - validation feedback
+   - save workflow feedback
+   - hash display and copy confirmation
+   - empty-library, empty-search, and empty-character-spellbook states
+   - loading-state boundaries for spell routes
+
+2. **`frontend-standards`**
+   Covers cross-app interaction and accessibility rules:
+   - semantic labeling expectations
+   - keyboard navigation
+   - focus trapping and focus return
+   - field error/help associations
+   - resize-safe layouts at the supported desktop minimum width
+
+3. **`theme-and-feedback`**
+   Covers global theme and transient UI patterns:
+   - light/dark/system theme behavior
+   - theme toggle accessibility
+   - tooltip usage rules
+   - non-modal notification patterns
+   - live-region announcements
+   - theme-oriented visual regression expectations
 
 ## Scope
 ### In Scope
--   Visual design specifications (layout, spacing, typography)
--   Responsive design implementation
--   WCAG 2.1 AA accessibility compliance (keyboard, ARIA, focus)
--   Loading state implementation (spinners, skeleton screens)
--   Empty state implementation (library, search results)
--   Form validation UX (error clarity, timing)
--   End-to-End (E2E) workflow tests for UI journeys
--   Visual regression testing
+- Spell editor and library UX polish for this change area
+- Desktop resize handling at the supported minimum width of 900px
+- WCAG 2.1 AA-oriented accessibility improvements for affected flows
+- Theme support with persistence and system preference handling
+- Non-modal feedback patterns for success, warning, and clipboard actions
+- Verification updates for E2E and visual regression coverage
 
 ### Out of Scope
--   Functional component implementation (handled in Spec #3 - `update-spell-editor-structured-data`)
--   Backend logic (handled in Spec #1 - `add-spell-canonical-hashing-foundation`)
--   Data migration (handled in Spec #2 - `add-spell-data-migration-infrastructure`)
+- Functional structured-field implementation itself, which remains owned by `update-spell-editor-structured-data`
+- Backend persistence semantics that are not already part of this change
+- Data migration behavior
+- Broader application redesign outside the touched workflows
 
 ## Dependencies
--   **Spec #3: `update-spell-editor-structured-data`**
-    - This spec polishes the components created in Spec #3.
+- **`update-spell-editor-structured-data`**
+  - This change polishes and verifies the structured editor surfaces introduced there.
+- **Existing hashing foundation and migration work**
+  - This change may restyle or expose existing data, but it does not redefine backend hashing or migration contracts.
+
+## Important Scope Clarifications
+- This is a **UI and interaction change**, not a backend contract change.
+- The change may define **user-visible loading and save feedback**, but it does not define new timeout persistence behavior such as saving with `hash: null`.
+- Screenshot tests may toggle theme classes directly for isolation, but the change also requires verification of the **real theme selection and persistence flow**.

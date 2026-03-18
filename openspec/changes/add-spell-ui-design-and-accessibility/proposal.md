@@ -43,6 +43,7 @@ This change is now split across three spec areas:
 - WCAG 2.1 AA-oriented accessibility improvements for affected flows
 - Theme support with persistence and system preference handling
 - Non-modal feedback patterns for success, warning, and clipboard actions
+- Documentation updates for affected user, developer, testing, and architecture references
 - Verification updates for E2E and visual regression coverage
 
 ### Out of Scope

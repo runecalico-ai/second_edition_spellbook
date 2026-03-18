@@ -17,6 +17,7 @@ This design aligns the implementation plan with the rewritten specs so that prop
 - Formalize cross-app accessibility behavior for labels, errors, focus, and keyboard navigation
 - Add a consistent Light / Dark / System theme model with persistence
 - Replace interruptive feedback in targeted flows with a non-modal notification pattern where appropriate
+- Keep application documentation aligned with the finalized user-visible behavior and shared UI conventions introduced by this change
 - Ensure verification covers both real interaction flows and screenshot isolation flows
 
 **Non-Goals:**
@@ -239,6 +240,11 @@ If accessibility guidance remains embedded in feature-specific docs only, implem
 1. Add E2E coverage for the revised workflows
 2. Add theme-flow verification
 3. Capture light/dark screenshot baselines for affected views
+
+### Phase 5: Documentation Sync
+1. Update affected user documentation, including `docs/user/spell_editor.md` for spell-editor behavior and `README.md` for any user-visible application overview changes introduced by theme, feedback, or library-state UX.
+2. Update affected developer and architecture documentation, including `docs/dev/spell_editor_components.md` and `docs/ARCHITECTURE.md`, for theme, notification, live-region, accessibility, and structured-editor conventions introduced by this change.
+3. Update testing documentation, including `docs/TESTING.md`, if verification expectations, accessibility guidance, or visual-regression workflow change.
 
 ## Open Questions
 

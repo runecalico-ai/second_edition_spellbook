@@ -4,16 +4,29 @@
 
 ```bash
 # Run all E2E tests
-pnpm test:e2e
+cd apps/desktop && npx playwright test
 
 # Run with Playwright UI (interactive mode)
-pnpm test:e2e --ui
+cd apps/desktop && npx playwright test --ui
 
 # Capture / update visual regression baselines
-pnpm test:e2e -- --update-snapshots
+cd apps/desktop && npx playwright test --update-snapshots
 ```
 
 Test files are located in `apps/desktop/tests/`.
+
+## Documentation Verification
+
+- [ ] **Verify: User documentation updated**
+  - Confirm `docs/user/spell_editor.md` documents the final spell-editor behaviors introduced by this change: inline validation timing and messaging, save progress and success behavior, Library-view success notification after save, hash card display and copy feedback, and any changed structured-field transition behavior.
+  - Confirm `README.md` documents any user-visible application overview changes introduced by this change: Light/Dark/System theme support, non-modal feedback conventions for routine status, and library-state UX such as empty-library, empty-search, or empty-character-spellbook behavior if those flows are described at the overview level.
+
+- [ ] **Verify: Developer and architecture documentation updated**
+  - Confirm `docs/dev/spell_editor_components.md` describes the finalized structured-editor, accessibility, and shared UI conventions introduced by this change.
+  - Confirm `docs/ARCHITECTURE.md` describes the finalized theme, notification, live-region, and shared UI behavior introduced by this change.
+
+- [ ] **Verify: Testing documentation updated**
+  - Confirm `docs/TESTING.md` reflects the current E2E, accessibility, and visual-regression expectations for this change.
 
 ## Existing Test Migration
 
@@ -38,21 +51,21 @@ await expect(page.getByRole("heading", { name: /Edit Spell|New Spell/ })).toBeVi
 
 | File | Lines | Inline error testid to assert |
 |---|---|---|
-| `tests/spell_editor_structured_data.spec.ts` | 62–70 | `error-school-required-arcane` |
-| `tests/spell_editor_structured_data.spec.ts` | 84–94 | `error-sphere-required-divine` |
-| `tests/spell_editor_structured_data.spec.ts` | 290–297 | `error-tradition-conflict` |
-| `tests/spell_editor_structured_data.spec.ts` | 340–353 | `error-tradition-conflict` |
-| `tests/spell_editor_structured_data.spec.ts` | 425–434 | inline error element (replaces modal text check) |
-| `tests/spell_editor_structured_data.spec.ts` | 541–544 | `spell-name-error` |
-| `tests/epic_and_quest_spells.spec.ts` | 52–57 | tradition/class inline error; update post-error navigation |
-| `tests/spell_editor_canon_first.spec.ts` | 575–583 | inline error (replaces `<dialog>` "Save Error" check) |
+| `apps/desktop/tests/spell_editor_structured_data.spec.ts` | 62–70 | `error-school-required-arcane` |
+| `apps/desktop/tests/spell_editor_structured_data.spec.ts` | 84–94 | `error-sphere-required-divine` |
+| `apps/desktop/tests/spell_editor_structured_data.spec.ts` | 290–297 | `error-school-required-arcane-tradition` while `error-tradition-conflict` remains hidden |
+| `apps/desktop/tests/spell_editor_structured_data.spec.ts` | 340–353 | `error-tradition-conflict` |
+| `apps/desktop/tests/spell_editor_structured_data.spec.ts` | 541–544 | `spell-name-error` |
+| `apps/desktop/tests/epic_and_quest_spells.spec.ts` | 52–57 | tradition/class inline error; update post-error navigation |
+| `apps/desktop/tests/spell_editor_canon_first.spec.ts` | 575–583 | inline error (replaces `<dialog>` "Save Error" check) |
 
 ### Safe — not affected
 
 These calls are NOT in scope and must NOT be changed:
-- "Unsaved changes" / discard dialogs in `spell_editor_canon_first.spec.ts` — blocking decisions, stay modal
-- `spell_editor_structured_data.spec.ts` line 629 — `handleCustomModal(page, "Cancel")` dismissing a blocking decision dialog — stays modal
-- All `character_io.spec.ts`, `character_master_workflow.spec.ts`, `character_remediation.spec.ts`, `character_profiles_foundation_one.spec.ts`, `character_edge_cases.spec.ts`, `vault.spec.ts` — character/vault flows, out of scope
+- "Unsaved changes" / discard dialogs in `apps/desktop/tests/spell_editor_canon_first.spec.ts` — blocking decisions, stay modal
+- `apps/desktop/tests/spell_editor_structured_data.spec.ts` line 629 — `handleCustomModal(page, "Cancel")` dismissing a blocking decision dialog — stays modal
+- The import rejection case in `apps/desktop/tests/spell_editor_structured_data.spec.ts` remains out of scope because it exercises import-flow modal behavior rather than spell/library inline validation
+- All `apps/desktop/tests/character_io.spec.ts`, `apps/desktop/tests/character_master_workflow.spec.ts`, `apps/desktop/tests/character_remediation.spec.ts`, `apps/desktop/tests/character_profiles_foundation_one.spec.ts`, `apps/desktop/tests/character_edge_cases.spec.ts`, `apps/desktop/tests/vault.spec.ts` — character/vault flows, out of scope
 
 ---
 
@@ -91,8 +104,6 @@ These calls are NOT in scope and must NOT be changed:
   9. Hash display is present for the saved spell
 
 ### Workflow: Edit Legacy Spell — Structured Field Upgrade
-> **[BLOCKED until `update-spell-editor-structured-data`]**
-
 - [ ] **E2E: Upgrade a legacy spell by editing a structured field**
   1. Library shows at least one legacy spell with text-only detail fields
   2. User opens the spell editor
@@ -148,7 +159,7 @@ These calls are NOT in scope and must NOT be changed:
   - GIVEN an invalid field in the editor
   - THEN error text MUST be associated with the field
   - AND the chosen validation-announcement model MUST behave consistently
-  - **Tool**: NVDA (Windows) with Chromium - see `docs/TESTING.md` for setup instructions
+  - **Tool**: NVDA (Windows) with Chromium; add setup instructions to `docs/TESTING.md` as part of the documentation update if they are not already present
 
 ### Modal Focus
 - [ ] **Test: Focus trap and return**
@@ -189,9 +200,9 @@ These calls are NOT in scope and must NOT be changed:
 Visual regression uses Playwright's built-in `toHaveScreenshot()`.
 
 **Workflow:**
-1. `pnpm test:e2e -- --update-snapshots` - capture baselines
+1. `cd apps/desktop && npx playwright test --update-snapshots` - capture baselines
 2. Make UI changes
-3. `pnpm test:e2e` - verify no visual regressions
+3. `cd apps/desktop && npx playwright test` - verify no visual regressions
 
 **Screenshot isolation:**
 ```ts
@@ -201,13 +212,13 @@ await page.evaluate(() => document.documentElement.classList.add('dark'));
 
 **Screenshot targets:**
 
-- [ ] **Test: StructuredFieldInput States** - **[Blocked until `update-spell-editor-structured-data`]**
+- [ ] **Test: StructuredFieldInput States**
   - Capture empty, filled, focused, error, and disabled states
 
-- [ ] **Test: SpellEditor - dark mode** - **[Blocked until `update-spell-editor-structured-data`]**
+- [ ] **Test: SpellEditor - dark mode**
   - Capture full editor with relevant structured fields filled
 
-- [ ] **Test: SpellEditor - light mode** - **[Blocked until `update-spell-editor-structured-data`]**
+- [ ] **Test: SpellEditor - light mode**
   - Capture full editor with relevant structured fields filled
 
 - [ ] **Test: Empty Library State**

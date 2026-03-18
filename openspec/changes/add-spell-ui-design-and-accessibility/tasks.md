@@ -1,180 +1,278 @@
 # Tasks: Spell UI Design and Accessibility
 
-## library
-### Feedback policy application
+## Implementation Order
+
+Work top-to-bottom. Each chunk is intended to be implementable and reviewable on its own.
+
+- Chunks 1-6 are the recommended implementation order for this change.
+- `update-spell-editor-structured-data` is complete, so structured editor polish and verification are now part of the main sequence.
+- Within a chunk, complete the infrastructure items before the feature-level polish items that consume them.
+
+---
+
+## Chunk 1: Shared Theme and Feedback Foundations
+
+**Depends on:** none
+
+**Why first:** Library save feedback, hash copy confirmation, light-theme coverage, and accessibility announcements all depend on shared root-level theme and transient-feedback infrastructure.
+
+### theme-and-feedback
+
+#### Theme support foundation
+- [ ] Add `darkMode: 'class'` to `apps/desktop/tailwind.config.js`.
+- [ ] Create Zustand theme store (`apps/desktop/src/store/useTheme.ts`):
+  - [ ] Theme state: `'light' | 'dark' | 'system'`
+  - [ ] Cycle function: advance through `dark -> light -> system -> dark`
+  - [ ] Persist to localStorage with key `'spellbook-theme'`
+  - [ ] Initialize from localStorage or fall back to `'system'`
+- [ ] Add theme initialization script to `apps/desktop/index.html`:
+  - [ ] Inline script in `<head>` before React hydration
+  - [ ] Resolve `'system'` or absence via `prefers-color-scheme`
+  - [ ] Apply theme class immediately to avoid flash of incorrect theme
+- [ ] Create `ThemeToggle` component (`apps/desktop/src/ui/components/ThemeToggle.tsx`):
+  - [ ] Inline SVG icons for all three states
+  - [ ] Accessible name describes the action the control will perform
+  - [ ] Keyboard accessible
+  - [ ] Visible focus indicator
+- [ ] Integrate theme toggle into `apps/desktop/src/ui/App.tsx`.
+- [ ] Update `apps/desktop/src/main.tsx` to react to OS theme changes when theme is `'system'`.
+
+#### Shared transient feedback infrastructure
+- [ ] Build a minimal non-modal notification component.
+- [ ] Use semantic status behavior: `role="status"` / polite announcement where appropriate.
+- [ ] Implement fixed portal positioning with readable stacking and bounded visible count.
+- [ ] Mount the notification container in `apps/desktop/src/ui/App.tsx` alongside root-level modal infrastructure.
+
+#### Shared live-region and tooltip infrastructure
+- [ ] Mount a hidden `<div aria-live="polite">` in `apps/desktop/src/ui/App.tsx` for AT-only theme change announcements.
+- [ ] When the theme changes, write the new mode name to the hidden live region (for example: "Dark mode", "Light mode", "System mode") without showing a visible toast.
+- [ ] Build a minimal tooltip implementation only for supplemental hints.
+- [ ] Do not rely on tooltips as the sole source of critical information.
+
+---
+
+## Chunk 2: Spell Editor Validation and Save Workflow
+
+**Depends on:** Chunk 1
+
+**Why second:** This is the highest-value behavior change in the spell editor and it consumes the non-modal feedback primitives from Chunk 1.
+
+### library
+
+#### Feedback policy application in touched spell/library flows
 - [ ] Replace modal alerts used for routine status in touched spell and library flows with inline or transient non-modal feedback.
 - [ ] Preserve modal/dialog usage for destructive confirmations, blocking decisions, and rare high-severity errors only.
 
-### Visual Design
-- [ ] Layout and spacing:
-    - [ ] Define `StructuredFieldInput` layout: horizontal grouping for scalar, unit, and related controls with existing spacing utilities. **[Blocked until `update-spell-editor-structured-data`]**
-    - [ ] Define label placement and container treatment for structured field groups. **[Blocked until `update-spell-editor-structured-data`]**
-- [ ] Component styling:
-    - [ ] Define `ComponentCheckboxes` spacing and preview treatment. **[Blocked until `update-spell-editor-structured-data`]**
-- [ ] Hash display:
-    - [ ] Restyle the existing hash display in `src/ui/SpellEditor.tsx` as a dedicated card in the spell detail header area.
-    - [ ] Preserve collapsed and expanded states.
-    - [ ] Replace modal-based copy confirmation with transient non-modal success feedback plus a polite live-region announcement.
-- [ ] Validation error display:
-    - [ ] Render inline errors adjacent to invalid fields.
-    - [ ] Use specific field messages rather than generic "Invalid value" text.
-    - [ ] Apply consistent invalid-state styling and motion using existing shared animation utilities.
+#### Validation feedback and timing
+- [ ] Apply existing shared animation utilities to conditional field enter/exit transitions when controlling fields change.
+- [ ] Ensure newly relevant fields animate into view and hidden fields collapse without leaving visual gaps.
+- [ ] Render inline errors adjacent to invalid fields.
+- [ ] Use specific field messages rather than generic "Invalid value" text.
+- [ ] Apply consistent invalid-state styling and motion using existing shared animation utilities.
+- [ ] Implement blur validation for text inputs (name, scalar values).
+- [ ] Implement change validation for select controls.
+- [ ] Immediately revalidate dependent fields when a controlling field such as tradition changes.
+- [ ] Validate all untouched fields on first submit attempt.
+- [ ] Clear field errors as soon as the field becomes valid.
+- [ ] Prefer messages such as "School is required for Arcane spells".
+- [ ] Prefer messages such as "Base value must be a positive number".
+- [ ] Keep fix-in-place validation feedback inline rather than modal.
 
-### Loading and Save Feedback
-- [ ] Save progress:
-    - [ ] If save work becomes perceptible, show inline progress feedback on the save action.
-    - [ ] Keep the user in context until the save completes.
-- [ ] Successful save:
-    - [ ] Show transient success feedback.
-    - [ ] Return the user to the Library view after save.
-- [ ] Spell detail loading:
-    - [ ] Avoid introducing flickering loading indicators for imperceptible route loads.
-    - [ ] If a route load is perceptible, ensure the loading state is intentional and stable.
+#### Save workflow feedback
+- [ ] If save work becomes perceptible, show inline progress feedback on the save action.
+- [ ] Keep the user in context until the save completes.
+- [ ] Trigger transient success feedback through the notification store as save completes.
+- [ ] Return the user to the Library view after save.
+- [ ] Ensure the success notification renders on the Library view after navigation rather than only on the editor.
+- [ ] Ensure the saved spell is discoverable in the Library after navigation.
+- [ ] If the save action is disabled, provide a discoverable explanation that does not rely on hover-only interaction.
 
-### Empty States
-- [ ] Empty library:
-    - [ ] Add an empty-library state for the case where no spells exist at all.
-    - [ ] CTA buttons: "Create Spell" and "Import Spells".
-- [ ] Empty search:
-    - [ ] Add an empty-search state for the case where filters or query produce no results.
-    - [ ] Provide a clear reset action.
-- [ ] Empty character spellbook:
-    - [ ] Add a dedicated empty state for the character spellbook flow.
-    - [ ] CTA: "Add Spell from Library".
+### frontend-standards
 
-### Form Validation UX
-- [ ] Validation timing (implement per `specs/library/spec.md` — Scenario: Validation timing):
-    - [ ] Implement blur validation for text inputs (name, scalar values).
-    - [ ] Implement change validation for select controls.
-    - [ ] Immediately revalidate dependent fields when a controlling field such as tradition changes.
-    - [ ] Validate all untouched fields on first submit attempt.
-    - [ ] Clear field errors as soon as the field becomes valid.
-- [ ] Error message clarity:
-    - [ ] Prefer messages such as "School is required for Arcane spells".
-    - [ ] Prefer messages such as "Base value must be a positive number".
-    - [ ] Keep fix-in-place validation feedback inline rather than modal.
-- [ ] Save action states:
-    - [ ] If the save action is disabled, provide a discoverable explanation that does not rely on hover-only interaction.
+#### Error identification and announcement model
+- [ ] Mark invalid fields programmatically.
+- [ ] Ensure error text is associated with the owning field.
+- [ ] Choose and apply a consistent error announcement model: field-level, global, or hybrid.
 
-## frontend-standards
-### Window Size Handling
-- [ ] Minimum supported window width: **900px**. No layout testing below this width is required.
-- [ ] At widths approaching 900px, structured field groups collapse, wrap, or stack to prevent overflow.
-- [ ] No horizontal scrollbars introduced in core editing flows at minimum width.
+### theme-and-feedback
 
-### Accessibility (WCAG 2.1 AA)
-- [ ] Keyboard navigation:
-    - [ ] Logical tab order: top-to-bottom, left-to-right where applicable.
-    - [ ] Visible focus indicator for all interactive elements.
-    - [ ] Escape key: close modals or cancel supported dismissal flows.
-    - [ ] Keyboard submit behavior matches the visible submit action.
-- [ ] Labels and field descriptions:
-    - [ ] Use visible `<label>` as the default accessible name for inputs.
-    - [ ] Add `aria-label` only where no visible label exists or where visible text is insufficient.
-    - [ ] Associate help text and error text via the appropriate descriptive relationship.
-- [ ] Error identification:
-    - [ ] Mark invalid fields programmatically.
-    - [ ] Ensure error text is associated with the owning field.
-    - [ ] Choose and apply a consistent error announcement model: field-level, global, or hybrid.
-- [ ] Focus management:
-    - [ ] Migrate `Modal.tsx` from `<dialog open>` to `showModal()` / `close()` for native browser focus trapping.
-    - [ ] Verify tests rely on resilient selectors rather than modal implementation details.
-    - [ ] Return focus to the trigger after modal close, with a logical fallback if needed.
-- [ ] Color contrast:
-    - [ ] Text: minimum 4.5:1 contrast ratio.
-    - [ ] Large text (>=18px): minimum 3:1 contrast ratio.
-    - [ ] Interactive elements: minimum 3:1 contrast ratio.
-    - [ ] Error and warning text remain readable in all supported themes.
+#### Theme coverage for spell-editor changes introduced in this chunk
+- [ ] Apply intentional light and dark theme styling to the validation, invalid-state, save-progress, and disabled-action UI introduced in this chunk.
 
-## theme-and-feedback
-### Theme Support
-- [ ] Add `darkMode: 'class'` to `apps/desktop/tailwind.config.js`.
-- [ ] Create Zustand theme store (`src/store/useTheme.ts`):
-    - [ ] Theme state: `'light' | 'dark' | 'system'`
-    - [ ] Cycle function: advance through `dark -> light -> system -> dark`
-    - [ ] Persist to localStorage with key `'spellbook-theme'`
-    - [ ] Initialize from localStorage or fall back to `'system'`
-- [ ] Add theme initialization script to `index.html`:
-    - [ ] Inline script in `<head>` before React hydration
-    - [ ] Resolve `'system'` or absence via `prefers-color-scheme`
-    - [ ] Apply theme class immediately to avoid flash of incorrect theme
-- [ ] Create `ThemeToggle` component (`src/ui/components/ThemeToggle.tsx`):
-    - [ ] Inline SVG icons for all three states
-    - [ ] Accessible name describes the action the control will perform
-    - [ ] Keyboard accessible
-    - [ ] Visible focus indicator
-- [ ] Theme announcement:
-    - [ ] Mount a hidden `<div aria-live="polite">` in `src/ui/App.tsx` for AT-only theme change announcements (see Live-region announcements below and Decision 8 in design.md).
-    - [ ] When the theme changes, write the new mode name to the hidden live region (e.g., "Dark mode", "Light mode", "System mode") — no visible toast.
-- [ ] Integrate theme toggle into `src/ui/App.tsx`.
-- [ ] Update `src/main.tsx` to react to OS theme changes when theme is `'system'`.
-- [ ] Remove hardcoded dark-only classes from `index.html` and edited surfaces.
+---
 
-### Tooltip and Notification Patterns
-- [ ] Tooltip pattern:
-    - [ ] Build a minimal tooltip implementation only for supplemental hints.
-    - [ ] Do not rely on tooltips as the sole source of critical information.
-- [ ] Toast / transient notification pattern:
-    - [ ] Build a minimal non-modal notification component.
-    - [ ] Use the notification component for routine status feedback instead of modal alerts in touched flows.
-    - [ ] Semantic: `role="status"` / polite announcement where appropriate.
-    - [ ] Position and stacking: fixed portal with bounded visible count.
-    - [ ] Mount in `src/ui/App.tsx` alongside root-level modal infrastructure.
-- [ ] Live-region announcements:
-    - [ ] The toast notification container SHALL use `role="status"` / `aria-live="polite"` — this is the live region for all visual notifications (save success, clipboard copy, etc.).
-    - [ ] Mount a hidden `<div aria-live="polite">` in `src/ui/App.tsx` at root level — used exclusively for theme change announcements (AT-only, no visible toast).
-    - [ ] Clipboard copy success is announced via the toast channel (visual + AT).
-    - [ ] Theme change is announced via the hidden live region (AT-only, no visual toast).
+## Chunk 3: Library Presentation, Hash UX, and Empty States
 
-### Visual Regression and Theme Testing
-- [ ] Capture baselines: `pnpm test:e2e -- --update-snapshots`
-- [ ] Run regression checks: `pnpm test:e2e`
-- [ ] Screenshot isolation MAY toggle the `dark` class directly on `<html>`.
-- [ ] End-to-end coverage MUST also verify the real theme store, persistence, and first-load behavior.
-- [ ] Verify edited views in both light and dark modes.
+**Depends on:** Chunks 1-2
 
-## Testing
-### Migrate affected existing tests
-All existing tests broken by validation-feedback changes in spell/library flows MUST be fixed
-as part of this change. The pattern: remove `handleCustomModal(page, "OK")` after a failed
-save, replace with assertions on inline error testids.
+**Why third:** Once validation and save behavior are stable, the remaining spell/library-facing polish can be implemented without reopening the core form flow.
 
-Affected files and locations:
-- [ ] `tests/spell_editor_structured_data.spec.ts` lines 62–70: Arcane school validation → assert inline `error-school-required-arcane`, remove `handleCustomModal`
-- [ ] `tests/spell_editor_structured_data.spec.ts` lines 84–94: Divine sphere validation → assert inline `error-sphere-required-divine`, remove `handleCustomModal`
-- [ ] `tests/spell_editor_structured_data.spec.ts` lines 290–297: tradition conflict → assert inline `error-tradition-conflict`, remove `handleCustomModal`
-- [ ] `tests/spell_editor_structured_data.spec.ts` lines 340–353: tradition conflict (second scenario) → same pattern
-- [ ] `tests/spell_editor_structured_data.spec.ts` lines 425–434: modal text `/mutually exclusive|School and sphere|Import failed/` → move assertion to inline error element
-- [ ] `tests/spell_editor_structured_data.spec.ts` lines 541–544: save without name → assert inline `spell-name-error`, remove `handleCustomModal`
-- [ ] `tests/epic_and_quest_spells.spec.ts` lines 52–57: epic priest restriction → assert inline error, remove `handleCustomModal` + update subsequent navigation
-- [ ] `tests/spell_editor_canon_first.spec.ts` lines 575–583: `<dialog>` "Save Error" heading → replace `<dialog>` check with inline error assertion, remove `handleCustomModal`
+### library
 
-Safe — these modals survive per spec (not spell/library routine-status flows):
-- `spell_editor_canon_first.spec.ts` lines 1292, 1297, 1643, 1654, 1665 — "Unsaved changes" → blocking decision, stays modal
-- `spell_editor_structured_data.spec.ts` line 629 — blocking dialog dismiss → stays modal
-- All character/vault/import flow `handleCustomModal` calls → out of scope (not spell/library flows)
-- `character_edge_cases.spec.ts` — uses `modal-dialog`/`modal-button-dismiss` testids directly for character-level error modals → out of scope
+#### Hash display
+- [ ] Restyle the existing hash display in `apps/desktop/src/ui/SpellEditor.tsx` as a dedicated card in the spell detail header area.
+- [ ] Preserve collapsed and expanded states.
+- [ ] Replace modal-based copy confirmation with transient non-modal success feedback plus a polite live-region announcement.
 
-### E2E Workflows
+#### Spell detail loading boundaries
+- [ ] Avoid introducing flickering loading indicators for imperceptible route loads.
+- [ ] If a route load is perceptible, ensure the loading state is intentional and stable.
+
+#### Empty states
+- [ ] Add an empty-library state for the case where no spells exist at all.
+- [ ] Add CTA buttons: "Create Spell" and "Import Spells".
+- [ ] Add an empty-search state for the case where filters or query produce no results.
+- [ ] Provide a clear reset action.
+- [ ] Add a dedicated empty state for the character spellbook flow.
+- [ ] Add CTA: "Add Spell from Library".
+
+### theme-and-feedback
+
+#### Theme coverage on touched surfaces
+- [ ] Remove hardcoded dark-only classes from `apps/desktop/index.html` and edited surfaces.
+- [ ] Verify muted text, borders, controls, and feedback states stay legible in both light and dark modes for the views changed in this chunk.
+
+---
+
+## Chunk 4: Structured Editor Visual Polish
+
+**Depends on:** Chunks 1-3
+
+**Why fourth:** The structured editor surfaces are now available, so their layout and presentation can be polished before the cross-app accessibility pass and before final verification.
+
+### library
+
+#### Structured field layout and presentation
+- [ ] Define `StructuredFieldInput` layout: horizontal grouping for scalar, unit, and related controls with existing spacing utilities.
+- [ ] Define label placement and container treatment for structured field groups.
+- [ ] Define `ComponentCheckboxes` spacing and preview treatment.
+
+### theme-and-feedback
+
+#### Theme coverage on structured editor surfaces
+- [ ] Verify the structured editor controls introduced or refined in this chunk remain legible and intentional in both light and dark modes.
+
+---
+
+## Chunk 5: Cross-App Accessibility and Resize Hardening
+
+**Depends on:** Chunks 1-4
+
+**Why fifth:** These changes are shared polish across touched flows and are easier to validate after the core library and structured-editor behavior exists.
+
+### frontend-standards
+
+#### Window size handling
+- [ ] Treat **900px** as the minimum supported window width.
+- [ ] At widths approaching 900px, ensure structured field groups collapse, wrap, or stack to prevent overflow.
+- [ ] Ensure no horizontal scrollbars are introduced in core editing flows at minimum width.
+
+#### Keyboard navigation and labels
+- [ ] Ensure logical tab order: top-to-bottom, left-to-right where applicable.
+- [ ] Ensure a visible focus indicator exists for all interactive elements.
+- [ ] Ensure Escape closes modals or cancels supported dismissal flows.
+- [ ] Ensure keyboard submit behavior matches the visible submit action.
+- [ ] Audit touched pages and dialogs for proper semantic heading hierarchy.
+- [ ] Use visible `<label>` as the default accessible name for inputs.
+- [ ] Add `aria-label` only where no visible label exists or where visible text is insufficient.
+- [ ] Associate help text and error text via the appropriate descriptive relationship.
+
+#### Focus management and modal behavior
+- [ ] Migrate `Modal.tsx` from `<dialog open>` to `showModal()` / `close()` for native browser focus trapping.
+- [ ] Verify tests rely on resilient selectors rather than modal implementation details.
+- [ ] Return focus to the trigger after modal close, with a logical fallback if needed.
+
+#### Color contrast
+- [ ] Ensure text meets minimum 4.5:1 contrast ratio.
+- [ ] Ensure text sizing remains readable on touched pages and components.
+- [ ] Ensure large text (>=18px) meets minimum 3:1 contrast ratio.
+- [ ] Ensure interactive elements meet minimum 3:1 contrast ratio.
+- [ ] Ensure error and warning text remain readable in all supported themes.
+
+---
+
+## Chunk 6: Test Migration and Verification
+
+**Depends on:** Chunks 1-5
+
+**Why sixth:** Update documentation, migrate broken tests, and add targeted coverage and visual baselines once implementation details have settled.
+
+### Documentation
+
+#### Application documentation updates
+- [ ] Update `docs/user/spell_editor.md` to document the final spell-editor behaviors introduced by this change: inline validation timing and messaging, save progress and success behavior, Library-view success notification after save, hash card display and copy feedback, and any changed structured-field transition behavior.
+- [ ] Update `README.md` to document any user-visible application overview changes introduced by this change: Light/Dark/System theme support, non-modal feedback conventions for routine status, and library-state UX such as empty-library, empty-search, or empty-character-spellbook behavior if those flows are described at the overview level.
+- [ ] Update `docs/dev/spell_editor_components.md` to reflect the finalized structured-editor, accessibility, and shared UI conventions introduced by this change.
+- [ ] Update `docs/TESTING.md` to reflect the current theme-flow, accessibility, and visual-regression expectations introduced by this change.
+- [ ] Update `docs/ARCHITECTURE.md` to reflect the finalized theme, notification, live-region, and shared UI behavior introduced by this change.
+
+### Testing
+
+#### Migrate affected existing tests
+All existing tests broken by validation-feedback changes in spell/library flows MUST be fixed as part of this change. The pattern: remove `handleCustomModal(page, "OK")` after a failed save and replace it with assertions on inline error testids.
+
+- [ ] `apps/desktop/tests/spell_editor_structured_data.spec.ts` lines 62-70: Arcane school validation -> assert inline `error-school-required-arcane`, remove `handleCustomModal`
+- [ ] `apps/desktop/tests/spell_editor_structured_data.spec.ts` lines 84-94: Divine sphere validation -> assert inline `error-sphere-required-divine`, remove `handleCustomModal`
+- [ ] `apps/desktop/tests/spell_editor_structured_data.spec.ts` lines 290-297: Arcane tradition with missing school -> assert inline `error-school-required-arcane-tradition`, keep `error-tradition-conflict` hidden, remove `handleCustomModal`
+- [ ] `apps/desktop/tests/spell_editor_structured_data.spec.ts` lines 340-353: tradition conflict (second scenario) -> assert inline `error-tradition-conflict`, remove `handleCustomModal`
+- [ ] `apps/desktop/tests/spell_editor_structured_data.spec.ts` lines 541-544: save without name -> assert inline `spell-name-error`, remove `handleCustomModal`
+- [ ] `apps/desktop/tests/epic_and_quest_spells.spec.ts` lines 52-57: epic priest restriction -> assert inline error, remove `handleCustomModal` and update subsequent navigation
+- [ ] `apps/desktop/tests/spell_editor_canon_first.spec.ts` lines 575-583: `<dialog>` "Save Error" heading -> replace `<dialog>` check with inline error assertion, remove `handleCustomModal`
+
+Safe, unchanged modal coverage per spec:
+- [ ] Keep `apps/desktop/tests/spell_editor_canon_first.spec.ts` lines 1292, 1297, 1643, 1654, 1665 for "Unsaved changes" blocking dialogs.
+- [ ] Keep `apps/desktop/tests/spell_editor_structured_data.spec.ts` line 629 for blocking dialog dismiss behavior.
+- [ ] Leave character, vault, and import-flow `handleCustomModal` usage out of scope.
+- [ ] Leave the import rejection case in `apps/desktop/tests/spell_editor_structured_data.spec.ts` out of scope because it exercises import-flow modal behavior rather than spell/library inline validation.
+- [ ] Leave `apps/desktop/tests/character_edge_cases.spec.ts` modal testids out of scope.
+
+#### End-to-end workflows
 - [ ] Test: New user creates first spell.
-- [ ] Test: Edit legacy spell — basic fields (unblocked).
-- [ ] Test: Edit legacy spell — structured field upgrade. **[Blocked until `update-spell-editor-structured-data`]**
+- [ ] Test: Edit legacy spell - basic fields (unblocked).
+- [ ] Test: Edit legacy spell - structured field upgrade.
 - [ ] Test: Validation error handling.
+- [ ] Test: Conditional field transitions animate and collapse cleanly when controlling fields change.
 - [ ] Test: Keyboard-only navigation.
 - [ ] Test: Theme switching workflow.
 - [ ] Test: Empty library state.
 - [ ] Test: Empty search state.
 - [ ] Test: Empty character spellbook state.
 
+#### Accessibility verification
+- [ ] Test: Screen reader validation announcements verify the chosen error-announcement model behaves consistently and error text is associated with the owning field.
+- [ ] Test: Modal focus trap and focus return for preserved dialogs.
+
+### theme-and-feedback
+
+#### Real theme and feedback verification
+- [ ] End-to-end coverage MUST verify the real theme store, persistence, and first-load behavior.
+- [ ] Verify the theme change announcement is emitted through the hidden live region without showing a visible toast.
+- [ ] Verify edited views in both light and dark modes.
+- [ ] Capture baselines: `cd apps/desktop && npx playwright test --update-snapshots`
+- [ ] Run regression checks: `cd apps/desktop && npx playwright test`
+- [ ] Screenshot isolation MAY toggle the `dark` class directly on `<html>`.
+
+#### Transient feedback and modal-boundary verification
+- [ ] Test: Non-modal notifications do not take focus, remain readable when multiple are present, and cover routine status feedback in touched flows.
+- [ ] Test: Clipboard copy success is announced through the toast/live-region channel without shifting focus.
+- [ ] Test: Modal usage remains reserved for destructive confirmations, blocking choices, and rare high-severity errors in the touched flows.
+- [ ] Verify preserved dialogs identified in `modal_review.md` remain modal after the modal implementation changes.
+
 ### Visual Regression (Playwright screenshots)
-- [ ] Screenshot test: StructuredFieldInput states. **[Blocked until `update-spell-editor-structured-data`]**
-- [ ] Screenshot test: SpellEditor with all structured fields in dark mode. **[Blocked until `update-spell-editor-structured-data`]**
-- [ ] Screenshot test: SpellEditor with all structured fields in light mode. **[Blocked until `update-spell-editor-structured-data`]**
+
+- [ ] Screenshot test: StructuredFieldInput states.
+- [ ] Screenshot test: SpellEditor with all structured fields in dark mode.
+- [ ] Screenshot test: SpellEditor with all structured fields in light mode.
 - [ ] Screenshot test: Empty library state in dark and light themes.
 - [ ] Screenshot test: Hash display collapsed and expanded.
 
+---
+
 ## data-testid Definitions
-All new interactive elements MUST have a `data-testid` per project standards. Defined names:
+
+All new interactive elements MUST have a `data-testid` per project standards. These testids apply in the chunk where the corresponding UI is introduced.
+
+Validation error testids MUST stay consistent with the migrated tests in Chunk 6. Existing named examples include `spell-name-error`, `error-school-required-arcane`, `error-sphere-required-divine`, and `error-tradition-conflict`; do not collapse these into a contradictory generic naming rule.
 
 | Spec Area | Component / Element | data-testid |
 |---|---|---|
@@ -189,5 +287,5 @@ All new interactive elements MUST have a `data-testid` per project standards. De
 | library | Empty library - "Import Spells" CTA | `empty-library-import-button` |
 | library | Empty search - reset filters CTA | `empty-search-reset-button` |
 | library | Empty character spellbook - "Add Spell" CTA | `empty-character-add-spell-button` |
-| frontend-standards | Validation error for a field | `{fieldname}-error` |
+| frontend-standards | Validation error for a field | Use the concrete field/error testid contract exercised by the migrated tests |
 | theme-and-feedback | Tooltip | `{element}-tooltip` |

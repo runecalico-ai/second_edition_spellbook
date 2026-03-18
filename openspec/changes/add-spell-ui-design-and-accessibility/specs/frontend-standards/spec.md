@@ -78,3 +78,18 @@ Structured inputs and grouped checkboxes SHALL preserve comprehension when horiz
 - **WHEN** grouped scalar, unit, or checkbox controls no longer fit comfortably in one row
 - **THEN** the controls SHALL reflow into a readable stacked or wrapped layout
 - **AND** labels, previews, and validation text SHALL remain visually associated with the correct control group
+
+### Requirement: Documentation Synchronization
+Application documentation SHALL be updated when this change alters shared UI conventions or user-visible spell and library workflows.
+
+#### Scenario: Shared convention changes
+- **WHEN** this change modifies shared frontend behavior such as theme handling, notification patterns, live-region behavior, keyboard expectations, or accessibility conventions
+- **THEN** the affected developer and architecture documentation SHALL be updated to reflect the final implementation and guidance
+
+#### Scenario: User-visible workflow changes
+- **WHEN** this change modifies spell-editor or library behavior that users rely on
+- **THEN** the affected user documentation SHALL be updated so the documented workflow matches the shipped application behavior
+
+#### Scenario: Verification guidance changes
+- **WHEN** this change alters verification expectations, E2E coverage, or visual-regression workflow
+- **THEN** the affected testing documentation SHALL be updated so future verification follows the current standard

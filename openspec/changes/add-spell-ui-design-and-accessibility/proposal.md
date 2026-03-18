@@ -29,9 +29,8 @@ This change is now split across three spec areas:
 
 3. **`theme-and-feedback`**
    Covers global theme and transient UI patterns:
-   - light/dark/system theme behavior
-   - theme toggle accessibility
-   - tooltip usage rules
+   - light/dark/system theme behavior via Settings page (native select + follow-system checkbox)
+   - theme selection accessibility
    - non-modal notification patterns
    - live-region announcements
    - theme-oriented visual regression expectations

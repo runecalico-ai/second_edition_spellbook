@@ -22,32 +22,35 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 - [ ] Add `darkMode: 'class'` to `apps/desktop/tailwind.config.js`.
 - [ ] Create Zustand theme store (`apps/desktop/src/store/useTheme.ts`):
   - [ ] Theme state: `'light' | 'dark' | 'system'`
-  - [ ] Cycle function: advance through `dark -> light -> system -> dark`
+  - [ ] `setTheme(value: ThemeMode)` function to update theme state explicitly
   - [ ] Persist to localStorage with key `'spellbook-theme'`
   - [ ] Initialize from localStorage or fall back to `'system'`
 - [ ] Add theme initialization script to `apps/desktop/index.html`:
   - [ ] Inline script in `<head>` before React hydration
   - [ ] Resolve `'system'` or absence via `prefers-color-scheme`
   - [ ] Apply theme class immediately to avoid flash of incorrect theme
-- [ ] Create `ThemeToggle` component (`apps/desktop/src/ui/components/ThemeToggle.tsx`):
-  - [ ] Inline SVG icons for all three states
-  - [ ] Accessible name describes the action the control will perform
-  - [ ] Keyboard accessible
-  - [ ] Visible focus indicator
-- [ ] Integrate theme toggle into `apps/desktop/src/ui/App.tsx`.
+- [ ] Create `SettingsPage` component (`apps/desktop/src/ui/SettingsPage.tsx`):
+  - [ ] "Appearance" section containing a native `<select>` with Light and Dark options
+  - [ ] "Follow system preference" checkbox below the select
+  - [ ] When checkbox is checked: select is disabled and displays the current OS-resolved theme value
+  - [ ] When checkbox is unchecked: select is active and defaults to the currently-resolved theme (no visual flash on transition)
+  - [ ] Accessible `<label>` elements for both controls
+- [ ] Register `/settings` route in the application router pointing to `SettingsPage`.
+- [ ] Add a gear icon (⚙) button at the far right of the `apps/desktop/src/ui/App.tsx` header that navigates to `/settings`.
 - [ ] Update `apps/desktop/src/main.tsx` to react to OS theme changes when theme is `'system'`.
 
 #### Shared transient feedback infrastructure
 - [ ] Build a minimal non-modal notification component.
-- [ ] Use semantic status behavior: `role="status"` / polite announcement where appropriate.
-- [ ] Implement fixed portal positioning with readable stacking and bounded visible count.
+- [ ] Use semantic status behavior: `role="status"` / `aria-live="polite"` on the notification portal.
+- [ ] Position the notification container fixed at the bottom-right of the viewport.
+- [ ] Stack toasts upward; limit visible count to a maximum of 3 (oldest removed when a fourth arrives).
+- [ ] Auto-dismiss each toast after its type duration (default 3000ms for success, warning, and error; store duration per type so each can be changed independently).
+- [ ] Always allow manual dismissal via a close (×) button on each toast.
 - [ ] Mount the notification container in `apps/desktop/src/ui/App.tsx` alongside root-level modal infrastructure.
 
-#### Shared live-region and tooltip infrastructure
+#### Shared live-region infrastructure
 - [ ] Mount a hidden `<div aria-live="polite">` in `apps/desktop/src/ui/App.tsx` for AT-only theme change announcements.
 - [ ] When the theme changes, write the new mode name to the hidden live region (for example: "Dark mode", "Light mode", "System mode") without showing a visible toast.
-- [ ] Build a minimal tooltip implementation only for supplemental hints.
-- [ ] Do not rely on tooltips as the sole source of critical information.
 
 ---
 
@@ -64,8 +67,8 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 - [ ] Preserve modal/dialog usage for destructive confirmations, blocking decisions, and rare high-severity errors only.
 
 #### Validation feedback and timing
-- [ ] Apply existing shared animation utilities to conditional field enter/exit transitions when controlling fields change.
-- [ ] Ensure newly relevant fields animate into view and hidden fields collapse without leaving visual gaps.
+- [ ] Apply `animate-in fade-in` to conditional fields when they mount (enter only — no exit animation).
+- [ ] Ensure newly relevant fields fade into view; hidden fields unmount instantly without leaving visual gaps.
 - [ ] Render inline errors adjacent to invalid fields.
 - [ ] Use specific field messages rather than generic "Invalid value" text.
 - [ ] Apply consistent invalid-state styling and motion using existing shared animation utilities.
@@ -79,20 +82,21 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 - [ ] Keep fix-in-place validation feedback inline rather than modal.
 
 #### Save workflow feedback
-- [ ] If save work becomes perceptible, show inline progress feedback on the save action.
+- [ ] If the save operation exceeds 300ms, change the save button label to "Saving…" and disable it for the duration. Below 300ms the operation completes before the state becomes visible.
 - [ ] Keep the user in context until the save completes.
 - [ ] Trigger transient success feedback through the notification store as save completes.
 - [ ] Return the user to the Library view after save.
 - [ ] Ensure the success notification renders on the Library view after navigation rather than only on the editor.
 - [ ] Ensure the saved spell is discoverable in the Library after navigation.
-- [ ] If the save action is disabled, provide a discoverable explanation that does not rely on hover-only interaction.
+- [ ] After the first failed submit attempt, show a hint near the save button explaining why it is disabled (e.g. "Fix the errors above to save"). The hint must not appear while the form is pristine.
 
 ### frontend-standards
 
 #### Error identification and announcement model
-- [ ] Mark invalid fields programmatically.
-- [ ] Ensure error text is associated with the owning field.
-- [ ] Choose and apply a consistent error announcement model: field-level, global, or hybrid.
+- [ ] Mark invalid fields with `aria-invalid="true"` when they are in an error state.
+- [ ] Associate each error message with its field via `aria-describedby`.
+- [ ] On first failed submit attempt, move focus to the first invalid field so screen readers announce its label and error text naturally.
+- [ ] Apply this hybrid model consistently across the spell editor: field-level association always present, focus-on-submit for the initial blocked-save announcement.
 
 ### theme-and-feedback
 
@@ -112,6 +116,8 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 #### Hash display
 - [ ] Restyle the existing hash display in `apps/desktop/src/ui/SpellEditor.tsx` as a dedicated card in the spell detail header area.
 - [ ] Preserve collapsed and expanded states.
+- [ ] Show 16 characters in the collapsed state (previously 8).
+- [ ] Remove the `title` attribute from the hash `<code>` element.
 - [ ] Replace modal-based copy confirmation with transient non-modal success feedback plus a polite live-region announcement.
 
 #### Spell detail loading boundaries
@@ -119,11 +125,13 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 - [ ] If a route load is perceptible, ensure the loading state is intentional and stable.
 
 #### Empty states
-- [ ] Add an empty-library state for the case where no spells exist at all.
+All three empty states share a common skeleton: heading, one-line description, CTA buttons (no icon). Copy is defined in design.md Decision 16.
+
+- [ ] Add an empty-library state: heading "No Spells Yet", description "Your spell library is empty. Create your first spell or import spells from a file."
 - [ ] Add CTA buttons: "Create Spell" and "Import Spells".
-- [ ] Add an empty-search state for the case where filters or query produce no results.
-- [ ] Provide a clear reset action.
-- [ ] Add a dedicated empty state for the character spellbook flow.
+- [ ] Add an empty-search state: heading "No Results", description "No spells match your current search or filters."
+- [ ] Provide a clear reset action ("Reset Filters").
+- [ ] Add a dedicated empty state for the character spellbook flow: heading "No Spells Added", description "This character's spellbook is empty."
 - [ ] Add CTA: "Add Spell from Library".
 
 ### theme-and-feedback
@@ -233,7 +241,7 @@ Safe, unchanged modal coverage per spec:
 - [ ] Test: Validation error handling.
 - [ ] Test: Conditional field transitions animate and collapse cleanly when controlling fields change.
 - [ ] Test: Keyboard-only navigation.
-- [ ] Test: Theme switching workflow.
+- [ ] Test: Theme switching workflow (navigate to `/settings` via gear icon, use theme select and follow-system checkbox, verify immediate application and persistence across reload).
 - [ ] Test: Empty library state.
 - [ ] Test: Empty search state.
 - [ ] Test: Empty character spellbook state.
@@ -276,7 +284,9 @@ Validation error testids MUST stay consistent with the migrated tests in Chunk 6
 
 | Spec Area | Component / Element | data-testid |
 |---|---|---|
-| theme-and-feedback | Theme toggle button | `theme-toggle-button` |
+| theme-and-feedback | Gear icon / settings entry point | `settings-gear-button` |
+| theme-and-feedback | Settings page theme select | `settings-theme-select` |
+| theme-and-feedback | Settings page follow-system checkbox | `settings-follow-system-checkbox` |
 | library | Hash display | `spell-detail-hash-display` |
 | library | Hash copy button | `spell-detail-hash-copy` |
 | library | Hash expand/collapse button | `spell-detail-hash-expand` |
@@ -288,4 +298,4 @@ Validation error testids MUST stay consistent with the migrated tests in Chunk 6
 | library | Empty search - reset filters CTA | `empty-search-reset-button` |
 | library | Empty character spellbook - "Add Spell" CTA | `empty-character-add-spell-button` |
 | frontend-standards | Validation error for a field | Use the concrete field/error testid contract exercised by the migrated tests |
-| theme-and-feedback | Tooltip | `{element}-tooltip` |
+| frontend-standards | Accessible label for settings select | visible `<label>` — no testid needed |

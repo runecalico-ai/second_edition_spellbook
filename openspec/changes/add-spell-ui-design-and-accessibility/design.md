@@ -66,13 +66,13 @@ Key decisions:
 - Theme state is `light | dark | system`.
 - First load resolves from OS preference when no explicit preference exists.
 - Explicit theme choice persists locally and updates immediately.
-- A single theme toggle cycles through supported states and exposes an accessible action label.
+- Theme preference is set through a dedicated Settings page (`/settings`) reached via a gear icon in the app header. The page exposes a native `<select>` for Light / Dark choice and a "Follow system preference" checkbox. When the checkbox is checked the select is disabled and reflects the current OS-resolved theme; when unchecked the select is active and defaults to the currently-resolved theme so no visual flash occurs on transition.
 - Short-lived success/warning/error feedback uses a non-modal notification pattern where no immediate decision is required.
-- Tooltips remain supplemental; they do not become the only way to understand critical state.
 - Focus-preserving events such as clipboard copy use live-region announcements.
+- Tooltip infrastructure is out of scope for this change (see Decision 10).
 
 Why this split matters:
-- Theme, notifications, tooltips, and live regions are shared UI patterns, not library-only behavior.
+- Theme, notifications, and live regions are shared UI patterns, not library-only behavior.
 - This keeps global behavior out of feature-specific specs.
 
 ## Decisions
@@ -144,21 +144,15 @@ Why this split matters:
 - Repeated modal interruption degrades flow in editor-heavy workflows
 - Non-modal feedback preserves context while remaining accessible through status and live-region patterns
 
-### 6. Tooltip Scope Stays Narrow
-**Decision**: Tooltips are allowed only as supplemental hints.
-
-**Rationale**:
-- Critical meaning must not depend on hover behavior
-- Disabled-action explanations and copy hints may benefit from tooltips, but keyboard and assistive technology users still need an equivalent discoverable path
-
-### 7. Loading and Save Guidance Must Stay User-Facing
+### 6. Loading and Save Guidance Must Stay User-Facing
 **Decision**: The design describes when feedback should appear to users, not backend contracts such as null-hash fallback persistence.
 
 **Rationale**:
 - This change is about UX and interaction quality
 - Backend timeout behavior belongs in a backend or persistence-oriented change if it needs to exist at all
+- A 300ms threshold keeps the "Saving…" state out of the fast path while providing a safety net on slow machines
 
-### 8. Two-Channel Live-Region Model
+### 7. Two-Channel Live-Region Model
 **Decision**: Maintain two distinct announcement channels rather than a single mechanism.
 
 | Channel | Implementation | Used for |
@@ -169,11 +163,91 @@ Why this split matters:
 **Rationale**:
 - Theme changes are intentionally silent-visual — the user can see the theme change, so no toast is needed. AT users still require an announcement.
 - Adding `aria-live` to the toast container handles all other cases because every toast is a meaningful status event.
+- Validation errors on first submit are announced by moving focus to the first invalid field — the AT reads the field label and its associated error text naturally via `aria-invalid` + `aria-describedby`. No third live region is needed.
 - Two small, purpose-scoped mechanisms are cleaner than a single mechanism that requires per-event routing logic.
 
 **Alternatives considered**:
 - Single hidden live region for everything: loses the visual + AT alignment for toasts
 - Toast container only with `aria-live`: works for all cases except the silent-visual theme announcement
+- Third live region for validation summary ("N errors found"): replaced by focus-to-first-field, which is more immediately actionable
+
+### 8. Settings Route Replaces Theme Toggle
+**Decision**: Theme preference is surfaced through a dedicated `/settings` route rather than a cycling toggle in the app header.
+
+**Rationale**:
+- A single-purpose toggle is limited to the current three-state cycle and cannot grow without redesign
+- A settings route is the conventional pattern for Tauri/Electron desktop apps (VS Code, Obsidian) and scales naturally when Backup/Vault/Restore move in later
+- Backup/Vault/Restore remain in the header for this change and will be consolidated into Settings in a dedicated follow-up
+
+**Entry point**: A gear icon (⚙) button at the far right of the app header navigates directly to `/settings`.
+
+### 9. Settings Page Theme Selection Interaction
+**Decision**: The Appearance section uses a native `<select>` for Light / Dark choice paired with a "Follow system preference" checkbox.
+
+**Rationale**:
+- The app has no existing custom dropdown/popover component; native `<select>` is accessible out of the box and consistent with the no-new-dependencies policy
+- Separating "Follow system" as a checkbox (rather than a third select option) makes the distinction between a *preference* (follow OS) and a *theme* (Light / Dark) semantically clearer
+- When the checkbox is checked: select is disabled and reflects the current OS-resolved theme (read-only context)
+- When the checkbox is unchecked: select is active and defaults to the currently-resolved theme, ensuring no visual flash on transition
+
+**Store**: `useTheme` Zustand store retains `'light' | 'dark' | 'system'` state. The cycle function is removed; state is set explicitly via `setTheme(value: ThemeMode)`.
+
+### 10. Tooltips Out of Scope
+**Decision**: Tooltip infrastructure is not implemented in this change.
+
+**Rationale**:
+- Every originally-identified tooltip use case was resolved by another mechanism (toast, inline text, settings page)
+- Building tooltip infrastructure for zero concrete uses would be premature
+
+### 11. Validation Submit Behavior: Focus to First Invalid Field
+**Decision**: On a failed first submit attempt, focus moves to the first invalid field.
+
+**Rationale**:
+- The AT reads the field label and its `aria-describedby` error text naturally — more immediately actionable than an abstract count announcement
+- Eliminates the need for a third live region; the two-channel model is preserved
+- Standard browser/AT pattern for accessible form validation
+
+**Hybrid model**:
+- Every field always carries `aria-invalid` + `aria-describedby` pointing to its error element (field-level)
+- On first submit: focus moves to first invalid field (replaces global live region announcement)
+- Blur/change: errors appear and clear inline; dependent fields revalidate immediately
+
+### 12. Disabled Save Hint Timing
+**Decision**: The save button hint ("Fix the errors above to save") appears only after the first failed submit attempt, not whenever the button is in a disabled state.
+
+**Rationale**:
+- The hint is only meaningful in context — when the user has already seen the inline errors
+- Showing it unconditionally while the form is pristine would be noisy and premature
+
+### 13. Conditional Field Animation: Enter Only
+**Decision**: Conditional fields use `animate-in fade-in` on mount; unmount is instant with no exit animation.
+
+**Rationale**:
+- Only `fade-in` and `zoom-in-95` keyframes exist in `index.css`; no exit keyframe is defined and no animation plugin is installed
+- Adding exit animation infrastructure for this use case would exceed the scope of a polish change
+- Instant unmount is visually acceptable for conditional field hide behavior
+
+### 14. Hash Display: 16-Character Truncation, No Native Tooltip
+**Decision**: Collapsed hash state shows 16 characters (up from 8). The `title` attribute is removed from the hash `<code>` element.
+
+**Rationale**:
+- 8 characters is barely a fingerprint; 16 provides meaningful visual identity without overwhelming the card
+- Tooltip infrastructure is out of scope; the Expand button is the explicit mechanism for viewing the full hash
+- Removing `title` is consistent with the decision to avoid hover-only patterns
+
+### 15. Empty State Skeleton: Heading + Description + CTAs
+**Decision**: All three empty states (empty library, empty search, empty character spellbook) share a common skeleton: heading, one-line description, and CTA buttons. No icon or illustration.
+
+**Rationale**:
+- A shared skeleton is easier to implement and maintain than distinct layouts
+- Icons would require inline SVG authoring with no existing icon library; the description line provides sufficient context without them
+
+**Copy**:
+| State | Heading | Description | CTAs |
+|-------|---------|-------------|------|
+| Empty library | "No Spells Yet" | "Your spell library is empty. Create your first spell or import spells from a file." | Create Spell, Import Spells |
+| Empty search | "No Results" | "No spells match your current search or filters." | Reset Filters |
+| Empty character spellbook | "No Spells Added" | "This character's spellbook is empty." | Add Spell from Library |
 
 ## Verification Strategy
 
@@ -223,7 +297,9 @@ If accessibility guidance remains embedded in feature-specific docs only, implem
 ### Phase 1: Spec-Aligned Infrastructure
 1. Add root theme support (`darkMode: 'class'`, theme store, theme bootstrap script)
 2. Add reusable non-modal notification support
-3. Add any minimal tooltip/live-region utilities needed by touched flows
+3. Add hidden live-region utility for theme change announcements
+4. Create `/settings` route and `SettingsPage` with Appearance section (theme select + follow-system checkbox)
+5. Add gear icon entry point to app header
 
 ### Phase 2: Spell and Library UX
 1. Refine spell-editor validation presentation

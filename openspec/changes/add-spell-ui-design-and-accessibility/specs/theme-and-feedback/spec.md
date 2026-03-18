@@ -18,13 +18,19 @@ The application SHALL support explicit Light, Dark, and System theme modes.
 - **WHEN** the theme mode is System and the operating system preference changes
 - **THEN** the application SHALL update the active theme without requiring a reload
 
-### Requirement: Theme Toggle Accessibility
-The theme toggle SHALL expose a clear state transition and be operable by keyboard and assistive technology.
+### Requirement: Theme Selection Accessibility
+The theme selection controls in the Settings page SHALL be operable by keyboard and assistive technology.
 
-#### Scenario: Toggle activation
-- **WHEN** the user focuses the theme toggle and activates it with keyboard or pointer input
-- **THEN** the control SHALL move to the next supported theme mode
-- **AND** the control SHALL expose an accessible name describing the action it will perform
+#### Scenario: Theme select activation
+- **WHEN** the user navigates to `/settings` and interacts with the theme `<select>` control
+- **THEN** the selected theme SHALL apply immediately
+- **AND** the select SHALL have an associated visible `<label>` as its accessible name
+
+#### Scenario: Follow-system checkbox
+- **WHEN** the user checks "Follow system preference"
+- **THEN** the theme `<select>` SHALL become disabled and reflect the current OS-resolved theme
+- **WHEN** the user unchecks "Follow system preference"
+- **THEN** the theme `<select>` SHALL become active and default to the currently-resolved theme
 
 #### Scenario: Theme change announcement
 - **WHEN** the user changes the theme mode
@@ -64,19 +70,6 @@ Short-lived success, warning, and error feedback SHALL use a consistent transien
 #### Scenario: Notification stacking
 - **WHEN** multiple transient notifications are visible
 - **THEN** the application SHALL keep them readable, ordered, and bounded rather than allowing unbounded accumulation
-
-### Requirement: Tooltip Pattern
-Tooltips SHALL be reserved for brief supplemental hints and SHALL not be the sole source of critical information.
-
-#### Scenario: Supplemental hint
-- **WHEN** a control benefits from a short explanatory hint
-- **THEN** a tooltip MAY provide that hint
-- **AND** the control SHALL remain understandable without hover-only interaction
-
-#### Scenario: Disabled control explanation
-- **WHEN** a disabled control needs explanation
-- **THEN** the reason MAY be exposed through a tooltip or adjacent text
-- **AND** the change SHALL ensure keyboard and assistive technology users can still discover the explanation
 
 ### Requirement: Live Region Announcements
 Transient feedback that does not move focus SHALL still be perceivable to assistive technology users.

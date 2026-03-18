@@ -84,7 +84,7 @@ These calls are NOT in scope and must NOT be changed:
   9. User fills at least one structured field included in this change
   10. User fills required descriptive content
   11. User saves
-  12. If save progress is perceptible, inline save feedback appears
+  12. If the save exceeds 300ms, the save button shows "Saving…" until the operation completes
   13. User returns to Library
   14. Transient success notification is visible on the Library view
   15. Saved spell appears in the library list
@@ -98,7 +98,7 @@ These calls are NOT in scope and must NOT be changed:
   3. Spell editor loads legacy values with the expected fallback presentation
   4. User edits the spell name
   5. User saves
-  6. If save progress is perceptible, inline save feedback appears
+  6. If the save exceeds 300ms, the save button shows "Saving…" until the operation completes
   7. User returns to Library
   8. Updated name is visible in the library list
   9. Hash display is present for the saved spell
@@ -110,7 +110,7 @@ These calls are NOT in scope and must NOT be changed:
   3. User edits one structured field covered by the dependent structured-data change
   4. Preview text updates to reflect the structured value
   5. User saves
-  6. If save progress is perceptible, inline save feedback appears
+  6. If the save exceeds 300ms, the save button shows "Saving…" until the operation completes
   7. User returns to Library
   8. Updated structured values are visible after reopening the spell
   9. Hash display is present for the saved spell
@@ -157,8 +157,9 @@ These calls are NOT in scope and must NOT be changed:
 ### Screen Reader
 - [ ] **Test: Form validation announcements**
   - GIVEN an invalid field in the editor
-  - THEN error text MUST be associated with the field
-  - AND the chosen validation-announcement model MUST behave consistently
+  - THEN error text MUST be associated with the field via `aria-describedby`
+  - AND the field MUST expose `aria-invalid="true"` when in error state
+  - AND on first failed submit attempt, focus MUST move to the first invalid field so screen readers announce its label and error text naturally
   - **Tool**: NVDA (Windows) with Chromium; add setup instructions to `docs/TESTING.md` as part of the documentation update if they are not already present
 
 ### Modal Focus
@@ -170,8 +171,14 @@ These calls are NOT in scope and must NOT be changed:
 ## Theme and Feedback Tests
 
 ### Real Theme Flow
-- [ ] **Test: Theme preference persists**
-  - User changes theme mode
+- [ ] **Test: Theme preference persists via Settings page**
+  - User opens `/settings` via the gear icon
+  - User selects "Dark" or "Light" from the theme select
+  - Preference persists across reload
+
+- [ ] **Test: Follow system preference checkbox**
+  - User checks "Follow system preference" — select becomes disabled, theme reflects OS
+  - User unchecks — select becomes active, defaults to currently-resolved theme (no visual flash)
   - Preference persists across reload
 
 - [ ] **Test: System preference behavior**
@@ -179,7 +186,8 @@ These calls are NOT in scope and must NOT be changed:
   - In System mode, OS preference changes are reflected in-session
 
 - [ ] **Test: Theme change announcement**
-  - Changing the theme emits the expected non-disruptive announcement for assistive technology users
+  - Changing the theme via the Settings page emits the expected non-disruptive announcement through the hidden live region for assistive technology users
+  - No visible toast appears for theme changes
 
 ### Transient Feedback
 - [ ] **Test: Non-modal notifications**

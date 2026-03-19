@@ -302,7 +302,7 @@ Expected: PASS
 - [ ] **Step 1: Write failing component tests**
 
 Cover:
-- viewport container renders with `role="status"` and `aria-live="polite"`
+- viewport root exposes polite status semantics via a semantic `output` live region with `aria-live="polite"`
 - toasts stack upward from bottom-right
 - toast testids match spec:
   - `toast-notification-success`
@@ -320,7 +320,7 @@ Expected: FAIL because the component does not exist yet
 
 Requirements:
 - fixed bottom-right container
-- root semantics on the viewport, not per-toast
+- root live-region semantics on the viewport, not per-toast
 - render current store entries
 - schedule dismiss timers with cleanup
 - stack upward using flex column-reverse or equivalent
@@ -381,7 +381,7 @@ Scenarios:
 - follow-system disables the select and reflects resolved theme
 - in System mode, changing the browser color scheme in-session updates the applied theme
 - theme changes update the hidden live region without rendering a visible theme toast
-- notification viewport exposes `role="status"` / `aria-live="polite"` when a test notification-producing flow is triggered
+- notification viewport exposes semantic polite live-region behavior at the root (`output` with `aria-live="polite"`) when a notification-producing flow is triggered
 
 - [ ] **Step 2: Run the new E2E spec to confirm failure**
 

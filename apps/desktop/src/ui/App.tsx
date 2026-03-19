@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "classnames";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import type { ShowModalOptions } from "../store/useModal";
 import { useModal } from "../store/useModal";
+import { useTheme } from "../store/useTheme";
 import Modal from "./components/Modal";
+import NotificationViewport from "./components/NotificationViewport";
 import {
   formatVaultIntegritySummary,
   getVaultSettings,
@@ -84,8 +86,22 @@ export function createVaultStartupFailureModal(
   };
 }
 
+export function getThemeAnnouncement(mode: "light" | "dark" | "system") {
+  if (mode === "light") {
+    return "Light mode";
+  }
+
+  if (mode === "dark") {
+    return "Dark mode";
+  }
+
+  return "System mode";
+}
+
 export default function App() {
   const { pathname } = useLocation();
+  const themeMode = useTheme((state) => state.mode);
+  const resolvedTheme = useTheme((state) => state.resolvedTheme);
   const {
     alert: modalAlert,
     confirm: modalConfirm,
@@ -93,16 +109,18 @@ export default function App() {
     showModalIfIdle,
     hideModal,
   } = useModal();
+  const [themeAnnouncement, setThemeAnnouncement] = useState(() => getThemeAnnouncement(themeMode));
+  const previousResolvedTheme = useRef(resolvedTheme);
 
   const Tab = ({ to, label }: { to: string; label: string }) => (
     <Link
       to={to}
       data-testid={`nav-link-${label.toLowerCase()}`}
       className={clsx(
-        "px-3 py-2 rounded-md",
+        "rounded-md px-3 py-2 transition-colors",
         pathname === to || (to === "/" && pathname === "/")
-          ? "bg-neutral-800"
-          : "hover:bg-neutral-800/60",
+          ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-950"
+          : "text-stone-700 hover:bg-stone-200/80 hover:text-stone-950 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-neutral-50",
       )}
     >
       {label}
@@ -199,9 +217,25 @@ export default function App() {
     };
   }, [hideModal, openVaultMaintenance, showModalIfIdle]);
 
+  useEffect(() => {
+    setThemeAnnouncement(getThemeAnnouncement(themeMode));
+  }, [themeMode]);
+
+  useEffect(() => {
+    if (themeMode === "system" && previousResolvedTheme.current !== resolvedTheme) {
+      setThemeAnnouncement(getThemeAnnouncement(resolvedTheme));
+    }
+
+    previousResolvedTheme.current = resolvedTheme;
+  }, [resolvedTheme, themeMode]);
+
   return (
-    <div className="max-w-6xl mx-auto p-4 space-y-4">
-      <header className="flex items-center justify-between">
+    <div className="min-h-screen bg-stone-50 px-4 py-4 text-stone-950 dark:bg-neutral-950 dark:text-neutral-100">
+      <div data-testid="theme-announcement-live-region" aria-live="polite" className="sr-only">
+        {themeAnnouncement}
+      </div>
+      <div className="mx-auto max-w-6xl space-y-4">
+      <header className="flex items-center justify-between rounded-2xl border border-stone-200/80 bg-white/90 px-4 py-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
         <div className="text-xl font-semibold select-none">Spellbook</div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -209,7 +243,7 @@ export default function App() {
               type="button"
               data-testid="btn-backup"
               onClick={handleBackup}
-              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+              className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 dark:bg-neutral-800 dark:hover:bg-neutral-700"
             >
               Backup
             </button>
@@ -217,7 +251,7 @@ export default function App() {
               type="button"
               data-testid="btn-vault-maintenance"
               onClick={openVaultMaintenance}
-              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+              className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 dark:bg-neutral-800 dark:hover:bg-neutral-700"
             >
               Vault
             </button>
@@ -225,7 +259,7 @@ export default function App() {
               type="button"
               data-testid="btn-restore"
               onClick={handleRestore}
-              className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+              className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 dark:bg-neutral-800 dark:hover:bg-neutral-700"
             >
               Restore
             </button>
@@ -237,11 +271,33 @@ export default function App() {
             <Tab to="/chat" label="Chat" />
             <Tab to="/export" label="Export" />
           </nav>
+          <Link
+            to="/settings"
+            data-testid="settings-gear-button"
+            aria-label="Settings"
+            className="rounded-full border border-stone-300 bg-stone-100 p-2 text-stone-900 transition-colors hover:bg-stone-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .75 1.7 1.7 0 0 1-3 0 1.7 1.7 0 0 0-1-.75 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.75-1 1.7 1.7 0 0 1 0-3 1.7 1.7 0 0 0 .75-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.75 1.7 1.7 0 0 1 3 0 1.7 1.7 0 0 0 1 .75 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c0 .38.14.75.4 1.02a1.7 1.7 0 0 1 0 2.96c-.26.27-.4.64-.4 1.02Z" />
+            </svg>
+          </Link>
         </div>
       </header>
-      <main>
+      <main className="rounded-2xl border border-stone-200/80 bg-white/80 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
         <Outlet />
       </main>
+      </div>
+      <NotificationViewport />
       <Modal />
     </div>
   );

@@ -8,6 +8,7 @@ import {
   validateSpellCastingTime,
   validateSpellDamageSpec,
 } from "../lib/parserValidation";
+import { useNotifications } from "../store/useNotifications";
 import { useModal } from "../store/useModal";
 import {
   type SpellComponents,
@@ -574,6 +575,7 @@ export default function SpellEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { alert: modalAlert, confirm: modalConfirm } = useModal();
+  const pushNotification = useNotifications((state) => state.pushNotification);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<SpellDetail>({
     name: "",
@@ -2031,9 +2033,9 @@ export default function SpellEditor() {
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(form.contentHash ?? "");
-                await modalAlert("Hash copied to clipboard.", "Copied", "success");
+                pushNotification("success", "Hash copied to clipboard.");
               } catch {
-                await modalAlert("Failed to copy hash.", "Copy Error", "error");
+                pushNotification("error", "Failed to copy hash.");
               }
             }}
             className="px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded hover:bg-neutral-700"

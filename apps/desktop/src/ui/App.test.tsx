@@ -1,7 +1,41 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createVaultStartupFailureModal, createVaultStartupWarningModal } from "./App";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { useNotifications } from "../store/useNotifications";
+import { useTheme } from "../store/useTheme";
+import App, { getThemeAnnouncement } from "./App";
+
+function resetThemeState() {
+  useTheme.setState({
+    mode: "system",
+    resolvedTheme: "light",
+  });
+}
+
+function resetNotifications() {
+  useNotifications.setState({ notifications: [] });
+}
+
+function renderAppShell(pathname = "/") {
+  return renderToStaticMarkup(
+    <MemoryRouter initialEntries={[pathname]}>
+      <Routes>
+        <Route path="/" element={<App />}>
+          <Route index element={<div>Library</div>} />
+          <Route path="settings" element={<div>Settings</div>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+}
 
 describe("createVaultStartupWarningModal", () => {
+  beforeEach(() => {
+    resetThemeState();
+    resetNotifications();
+  });
+
   it("builds an actionable startup warning modal", () => {
     const onOpenVaultMaintenance = vi.fn();
     const onDismiss = vi.fn();
@@ -64,5 +98,40 @@ describe("createVaultStartupFailureModal", () => {
 
     expect(modal.message).toEqual(['Vault integrity startup check failed: {"code":"EFAIL"}']);
     expect(modal.type).toBe("warning");
+  });
+});
+
+describe("App shell", () => {
+  beforeEach(() => {
+    resetThemeState();
+    resetNotifications();
+  });
+
+  it("renders the settings gear button with an accessible name", () => {
+    const html = renderAppShell();
+
+    expect(html).toContain('data-testid="settings-gear-button"');
+    expect(html).toContain('aria-label="Settings"');
+    expect(html).toContain('href="/settings"');
+  });
+
+  it("mounts a hidden polite live region for theme announcements", () => {
+    const html = renderAppShell();
+
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain("System mode");
+    expect(html).toContain("sr-only");
+  });
+
+  it("maps theme modes to announcement text", () => {
+    expect(getThemeAnnouncement("light")).toBe("Light mode");
+    expect(getThemeAnnouncement("dark")).toBe("Dark mode");
+    expect(getThemeAnnouncement("system")).toBe("System mode");
+  });
+
+  it("does not enqueue a visible toast when the theme changes", () => {
+    useTheme.getState().setTheme("dark");
+
+    expect(useNotifications.getState().notifications).toEqual([]);
   });
 });

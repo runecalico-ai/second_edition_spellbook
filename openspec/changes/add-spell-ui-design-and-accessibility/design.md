@@ -157,7 +157,7 @@ Why this split matters:
 
 | Channel | Implementation | Used for |
 |---------|---------------|---------|
-| Toast container | `role="status"` / `aria-live="polite"` on the notification portal | Save success, clipboard copy, all visual toasts |
+| Toast container | Semantic `<output aria-live="polite">` notification portal | Save success, clipboard copy, all visual toasts |
 | Hidden live region | A single `<div aria-live="polite">` mounted in `App.tsx`, visually hidden | Theme change announcements only |
 
 **Rationale**:

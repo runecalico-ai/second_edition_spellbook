@@ -41,7 +41,7 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 
 #### Shared transient feedback infrastructure
 - [ ] Build a minimal non-modal notification component.
-- [ ] Use semantic status behavior: `role="status"` / `aria-live="polite"` on the notification portal.
+- [ ] Use lint-safe polite status semantics on the notification portal via a semantic `<output aria-live="polite">`.
 - [ ] Position the notification container fixed at the bottom-right of the viewport.
 - [ ] Stack toasts upward; limit visible count to a maximum of 3 (oldest removed when a fourth arrives).
 - [ ] Auto-dismiss each toast after its type duration (default 3000ms for success, warning, and error; store duration per type so each can be changed independently).

@@ -20,13 +20,19 @@ The application SHALL support explicit Light, Dark, and System theme modes.
 - **WHEN** the theme mode is System and the operating system preference changes
 - **THEN** the application SHALL update the active theme without requiring a reload
 
-### Requirement: Theme Toggle Accessibility
-The theme toggle SHALL expose a clear state transition and be operable by keyboard and assistive technology.
+### Requirement: Theme Selection Accessibility
+The theme selection controls in the Settings page SHALL be operable by keyboard and assistive technology.
 
-#### Scenario: Toggle activation
-- **WHEN** the user focuses the theme toggle and activates it with keyboard or pointer input
-- **THEN** the control SHALL move to the next supported theme mode
-- **AND** the control SHALL expose an accessible name describing the action it will perform
+#### Scenario: Theme select activation
+- **WHEN** the user navigates to `/settings` and interacts with the theme `<select>` control
+- **THEN** the selected theme SHALL apply immediately
+- **AND** the select SHALL have an associated visible `<label>` as its accessible name
+
+#### Scenario: Follow-system checkbox
+- **WHEN** the user checks "Follow system preference"
+- **THEN** the theme `<select>` SHALL become disabled and reflect the current OS-resolved theme
+- **WHEN** the user unchecks "Follow system preference"
+- **THEN** the theme `<select>` SHALL become active and default to the currently-resolved theme
 
 #### Scenario: Theme change announcement
 - **WHEN** the user changes the theme mode
@@ -84,13 +90,13 @@ Tooltips SHALL be reserved for brief supplemental hints and SHALL not be the sol
 Transient feedback that does not move focus SHALL still be perceivable to assistive technology users.
 
 The application SHALL maintain two announcement channels:
-- The **transient notification container** (carries `role="status"` and `aria-live="polite"`) serves as the live region for all visual toast events, including save success, clipboard copy, and any other transient notification.
+- The **transient notification container** (implemented as a semantic `<output aria-live="polite">` notification portal) serves as the live region for all visual toast events, including save success, clipboard copy, and any other transient notification.
 - A **hidden `aria-live="polite"` region** mounted at the application root serves non-visual announcements where no visible toast is shown. Theme change confirmations use this channel.
 
 #### Scenario: Clipboard success announcement
 - **WHEN** the user copies a hash or completes another transient action that does not shift focus
 - **THEN** the application SHALL announce the success through the toast channel
-- **AND** the toast SHALL carry `role="status"` / `aria-live="polite"` so the announcement reaches assistive technology users alongside the visual confirmation
+- **AND** the toast channel SHALL use the semantic `<output aria-live="polite">` notification portal so the announcement reaches assistive technology users alongside the visual confirmation
 
 #### Scenario: Theme change announcement
 - **WHEN** the user changes the theme mode

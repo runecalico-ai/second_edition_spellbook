@@ -75,13 +75,13 @@ Short-lived success, warning, and error feedback SHALL use a consistent transien
 Transient feedback that does not move focus SHALL still be perceivable to assistive technology users.
 
 The application SHALL maintain two announcement channels:
-- The **transient notification container** (carries `role="status"` and `aria-live="polite"`) serves as the live region for all visual toast events — save success, clipboard copy, and any other transient notification.
+- The **transient notification container** (implemented as a semantic `<output aria-live="polite">` notification portal) serves as the live region for all visual toast events - save success, clipboard copy, and any other transient notification.
 - A **hidden `aria-live="polite"` region** mounted at the application root serves non-visual announcements where no visible toast is shown. Theme change confirmations use this channel.
 
 #### Scenario: Clipboard success announcement
 - **WHEN** the user copies a hash or completes another transient action that does not shift focus
 - **THEN** the application SHALL announce the success through the toast channel
-- **AND** the toast SHALL carry `role="status"` / `aria-live="polite"` so the announcement reaches assistive technology users alongside the visual confirmation
+- **AND** the toast channel SHALL use the semantic `<output aria-live="polite">` notification portal so the announcement reaches assistive technology users alongside the visual confirmation
 
 #### Scenario: Theme change announcement
 - **WHEN** the user changes the theme mode

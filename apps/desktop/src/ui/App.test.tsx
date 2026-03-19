@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createVaultStartupFailureModal, createVaultStartupWarningModal } from "./App";
+// @vitest-environment jsdom
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn().mockRejectedValue(new Error("tauri not available")),
+}));
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { useNotifications } from "../store/useNotifications";
 import { useTheme } from "../store/useTheme";
-import App, { getThemeAnnouncement } from "./App";
+import App, { createVaultStartupFailureModal, createVaultStartupWarningModal, getThemeAnnouncement } from "./App";
 
 function resetThemeState() {
   useTheme.setState({
@@ -107,6 +112,8 @@ describe("App shell", () => {
     resetNotifications();
   });
 
+  afterEach(cleanup);
+
   it("renders the settings gear button with an accessible name", () => {
     const html = renderAppShell();
 
@@ -118,7 +125,7 @@ describe("App shell", () => {
   it("mounts a hidden polite live region for theme announcements", () => {
     const html = renderAppShell();
 
-    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('data-testid="theme-announcement-live-region" aria-live="polite"');
     expect(html).toContain("System mode");
     expect(html).toContain("sr-only");
   });
@@ -129,9 +136,23 @@ describe("App shell", () => {
     expect(getThemeAnnouncement("system")).toBe("System mode");
   });
 
-  it("does not enqueue a visible toast when the theme changes", () => {
-    useTheme.getState().setTheme("dark");
+  it("does not enqueue a visible toast when the theme changes", async () => {
+    const { unmount } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<App />}>
+            <Route index element={<div>Library</div>} />
+            <Route path="settings" element={<div>Settings</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      useTheme.getState().setTheme("dark");
+    });
 
     expect(useNotifications.getState().notifications).toEqual([]);
+    unmount();
   });
 });

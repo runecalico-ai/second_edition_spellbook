@@ -3,6 +3,7 @@ import {
   THEME_STORAGE_KEY,
   createThemeStore,
   resolveThemeMode,
+  sanitizeThemeMode,
 } from "./useTheme";
 
 function createStorageMock(initialValue?: string | null) {
@@ -79,5 +80,19 @@ describe("useTheme", () => {
     expect(resolveThemeMode("dark", false)).toBe("dark");
     expect(resolveThemeMode("system", true)).toBe("dark");
     expect(resolveThemeMode("system", false)).toBe("light");
+  });
+});
+
+describe("sanitizeThemeMode", () => {
+  it("returns system for null, undefined, and unknown values", () => {
+    expect(sanitizeThemeMode(null)).toBe("system");
+    expect(sanitizeThemeMode(undefined)).toBe("system");
+    expect(sanitizeThemeMode("sepia")).toBe("system");
+  });
+
+  it("passes through valid theme values", () => {
+    expect(sanitizeThemeMode("light")).toBe("light");
+    expect(sanitizeThemeMode("dark")).toBe("dark");
+    expect(sanitizeThemeMode("system")).toBe("system");
   });
 });

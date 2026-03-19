@@ -217,6 +217,12 @@ export default function App() {
     };
   }, [hideModal, openVaultMaintenance, showModalIfIdle]);
 
+  // Theme announcement: two coordinated effects.
+  // Effect 1 announces when themeMode changes (e.g., "Dark mode", "System mode").
+  // Effect 2 announces the resolved theme when in system mode and the OS preference
+  // changes (e.g., light → dark). The `themeMode === "system"` guard in effect 2
+  // must stay in sync with effect 1 — both cover system-mode resolved-theme changes
+  // together. Do not merge these into one effect; they have separate change triggers.
   useEffect(() => {
     setThemeAnnouncement(getThemeAnnouncement(themeMode));
   }, [themeMode]);

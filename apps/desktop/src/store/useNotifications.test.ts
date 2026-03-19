@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createNotificationsStore } from "./useNotifications";
+import { createNotificationsStore, NOTIFICATION_DURATION_BY_KIND } from "./useNotifications";
 
 describe("useNotifications", () => {
   it("enqueues success, warning, and error notifications", () => {
@@ -42,12 +42,17 @@ describe("useNotifications", () => {
     ]);
   });
 
-  it("stores a duration per item and defaults it to 3000ms", () => {
+  it("assigns per-kind durations (success=3000, warning=5000, error=7000)", () => {
     const store = createNotificationsStore();
 
     store.getState().pushNotification("success", "Saved.");
+    store.getState().pushNotification("warning", "Careful.");
+    store.getState().pushNotification("error", "Failed.");
 
-    expect(store.getState().notifications[0]?.durationMs).toBe(3000);
+    const [success, warning, error] = store.getState().notifications;
+    expect(success?.durationMs).toBe(NOTIFICATION_DURATION_BY_KIND.success);
+    expect(warning?.durationMs).toBe(NOTIFICATION_DURATION_BY_KIND.warning);
+    expect(error?.durationMs).toBe(NOTIFICATION_DURATION_BY_KIND.error);
   });
 
   it("dismisses a notification by id", () => {

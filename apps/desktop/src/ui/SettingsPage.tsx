@@ -10,7 +10,6 @@ export function getSelectableThemeValue(
 }
 
 export function getThemeModeFromSystemToggle(
-  isFollowingSystem: boolean,
   resolvedTheme: ResolvedTheme,
   nextChecked: boolean,
 ): ThemeMode {
@@ -18,7 +17,7 @@ export function getThemeModeFromSystemToggle(
     return "system";
   }
 
-  return isFollowingSystem ? resolvedTheme : resolvedTheme;
+  return resolvedTheme;
 }
 
 export function SettingsPage() {
@@ -32,7 +31,7 @@ export function SettingsPage() {
   };
 
   const handleSystemToggle = (event: ChangeEvent<HTMLInputElement>) => {
-    setTheme(getThemeModeFromSystemToggle(isFollowingSystem, resolvedTheme, event.currentTarget.checked));
+    setTheme(getThemeModeFromSystemToggle(resolvedTheme, event.currentTarget.checked));
   };
 
   return (

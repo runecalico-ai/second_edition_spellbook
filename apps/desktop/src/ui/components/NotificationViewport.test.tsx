@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { useNotifications } from "../../store/useNotifications";
+import { render, cleanup } from "@testing-library/react";
+import { useNotifications, NOTIFICATION_DURATION_BY_KIND } from "../../store/useNotifications";
 import {
   NotificationViewport,
   NotificationViewportContent,
@@ -13,6 +15,8 @@ function resetNotifications() {
 
 describe("NotificationViewport", () => {
   beforeEach(resetNotifications);
+  afterEach(cleanup);
+  afterEach(() => vi.useRealTimers());
 
   it("renders a polite live-region viewport that stacks upward", () => {
     const html = renderToStaticMarkup(<NotificationViewport />);
@@ -62,7 +66,7 @@ describe("NotificationViewport", () => {
     vi.useFakeTimers();
     const dismissNotification = vi.fn();
 
-    const cleanup = scheduleNotificationDismissals(
+    const cancelTimers = scheduleNotificationDismissals(
       [
         {
           id: "toast-1",
@@ -81,8 +85,7 @@ describe("NotificationViewport", () => {
     vi.advanceTimersByTime(1);
     expect(dismissNotification).toHaveBeenCalledWith("toast-1");
 
-    cleanup();
-    vi.useRealTimers();
+    cancelTimers();
   });
 
   it("preserves remaining time when the list changes", () => {
@@ -98,11 +101,11 @@ describe("NotificationViewport", () => {
       createdAtMs: Date.now(),
     };
 
-    let cleanup = scheduleNotificationDismissals([first], dismissNotification);
+    let cancelTimers = scheduleNotificationDismissals([first], dismissNotification);
     vi.advanceTimersByTime(1000);
-    cleanup();
+    cancelTimers();
 
-    cleanup = scheduleNotificationDismissals(
+    cancelTimers = scheduleNotificationDismissals(
       [
         first,
         {
@@ -122,7 +125,22 @@ describe("NotificationViewport", () => {
     vi.advanceTimersByTime(1);
     expect(dismissNotification).toHaveBeenCalledWith("toast-1");
 
-    cleanup();
-    vi.useRealTimers();
+    cancelTimers();
+  });
+
+  it("does not fire dismiss timer after unmount", () => {
+    vi.useFakeTimers();
+
+    useNotifications.getState().pushNotification("success", "Saved.");
+
+    const { unmount } = render(<NotificationViewport />);
+
+    unmount();
+
+    vi.advanceTimersByTime(NOTIFICATION_DURATION_BY_KIND.success);
+
+    const { notifications } = useNotifications.getState();
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].kind).toBe("success");
   });
 });

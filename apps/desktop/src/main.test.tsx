@@ -9,12 +9,21 @@ function createRootElementStub() {
     dataset: {} as DOMStringMap,
     classList: {
       toggle(name: string, force?: boolean) {
-        if (force) {
+        if (force === true) {
           classNames.add(name);
           return true;
         }
-        classNames.delete(name);
-        return false;
+        if (force === false) {
+          classNames.delete(name);
+          return false;
+        }
+        // force === undefined: true toggle behavior
+        if (classNames.has(name)) {
+          classNames.delete(name);
+          return false;
+        }
+        classNames.add(name);
+        return true;
       },
       contains(name: string) {
         return classNames.has(name);

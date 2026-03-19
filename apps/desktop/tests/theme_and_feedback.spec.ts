@@ -1,8 +1,9 @@
+import type { Page } from "@playwright/test";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
-async function waitForResolvedTheme(page: import("@playwright/test").Page, expectedTheme: "light" | "dark") {
+async function waitForResolvedTheme(page: Page, expectedTheme: "light" | "dark") {
   await page.waitForFunction(
     (theme) => document.documentElement.dataset.theme === theme,
     expectedTheme,
@@ -12,7 +13,7 @@ async function waitForResolvedTheme(page: import("@playwright/test").Page, expec
   await expect(page.locator("html")).toHaveAttribute("data-theme", expectedTheme);
 }
 
-async function openSettings(page: import("@playwright/test").Page) {
+async function openSettings(page: Page) {
   await page.getByTestId("settings-gear-button").click();
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible({

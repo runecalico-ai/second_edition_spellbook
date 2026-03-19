@@ -16,8 +16,13 @@ interface NotificationsState {
   dismissNotification: (id: string) => void;
 }
 
-export const DEFAULT_NOTIFICATION_DURATION_MS = 3000;
 export const MAX_VISIBLE_NOTIFICATIONS = 3;
+
+export const NOTIFICATION_DURATION_BY_KIND: Record<NotificationKind, number> = {
+  success: 3000,
+  warning: 5000,
+  error: 7000,
+};
 
 function createNotificationId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -36,7 +41,7 @@ export function createNotificationsStore() {
         id: createNotificationId(),
         kind,
         message,
-        durationMs: DEFAULT_NOTIFICATION_DURATION_MS,
+        durationMs: NOTIFICATION_DURATION_BY_KIND[kind],
         createdAtMs,
       };
 

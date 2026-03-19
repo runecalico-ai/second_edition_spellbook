@@ -21,9 +21,8 @@ import SpellEditor from "./ui/SpellEditor";
 import SpellbookBuilder from "./ui/SpellbookBuilder";
 import SettingsPage from "./ui/SettingsPage";
 
-// This wrapper is now responsible for passing the ID to SpellEditor,
-// allowing SpellEditor to manage its own state and data fetching based on the ID prop,
-// rather than forcing a remount with the 'key' prop.
+// Uses key={id} to force a full remount of SpellEditor when the spell ID changes,
+// resetting all local state and ensuring a clean render for each spell.
 function SpellEditorWrapper() {
   const { id } = useParams();
   return <SpellEditor key={id} />;

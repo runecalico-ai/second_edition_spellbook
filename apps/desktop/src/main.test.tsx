@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { applyPreHydrationTheme } from "./theme/preHydrationTheme";
 import { createThemeStore } from "./store/useTheme";
 import { appRoutes, attachThemeRuntime } from "./main";
 
@@ -87,6 +88,21 @@ describe("main", () => {
 
     expect(rootElement.classList.contains("dark")).toBe(false);
     expect(rootElement.dataset.theme).toBe("light");
+
+    detach();
+  });
+
+  it("keeps pre-hydration and runtime theme application consistent for explicit dark", () => {
+    const rootElement = createRootElementStub();
+    applyPreHydrationTheme(rootElement as unknown as HTMLElement, "dark", false);
+
+    const store = createThemeStore(false);
+    store.getState().setTheme("dark");
+    const mediaQueryList = createMediaQueryListStub(false);
+    const detach = attachThemeRuntime({ rootElement, mediaQueryList, store });
+
+    expect(rootElement.dataset.theme).toBe("dark");
+    expect(rootElement.classList.contains("dark")).toBe(true);
 
     detach();
   });

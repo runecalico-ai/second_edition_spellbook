@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, fireEvent } from "@testing-library/react";
 import { useNotifications, NOTIFICATION_DURATION_BY_KIND } from "../../store/useNotifications";
 import {
   NotificationViewport,
@@ -60,6 +60,39 @@ describe("NotificationViewport", () => {
     expect(html).toContain('data-testid="toast-notification-warning"');
     expect(html).toContain('data-testid="toast-notification-error"');
     expect(html).toContain('aria-label="Dismiss notification"');
+    expect(html).toContain("×");
+  });
+
+  it("removes a toast when its dismiss control is activated", () => {
+    const dismissNotification = vi.fn();
+    const { getAllByTestId } = render(
+      <NotificationViewportContent
+        notifications={[
+          {
+            id: "toast-dismiss-1",
+            kind: "success",
+            message: "Saved.",
+            durationMs: 3000,
+            createdAtMs: 0,
+          },
+        ]}
+        dismissNotification={dismissNotification}
+      />,
+    );
+
+    fireEvent.click(getAllByTestId("toast-dismiss-button")[0]);
+
+    expect(dismissNotification).toHaveBeenCalledWith("toast-dismiss-1");
+  });
+
+  it("clears the store when dismiss is clicked on the live viewport", () => {
+    useNotifications.getState().pushNotification("success", "Saved.");
+    expect(useNotifications.getState().notifications).toHaveLength(1);
+
+    const { getByTestId } = render(<NotificationViewport />);
+    fireEvent.click(getByTestId("toast-dismiss-button"));
+
+    expect(useNotifications.getState().notifications).toHaveLength(0);
   });
 
   it("auto-dismisses notifications using their configured durations", () => {

@@ -155,4 +155,43 @@ describe("App shell", () => {
     expect(useNotifications.getState().notifications).toEqual([]);
     unmount();
   });
+
+  it("announces System mode when switching from explicit mode to system", async () => {
+    useTheme.setState({ mode: "light", resolvedTheme: "light" });
+    const { getByTestId } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<App />}>
+            <Route index element={<div>Library</div>} />
+            <Route path="settings" element={<div>Settings</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      useTheme.getState().setTheme("system");
+    });
+
+    expect(getByTestId("theme-announcement-live-region").textContent?.trim()).toBe("System mode");
+  });
+
+  it("announces resolved light or dark in system mode when the OS preference changes", async () => {
+    const { getByTestId } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<App />}>
+            <Route index element={<div>Library</div>} />
+            <Route path="settings" element={<div>Settings</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      useTheme.getState().syncResolvedTheme(true);
+    });
+
+    expect(getByTestId("theme-announcement-live-region").textContent?.trim()).toBe("Dark mode");
+  });
 });

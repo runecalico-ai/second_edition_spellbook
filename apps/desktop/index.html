@@ -7,7 +7,12 @@
     <script>
       (() => {
         const storageKey = "spellbook-theme";
-        const storedValue = window.localStorage.getItem(storageKey);
+        let storedValue = null;
+        try {
+          storedValue = window.localStorage.getItem(storageKey);
+        } catch {
+          storedValue = null;
+        }
         const mode =
           storedValue === "light" || storedValue === "dark" || storedValue === "system"
             ? storedValue

@@ -52,11 +52,12 @@ export function NotificationViewportContent({
             <p className="flex-1 text-sm font-medium">{notification.message}</p>
             <button
               type="button"
+              data-testid="toast-dismiss-button"
               aria-label="Dismiss notification"
-              className="rounded-md border border-current/20 px-2 py-1 text-xs font-semibold"
+              className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-md border border-current/20 px-2 text-sm font-semibold leading-none"
               onClick={() => dismissNotification(notification.id)}
             >
-              Close
+              ×
             </button>
           </div>
         ))}

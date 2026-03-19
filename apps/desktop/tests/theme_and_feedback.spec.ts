@@ -58,6 +58,33 @@ test.describe("theme and feedback foundations", () => {
     await waitForResolvedTheme(page, "dark");
   });
 
+  test("announces System mode when re-enabling follow-system after an explicit theme", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.evaluate(() => {
+      window.localStorage.removeItem("spellbook-theme");
+    });
+    await page.reload();
+
+    await openSettings(page);
+
+    const themeSelect = page.getByTestId("settings-theme-select");
+    const followSystemCheckbox = page.getByTestId("settings-follow-system-checkbox");
+    const themeLiveRegion = page.getByTestId("theme-announcement-live-region");
+
+    await followSystemCheckbox.uncheck();
+    await themeSelect.selectOption("dark");
+    await waitForResolvedTheme(page, "dark");
+
+    await followSystemCheckbox.check();
+    await expect(followSystemCheckbox).toBeChecked();
+    await expect(themeSelect).toBeDisabled();
+    await expect(themeLiveRegion).toHaveText("System mode");
+  });
+
   test("follows the current system preference on first load and reacts to in-session changes", async ({
     appContext,
   }) => {

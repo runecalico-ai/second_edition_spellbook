@@ -111,6 +111,8 @@ export default function App() {
   } = useModal();
   const [themeAnnouncement, setThemeAnnouncement] = useState(() => getThemeAnnouncement(themeMode));
   const previousResolvedTheme = useRef(resolvedTheme);
+  const previousThemeMode = useRef(themeMode);
+  const skipNextResolvedThemeAnnouncement = useRef(false);
 
   const Tab = ({ to, label }: { to: string; label: string }) => (
     <Link
@@ -220,15 +222,31 @@ export default function App() {
   // Theme announcement: two coordinated effects.
   // Effect 1 announces when themeMode changes (e.g., "Dark mode", "System mode").
   // Effect 2 announces the resolved theme when in system mode and the OS preference
-  // changes (e.g., light → dark). The `themeMode === "system"` guard in effect 2
-  // must stay in sync with effect 1 — both cover system-mode resolved-theme changes
-  // together. Do not merge these into one effect; they have separate change triggers.
+  // changes (e.g., light → dark). When the user switches from an explicit mode back
+  // to system, effect 1 must announce "System mode" without effect 2 immediately
+  // overwriting that with the resolved OS theme on the same transition.
   useEffect(() => {
+    const priorMode = previousThemeMode.current;
+    previousThemeMode.current = themeMode;
+    if (priorMode !== "system" && themeMode === "system") {
+      skipNextResolvedThemeAnnouncement.current = true;
+    }
     setThemeAnnouncement(getThemeAnnouncement(themeMode));
   }, [themeMode]);
 
   useEffect(() => {
-    if (themeMode === "system" && previousResolvedTheme.current !== resolvedTheme) {
+    if (themeMode !== "system") {
+      previousResolvedTheme.current = resolvedTheme;
+      return;
+    }
+
+    if (skipNextResolvedThemeAnnouncement.current) {
+      skipNextResolvedThemeAnnouncement.current = false;
+      previousResolvedTheme.current = resolvedTheme;
+      return;
+    }
+
+    if (previousResolvedTheme.current !== resolvedTheme) {
       setThemeAnnouncement(getThemeAnnouncement(resolvedTheme));
     }
 

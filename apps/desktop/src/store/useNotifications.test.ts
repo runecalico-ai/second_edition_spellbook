@@ -42,7 +42,7 @@ describe("useNotifications", () => {
     ]);
   });
 
-  it("assigns per-kind durations (success=3000, warning=5000, error=7000)", () => {
+  it("assigns per-kind default durations (3000ms for success, warning, and error)", () => {
     const store = createNotificationsStore();
 
     store.getState().pushNotification("success", "Saved.");
@@ -53,6 +53,9 @@ describe("useNotifications", () => {
     expect(success?.durationMs).toBe(NOTIFICATION_DURATION_BY_KIND.success);
     expect(warning?.durationMs).toBe(NOTIFICATION_DURATION_BY_KIND.warning);
     expect(error?.durationMs).toBe(NOTIFICATION_DURATION_BY_KIND.error);
+    expect(NOTIFICATION_DURATION_BY_KIND.success).toBe(3000);
+    expect(NOTIFICATION_DURATION_BY_KIND.warning).toBe(3000);
+    expect(NOTIFICATION_DURATION_BY_KIND.error).toBe(3000);
   });
 
   it("dismisses a notification by id", () => {

@@ -20,8 +20,8 @@ export const MAX_VISIBLE_NOTIFICATIONS = 3;
 
 export const NOTIFICATION_DURATION_BY_KIND: Record<NotificationKind, number> = {
   success: 3000,
-  warning: 5000,
-  error: 7000,
+  warning: 3000,
+  error: 3000,
 };
 
 function createNotificationId() {

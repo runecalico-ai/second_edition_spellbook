@@ -25,6 +25,10 @@ describe("SettingsPage", () => {
     expect(html).toContain("Appearance");
     expect(html).toContain('data-testid="settings-theme-select"');
     expect(html).toContain('data-testid="settings-follow-system-checkbox"');
+    expect(html).toContain('value="light"');
+    expect(html).toContain("Light</option>");
+    expect(html).toContain('value="dark"');
+    expect(html).toContain("Dark</option>");
   });
 
   it("disables the select while follow system is enabled", () => {
@@ -83,13 +87,14 @@ describe("SettingsPage interactions", () => {
     );
   });
 
-  it("unchecking follow-system sets theme to resolved theme", () => {
+  it("unchecking follow-system sets theme to resolved theme and shows that value in the select", () => {
     render(<SettingsPage />);
 
     const checkbox = screen.getByTestId("settings-follow-system-checkbox");
     fireEvent.click(checkbox);
 
     expect(useTheme.getState().mode).toBe("dark");
+    expect((screen.getByTestId("settings-theme-select") as HTMLSelectElement).value).toBe("dark");
   });
 
   it("changing the select updates the explicit theme", () => {

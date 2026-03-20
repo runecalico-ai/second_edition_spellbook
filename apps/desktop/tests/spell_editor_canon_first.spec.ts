@@ -569,15 +569,13 @@ test.describe("Spell Editor canon-first default", () => {
       await expect(page.getByTestId("range-base-value")).toHaveValue("60");
     });
 
-    await test.step("Save shows error modal, canon remains synchronized, and editor stays open", async () => {
+    await test.step("Save blocked by inline epic class restriction; no validation/Save Error modal", async () => {
       await page.getByTestId("btn-save-spell").click();
 
-      const saveErrorDialog = page.getByRole("dialog");
-      await expect(saveErrorDialog).toBeVisible({ timeout: TIMEOUTS.medium });
-      await expect(saveErrorDialog.getByRole("heading", { name: "Save Error" })).toBeVisible();
-      await expect(saveErrorDialog).toContainText("Failed to save");
-      await expect(saveErrorDialog).toContainText("Arcane casters (Wizard/Mage)");
-      await handleCustomModal(page, "OK");
+      await expect(page.getByTestId("error-epic-arcane-class-restriction")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByRole("dialog")).not.toBeVisible();
 
       await expect(page.getByRole("heading", { name: "Edit Spell" })).toBeVisible();
       await expect(page).toHaveURL(/\/edit\/\d+/, { timeout: TIMEOUTS.short });
@@ -585,6 +583,36 @@ test.describe("Spell Editor canon-first default", () => {
       await expect(page.getByTestId("detail-range-input")).toHaveValue("60 ft", {
         timeout: TIMEOUTS.medium,
       });
+    });
+  });
+
+  test("Backend Save Error modal: Quest spell with Wizard-only classes still rejected by server", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Fill valid client-side Quest form with incompatible class list for server", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill("Quest Wizard Backend Reject");
+      await page.getByTestId("spell-level-input").fill("8");
+      await page.getByTestId("chk-quest").check();
+      await page.getByTestId("spell-description-textarea").fill("Backend quest class gate.");
+      await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
+      await page.getByTestId("spell-sphere-input").fill("All");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+    });
+
+    await test.step("Save reaches server and shows Save Error modal", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      const saveErrorDialog = page.getByRole("dialog");
+      await expect(saveErrorDialog).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(saveErrorDialog.getByRole("heading", { name: "Save Error" })).toBeVisible();
+      await expect(saveErrorDialog).toContainText("Failed to save");
+      await expect(saveErrorDialog).toContainText("Divine casters");
+      await handleCustomModal(page, "OK");
+      await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: TIMEOUTS.short });
     });
   });
 

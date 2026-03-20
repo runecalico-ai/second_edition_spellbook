@@ -89,24 +89,25 @@ test.describe("Spell Editor Bug Reproduction", () => {
     });
 
     await test.step("Trigger dirty state and collapse", async () => {
-      // Toggle Focus to mark dirty - this triggers serialization on collapse
-      await page.getByTestId("component-checkbox-focus").click();
+      // ComponentCheckboxes uses vsm variant (no Focus row). Editing the parsed material name marks dirty
+      // and exercises the same collapse serialization path as the original focus-toggle repro.
+      await page.getByTestId("material-component-name").fill("ruby dust (refined)");
       await page.getByTestId("detail-components-expand").click(); // Collapse
     });
 
     await test.step("Verify migration and data preservation", async () => {
-      // Expected: "V, S, M, F" in components line
-      // Expected: "ruby dust" in material components line
+      // Expected: V/S/M in components line without inlining the material phrase
+      // Expected: "ruby dust" preserved on the material components line
       const componentsValue = await page.getByTestId("detail-components-input").inputValue();
       console.log("Collapsed Components Text:", componentsValue);
       expect(componentsValue).not.toContain("ruby dust");
-      expect(componentsValue).toContain("V, S, M, F");
+      expect(componentsValue).toMatch(/V,\s*S,\s*M/);
 
       const materialsValue = await page
         .getByTestId("detail-material-components-input")
         .inputValue();
       console.log("Collapsed Material Components Text:", materialsValue);
-      expect(materialsValue).toContain("ruby dust");
+      expect(materialsValue).toMatch(/ruby dust/i);
     });
   });
 
@@ -138,11 +139,12 @@ test.describe("Spell Editor Bug Reproduction", () => {
     // Wait reasonably for any async to settle
     await page.waitForTimeout(500);
 
-    // If bug is fixed, structured state should be cleared by typing "20 yd" and NOT overwritten by "10 yd" async result.
-    // The structured input for Distance should be mapped to range-base-value (for fixed mode).
+    // Editing the canon range line collapses the expanded panel and clears structured state (race guard via
+    // expandRequestId). Re-expand to inspect the structured distance field produced only from "20 yd".
+    await page.getByTestId("detail-range-expand").click();
     const distanceInput = page.getByTestId("range-base-value");
-    // With the fix, typing "20 yd" should have invalidated the "10 yd" parse.
-    // And since structuredRange was set to null in handleChange, the input should show default (0).
-    await expect(distanceInput).not.toHaveValue("10", { timeout: 2000 });
+    await expect(distanceInput).toBeVisible({ timeout: 10_000 });
+    await expect(distanceInput).not.toHaveValue("10", { timeout: 5000 });
+    await expect(distanceInput).toHaveValue("20");
   });
 });

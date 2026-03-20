@@ -50,12 +50,18 @@ export const SELECTORS = {
   spellDetailHashExpand: '[data-testid="spell-detail-hash-expand"]',
 } as const;
 
+export type SpellTradition = "ARCANE" | "DIVINE";
+
 export interface CreateSpellOptions {
   name: string;
   level?: string;
   description?: string;
   source?: string;
+  /** Defaults to ARCANE. Use DIVINE when filling `sphere` without `school`. */
+  tradition?: SpellTradition;
+  /** Applied only when tradition is ARCANE (ignored for DIVINE). */
   school?: string;
+  /** Applied only when tradition is DIVINE. */
   sphere?: string;
   classes?: string;
   components?: string;
@@ -87,7 +93,10 @@ export class SpellbookApp {
     console.log(`Navigating to: ${label}`);
     if (label === "Add Spell") {
       await this.navigate("Library");
-      await this.page.locator("#link-add-spell").click();
+      await this.waitForLibrary();
+      const addLink = this.page.getByTestId("link-add-spell");
+      await addLink.waitFor({ state: "visible", timeout: TIMEOUTS.medium });
+      await addLink.click();
     } else if (label === "Import") {
       await this.page.getByRole("navigation").getByRole("link", { name: "Import" }).click();
     } else {
@@ -116,12 +125,20 @@ export class SpellbookApp {
       level = "1",
       description = "",
       source = "",
+      tradition: traditionOpt,
       school,
       sphere,
       classes,
       isCantrip,
       isQuest,
     } = options;
+
+    const tradition: SpellTradition =
+      traditionOpt ?? (sphere && !school ? "DIVINE" : "ARCANE");
+
+    // Omitted school on ARCANE: deterministic default so E2E saves stay valid after conditional School/Sphere UI.
+    const effectiveSchool =
+      tradition === "ARCANE" ? (school ?? "Alteration") : school;
     console.log(`Creating spell: ${name}`);
     await this.navigate("Add Spell");
     await expect(this.page.getByRole("heading", { name: "New Spell" })).toBeVisible();
@@ -149,15 +166,20 @@ export class SpellbookApp {
       await expect(levelLoc).toHaveValue(level.toString());
     }
 
-    if (school) {
-      const schoolLoc = this.page.getByLabel("School");
+    const traditionSelect = this.page.getByTestId("spell-tradition-select");
+    await traditionSelect.selectOption(tradition);
+
+    if (tradition === "ARCANE" && effectiveSchool) {
+      const schoolLoc = this.page.getByTestId("spell-school-input");
+      await expect(schoolLoc).toBeVisible({ timeout: TIMEOUTS.short });
       await schoolLoc.fill("");
-      await schoolLoc.fill(school);
-      await expect(schoolLoc).toHaveValue(school);
+      await schoolLoc.fill(effectiveSchool);
+      await expect(schoolLoc).toHaveValue(effectiveSchool);
     }
 
-    if (sphere) {
-      const sphereLoc = this.page.getByLabel("Sphere");
+    if (tradition === "DIVINE" && sphere) {
+      const sphereLoc = this.page.getByTestId("spell-sphere-input");
+      await expect(sphereLoc).toBeVisible({ timeout: TIMEOUTS.short });
       await sphereLoc.fill("");
       await sphereLoc.fill(sphere);
       await expect(sphereLoc).toHaveValue(sphere);
@@ -236,6 +258,9 @@ export class SpellbookApp {
   /** Reset the import wizard to the first step */
   async resetImportWizard(): Promise<void> {
     console.log("Resetting import wizard...");
+    // Land on Library first so /edit/* is unmounted (avoids strict-mode "Cancel" clashes with SpellEditor).
+    await this.navigate("Library");
+    await this.waitForLibrary();
     await this.navigate("Import");
     const importMoreBtn = this.page.getByRole("button", {
       name: "Import More Files",
@@ -243,9 +268,13 @@ export class SpellbookApp {
     if (await importMoreBtn.isVisible()) {
       await importMoreBtn.click();
     }
-    const cancelBtn = this.page.getByRole("button", { name: "Cancel" });
-    if (await cancelBtn.isVisible()) {
-      await cancelBtn.click();
+    const fieldMapperCancel = this.page.getByTestId("btn-import-field-mapper-cancel");
+    if (await fieldMapperCancel.isVisible()) {
+      await fieldMapperCancel.click();
+    }
+    const modalCancel = this.page.getByTestId("modal-button-cancel");
+    if (await modalCancel.isVisible()) {
+      await modalCancel.click();
     }
   }
 
@@ -294,6 +323,7 @@ export class SpellbookApp {
   async openSpell(name: string): Promise<void> {
     console.log(`Opening spell: ${name}`);
     await this.navigate("Library");
+    await this.waitForLibrary();
     await this.page.getByPlaceholder(/Search spells/i).fill(name);
     await this.page.getByRole("button", { name: "Search", exact: true }).click();
 
@@ -833,5 +863,33 @@ export class SpellbookApp {
     };
 
     await this.page.getByTestId(testIdMap[action]).click();
+  }
+
+  /** Inline spell-editor validation error (Chunk 2 — no routine validation modal). */
+  async expectFieldError(testId: string): Promise<void> {
+    await expect(this.page.getByTestId(testId)).toBeVisible({ timeout: TIMEOUTS.short });
+  }
+
+  /**
+   * Routine spell-editor validation must not open a `role="dialog"` modal.
+   * Call only on views where no dialog is expected (not e.g. spell picker / confirm).
+   */
+  async expectNoBlockingDialog(): Promise<void> {
+    await expect(this.page.getByRole("dialog")).not.toBeVisible();
+  }
+
+  /** Success toast rendered inside the global notification viewport (polite live region). */
+  async expectToastSuccessInViewport(message: string | RegExp): Promise<void> {
+    const viewport = this.page.getByTestId("notification-viewport");
+    await expect(viewport).toHaveAttribute("aria-live", "polite");
+    const toast = viewport.getByTestId("toast-notification-success").filter({ hasText: message });
+    await expect(toast.last()).toBeVisible({ timeout: TIMEOUTS.medium });
+    await expect(toast.last()).toContainText(message);
+  }
+
+  async expectSpellSaveValidationHint(): Promise<void> {
+    const hint = this.page.getByTestId("spell-save-validation-hint");
+    await expect(hint).toBeVisible({ timeout: TIMEOUTS.short });
+    await expect(hint).toHaveText("Fix the errors above to save");
   }
 }

@@ -6,6 +6,21 @@ import {
 } from "../../../lib/validation";
 import type { SpellScalar } from "../../../types/spell";
 
+export interface ScalarFieldValidationError {
+  testId: string;
+  message: string;
+}
+
+const selectSurfaceClass =
+  "bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100";
+
+const inputSurfaceClass =
+  "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100";
+
+const inputBorderNeutral = "border-neutral-300 dark:border-neutral-700";
+const inputBorderInvalid = "border-red-400 dark:border-red-600";
+const inputBorderAdvisory = "border-amber-400 dark:border-amber-600";
+
 interface ScalarInputProps {
   value: SpellScalar;
   onChange: (s: SpellScalar) => void;
@@ -14,6 +29,12 @@ interface ScalarInputProps {
   baseValueTestId?: string;
   /** Override testid for the per-level input (e.g. "range-per-level", "duration-per-level"). */
   perLevelTestId?: string;
+  /** Spell editor: mark scalar validation fields visible (blur / mode change). */
+  onFieldBlur?: () => void;
+  /** Inline validation for fixed mode (Chunk 2 / Task 3). */
+  fixedFieldError?: ScalarFieldValidationError | null;
+  /** Inline validation for per-level mode (Chunk 2 / Task 3). */
+  perLevelFieldError?: ScalarFieldValidationError | null;
 }
 
 const DEFAULT_SCALAR: SpellScalar = { mode: "fixed", value: 0 };
@@ -24,10 +45,17 @@ export function ScalarInput({
   "data-testid": testId = "scalar-input",
   baseValueTestId = "range-base-value",
   perLevelTestId = "range-per-level",
+  onFieldBlur,
+  fixedFieldError,
+  perLevelFieldError,
 }: ScalarInputProps) {
   const mode = value.mode ?? "fixed";
   const numValue = mode === "fixed" ? (value.value ?? 0) : (value.value ?? 0);
   const perLevel = value.perLevel ?? value.per_level ?? 0;
+
+  const activeError = mode === "fixed" ? fixedFieldError : perLevelFieldError;
+  const activeInputId = mode === "fixed" ? baseValueTestId : perLevelTestId;
+  const advisory = isAboveAdvisoryCap(mode === "fixed" ? numValue : perLevel);
 
   const handleValueChange = (raw: string) => {
     const parsed = parseNumericInput(raw);
@@ -66,44 +94,66 @@ export function ScalarInput({
         per_level: value.perLevel ?? value.per_level ?? 0,
       });
     }
+    onFieldBlur?.();
   };
 
   const effectiveValue = mode === "fixed" ? numValue : perLevel;
 
+  const numberBorderClass = activeError
+    ? inputBorderInvalid
+    : advisory
+      ? inputBorderAdvisory
+      : inputBorderNeutral;
+
   return (
-    <div className="flex flex-wrap items-center gap-2" data-testid={testId}>
-      <select
-        data-testid={`${testId}-mode`}
-        aria-label="Scalar mode"
-        value={mode}
-        onChange={(e) => handleModeChange(e.target.value as "fixed" | "per_level")}
-        className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-      >
-        <option value="fixed">Fixed</option>
-        <option value="per_level">Per level</option>
-      </select>
-      <input
-        type="text"
-        inputMode="decimal"
-        data-testid={mode === "fixed" ? baseValueTestId : perLevelTestId}
-        aria-label={mode === "fixed" ? "Base value" : "Per level"}
-        value={effectiveValue}
-        onChange={(e) =>
-          mode === "fixed"
-            ? handleValueChange(e.target.value)
-            : handlePerLevelChange(e.target.value)
-        }
-        className={`w-20 bg-neutral-900 border ${
-          isAboveAdvisoryCap(effectiveValue) ? "border-yellow-500" : "border-neutral-700"
-        } rounded px-2 py-1 text-sm text-neutral-100`}
-      />
-      {isAboveAdvisoryCap(effectiveValue) && (
-        <p
-          className="text-[10px] text-yellow-500 font-medium"
-          data-testid="scalar-advisory-cap-warning"
+    <div className="flex flex-col gap-1" data-testid={testId}>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          data-testid={`${testId}-mode`}
+          aria-label="Scalar mode"
+          value={mode}
+          onChange={(e) => handleModeChange(e.target.value as "fixed" | "per_level")}
+          className={`rounded border px-2 py-1 text-sm ${selectSurfaceClass}`}
         >
-          Value is above the recommended maximum ({VALIDATION.advisoryCap}). You can still save.
-        </p>
+          <option value="fixed">Fixed</option>
+          <option value="per_level">Per level</option>
+        </select>
+        <input
+          type="text"
+          inputMode="decimal"
+          id={activeInputId}
+          data-testid={activeInputId}
+          aria-label={mode === "fixed" ? "Base value" : "Per level"}
+          aria-invalid={activeError ? "true" : "false"}
+          aria-describedby={activeError ? activeError.testId : undefined}
+          value={effectiveValue}
+          onChange={(e) =>
+            mode === "fixed"
+              ? handleValueChange(e.target.value)
+              : handlePerLevelChange(e.target.value)
+          }
+          onBlur={() => onFieldBlur?.()}
+          className={`w-20 rounded border px-2 py-1 text-sm ${inputSurfaceClass} ${numberBorderClass}`}
+        />
+        {advisory && (
+          <p
+            className="text-[10px] font-medium text-amber-700 dark:text-amber-400"
+            data-testid="scalar-advisory-cap-warning"
+          >
+            Value is above the recommended maximum ({VALIDATION.advisoryCap}). You can still save.
+          </p>
+        )}
+      </div>
+      {activeError && (
+        <div className="animate-in fade-in duration-200">
+          <p
+            id={activeError.testId}
+            data-testid={activeError.testId}
+            className="text-xs text-red-700 dark:text-red-400"
+          >
+            {activeError.message}
+          </p>
+        </div>
       )}
     </div>
   );

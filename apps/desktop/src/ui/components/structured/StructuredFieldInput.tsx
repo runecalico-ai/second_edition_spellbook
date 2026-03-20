@@ -20,16 +20,43 @@ import {
   durationToText,
   castingTimeToText,
 } from "../../../types/spell";
-import { ScalarInput } from "./ScalarInput";
+import type {
+  SpellEditorFieldError,
+  SpellEditorValidatedFieldKey,
+} from "../../spellEditorValidation";
+import { ScalarInput, type ScalarFieldValidationError } from "./ScalarInput";
 
 export type StructuredFieldType = "range" | "duration" | "casting_time";
 
+function pickScalarErr(
+  errors: SpellEditorFieldError[] | undefined,
+  key: SpellEditorValidatedFieldKey,
+): ScalarFieldValidationError | null {
+  const e = errors?.find((x) => x.field === key);
+  return e ? { testId: e.testId, message: e.message } : null;
+}
+
 export type StructuredFieldValue = RangeSpec | DurationSpec | SpellCastingTime;
+
+const structuredSelectClass =
+  "bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
+
+const structuredInputClass =
+  "bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
+
+const structuredInputInvalidClass =
+  "bg-white dark:bg-neutral-900 border-red-400 dark:border-red-600 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
+
+const structuredTextMuted = "text-neutral-600 dark:text-neutral-500";
 
 interface StructuredFieldInputProps {
   fieldType: "range" | "duration" | "casting_time";
   value: RangeSpec | DurationSpec | SpellCastingTime | null | undefined;
   onChange: (v: StructuredFieldValue) => void;
+  /** Spell editor: mark validated scalar fields visible on blur / mode change. */
+  onValidationBlur?: () => void;
+  /** Spell editor inline validation (Task 3). */
+  visibleFieldErrors?: SpellEditorFieldError[];
 }
 
 const ALL_DURATION_KINDS: { value: DurationKind; label: string }[] = [
@@ -46,7 +73,13 @@ const ALL_DURATION_KINDS: { value: DurationKind; label: string }[] = [
   { value: "special", label: "Special" },
 ];
 
-export function StructuredFieldInput({ fieldType, value, onChange }: StructuredFieldInputProps) {
+export function StructuredFieldInput({
+  fieldType,
+  value,
+  onChange,
+  onValidationBlur,
+  visibleFieldErrors,
+}: StructuredFieldInputProps) {
   const rangeSpec = (value as RangeSpec | null | undefined) ?? defaultRangeSpec();
   const durationSpec = (value as DurationSpec | null | undefined) ?? defaultDurationSpec();
   const castingTimeSpec = (value as SpellCastingTime | null | undefined) ?? defaultCastingTime();
@@ -105,8 +138,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
               }
               next.text = rangeToText(next);
               onChange(next);
+              onValidationBlur?.();
             }}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={structuredSelectClass}
           >
             {allRangeKinds.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -126,6 +160,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
                 data-testid="range-scalar"
                 baseValueTestId="range-base-value"
                 perLevelTestId="range-per-level"
+                onFieldBlur={onValidationBlur}
+                fixedFieldError={pickScalarErr(visibleFieldErrors, "range-base-value")}
+                perLevelFieldError={pickScalarErr(visibleFieldErrors, "range-per-level")}
               />
               <select
                 data-testid="range-unit"
@@ -136,7 +173,7 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
                   next.text = rangeToText(next);
                   onChange(next);
                 }}
-                className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+                className={structuredSelectClass}
               >
                 {(Object.entries(RANGE_UNIT_LABELS) as [RangeUnit, string][]).map(([u, label]) => (
                   <option key={u} value={u}>
@@ -160,7 +197,7 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
                 next.text = rangeToText(next);
                 onChange(next);
               }}
-              className="flex-1 min-w-[120px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+              className={`flex-1 min-w-[120px] ${structuredInputClass}`}
             />
           )}
         </div>
@@ -174,9 +211,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
             next.text = rangeToText(next);
             onChange(next);
           }}
-          className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100 placeholder:text-neutral-600"
+          className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-600 ${structuredInputClass}`}
         />
-        <p className="text-sm text-neutral-500 italic" data-testid="range-text-preview">
+        <p className={`text-sm italic ${structuredTextMuted}`} data-testid="range-text-preview">
           {rangeTextPreview || "—"}
         </p>
       </div>
@@ -233,8 +270,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
               }
               next.text = durationToText(next);
               onChange(next);
+              onValidationBlur?.();
             }}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={structuredSelectClass}
           >
             {ALL_DURATION_KINDS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -254,6 +292,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
                 data-testid="duration-scalar"
                 baseValueTestId="duration-base-value"
                 perLevelTestId="duration-per-level"
+                onFieldBlur={onValidationBlur}
+                fixedFieldError={pickScalarErr(visibleFieldErrors, "duration-base-value")}
+                perLevelFieldError={pickScalarErr(visibleFieldErrors, "duration-per-level")}
               />
               <select
                 data-testid="duration-unit"
@@ -264,7 +305,7 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
                   next.text = durationToText(next);
                   onChange(next);
                 }}
-                className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+                className={structuredSelectClass}
               >
                 {(Object.entries(DURATION_UNIT_LABELS) as [DurationUnit, string][]).map(
                   ([u, label]) => (
@@ -289,7 +330,7 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
                 next.text = durationToText(next);
                 onChange(next);
               }}
-              className="flex-1 min-w-[140px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+              className={`flex-1 min-w-[140px] ${structuredInputClass}`}
             />
           )}
           {isUsageLimited && (
@@ -303,6 +344,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
               data-testid="duration-uses-scalar"
               baseValueTestId="duration-uses-value"
               perLevelTestId="duration-uses-per-level"
+              onFieldBlur={onValidationBlur}
+              fixedFieldError={pickScalarErr(visibleFieldErrors, "duration-uses-value")}
+              perLevelFieldError={pickScalarErr(visibleFieldErrors, "duration-uses-per-level")}
             />
           )}
           {(isSpecial || spec.rawLegacyValue) && (
@@ -319,7 +363,7 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
                 next.text = durationToText(next);
                 onChange(next);
               }}
-              className="flex-1 min-w-[120px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+              className={`flex-1 min-w-[120px] ${structuredInputClass}`}
             />
           )}
         </div>
@@ -333,9 +377,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
             next.text = durationToText(next);
             onChange(next);
           }}
-          className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100 placeholder:text-neutral-600"
+          className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-600 ${structuredInputClass}`}
         />
-        <p className="text-sm text-neutral-500 italic" data-testid="duration-text-preview">
+        <p className={`text-sm italic ${structuredTextMuted}`} data-testid="duration-text-preview">
           {durationTextPreview || "—"}
         </p>
       </div>
@@ -348,6 +392,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
   const perLevel = ct.perLevel ?? 0;
   const levelDivisor = ct.levelDivisor ?? 1;
 
+  const ctBaseErr = pickScalarErr(visibleFieldErrors, "casting-time-base-value");
+  const ctPerErr = pickScalarErr(visibleFieldErrors, "casting-time-per-level");
+
   const updateCt = (updates: Partial<SpellCastingTime>) => {
     const next = { ...ct, ...updates };
     next.text = castingTimeToText(next);
@@ -356,46 +403,80 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
 
   return (
     <div className="space-y-2" data-testid="structured-field-input">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          inputMode="decimal"
-          data-testid="casting-time-base-value"
-          aria-label="Base value"
-          className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-          value={baseValue}
-          onChange={(e) => {
-            const v = clampScalar(parseNumericInput(e.target.value));
-            updateCt({ baseValue: v });
-          }}
-        />
-        <span className="text-neutral-500 text-sm">+</span>
-        <input
-          type="text"
-          inputMode="decimal"
-          data-testid="casting-time-per-level"
-          aria-label="Per level"
-          className="w-14 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
-          value={perLevel}
-          onChange={(e) => {
-            const v = clampScalar(parseNumericInput(e.target.value));
-            updateCt({ perLevel: v });
-          }}
-        />
-        <span className="text-neutral-500 text-sm">/</span>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <input
+            type="text"
+            inputMode="decimal"
+            id="casting-time-base-value"
+            data-testid="casting-time-base-value"
+            aria-label="Base value"
+            aria-invalid={ctBaseErr ? "true" : "false"}
+            aria-describedby={ctBaseErr ? ctBaseErr.testId : undefined}
+            className={`w-16 rounded px-2 py-1 text-sm ${ctBaseErr ? structuredInputInvalidClass : structuredInputClass}`}
+            value={baseValue}
+            onChange={(e) => {
+              const v = clampScalar(parseNumericInput(e.target.value));
+              updateCt({ baseValue: v });
+            }}
+            onBlur={() => onValidationBlur?.()}
+          />
+          {ctBaseErr && (
+            <div className="animate-in fade-in duration-200 max-w-[min(100%,12rem)]">
+              <p
+                id={ctBaseErr.testId}
+                data-testid={ctBaseErr.testId}
+                className="text-xs text-red-700 dark:text-red-400"
+              >
+                {ctBaseErr.message}
+              </p>
+            </div>
+          )}
+        </div>
+        <span className={`${structuredTextMuted} text-sm pb-2`}>+</span>
+        <div className="flex flex-col gap-1">
+          <input
+            type="text"
+            inputMode="decimal"
+            id="casting-time-per-level"
+            data-testid="casting-time-per-level"
+            aria-label="Per level"
+            aria-invalid={ctPerErr ? "true" : "false"}
+            aria-describedby={ctPerErr ? ctPerErr.testId : undefined}
+            className={`w-14 rounded px-2 py-1 text-sm ${ctPerErr ? structuredInputInvalidClass : structuredInputClass}`}
+            value={perLevel}
+            onChange={(e) => {
+              const v = clampScalar(parseNumericInput(e.target.value));
+              updateCt({ perLevel: v });
+            }}
+            onBlur={() => onValidationBlur?.()}
+          />
+          {ctPerErr && (
+            <div className="animate-in fade-in duration-200 max-w-[min(100%,12rem)]">
+              <p
+                id={ctPerErr.testId}
+                data-testid={ctPerErr.testId}
+                className="text-xs text-red-700 dark:text-red-400"
+              >
+                {ctPerErr.message}
+              </p>
+            </div>
+          )}
+        </div>
+        <span className={`${structuredTextMuted} text-sm pb-2`}>/</span>
         <input
           type="text"
           inputMode="decimal"
           data-testid="casting-time-level-divisor"
           aria-label="Level divisor"
-          className="w-12 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={`w-12 rounded px-2 py-1 text-sm ${structuredInputClass}`}
           value={levelDivisor}
           onChange={(e) => {
             const v = Math.max(1, Math.floor(parseNumericInput(e.target.value)) || 1);
             updateCt({ levelDivisor: v });
           }}
         />
-        <span className="text-neutral-500 text-sm">/level</span>
+        <span className={`${structuredTextMuted} text-sm pb-2`}>/level</span>
         <select
           data-testid="casting-time-unit"
           aria-label="Casting time unit"
@@ -403,8 +484,9 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
           onChange={(e) => {
             const unit = e.target.value as CastingTimeUnit;
             updateCt(unit === "special" ? { unit } : { unit, rawLegacyValue: undefined });
+            onValidationBlur?.();
           }}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={structuredSelectClass}
         >
           {(Object.entries(CASTING_TIME_UNIT_LABELS) as [CastingTimeUnit, string][]).map(
             ([u, label]) => (
@@ -423,11 +505,11 @@ export function StructuredFieldInput({ fieldType, value, onChange }: StructuredF
             placeholder="Original text"
             value={ct.rawLegacyValue ?? ""}
             onChange={(e) => updateCt({ rawLegacyValue: e.target.value || undefined })}
-            className="flex-1 min-w-[120px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm"
+            className={`flex-1 min-w-[120px] ${structuredInputClass}`}
           />
         )}
       </div>
-      <p className="text-sm text-neutral-500 italic" data-testid="casting-time-text-preview">
+      <p className={`text-sm italic ${structuredTextMuted}`} data-testid="casting-time-text-preview">
         {castingTimeTextPreview || "—"}
       </p>
     </div>

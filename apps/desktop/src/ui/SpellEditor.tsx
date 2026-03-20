@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
   validateAreaSpec,
@@ -18,6 +18,7 @@ import {
   defaultAreaSpec,
   defaultSpellDamageSpec,
   magicResistanceToText,
+  RANGE_DISTANCE_KINDS,
   savingThrowToText,
 } from "../types/spell";
 import type {
@@ -66,6 +67,49 @@ import {
 import { decideCanonicalField } from "./canonicalFieldDecision";
 import ArtifactRow from "./components/ArtifactRow";
 import { WarningBanner } from "./components/WarningBanner";
+import {
+  deriveSpellEditorFieldErrors,
+  sortFieldErrorsByFocusOrder,
+  SPELL_EDITOR_AREA_SCALAR_KEYS,
+  type SpellEditorValidatedFieldKey,
+} from "./spellEditorValidation";
+
+const spellInputSurface =
+  "rounded border bg-white p-2 text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100";
+const spellInputBorderOk = "border-neutral-300 dark:border-neutral-700";
+const spellInputBorderInvalid = "border-red-400 dark:border-red-600";
+const spellLabelClass = "block text-sm text-neutral-600 dark:text-neutral-400";
+const spellErrorText = "text-xs text-red-700 dark:text-red-400 mt-1";
+const spellSaveHintClass = "text-right text-xs text-red-700 dark:text-red-400";
+const spellConflictBannerClass =
+  "mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100";
+
+function applyPlaywrightRangeDistanceCorruption(spec: RangeSpec): RangeSpec {
+  if (typeof window === "undefined" || !window.__IS_PLAYWRIGHT__) return spec;
+  const probe = window.__SPELLBOOK_E2E_CORRUPT_RANGE_BASE;
+  if (
+    !probe ||
+    probe.consumed === true ||
+    !RANGE_DISTANCE_KINDS.includes(spec.kind as (typeof RANGE_DISTANCE_KINDS)[number])
+  ) {
+    return spec;
+  }
+  probe.consumed = true;
+  return {
+    ...spec,
+    distance: {
+      mode: "fixed",
+      value: probe.value,
+    },
+  };
+}
+
+async function sleepPlaywrightSaveInvokeDelay(): Promise<void> {
+  if (typeof window === "undefined" || !window.__IS_PLAYWRIGHT__) return;
+  const ms = window.__SPELLBOOK_E2E_SAVE_INVOKE_DELAY_MS;
+  if (typeof ms !== "number" || Number.isNaN(ms) || ms <= 0) return;
+  await new Promise((r) => setTimeout(r, Math.min(Math.floor(ms), 30_000)));
+}
 
 type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
 
@@ -617,6 +661,56 @@ export default function SpellEditor() {
   const [hashExpanded, setHashExpanded] = useState(false);
   type Tradition = "ARCANE" | "DIVINE";
   const [tradition, setTradition] = useState<Tradition>("ARCANE");
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const [fieldValidationVisible, setFieldValidationVisible] = useState(() => new Set<string>());
+  /** True while create/update invoke is in flight; freezes the editor immediately. */
+  const [savePending, setSavePending] = useState(false);
+  /** Visible "Saving…" label only after 300ms while save is still pending. */
+  const [saveShowsDelayedLabel, setSaveShowsDelayedLabel] = useState(false);
+  const saveInFlightRef = useRef(false);
+  const saveDelayedLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSaveDelayedLabelTimer = useCallback(() => {
+    if (saveDelayedLabelTimerRef.current !== null) {
+      clearTimeout(saveDelayedLabelTimerRef.current);
+      saveDelayedLabelTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearSaveDelayedLabelTimer();
+    };
+  }, [clearSaveDelayedLabelTimer]);
+
+  const revealFieldValidation = useCallback((...keys: SpellEditorValidatedFieldKey[]) => {
+    setFieldValidationVisible((prev) => {
+      const next = new Set(prev);
+      for (const k of keys) next.add(k);
+      return next;
+    });
+  }, []);
+
+  const revealRangeScalarValidation = useCallback(() => {
+    revealFieldValidation("range-base-value", "range-per-level");
+  }, [revealFieldValidation]);
+
+  const revealDurationScalarValidation = useCallback(() => {
+    revealFieldValidation(
+      "duration-base-value",
+      "duration-per-level",
+      "duration-uses-value",
+      "duration-uses-per-level",
+    );
+  }, [revealFieldValidation]);
+
+  const revealCastingTimeScalarValidation = useCallback(() => {
+    revealFieldValidation("casting-time-base-value", "casting-time-per-level");
+  }, [revealFieldValidation]);
+
+  const revealAreaScalarValidation = useCallback(() => {
+    revealFieldValidation(...SPELL_EDITOR_AREA_SCALAR_KEYS);
+  }, [revealFieldValidation]);
 
   /** Canon-first: which detail field is expanded (only one at a time). */
   const [expandedDetailField, setExpandedDetailField] = useState<DetailFieldKey | null>(null);
@@ -1104,6 +1198,7 @@ export default function SpellEditor() {
   }, [id, isNew, resetStructuredLoadState]);
 
   const handleChange = (field: keyof SpellDetail, value: string | number) => {
+    if (savePending) return;
     unsavedRef.current = true;
     setHasUnsavedState(true);
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -1650,13 +1745,8 @@ export default function SpellEditor() {
     }
   };
 
-  const isNameInvalid = !form.name.trim();
-  const isDescriptionInvalid = !form.description.trim();
-  const isLevelInvalid = Number.isNaN(form.level) || form.level < 0 || form.level > 12;
-
   const isArcane = !!form.school?.trim();
   const isDivine = !!form.sphere?.trim();
-  const hasTraditionConflict = isArcane && isDivine;
 
   const getLevelDisplay = (level: number) => {
     if (level === 0 && form.isCantrip) return "Cantrip";
@@ -1668,39 +1758,76 @@ export default function SpellEditor() {
     return `Level ${level}`;
   };
 
-  const divineClasses = ["priest", "cleric", "druid", "paladin", "ranger"];
-  const classesLower = form.classList?.toLowerCase() || "";
-  const hasDivine = divineClasses.some((c) => classesLower.includes(c));
+  const fieldErrors = deriveSpellEditorFieldErrors({
+    form: {
+      name: form.name,
+      description: form.description,
+      level: form.level,
+      school: form.school,
+      sphere: form.sphere,
+      classList: form.classList,
+      isQuestSpell: form.isQuestSpell,
+      isCantrip: form.isCantrip,
+    },
+    tradition,
+    rangeSpec: structuredRange,
+    durationSpec: structuredDuration,
+    castingTimeSpec: structuredCastingTime,
+    areaSpec: structuredArea,
+  });
+  const isInvalid = fieldErrors.length > 0;
 
-  const isEpicRestricted = form.level >= 10 && !hasTraditionConflict && (isDivine || !isArcane);
-  const isQuestRestricted = form.isQuestSpell === 1 && (isArcane || !isDivine);
-  const isConflictRestricted = form.level >= 10 && form.isQuestSpell === 1;
-  const isCantripRestricted = form.isCantrip === 1 && form.level !== 0;
+  const visibleFieldErrors = useMemo(() => {
+    if (hasAttemptedSubmit) return fieldErrors;
+    return fieldErrors.filter((e) => {
+      if (e.testId === "error-tradition-conflict") return true;
+      return fieldValidationVisible.has(e.field);
+    });
+  }, [fieldErrors, fieldValidationVisible, hasAttemptedSubmit]);
 
-  const isArcaneMissingSchool = tradition === "ARCANE" && !form.school?.trim();
-  const isDivineMissingSphere = tradition === "DIVINE" && !form.sphere?.trim();
+  const hasFieldError = (testId: string) => visibleFieldErrors.some((e) => e.testId === testId);
+  const isNameInvalid = hasFieldError("spell-name-error");
+  const isDescriptionInvalid = hasFieldError("error-description-required");
+  const isLevelInvalid = hasFieldError("error-level-range");
+  const isArcaneMissingSchool = hasFieldError("error-school-required-arcane-tradition");
+  const isDivineMissingSphere = hasFieldError("error-sphere-required-divine-tradition");
 
-  const validationErrors = [
-    isNameInvalid && "Name is required",
-    isDescriptionInvalid && "Description is required",
-    isLevelInvalid && "Level must be between 0 and 12",
-    isEpicRestricted && "Levels 10-12 are Arcane (has School) only",
-    isQuestRestricted && "Quest spells are Divine (has Sphere) only",
-    isConflictRestricted && "A spell cannot be both Epic and Quest",
-    isCantripRestricted && "Cantrips must be Level 0",
-    isArcaneMissingSchool && "School is required for Arcane tradition",
-    isDivineMissingSphere && "Sphere is required for Divine tradition",
-    hasTraditionConflict && "School and Sphere cannot both be set",
-  ].filter(Boolean) as string[];
+  const describedByByField = useMemo(() => {
+    const m = new Map<SpellEditorValidatedFieldKey, string>();
+    for (const e of visibleFieldErrors) {
+      const prev = m.get(e.field);
+      m.set(e.field, prev ? `${prev} ${e.testId}` : e.testId);
+    }
+    return m;
+  }, [visibleFieldErrors]);
 
-  const isInvalid = validationErrors.length > 0;
+  const ariaInvalidForField = (field: SpellEditorValidatedFieldKey) =>
+    visibleFieldErrors.some((e) => e.field === field) ? ("true" as const) : ("false" as const);
   const save = async () => {
     try {
       if (isInvalid) {
-        await modalAlert(validationErrors, "Validation Errors", "error");
+        setHasAttemptedSubmit(true);
+        const sorted = sortFieldErrorsByFocusOrder(fieldErrors);
+        requestAnimationFrame(() => {
+          for (const err of sorted) {
+            const el = document.getElementById(err.focusTarget);
+            if (el instanceof HTMLElement) {
+              el.focus({ preventScroll: false });
+              break;
+            }
+          }
+        });
         return;
       }
-      setLoading(true);
+      if (loading || parsersPending || saveInFlightRef.current) return;
+      saveInFlightRef.current = true;
+      setSavePending(true);
+      setSaveShowsDelayedLabel(false);
+      clearSaveDelayedLabelTimer();
+      saveDelayedLabelTimerRef.current = setTimeout(() => {
+        saveDelayedLabelTimerRef.current = null;
+        setSaveShowsDelayedLabel(true);
+      }, 300);
 
       // Canon-first: apply serialized values only for structured fields edited since last canon edit.
       const formOverrides: Partial<SpellDetail> = {};
@@ -1850,6 +1977,8 @@ export default function SpellEditor() {
         spellData.materialComponentsSpec = structuredMaterialComponents;
       }
 
+      await sleepPlaywrightSaveInvokeDelay();
+
       if (isNew) {
         const { id, ...createData } = normalizedSpellData; // eslint-disable-line @typescript-eslint/no-unused-vars
         await invoke("create_spell", { spell: createData });
@@ -1861,15 +1990,20 @@ export default function SpellEditor() {
       setParserFallbackFields(new Set());
       unsavedRef.current = false;
       setHasUnsavedState(false);
+      pushNotification("success", "Spell saved.");
       navigate("/");
     } catch (e) {
       await modalAlert(`Failed to save: ${e}`, "Save Error", "error");
     } finally {
-      setLoading(false);
+      clearSaveDelayedLabelTimer();
+      setSaveShowsDelayedLabel(false);
+      setSavePending(false);
+      saveInFlightRef.current = false;
     }
   };
 
   const handleDelete = async () => {
+    if (savePending) return;
     const confirmed = await modalConfirm(
       "Are you sure you want to delete this spell?",
       "Delete Spell",
@@ -1886,7 +2020,7 @@ export default function SpellEditor() {
   };
 
   const printSpell = async (layout: "compact" | "stat-block") => {
-    if (!form.id) return;
+    if (savePending || !form.id) return;
     setPrintStatus("Generating print…");
     try {
       const path = await invoke<string>("print_spell", {
@@ -1935,80 +2069,97 @@ export default function SpellEditor() {
             )}
           </div>
         </div>
-        <div className="space-x-2">
-          {!isNew && (
-            <>
-              <select
-                value={pageSize}
-                data-testid="print-page-size-select"
-                aria-label="Print page size"
-                onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
-                className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
-              >
-                <option value="letter">Letter</option>
-                <option value="a4">A4</option>
-              </select>
+        <div className="flex flex-col items-end gap-1">
+          <div className="space-x-2">
+            {!isNew && (
+              <>
+                <select
+                  value={pageSize}
+                  data-testid="print-page-size-select"
+                  aria-label="Print page size"
+                  disabled={savePending}
+                  onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
+                  className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
+                >
+                  <option value="letter">Letter</option>
+                  <option value="a4">A4</option>
+                </select>
+                <button
+                  type="button"
+                  data-testid="btn-print-compact"
+                  aria-label="Print compact version"
+                  disabled={savePending}
+                  onClick={() => printSpell("compact")}
+                  className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                >
+                  Print Compact
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-print-stat-block"
+                  aria-label="Print stat-block version"
+                  disabled={savePending}
+                  onClick={() => printSpell("stat-block")}
+                  className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                >
+                  Print Stat-block
+                </button>
+              </>
+            )}
+            {!isNew && (
               <button
+                id="btn-delete-spell"
+                data-testid="btn-delete-spell"
                 type="button"
-                data-testid="btn-print-compact"
-                aria-label="Print compact version"
-                onClick={() => printSpell("compact")}
-                className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                disabled={parsersPending || savePending}
+                onClick={handleDelete}
+                className="px-3 py-2 text-red-400 hover:bg-neutral-800 rounded"
               >
-                Print Compact
+                Delete
               </button>
-              <button
-                type="button"
-                data-testid="btn-print-stat-block"
-                aria-label="Print stat-block version"
-                onClick={() => printSpell("stat-block")}
-                className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
-              >
-                Print Stat-block
-              </button>
-            </>
-          )}
-          {!isNew && (
+            )}
             <button
-              id="btn-delete-spell"
-              data-testid="btn-delete-spell"
               type="button"
-              disabled={parsersPending}
-              onClick={handleDelete}
-              className="px-3 py-2 text-red-400 hover:bg-neutral-800 rounded"
+              data-testid="btn-cancel-edit"
+              disabled={savePending}
+              onClick={async () => {
+                if (hasUnsavedState) {
+                  const ok = await modalConfirm(
+                    "You have unsaved changes. Leave and discard?",
+                    "Unsaved changes",
+                  );
+                  if (!ok) return;
+                  setHasUnsavedState(false);
+                  unsavedRef.current = false;
+                }
+                navigate("/");
+              }}
+              className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded"
             >
-              Delete
+              Cancel
             </button>
-          )}
-          <button
-            type="button"
-            data-testid="btn-cancel-edit"
-            onClick={async () => {
-              if (hasUnsavedState) {
-                const ok = await modalConfirm(
-                  "You have unsaved changes. Leave and discard?",
-                  "Unsaved changes",
-                );
-                if (!ok) return;
-                setHasUnsavedState(false);
-                unsavedRef.current = false;
+            <button
+              id="btn-save-spell"
+              data-testid="btn-save-spell"
+              type="button"
+              onClick={save}
+              disabled={
+                parsersPending ||
+                loading ||
+                savePending ||
+                (hasAttemptedSubmit && isInvalid)
               }
-              navigate("/");
-            }}
-            className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded"
-          >
-            Cancel
-          </button>
-          <button
-            id="btn-save-spell"
-            data-testid="btn-save-spell"
-            type="button"
-            onClick={save}
-            disabled={parsersPending}
-            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Save Spell
-          </button>
+              aria-busy={savePending ? true : undefined}
+              className="rounded bg-blue-600 px-3 py-2 font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300 disabled:text-blue-950 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400"
+            >
+              {saveShowsDelayedLabel ? "Saving…" : "Save Spell"}
+            </button>
+          </div>
+          {hasAttemptedSubmit && isInvalid && (
+            <div className={`animate-in fade-in duration-200 ${spellSaveHintClass}`}>
+              <p data-testid="spell-save-validation-hint">Fix the errors above to save</p>
+            </div>
+          )}
         </div>
       </div>
       {printStatus && (
@@ -2031,6 +2182,7 @@ export default function SpellEditor() {
           <button
             type="button"
             data-testid="spell-detail-hash-copy"
+            disabled={savePending}
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(form.contentHash ?? "");
@@ -2047,6 +2199,7 @@ export default function SpellEditor() {
           <button
             type="button"
             data-testid="spell-detail-hash-expand"
+            disabled={savePending}
             onClick={() => setHashExpanded((e) => !e)}
             className="px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded hover:bg-neutral-700"
           >
@@ -2055,38 +2208,54 @@ export default function SpellEditor() {
         </div>
       )}
 
-      <fieldset disabled={parsersPending} className="contents">
+      <fieldset
+        disabled={parsersPending || savePending}
+        className="m-0 min-h-0 min-w-0 w-full border-0 p-0"
+      >
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label htmlFor="spell-name" className="block text-sm text-neutral-400">
+            <label htmlFor="spell-name" className={spellLabelClass}>
               Name
             </label>
             <input
               id="spell-name"
               data-testid="spell-name-input"
-              className={`w-full bg-neutral-900 border p-2 rounded ${
-                isNameInvalid ? "border-red-500" : "border-neutral-700"
+              className={`w-full border p-2 ${spellInputSurface} ${
+                isNameInvalid ? spellInputBorderInvalid : spellInputBorderOk
               }`}
               placeholder="Spell Name"
               value={form.name}
               onChange={(e) => handleChange("name", e.target.value)}
+              onBlur={() => revealFieldValidation("spell-name")}
+              aria-invalid={ariaInvalidForField("spell-name")}
+              aria-describedby={describedByByField.get("spell-name")}
               required
             />
             {isNameInvalid && (
-              <p className="text-xs text-red-400 mt-1" data-testid="error-name-required">
-                Name is required.
-              </p>
+              <div className="animate-in fade-in duration-200">
+                <p
+                  id="spell-name-error"
+                  className={spellErrorText}
+                  data-testid="spell-name-error"
+                >
+                  Name is required.
+                </p>
+              </div>
             )}
           </div>
           <div>
-            <label htmlFor="spell-level" className="block text-sm text-neutral-400">
+            <label htmlFor="spell-level" className={spellLabelClass}>
               Level
             </label>
             <input
               id="spell-level"
               data-testid="spell-level-input"
-              className={`w-full bg-neutral-900 border p-2 rounded ${
-                isLevelInvalid ? "border-red-500" : "border-neutral-700"
+              className={`w-full border p-2 ${spellInputSurface} ${
+                isLevelInvalid ||
+                hasFieldError("error-epic-quest-conflict") ||
+                hasFieldError("error-cantrip-level")
+                  ? spellInputBorderInvalid
+                  : spellInputBorderOk
               }`}
               type="number"
               value={form.level}
@@ -2097,8 +2266,14 @@ export default function SpellEditor() {
                 if (clamped !== 0) handleChange("isCantrip", 0);
                 if (clamped !== 8) handleChange("isQuestSpell", 0);
               }}
+              onBlur={() => revealFieldValidation("spell-level")}
+              aria-invalid={ariaInvalidForField("spell-level")}
+              aria-describedby={describedByByField.get("spell-level")}
             />
-            <div className="text-xs text-neutral-500 mt-1" data-testid="spell-level-display">
+            <div
+              className="mt-1 text-xs text-neutral-600 dark:text-neutral-500"
+              data-testid="spell-level-display"
+            >
               {getLevelDisplay(form.level)}
             </div>
             <div className="flex gap-4 mt-2">
@@ -2110,7 +2285,10 @@ export default function SpellEditor() {
                   data-testid="chk-cantrip"
                   disabled={form.level !== 0}
                   checked={form.isCantrip === 1}
-                  onChange={(e) => handleChange("isCantrip", e.target.checked ? 1 : 0)}
+                  onChange={(e) => {
+                    handleChange("isCantrip", e.target.checked ? 1 : 0);
+                    revealFieldValidation("spell-level");
+                  }}
                   className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
                 />
                 <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
@@ -2125,7 +2303,10 @@ export default function SpellEditor() {
                   data-testid="chk-quest"
                   disabled={form.level !== 8}
                   checked={form.isQuestSpell === 1}
-                  onChange={(e) => handleChange("isQuestSpell", e.target.checked ? 1 : 0)}
+                  onChange={(e) => {
+                    handleChange("isQuestSpell", e.target.checked ? 1 : 0);
+                    revealFieldValidation("spell-level");
+                  }}
                   className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
                 />
                 <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
@@ -2134,29 +2315,56 @@ export default function SpellEditor() {
               </label>
             </div>
             {isLevelInvalid && (
-              <p className="text-xs text-red-400 mt-1" data-testid="error-level-range">
-                Level must be 0-12.
-              </p>
+              <div className="animate-in fade-in duration-200">
+                <p id="error-level-range" className={spellErrorText} data-testid="error-level-range">
+                  Level must be 0-12.
+                </p>
+              </div>
             )}
-            {isEpicRestricted && (
-              <p className="text-xs text-yellow-500 mt-1" data-testid="warning-epic-arcane">
-                Epic levels (10-12) are Arcane only.
-              </p>
+            {hasFieldError("error-epic-level-arcane-only") && (
+              <div className="animate-in fade-in duration-200">
+                <p
+                  id="error-epic-level-arcane-only"
+                  className={spellErrorText}
+                  data-testid="error-epic-level-arcane-only"
+                >
+                  Levels 10-12 are Arcane (has School) only
+                </p>
+              </div>
             )}
-            {isQuestRestricted && (
-              <p className="text-xs text-yellow-500 mt-1" data-testid="warning-quest-divine">
-                Quest spells are Divine only.
-              </p>
+            {hasFieldError("error-quest-spell-divine-only") && (
+              <div className="animate-in fade-in duration-200">
+                <p
+                  id="error-quest-spell-divine-only"
+                  className={spellErrorText}
+                  data-testid="error-quest-spell-divine-only"
+                >
+                  Quest spells are Divine (has Sphere) only
+                </p>
+              </div>
             )}
-            {isConflictRestricted && (
-              <p className="text-xs text-red-400 mt-1" data-testid="error-epic-quest-conflict">
-                Cannot be both Epic and Quest spell.
-              </p>
+            {hasFieldError("error-epic-quest-conflict") && (
+              <div className="animate-in fade-in duration-200">
+                <p
+                  id="error-epic-quest-conflict"
+                  className={spellErrorText}
+                  data-testid="error-epic-quest-conflict"
+                >
+                  Cannot be both Epic and Quest spell.
+                </p>
+              </div>
+            )}
+            {hasFieldError("error-cantrip-level") && (
+              <div className="animate-in fade-in duration-200">
+                <p id="error-cantrip-level" className={spellErrorText} data-testid="error-cantrip-level">
+                  Cantrips must be Level 0
+                </p>
+              </div>
             )}
           </div>
 
           <div>
-            <label htmlFor="spell-tradition" className="block text-sm text-neutral-400">
+            <label htmlFor="spell-tradition" className={spellLabelClass}>
               Tradition
             </label>
             <select
@@ -2165,16 +2373,26 @@ export default function SpellEditor() {
               aria-label="Spell tradition"
               value={tradition}
               onChange={(e) => {
-                setTradition(e.target.value as Tradition);
+                const next = e.target.value as Tradition;
+                setTradition(next);
+                revealFieldValidation("spell-tradition", "spell-school", "spell-sphere");
               }}
-              className={`w-full bg-neutral-900 border p-2 rounded ${hasTraditionConflict ? "border-amber-500" : "border-neutral-700"}`}
+              className={`w-full border p-2 ${spellInputSurface} ${
+                hasFieldError("error-tradition-conflict")
+                  ? "border-amber-400 dark:border-amber-600"
+                  : spellInputBorderOk
+              }`}
+              aria-invalid={ariaInvalidForField("spell-tradition")}
+              aria-describedby={describedByByField.get("spell-tradition")}
             >
               <option value="ARCANE">Arcane</option>
               <option value="DIVINE">Divine</option>
             </select>
-            {hasTraditionConflict && (
+            {hasFieldError("error-tradition-conflict") && (
               <div
-                className="mt-2 text-xs text-amber-500 border border-amber-500/30 bg-amber-500/10 p-2 rounded"
+                id="error-tradition-conflict"
+                role="alert"
+                className={`animate-in fade-in duration-200 ${spellConflictBannerClass}`}
                 data-testid="error-tradition-conflict"
               >
                 This spell has both a School and a Sphere set \u2014 school and sphere are mutually
@@ -2182,67 +2400,133 @@ export default function SpellEditor() {
               </div>
             )}
           </div>
+          {tradition === "ARCANE" && (
+            <div
+              key="spell-school-field"
+              data-testid="spell-school-field"
+              className="animate-in fade-in duration-200"
+            >
+              <label htmlFor="spell-school" className={spellLabelClass}>
+                School
+              </label>
+              <input
+                id="spell-school"
+                data-testid="spell-school-input"
+                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${
+                  hasFieldError("error-school-required-arcane") ||
+                  hasFieldError("error-epic-level-arcane-only") ||
+                  isArcaneMissingSchool
+                    ? spellInputBorderInvalid
+                    : spellInputBorderOk
+                }`}
+                value={form.school || ""}
+                onChange={(e) => handleChange("school", e.target.value)}
+                onBlur={() => revealFieldValidation("spell-school")}
+                aria-invalid={ariaInvalidForField("spell-school")}
+                aria-describedby={describedByByField.get("spell-school")}
+              />
+              {hasFieldError("error-school-required-arcane") && (
+                <div className="animate-in fade-in duration-200">
+                  <p
+                    id="error-school-required-arcane"
+                    className={spellErrorText}
+                    data-testid="error-school-required-arcane"
+                  >
+                    School is required for Epic (Arcane) spells.
+                  </p>
+                </div>
+              )}
+              {isArcaneMissingSchool && (
+                <div className="animate-in fade-in duration-200">
+                  <p
+                    id="error-school-required-arcane-tradition"
+                    className={spellErrorText}
+                    data-testid="error-school-required-arcane-tradition"
+                  >
+                    School is required for Arcane tradition.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          {tradition === "DIVINE" && (
+            <div
+              key="spell-sphere-field"
+              data-testid="spell-sphere-field"
+              className="animate-in fade-in duration-200"
+            >
+              <label htmlFor="spell-sphere" className={spellLabelClass}>
+                Sphere
+              </label>
+              <input
+                id="spell-sphere"
+                data-testid="spell-sphere-input"
+                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${
+                  hasFieldError("error-sphere-required-divine") ||
+                  hasFieldError("error-quest-spell-divine-only") ||
+                  isDivineMissingSphere
+                    ? spellInputBorderInvalid
+                    : spellInputBorderOk
+                }`}
+                value={form.sphere || ""}
+                onChange={(e) => handleChange("sphere", e.target.value)}
+                onBlur={() => revealFieldValidation("spell-sphere")}
+                aria-invalid={ariaInvalidForField("spell-sphere")}
+                aria-describedby={describedByByField.get("spell-sphere")}
+              />
+              {hasFieldError("error-sphere-required-divine") && (
+                <div className="animate-in fade-in duration-200">
+                  <p
+                    id="error-sphere-required-divine"
+                    className={spellErrorText}
+                    data-testid="error-sphere-required-divine"
+                  >
+                    Sphere is required for Quest (Divine) spells.
+                  </p>
+                </div>
+              )}
+              {isDivineMissingSphere && (
+                <div className="animate-in fade-in duration-200">
+                  <p
+                    id="error-sphere-required-divine-tradition"
+                    className={spellErrorText}
+                    data-testid="error-sphere-required-divine-tradition"
+                  >
+                    Sphere is required for Divine tradition.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           <div>
-            <label htmlFor="spell-school" className="block text-sm text-neutral-400">
-              School
-            </label>
-            <input
-              id="spell-school"
-              data-testid="spell-school-input"
-              className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.level >= 10 && !form.school) || isArcaneMissingSchool ? "border-red-500" : "border-neutral-700"}`}
-              value={form.school || ""}
-              onChange={(e) => handleChange("school", e.target.value)}
-            />
-            {form.level >= 10 && !form.school && (
-              <p className="text-xs text-red-400 mt-1" data-testid="error-school-required-arcane">
-                School is required for Epic (Arcane) spells.
-              </p>
-            )}
-            {isArcaneMissingSchool && (
-              <p
-                className="text-xs text-red-400 mt-1"
-                data-testid="error-school-required-arcane-tradition"
-              >
-                School is required for Arcane tradition.
-              </p>
-            )}
-          </div>
-          <div>
-            <label htmlFor="spell-sphere" className="block text-sm text-neutral-400">
-              Sphere
-            </label>
-            <input
-              id="spell-sphere"
-              data-testid="spell-sphere-input"
-              className={`w-full bg-neutral-900 border p-2 rounded disabled:opacity-50 disabled:bg-neutral-800 ${(form.isQuestSpell === 1 && !form.sphere) || isDivineMissingSphere ? "border-red-500" : "border-neutral-700"}`}
-              value={form.sphere || ""}
-              onChange={(e) => handleChange("sphere", e.target.value)}
-            />
-            {form.isQuestSpell === 1 && !form.sphere && (
-              <p className="text-xs text-red-400 mt-1" data-testid="error-sphere-required-divine">
-                Sphere is required for Quest (Divine) spells.
-              </p>
-            )}
-            {isDivineMissingSphere && (
-              <p
-                className="text-xs text-red-400 mt-1"
-                data-testid="error-sphere-required-divine-tradition"
-              >
-                Sphere is required for Divine tradition.
-              </p>
-            )}
-          </div>
-          <div>
-            <label htmlFor="spell-classes" className="block text-sm text-neutral-400">
+            <label htmlFor="spell-classes" className={spellLabelClass}>
               Classes (e.g. Mage, Cleric)
             </label>
             <input
               id="spell-classes"
               data-testid="spell-classes-input"
-              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              className={`w-full border p-2 ${spellInputSurface} ${
+                hasFieldError("error-epic-arcane-class-restriction")
+                  ? spellInputBorderInvalid
+                  : spellInputBorderOk
+              }`}
               value={form.classList || ""}
               onChange={(e) => handleChange("classList", e.target.value)}
+              onBlur={() => revealFieldValidation("spell-classes")}
+              aria-invalid={ariaInvalidForField("spell-classes")}
+              aria-describedby={describedByByField.get("spell-classes")}
             />
+            {hasFieldError("error-epic-arcane-class-restriction") && (
+              <div className="animate-in fade-in duration-200">
+                <p
+                  id="error-epic-arcane-class-restriction"
+                  className={spellErrorText}
+                  data-testid="error-epic-arcane-class-restriction"
+                >
+                  Epic spells are Arcane only and require Wizard/Mage class access.
+                </p>
+              </div>
+            )}
           </div>
           {/* Add more fields as needed for MVP */}
           <div>
@@ -2387,7 +2671,7 @@ export default function SpellEditor() {
                       id={panelId}
                       aria-label={`Structured ${label}`}
                       tabIndex={-1}
-                      className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
+                      className="mt-2 rounded border border-neutral-300 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-900/80"
                     >
                       {isLoading ? (
                         <div
@@ -2401,15 +2685,18 @@ export default function SpellEditor() {
                           {field === "range" && (
                             <StructuredFieldInput
                               fieldType="range"
+                              visibleFieldErrors={visibleFieldErrors}
+                              onValidationBlur={revealRangeScalarValidation}
                               value={structuredRange ?? undefined}
                               onChange={(spec) => {
-                                setStructuredRange(spec as RangeSpec);
+                                const nextSpec = applyPlaywrightRangeDistanceCorruption(spec as RangeSpec);
+                                setStructuredRange(nextSpec);
                                 setDetailDirtyFor("range");
                                 setForm((prev) => ({
                                   ...prev,
-                                  range: rangeToText(spec as RangeSpec),
+                                  range: rangeToText(nextSpec),
                                 }));
-                                if ((spec as RangeSpec).kind !== "special") {
+                                if (nextSpec.kind !== "special") {
                                   setParserFallbackFields((prev) => {
                                     const next = new Set(prev);
                                     next.delete("Range");
@@ -2441,6 +2728,8 @@ export default function SpellEditor() {
                           {field === "duration" && (
                             <StructuredFieldInput
                               fieldType="duration"
+                              visibleFieldErrors={visibleFieldErrors}
+                              onValidationBlur={revealDurationScalarValidation}
                               value={structuredDuration ?? undefined}
                               onChange={(spec) => {
                                 setStructuredDuration(spec as DurationSpec);
@@ -2462,6 +2751,8 @@ export default function SpellEditor() {
                           {field === "castingTime" && (
                             <StructuredFieldInput
                               fieldType="casting_time"
+                              visibleFieldErrors={visibleFieldErrors}
+                              onValidationBlur={revealCastingTimeScalarValidation}
                               value={structuredCastingTime ?? undefined}
                               onChange={(spec) => {
                                 setStructuredCastingTime(spec as SpellCastingTime);
@@ -2482,6 +2773,8 @@ export default function SpellEditor() {
                           )}
                           {field === "area" && (
                             <AreaForm
+                              visibleFieldErrors={visibleFieldErrors}
+                              onValidationBlur={revealAreaScalarValidation}
                               value={structuredArea ?? defaultAreaSpec()}
                               onChange={(spec) => {
                                 setStructuredArea(spec);
@@ -2579,24 +2872,33 @@ export default function SpellEditor() {
           />
         </div>
 
-        <div className="flex-1 flex flex-col">
-          <label htmlFor="spell-description" className="block text-sm text-neutral-400">
+        <div className="flex flex-1 flex-col">
+          <label htmlFor="spell-description" className={spellLabelClass}>
             Description
           </label>
           <textarea
             id="spell-description"
             data-testid="spell-description-textarea"
-            className={`w-full flex-1 bg-neutral-900 border p-2 rounded font-mono min-h-[200px] ${
-              isDescriptionInvalid ? "border-red-500" : "border-neutral-700"
+            className={`min-h-[200px] w-full flex-1 border p-2 font-mono ${spellInputSurface} ${
+              isDescriptionInvalid ? spellInputBorderInvalid : spellInputBorderOk
             }`}
             value={form.description}
             onChange={(e) => handleChange("description", e.target.value)}
+            onBlur={() => revealFieldValidation("spell-description")}
+            aria-invalid={ariaInvalidForField("spell-description")}
+            aria-describedby={describedByByField.get("spell-description")}
             required
           />
           {isDescriptionInvalid && (
-            <p className="text-xs text-red-400 mt-1" data-testid="error-description-required">
-              Description is required.
-            </p>
+            <div className="animate-in fade-in duration-200">
+              <p
+                id="error-description-required"
+                className={spellErrorText}
+                data-testid="error-description-required"
+              >
+                Description is required.
+              </p>
+            </div>
           )}
         </div>
 
@@ -2608,6 +2910,7 @@ export default function SpellEditor() {
                 type="button"
                 data-testid="btn-reparse-artifact"
                 aria-label="Reparse spell from artifact"
+                disabled={savePending}
                 onClick={async () => {
                   if (!form.artifacts || form.artifacts.length === 0) return;
                   const artifactId = form.artifacts[0].id;

@@ -43,7 +43,7 @@ test.describe("Milestone Verification Flow", () => {
     const samplePath = fileTracker.track(path.resolve(__dirname, `tmp/sample-${runId}.md`));
     fs.writeFileSync(
       samplePath,
-      `---\nname: ${importedName}\nlevel: 1\nsource: Test Manual\n---\nImported description.`,
+      `---\nname: ${importedName}\nlevel: 1\nsource: Test Manual\nschool: Evocation\n---\nImported description.`,
     );
 
     await test.step("Import a markdown file", async () => {
@@ -133,7 +133,7 @@ test("Import conflict merge review flow", async ({ appContext, fileTracker }) =>
     const samplePath = fileTracker.track(path.resolve(__dirname, `tmp/conflict-${runId}.md`));
     fs.writeFileSync(
       samplePath,
-      `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\n---\n${incomingDescription}`,
+      `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\nschool: Evocation\n---\n${incomingDescription}`,
     );
 
     await app.navigate("Import");

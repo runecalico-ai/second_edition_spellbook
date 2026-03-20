@@ -63,11 +63,8 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Save is blocked and inline error shown", async () => {
       await page.getByTestId("btn-save-spell").click();
-      await expect(page.getByTestId("error-school-required-arcane")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
-      await handleCustomModal(page, "OK");
-      await page.waitForTimeout(300);
+      await app.expectFieldError("error-school-required-arcane");
+      await app.expectNoBlockingDialog();
     });
   });
 
@@ -75,7 +72,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    await test.step("Open new spell, set level 8 and Quest, leave Sphere empty", async () => {
+    await test.step("Open new spell, Divine + Quest, leave Sphere empty", async () => {
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
       await page.getByTestId("spell-name-input").fill("Quest No Sphere");
@@ -83,15 +80,13 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("chk-quest").check();
       await page.getByTestId("spell-description-textarea").fill("Description.");
       await page.getByTestId("spell-classes-input").fill("Cleric");
+      await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
     });
 
     await test.step("Save is blocked and inline error shown", async () => {
       await page.getByTestId("btn-save-spell").click();
-      await expect(page.getByTestId("error-sphere-required-divine")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
-      await handleCustomModal(page, "OK");
-      await page.waitForTimeout(300);
+      await app.expectFieldError("error-sphere-required-divine");
+      await app.expectNoBlockingDialog();
     });
   });
 
@@ -287,28 +282,29 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Save blocked by school required error, NOT tradition error", async () => {
       await page.getByTestId("btn-save-spell").click();
 
-      await expect(page.getByTestId("error-school-required-arcane-tradition")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
+      await app.expectFieldError("error-school-required-arcane-tradition");
 
       await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
 
-      await handleCustomModal(page, "OK");
-      await page.waitForTimeout(300);
+      await app.expectNoBlockingDialog();
     });
   });
 
+  // Tradition conflict on new spell: Arcane school is retained when switching to Divine and filling sphere.
+  // (Plan also mentions edit of a pre-seeded record with both columns; import rejects that shape for new data.)
   test("Tradition conflict derives from live school/sphere edits", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    await test.step("Open new spell and create school+sphere conflict", async () => {
+    await test.step("Arcane school then Divine sphere creates conflict", async () => {
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
       await page.getByTestId("spell-name-input").fill("Tradition Live Conflict");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
+      await expect(page.getByTestId("spell-tradition-select")).toHaveValue("ARCANE");
       await page.getByTestId("spell-school-input").fill("Evocation");
+      await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
       await page.getByTestId("spell-sphere-input").fill("Combat");
 
       await expect(page.getByTestId("error-tradition-conflict")).toBeVisible({
@@ -328,46 +324,40 @@ test.describe("Spell Editor structured data and hash display", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    await test.step("Open new spell and set both school and sphere", async () => {
+    await test.step("Open new spell, set school under Arcane then sphere under Divine", async () => {
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
       await page.getByTestId("spell-name-input").fill("Tradition Save Block");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
       await page.getByTestId("spell-school-input").fill("Evocation");
+      await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
       await page.getByTestId("spell-sphere-input").fill("Combat");
     });
 
-    await test.step("Save shows conflict validation error", async () => {
+    await test.step("Save is blocked with inline conflict error only (no validation modal)", async () => {
       await page.getByTestId("btn-save-spell").click();
-
-      const modal = page.getByRole("dialog");
-      await expect(modal).toBeVisible({ timeout: TIMEOUTS.short });
-      await expect(modal.getByText(/School and Sphere cannot both be set/i)).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
-
-      await handleCustomModal(page, "OK");
-      await expect(page.getByTestId("error-tradition-conflict")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
+      await app.expectFieldError("error-tradition-conflict");
+      await app.expectNoBlockingDialog();
     });
   });
 
-  test("Whitespace-only sphere is normalized and save succeeds", async ({ appContext }) => {
+  test("Arcane school with sphere unset: no tradition conflict and save succeeds", async ({
+    appContext,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
     const spellName = `Whitespace Sphere ${runId}`;
 
-    await test.step("Open new spell and enter school with whitespace-only sphere", async () => {
+    await test.step("Open new spell with Arcane school only; sphere stays unset (no false conflict)", async () => {
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
       await page.getByTestId("spell-name-input").fill(spellName);
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
+      await expect(page.getByTestId("spell-tradition-select")).toHaveValue("ARCANE");
       await page.getByTestId("spell-school-input").fill("Evocation");
-      await page.getByTestId("spell-sphere-input").fill("   ");
 
       await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
     });
@@ -538,12 +528,13 @@ test.describe("Spell Editor structured data and hash display", () => {
       await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
     });
 
-    await test.step("Attempt save without required name — validation blocks save", async () => {
+    await test.step("Attempt save without required name — validation blocks save (inline, no modal)", async () => {
       await page.getByTestId("btn-save-spell").click();
-      await handleCustomModal(page, "OK");
+      await app.expectFieldError("spell-name-error");
+      await app.expectNoBlockingDialog();
     });
 
-    await test.step("Banner is still visible after dismissed modal", async () => {
+    await test.step("Banner is still visible after failed save", async () => {
       const banner = page.getByTestId("spell-editor-special-fallback-banner");
       await expect(banner).toBeVisible({ timeout: TIMEOUTS.short });
     });

@@ -2,6 +2,7 @@ import * as Slider from "@radix-ui/react-slider";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useNotifications } from "../store/useNotifications";
 
 type SpellSummary = {
   id: number;
@@ -80,13 +81,24 @@ export default function Library() {
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [newSearchName, setNewSearchName] = useState("");
+  const [selectedSavedSearchId, setSelectedSavedSearchId] = useState<number | null>(null);
   const saveInputRef = useRef<HTMLInputElement>(null);
+  const pushNotification = useNotifications((state) => state.pushNotification);
 
   useEffect(() => {
     if (isSaving && saveInputRef.current) {
       saveInputRef.current.focus();
     }
   }, [isSaving]);
+
+  useEffect(() => {
+    if (
+      selectedSavedSearchId !== null &&
+      !savedSearches.some((s) => s.id === selectedSavedSearchId)
+    ) {
+      setSelectedSavedSearchId(null);
+    }
+  }, [savedSearches, selectedSavedSearchId]);
 
   const loadFacets = useCallback(async () => {
     const data = await invoke<Facets>("list_facets");
@@ -137,7 +149,7 @@ export default function Library() {
       setIsSaving(false);
       loadSavedSearches();
     } catch (e) {
-      alert(`Failed to save search: ${e}`);
+      pushNotification("error", `Failed to save search: ${e}`);
     }
   };
 
@@ -183,9 +195,10 @@ export default function Library() {
     if (!confirm("Delete this saved search?")) return;
     try {
       await invoke("delete_saved_search", { id });
+      setSelectedSavedSearchId(null);
       loadSavedSearches();
     } catch (e) {
-      alert(`Failed to delete saved search: ${e}`);
+      pushNotification("error", `Failed to delete saved search: ${e}`);
     }
   };
 
@@ -264,9 +277,9 @@ export default function Library() {
         known: 1,
         notes: "",
       });
-      alert("Spell added to character!");
+      pushNotification("success", "Spell added to character!");
     } catch (e) {
-      alert(`Failed to add spell: ${e}`);
+      pushNotification("error", `Failed to add spell: ${e}`);
     }
   };
 
@@ -473,10 +486,17 @@ export default function Library() {
               data-testid="saved-searches-select"
               aria-label="Saved searches"
               onChange={(e) => {
-                const saved = savedSearches.find((s) => s.id === Number.parseInt(e.target.value));
+                const raw = e.target.value;
+                if (!raw) {
+                  setSelectedSavedSearchId(null);
+                  return;
+                }
+                const id = Number.parseInt(raw, 10);
+                const saved = savedSearches.find((s) => s.id === id);
                 if (saved) loadSearch(saved);
+                setSelectedSavedSearchId(id);
               }}
-              value=""
+              value={selectedSavedSearchId !== null ? String(selectedSavedSearchId) : ""}
             >
               <option value="">Saved Searches</option>
               {savedSearches.map((s) => (
@@ -539,12 +559,7 @@ export default function Library() {
               className="text-xs text-neutral-500 hover:text-red-400 ml-1"
               data-testid="btn-delete-saved-search"
               onClick={() => {
-                const currentVal = (
-                  document.querySelector(
-                    'select[data-testid="saved-searches-select"]',
-                  ) as HTMLSelectElement
-                )?.value;
-                if (currentVal) handleDeleteSavedSearch(Number.parseInt(currentVal));
+                if (selectedSavedSearchId !== null) handleDeleteSavedSearch(selectedSavedSearchId);
               }}
               title="Delete selected saved search"
             >

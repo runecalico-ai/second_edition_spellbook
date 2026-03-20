@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { handleCustomModal } from "./utils/dialog-handler";
 
 test.describe("Character Snapshots", () => {
   test("should match JSON export snapshot", async ({ appContext }) => {
@@ -168,6 +169,9 @@ test.describe("Character Snapshots", () => {
       "character-bundle-structure.json",
     );
 
+    await handleCustomModal(page, "OK");
+    await page.waitForTimeout(300);
+
     // Cleanup
     await app.deleteCharacterFromList(charName);
   });
@@ -311,8 +315,8 @@ test.describe("Character Snapshots", () => {
       const dialog = page.getByTestId("print-options-dialog");
       await expect(dialog).toBeVisible();
 
-      // PDF is default format, just confirm
-      await expect(page.getByTestId("print-format-select")).toHaveValue("pdf");
+      // Print dialog offers HTML (print-ready) and Markdown; HTML is the default print path.
+      await expect(page.getByTestId("print-format-select")).toHaveValue("html");
 
       // Confirm
       await page.getByTestId("btn-confirm-print").click();

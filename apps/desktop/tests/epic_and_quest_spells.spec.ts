@@ -43,18 +43,22 @@ test.describe("Epic and Quest Spells", () => {
       });
     });
 
-    await test.step("Attempt Epic Spell for Priest (Should be restricted)", async () => {
+    await test.step("Attempt Epic Spell for Priest (client inline restriction)", async () => {
       await app.navigate("Add Spell");
-      await page.getByLabel("Name", { exact: true }).fill("Restricted Epic");
-      await page.locator("#spell-level").fill("10");
-      await page.getByLabel("Classes").fill("Priest, Cleric");
-      await page.locator("#spell-description").fill("This should fail.");
-      await page.locator("#btn-save-spell").click();
+      await page.getByTestId("spell-name-input").fill("Restricted Epic");
+      await page.getByTestId("spell-level-input").fill("10");
+      await page.getByTestId("spell-school-input").fill("Evocation");
+      await page.getByTestId("spell-classes-input").fill("Priest, Cleric");
+      await page.getByTestId("spell-description-textarea").fill("This should fail client validation.");
+      await page.getByTestId("btn-save-spell").click();
 
-      // Custom Modal handling for validation error
-      await handleCustomModal(page, "OK");
-      await page.waitForTimeout(300); // Settlement wait for modal close
-      await page.locator('button:has-text("Cancel")').click();
+      await app.expectFieldError("error-epic-arcane-class-restriction");
+      await app.expectNoBlockingDialog();
+      await page.getByTestId("btn-cancel-edit").click();
+      await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await handleCustomModal(page, "Confirm");
     });
 
     await test.step("Create a Quest Spell (Divine only)", async () => {

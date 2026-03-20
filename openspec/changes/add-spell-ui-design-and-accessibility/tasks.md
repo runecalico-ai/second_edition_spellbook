@@ -19,38 +19,38 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 ### theme-and-feedback
 
 #### Theme support foundation
-- [ ] Add `darkMode: 'class'` to `apps/desktop/tailwind.config.js`.
-- [ ] Create Zustand theme store (`apps/desktop/src/store/useTheme.ts`):
-  - [ ] Theme state: `'light' | 'dark' | 'system'`
-  - [ ] `setTheme(value: ThemeMode)` function to update theme state explicitly
-  - [ ] Persist to localStorage with key `'spellbook-theme'`
-  - [ ] Initialize from localStorage or fall back to `'system'`
-- [ ] Add theme initialization script to `apps/desktop/index.html`:
-  - [ ] Inline script in `<head>` before React hydration
-  - [ ] Resolve `'system'` or absence via `prefers-color-scheme`
-  - [ ] Apply theme class immediately to avoid flash of incorrect theme
-- [ ] Create `SettingsPage` component (`apps/desktop/src/ui/SettingsPage.tsx`):
-  - [ ] "Appearance" section containing a native `<select>` with Light and Dark options
-  - [ ] "Follow system preference" checkbox below the select
-  - [ ] When checkbox is checked: select is disabled and displays the current OS-resolved theme value
-  - [ ] When checkbox is unchecked: select is active and defaults to the currently-resolved theme (no visual flash on transition)
-  - [ ] Accessible `<label>` elements for both controls
-- [ ] Register `/settings` route in the application router pointing to `SettingsPage`.
-- [ ] Add a gear icon (⚙) button at the far right of the `apps/desktop/src/ui/App.tsx` header that navigates to `/settings`.
-- [ ] Update `apps/desktop/src/main.tsx` to react to OS theme changes when theme is `'system'`.
+- [x] Add `darkMode: 'class'` to `apps/desktop/tailwind.config.js`.
+- [x] Create Zustand theme store (`apps/desktop/src/store/useTheme.ts`):
+  - [x] Theme state: `'light' | 'dark' | 'system'`
+  - [x] `setTheme(value: ThemeMode)` function to update theme state explicitly
+  - [x] Persist to localStorage with key `'spellbook-theme'`
+  - [x] Initialize from localStorage or fall back to `'system'`
+- [x] Add theme initialization script to `apps/desktop/index.html`:
+  - [x] Inline script in `<head>` before React hydration
+  - [x] Resolve `'system'` or absence via `prefers-color-scheme`
+  - [x] Apply theme class immediately to avoid flash of incorrect theme
+- [x] Create `SettingsPage` component (`apps/desktop/src/ui/SettingsPage.tsx`):
+  - [x] "Appearance" section containing a native `<select>` with Light and Dark options
+  - [x] "Follow system preference" checkbox below the select
+  - [x] When checkbox is checked: select is disabled and displays the current OS-resolved theme value
+  - [x] When checkbox is unchecked: select is active and defaults to the currently-resolved theme (no visual flash on transition)
+  - [x] Accessible `<label>` elements for both controls
+- [x] Register `/settings` route in the application router pointing to `SettingsPage`.
+- [x] Add a gear icon (⚙) button at the far right of the `apps/desktop/src/ui/App.tsx` header that navigates to `/settings`.
+- [x] Update `apps/desktop/src/main.tsx` to react to OS theme changes when theme is `'system'`.
 
 #### Shared transient feedback infrastructure
-- [ ] Build a minimal non-modal notification component.
-- [ ] Use lint-safe polite status semantics on the notification portal via a semantic `<output aria-live="polite">`.
-- [ ] Position the notification container fixed at the bottom-right of the viewport.
-- [ ] Stack toasts upward; limit visible count to a maximum of 3 (oldest removed when a fourth arrives).
-- [ ] Auto-dismiss each toast after its type duration (default 3000ms for success, warning, and error; store duration per type so each can be changed independently).
-- [ ] Always allow manual dismissal via a close (×) button on each toast.
-- [ ] Mount the notification container in `apps/desktop/src/ui/App.tsx` alongside root-level modal infrastructure.
+- [x] Build a minimal non-modal notification component.
+- [x] Use lint-safe polite status semantics on the notification portal via a semantic `<output aria-live="polite">`.
+- [x] Position the notification container fixed at the bottom-right of the viewport.
+- [x] Stack toasts upward; limit visible count to a maximum of 3 (oldest removed when a fourth arrives).
+- [x] Auto-dismiss each toast after its type duration (default 3000ms for success, warning, and error; store duration per type so each can be changed independently).
+- [x] Always allow manual dismissal via a close (×) button on each toast.
+- [x] Mount the notification container in `apps/desktop/src/ui/App.tsx` alongside root-level modal infrastructure.
 
 #### Shared live-region infrastructure
-- [ ] Mount a hidden `<div aria-live="polite">` in `apps/desktop/src/ui/App.tsx` for AT-only theme change announcements.
-- [ ] When the theme changes, write the new mode name to the hidden live region (for example: "Dark mode", "Light mode", "System mode") without showing a visible toast.
+- [x] Mount a hidden `<div aria-live="polite">` in `apps/desktop/src/ui/App.tsx` for AT-only theme change announcements.
+- [x] When the theme changes, write the new mode name to the hidden live region (for example: "Dark mode", "Light mode", "System mode") without showing a visible toast.
 
 ---
 
@@ -293,6 +293,7 @@ Validation error testids MUST stay consistent with the migrated tests in Chunk 6
 | theme-and-feedback | Toast - success | `toast-notification-success` |
 | theme-and-feedback | Toast - warning | `toast-notification-warning` |
 | theme-and-feedback | Toast - error | `toast-notification-error` |
+| theme-and-feedback | Toast dismiss button | `toast-dismiss-button` |
 | library | Empty library - "Create Spell" CTA | `empty-library-create-button` |
 | library | Empty library - "Import Spells" CTA | `empty-library-import-button` |
 | library | Empty search - reset filters CTA | `empty-search-reset-button` |

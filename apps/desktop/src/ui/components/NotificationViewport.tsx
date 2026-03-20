@@ -39,7 +39,6 @@ export function NotificationViewportContent({
     <output
       data-testid="notification-viewport"
       aria-live="polite"
-      aria-atomic="false"
       className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-end p-4"
     >
       <div className="flex max-w-sm flex-col-reverse items-stretch gap-3">
@@ -72,6 +71,11 @@ export function NotificationViewport() {
   const notifications = useNotifications((state) => state.notifications);
   const dismissNotification = useNotifications((state) => state.dismissNotification);
 
+  // Timers cancel and reschedule on every list change. Remaining time is
+  // recomputed via createdAtMs + durationMs - Date.now(), so the cancel-
+  // and-reschedule pattern is safe. Math.max(0, ...) clamps past-due values to
+  // zero, so a notification that misses its exact deadline fires on the next
+  // event-loop turn via setTimeout(fn, 0) rather than early (cosmetic only).
   useEffect(() => {
     return scheduleNotificationDismissals(notifications, dismissNotification);
   }, [dismissNotification, notifications]);

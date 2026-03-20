@@ -2,8 +2,22 @@
 
 Branch: `add-spell-ui-design-and-accessibility`  
 Base: `ea4a12f` (`main`)  
-Head: `e8545e9`  
+Head (review snapshot): `e8545e9`  
 Date: 2026-03-19
+
+**Resolved in:** `009e30d` (same branch; 2026-03-19)
+
+| Area | Finding (below) | Status |
+|------|-----------------|--------|
+| Pass 1 | Pre-hydration `localStorage` throws before theme applies | **Fixed** — `getItem` wrapped in try/catch in `index.html` |
+| Pass 1 | First-load bootstrap untested | **Fixed** — `apps/desktop/src/theme/preHydrationTheme.ts` + tests; `main.test.tsx` integration. *Residual:* nothing asserts the literal `<head>` script in `index.html` still exists (optional guard). |
+| Pass 2 | Explicit → system announces wrong string | **Fixed** — `skipNextResolvedThemeAnnouncement` in `App.tsx` |
+| Pass 2 | Explicit-to-system not covered by E2E | **Fixed** — `theme_and_feedback.spec.ts` |
+| Pass 2 | Settings select contract under-tested | **Fixed** — `SettingsPage.test.tsx` (options + value after unchecking follow-system) |
+| Pass 3 | Durations off-spec | **Fixed** — all kinds `3000ms` in `useNotifications.ts` |
+| Pass 3 | Tests locked wrong durations | **Fixed** — `useNotifications.test.ts` asserts `3000` per kind |
+| Pass 3 | Manual dismiss not exercised | **Fixed** — dismiss click + live viewport clears store in `NotificationViewport.test.tsx` |
+| Pass 3 | Close control not `(x)` | **Fixed** — `×` dismiss button + `data-testid="toast-dismiss-button"` |
 
 This review covers Chunk 1: Shared Theme and Feedback Foundations from [openspec/changes/add-spell-ui-design-and-accessibility/tasks.md](../../../openspec/changes/add-spell-ui-design-and-accessibility/tasks.md).
 
@@ -29,7 +43,9 @@ Subagent split:
 
 ### Pass Assessment
 
-The runtime wiring in [apps/desktop/src/main.tsx](c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src/main.tsx) is generally solid, but the no-flash requirement is not fully robust because the pre-hydration script is both fragile and unverified.
+*Historical:* The runtime wiring in [apps/desktop/src/main.tsx](c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop/src/main.tsx) is generally solid, but the no-flash requirement is not fully robust because the pre-hydration script is both fragile and unverified.
+
+*After `009e30d`:* Bootstrap storage access is guarded; shared pre-hydration helpers are tested. Optional follow-up: assert `index.html` still ships the inline bootstrap (string/snapshot test).
 
 ## Pass 2: Settings UI and Theme Announcements
 
@@ -52,7 +68,9 @@ The runtime wiring in [apps/desktop/src/main.tsx](c:/Users/vitki/OneDrive/GitHub
 
 ### Pass Assessment
 
-The settings route and shell integration are present, but the live-region behavior still has a real spec mismatch on one transition path, and the tests currently miss it.
+*Historical:* The settings route and shell integration are present, but the live-region behavior still has a real spec mismatch on one transition path, and the tests currently miss it.
+
+*After `009e30d`:* Explicit → system announces **System mode**; E2E and unit tests cover the path; settings tests assert Light/Dark options and select value after disabling follow-system.
 
 ## Pass 3: Notifications and Verification
 
@@ -80,7 +98,9 @@ The settings route and shell integration are present, but the live-region behavi
 
 ### Pass Assessment
 
-This is still the weakest area of the chunk. The notification system exists, but it has an off-spec duration table, incomplete dismissal coverage, and a small visible mismatch in the close control.
+*Historical:* This is still the weakest area of the chunk. The notification system exists, but it has an off-spec duration table, incomplete dismissal coverage, and a small visible mismatch in the close control.
+
+*After `009e30d`:* Default durations match Chunk 1; tests enforce `3000ms`; manual dismiss is covered end-to-end on the viewport; close control uses **×** with an accessible name.
 
 ## Recommended Implementation Order
 
@@ -92,4 +112,6 @@ This is still the weakest area of the chunk. The notification system exists, but
 
 ## Overall
 
-Chunk 1 is not ready to treat as complete yet. There are no catastrophic regressions, but there are multiple medium-severity spec mismatches. At least one of them is currently baked into the tests, and several others remain unguarded by coverage.
+*Historical (at `e8545e9`):* Chunk 1 is not ready to treat as complete yet. There are no catastrophic regressions, but there are multiple medium-severity spec mismatches. At least one of them is currently baked into the tests, and several others remain unguarded by coverage.
+
+*After `009e30d`:* The findings above are **addressed in implementation and tests** per the resolution table. Chunk 1 items from this review can be treated as **complete** for merge/QA, aside from the optional **index.html bootstrap presence** check if you want belt-and-suspenders regression protection.

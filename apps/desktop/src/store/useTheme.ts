@@ -12,6 +12,10 @@ export interface ThemeState {
   syncResolvedTheme: (systemPrefersDark: boolean) => void;
 }
 
+interface ThemeStoreState extends ThemeState {
+  _systemPrefersDark: boolean;
+}
+
 function getStorage(): Pick<Storage, "getItem" | "setItem"> | null {
   if (typeof localStorage !== "undefined") {
     return localStorage;
@@ -36,11 +40,15 @@ export function resolveThemeMode(mode: ThemeMode, systemPrefersDark: boolean): R
   return mode;
 }
 
-export function readStoredThemeMode(): ThemeMode {
+export function readStoredThemeMode(): ThemeMode | null {
   try {
-    return sanitizeThemeMode(getStorage()?.getItem(THEME_STORAGE_KEY));
+    const raw = getStorage()?.getItem(THEME_STORAGE_KEY) ?? null;
+    if (raw === "light" || raw === "dark" || raw === "system") {
+      return raw;
+    }
+    return null;
   } catch {
-    return "system";
+    return null;
   }
 }
 
@@ -61,26 +69,31 @@ export function getSystemThemePreference(): boolean {
 }
 
 export function createThemeStore(initialSystemPrefersDark = false) {
-  const initialMode = readStoredThemeMode();
-  let systemPrefersDark = initialSystemPrefersDark;
+  const initialMode = readStoredThemeMode() ?? "system";
 
-  return create<ThemeState>((set, get) => ({
+  return create<ThemeStoreState>((set, get) => ({
     mode: initialMode,
-    resolvedTheme: resolveThemeMode(initialMode, systemPrefersDark),
+    resolvedTheme: resolveThemeMode(initialMode, initialSystemPrefersDark),
+    _systemPrefersDark: initialSystemPrefersDark,
     setTheme: (value) => {
       persistThemeMode(value);
       set({
         mode: value,
-        resolvedTheme: resolveThemeMode(value, systemPrefersDark),
+        resolvedTheme: resolveThemeMode(value, get()._systemPrefersDark),
       });
     },
     syncResolvedTheme: (nextSystemPrefersDark) => {
-      systemPrefersDark = nextSystemPrefersDark;
-      set({
-        resolvedTheme: resolveThemeMode(get().mode, systemPrefersDark),
-      });
+      set((state) => ({
+        _systemPrefersDark: nextSystemPrefersDark,
+        resolvedTheme: resolveThemeMode(state.mode, nextSystemPrefersDark),
+      }));
     },
   }));
 }
 
+// This runs at module evaluation time, before the component tree mounts.
+// In tests, jsdom's matchMedia always returns false, so the singleton's initial
+// resolvedTheme is always "light" unless a test constructs a fresh store via
+// createThemeStore. Tests that need a specific initial systemPrefersDark value
+// should use createThemeStore(...) directly.
 export const useTheme = createThemeStore(getSystemThemePreference());

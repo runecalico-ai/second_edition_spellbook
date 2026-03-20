@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   THEME_STORAGE_KEY,
   createThemeStore,
+  readStoredThemeMode,
   resolveThemeMode,
   sanitizeThemeMode,
 } from "./useTheme";
@@ -94,5 +95,95 @@ describe("sanitizeThemeMode", () => {
     expect(sanitizeThemeMode("light")).toBe("light");
     expect(sanitizeThemeMode("dark")).toBe("dark");
     expect(sanitizeThemeMode("system")).toBe("system");
+  });
+});
+
+describe("syncResolvedTheme", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("resolves to dark when called with true in system mode", () => {
+    vi.stubGlobal("localStorage", createStorageMock());
+    const store = createThemeStore(false);
+
+    store.getState().syncResolvedTheme(true);
+
+    expect(store.getState().resolvedTheme).toBe("dark");
+  });
+
+  it("resolves to light when called with false in system mode", () => {
+    vi.stubGlobal("localStorage", createStorageMock());
+    const store = createThemeStore(false);
+
+    store.getState().syncResolvedTheme(false);
+
+    expect(store.getState().resolvedTheme).toBe("light");
+  });
+
+  it("explicit light mode wins over system preference", () => {
+    vi.stubGlobal("localStorage", createStorageMock("light"));
+    const store = createThemeStore(false);
+
+    store.getState().syncResolvedTheme(true);
+
+    expect(store.getState().resolvedTheme).toBe("light");
+  });
+
+  it("setTheme to system uses the stored systemPrefersDark value", () => {
+    vi.stubGlobal("localStorage", createStorageMock("light"));
+    const store = createThemeStore(false);
+
+    store.getState().syncResolvedTheme(true);
+    store.getState().setTheme("system");
+
+    expect(store.getState().resolvedTheme).toBe("dark");
+  });
+});
+
+describe("readStoredThemeMode", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the stored value when localStorage contains a valid theme mode", () => {
+    vi.stubGlobal("localStorage", createStorageMock("light"));
+    expect(readStoredThemeMode()).toBe("light");
+
+    vi.stubGlobal("localStorage", createStorageMock("dark"));
+    expect(readStoredThemeMode()).toBe("dark");
+
+    vi.stubGlobal("localStorage", createStorageMock("system"));
+    expect(readStoredThemeMode()).toBe("system");
+  });
+
+  it("returns null when localStorage is empty or the key is absent", () => {
+    vi.stubGlobal("localStorage", createStorageMock());
+    expect(readStoredThemeMode()).toBeNull();
+  });
+
+  it("returns null when the stored value is an invalid string", () => {
+    vi.stubGlobal("localStorage", createStorageMock("sepia"));
+    expect(readStoredThemeMode()).toBeNull();
+  });
+
+  it("returns null when localStorage throws", () => {
+    vi.stubGlobal("localStorage", {
+      getItem() {
+        throw new Error("storage unavailable");
+      },
+      setItem() {},
+      removeItem() {},
+      clear() {},
+    });
+    expect(readStoredThemeMode()).toBeNull();
   });
 });

@@ -46,6 +46,9 @@ test.describe("theme and feedback foundations", () => {
     await themeSelect.selectOption("dark");
 
     await waitForResolvedTheme(page, "dark");
+    // Note: sr-only elements have a 1×1 px layout box (not display:none/visibility:hidden),
+    // so Playwright's toBeHidden() is unreliable here. Visual hiding is verified in App.test.tsx
+    // (checks for the "sr-only" CSS class). The assertion below verifies AT content only.
     await expect(themeLiveRegion).toHaveText("Dark mode");
     await expect(page.getByTestId("toast-notification-success")).toHaveCount(0);
     await expect(page.getByTestId("toast-notification-warning")).toHaveCount(0);
@@ -82,6 +85,8 @@ test.describe("theme and feedback foundations", () => {
     await followSystemCheckbox.check();
     await expect(followSystemCheckbox).toBeChecked();
     await expect(themeSelect).toBeDisabled();
+    // Note: sr-only elements have a 1×1 px layout box (not display:none/visibility:hidden),
+    // so Playwright's toBeHidden() is unreliable here. Visual hiding is verified in App.test.tsx.
     await expect(themeLiveRegion).toHaveText("System mode");
   });
 
@@ -106,6 +111,8 @@ test.describe("theme and feedback foundations", () => {
     await expect(followSystemCheckbox).toBeChecked();
     await expect(themeSelect).toBeDisabled();
     await expect(themeSelect).toHaveValue("dark");
+    // Note: sr-only elements have a 1×1 px layout box (not display:none/visibility:hidden),
+    // so Playwright's toBeHidden() is unreliable here. Visual hiding is verified in App.test.tsx.
     await expect(themeLiveRegion).toHaveText("System mode");
 
     await page.emulateMedia({ colorScheme: "light" });
@@ -116,6 +123,9 @@ test.describe("theme and feedback foundations", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await waitForResolvedTheme(page, "dark");
     await expect(themeSelect).toHaveValue("dark");
+    // Note: sr-only elements have a 1×1 px layout box (not display:none/visibility:hidden),
+    // so Playwright's toBeHidden() is unreliable here. Visual hiding is verified in App.test.tsx
+    // (checks for the "sr-only" CSS class). The assertion below verifies AT content only.
     await expect(themeLiveRegion).toHaveText("Dark mode");
   });
 
@@ -145,5 +155,7 @@ test.describe("theme and feedback foundations", () => {
     await expect(viewport).toHaveAttribute("aria-live", "polite");
     await expect(successToast).toBeVisible({ timeout: TIMEOUTS.medium });
     await expect(successToast).toContainText("Hash copied to clipboard.");
+    // Wait for the toast to auto-dismiss (default 3000ms + buffer)
+    await expect(successToast).toBeHidden({ timeout: 6000 });
   });
 });

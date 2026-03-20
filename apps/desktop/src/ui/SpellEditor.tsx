@@ -2027,6 +2027,7 @@ export default function SpellEditor() {
           >
             {hashExpanded ? form.contentHash : `${form.contentHash.slice(0, 8)}...`}
           </code>
+          {/* TODO(chunk-3): remove hardcoded dark-only classes — replace with theme-aware equivalents */}
           <button
             type="button"
             data-testid="spell-detail-hash-copy"
@@ -2042,6 +2043,7 @@ export default function SpellEditor() {
           >
             Copy
           </button>
+          {/* TODO(chunk-3): remove hardcoded dark-only classes — replace with theme-aware equivalents */}
           <button
             type="button"
             data-testid="spell-detail-hash-expand"

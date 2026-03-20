@@ -35,10 +35,8 @@ type ThemeStore = {
 
 type ThemeMediaQueryList = {
   matches: boolean;
-  addEventListener?: (type: "change", listener: (event: { matches: boolean }) => void) => void;
-  removeEventListener?: (type: "change", listener: (event: { matches: boolean }) => void) => void;
-  addListener?: (listener: (event: { matches: boolean }) => void) => void;
-  removeListener?: (listener: (event: { matches: boolean }) => void) => void;
+  addEventListener: (type: "change", listener: (event: { matches: boolean }) => void) => void;
+  removeEventListener: (type: "change", listener: (event: { matches: boolean }) => void) => void;
 };
 
 type ThemeRuntimeRoot = {
@@ -72,19 +70,11 @@ export function attachThemeRuntime({
     applyResolvedTheme(rootElement, state.resolvedTheme);
   });
 
-  if (typeof mediaQueryList.addEventListener === "function") {
-    mediaQueryList.addEventListener("change", handleSystemThemeChange);
-  } else if (typeof mediaQueryList.addListener === "function") {
-    mediaQueryList.addListener(handleSystemThemeChange);
-  }
+  mediaQueryList.addEventListener("change", handleSystemThemeChange);
 
   return () => {
     unsubscribe();
-    if (typeof mediaQueryList.removeEventListener === "function") {
-      mediaQueryList.removeEventListener("change", handleSystemThemeChange);
-    } else if (typeof mediaQueryList.removeListener === "function") {
-      mediaQueryList.removeListener(handleSystemThemeChange);
-    }
+    mediaQueryList.removeEventListener("change", handleSystemThemeChange);
   };
 }
 

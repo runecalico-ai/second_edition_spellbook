@@ -161,6 +161,46 @@ describe("NotificationViewport", () => {
     cancelTimers();
   });
 
+  it("manually dismissing one toast does not disturb a sibling toast's timer", () => {
+    // Tests scheduleNotificationDismissals directly (same pattern as other timer tests)
+    // to avoid React 18's MessageChannel-based effect scheduling being unaffected by fake timers.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-18T00:00:00.000Z"));
+    const dismissNotification = vi.fn();
+
+    const success = {
+      id: "toast-success",
+      kind: "success" as const,
+      message: "Saved.",
+      durationMs: 3000,
+      createdAtMs: Date.now(),
+    };
+    const warning = {
+      id: "toast-warning",
+      kind: "warning" as const,
+      message: "Careful.",
+      durationMs: 3000,
+      createdAtMs: Date.now(),
+    };
+
+    // Both toasts active; advance halfway
+    let cancelTimers = scheduleNotificationDismissals([success, warning], dismissNotification);
+    vi.advanceTimersByTime(1500);
+    cancelTimers();
+
+    // Simulate manual dismiss of success: cancel old timers and reschedule with only warning
+    cancelTimers = scheduleNotificationDismissals([warning], dismissNotification);
+
+    vi.advanceTimersByTime(1499);
+    expect(dismissNotification).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(dismissNotification).toHaveBeenCalledWith("toast-warning");
+    expect(dismissNotification).not.toHaveBeenCalledWith("toast-success");
+
+    cancelTimers();
+  });
+
   it("does not fire dismiss timer after unmount", () => {
     vi.useFakeTimers();
 

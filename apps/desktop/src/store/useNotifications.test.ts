@@ -56,6 +56,7 @@ describe("useNotifications", () => {
     expect(NOTIFICATION_DURATION_BY_KIND.success).toBe(3000);
     expect(NOTIFICATION_DURATION_BY_KIND.warning).toBe(3000);
     expect(NOTIFICATION_DURATION_BY_KIND.error).toBe(3000);
+    expect(success?.createdAtMs).toBeGreaterThan(0);
   });
 
   it("dismisses a notification by id", () => {

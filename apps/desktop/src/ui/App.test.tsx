@@ -126,8 +126,29 @@ describe("App shell", () => {
     const html = renderAppShell();
 
     expect(html).toContain('data-testid="theme-announcement-live-region" aria-live="polite"');
+    // "System mode" comes from the useState initialiser reading the store; depends on resetThemeState() having run.
     expect(html).toContain("System mode");
     expect(html).toContain("sr-only");
+  });
+
+  it("live region contains Dark mode text when store initialises in dark mode", () => {
+    // Use render (not renderToStaticMarkup) so Zustand's store subscription
+    // is exercised via the real component lifecycle rather than the SSR snapshot path.
+    useTheme.setState({ mode: "dark", resolvedTheme: "dark" });
+
+    const { getByTestId, unmount } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<App />}>
+            <Route index element={<div>Library</div>} />
+            <Route path="settings" element={<div>Settings</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(getByTestId("theme-announcement-live-region").textContent).toBe("Dark mode");
+    unmount();
   });
 
   it("maps theme modes to announcement text", () => {

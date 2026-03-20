@@ -106,4 +106,47 @@ describe("main", () => {
 
     detach();
   });
+
+  it("keeps pre-hydration and runtime theme application consistent for system mode with OS dark preference", () => {
+    const rootElement = createRootElementStub();
+    applyPreHydrationTheme(rootElement as unknown as HTMLElement, "system", true);
+
+    const store = createThemeStore(true);
+    const mediaQueryList = createMediaQueryListStub(true);
+    const detach = attachThemeRuntime({ rootElement, mediaQueryList, store });
+
+    expect(rootElement.dataset.theme).toBe("dark");
+    expect(rootElement.classList.contains("dark")).toBe(true);
+
+    detach();
+  });
+
+  it("keeps pre-hydration and runtime theme application consistent for system mode with OS light preference", () => {
+    const rootElement = createRootElementStub();
+    applyPreHydrationTheme(rootElement as unknown as HTMLElement, "system", false);
+
+    const store = createThemeStore(false);
+    const mediaQueryList = createMediaQueryListStub(false);
+    const detach = attachThemeRuntime({ rootElement, mediaQueryList, store });
+
+    expect(rootElement.dataset.theme).toBe("light");
+    expect(rootElement.classList.contains("dark")).toBe(false);
+
+    detach();
+  });
+
+  it("keeps pre-hydration and runtime theme application consistent for invalid stored value fallback", () => {
+    const rootElement = createRootElementStub();
+    // Invalid stored value is sanitized to "system"; with OS dark preference, resolves to "dark"
+    applyPreHydrationTheme(rootElement as unknown as HTMLElement, "invalid-garbage", true);
+
+    const store = createThemeStore(true);
+    const mediaQueryList = createMediaQueryListStub(true);
+    const detach = attachThemeRuntime({ rootElement, mediaQueryList, store });
+
+    expect(rootElement.dataset.theme).toBe("dark");
+    expect(rootElement.classList.contains("dark")).toBe(true);
+
+    detach();
+  });
 });

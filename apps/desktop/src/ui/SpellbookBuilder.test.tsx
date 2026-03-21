@@ -75,6 +75,8 @@ describe("empty character spellbook state", () => {
     const dialog = await screen.findByRole("dialog", { name: "Add spells" });
     const searchInput = within(dialog).getByTestId("spellbook-picker-search-input");
     expect(dialog.getAttribute("data-testid")).toBe("spellbook-picker-dialog");
+    // Verify dialog has theme-aware container class
+    expect(screen.getByTestId("spellbook-picker-dialog").classList.contains("bg-white")).toBe(true);
     expect(searchInput).not.toBeNull();
     expect(document.activeElement).toBe(searchInput);
     expect(within(dialog).getByRole("button", { name: "Search" })).not.toBeNull();

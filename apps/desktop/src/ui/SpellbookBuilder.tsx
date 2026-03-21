@@ -629,10 +629,10 @@ export default function SpellbookBuilder() {
               <table className="w-full text-sm text-left border-collapse">
                 <thead className="text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-700 sticky top-0">
                   <tr>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-800">Name</th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-800">School</th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-800 w-16 text-center">Level</th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-800 w-24 text-right">Action</th>
+                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600">Name</th>
+                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600">School</th>
+                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600 w-16 text-center">Level</th>
+                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600 w-24 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -643,7 +643,7 @@ export default function SpellbookBuilder() {
                       <tr
                         key={spell.id}
                         data-testid={`picker-spell-row-${spell.name.replace(/\s+/g, "-").toLowerCase()}`}
-                        className="border-b border-neutral-200 dark:border-neutral-700/50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                        className="border-b border-neutral-200 dark:border-neutral-700/50 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                       >
                         <td className="p-2">
                           <div className="flex items-center gap-2">
@@ -676,8 +676,8 @@ export default function SpellbookBuilder() {
                               canAddSpell
                                 ? "bg-blue-600 hover:bg-blue-500"
                                 : alreadyAdded
-                                ? "bg-neutral-200 text-neutral-500 dark:bg-neutral-800 cursor-not-allowed"
-                                : "bg-neutral-200 text-neutral-500 dark:bg-neutral-800 cursor-not-allowed"
+                                ? "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 cursor-not-allowed"
+                                : "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 cursor-not-allowed"
                             }`}
                             disabled={!canAddSpell}
                           >

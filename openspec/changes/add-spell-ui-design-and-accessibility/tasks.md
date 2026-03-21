@@ -63,45 +63,45 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 ### library
 
 #### Feedback policy application in touched spell/library flows
-- [ ] Replace modal alerts used for routine status in touched spell and library flows with inline or transient non-modal feedback.
-- [ ] Preserve modal/dialog usage for destructive confirmations, blocking decisions, and rare high-severity errors only.
+- [x] Replace modal alerts used for routine status in touched spell and library flows with inline or transient non-modal feedback.
+- [x] Preserve modal/dialog usage for destructive confirmations, blocking decisions, and rare high-severity errors only.
 
 #### Validation feedback and timing
-- [ ] Apply `animate-in fade-in` to conditional fields when they mount (enter only — no exit animation).
-- [ ] Ensure newly relevant fields fade into view; hidden fields unmount instantly without leaving visual gaps.
-- [ ] Render inline errors adjacent to invalid fields.
-- [ ] Use specific field messages rather than generic "Invalid value" text.
-- [ ] Apply consistent invalid-state styling and motion using existing shared animation utilities.
-- [ ] Implement blur validation for text inputs (name, scalar values).
-- [ ] Implement change validation for select controls.
-- [ ] Immediately revalidate dependent fields when a controlling field such as tradition changes.
-- [ ] Validate all untouched fields on first submit attempt.
-- [ ] Clear field errors as soon as the field becomes valid.
-- [ ] Prefer messages such as "School is required for Arcane spells".
-- [ ] Prefer messages such as "Base value must be a positive number".
-- [ ] Keep fix-in-place validation feedback inline rather than modal.
+- [x] Apply `animate-in fade-in` to conditional fields when they mount (enter only — no exit animation).
+- [x] Ensure newly relevant fields fade into view; hidden fields unmount instantly without leaving visual gaps.
+- [x] Render inline errors adjacent to invalid fields.
+- [x] Use specific field messages rather than generic "Invalid value" text.
+- [x] Apply consistent invalid-state styling and motion using existing shared animation utilities.
+- [x] Implement blur validation for text inputs (name, scalar values).
+- [x] Implement change validation for select controls.
+- [x] Immediately revalidate dependent fields when a controlling field such as tradition changes.
+- [x] Validate all untouched fields on first submit attempt.
+- [x] Clear field errors as soon as the field becomes valid.
+- [x] Prefer messages such as "School is required for Arcane spells".
+- [x] Prefer messages such as "Base value must be a positive number".
+- [x] Keep fix-in-place validation feedback inline rather than modal.
 
 #### Save workflow feedback
-- [ ] If the save operation exceeds 300ms, change the save button label to "Saving…" and disable it for the duration. Below 300ms the operation completes before the state becomes visible.
-- [ ] Keep the user in context until the save completes.
-- [ ] Trigger transient success feedback through the notification store as save completes.
-- [ ] Return the user to the Library view after save.
-- [ ] Ensure the success notification renders on the Library view after navigation rather than only on the editor.
-- [ ] Ensure the saved spell is discoverable in the Library after navigation.
-- [ ] After the first failed submit attempt, show a hint near the save button explaining why it is disabled (e.g. "Fix the errors above to save"). The hint must not appear while the form is pristine.
+- [x] If the save operation exceeds 300ms, change the save button label to "Saving…" and disable it for the duration. Below 300ms the operation completes before the state becomes visible.
+- [x] Keep the user in context until the save completes.
+- [x] Trigger transient success feedback through the notification store as save completes.
+- [x] Return the user to the Library view after save.
+- [x] Ensure the success notification renders on the Library view after navigation rather than only on the editor.
+- [x] Ensure the saved spell is discoverable in the Library after navigation.
+- [x] After the first failed submit attempt, show a hint near the save button explaining why it is disabled (e.g. "Fix the errors above to save"). The hint must not appear while the form is pristine.
 
 ### frontend-standards
 
 #### Error identification and announcement model
-- [ ] Mark invalid fields with `aria-invalid="true"` when they are in an error state.
-- [ ] Associate each error message with its field via `aria-describedby`.
-- [ ] On first failed submit attempt, move focus to the first invalid field so screen readers announce its label and error text naturally.
-- [ ] Apply this hybrid model consistently across the spell editor: field-level association always present, focus-on-submit for the initial blocked-save announcement.
+- [x] Mark invalid fields with `aria-invalid="true"` when they are in an error state.
+- [x] Associate each error message with its field via `aria-describedby`.
+- [x] On first failed submit attempt, move focus to the first invalid field so screen readers announce its label and error text naturally.
+- [x] Apply this hybrid model consistently across the spell editor: field-level association always present, focus-on-submit for the initial blocked-save announcement.
 
 ### theme-and-feedback
 
 #### Theme coverage for spell-editor changes introduced in this chunk
-- [ ] Apply intentional light and dark theme styling to the validation, invalid-state, save-progress, and disabled-action UI introduced in this chunk.
+- [x] Apply intentional light and dark theme styling to the validation, invalid-state, save-progress, and disabled-action UI introduced in this chunk.
 
 ---
 

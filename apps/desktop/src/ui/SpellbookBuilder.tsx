@@ -627,7 +627,7 @@ export default function SpellbookBuilder() {
 
             <div className="max-h-[50vh] overflow-auto border border-neutral-300 dark:border-neutral-700 rounded">
               <table className="w-full text-sm text-left border-collapse">
-                <thead className="text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 sticky top-0">
+                <thead className="text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-700 sticky top-0">
                   <tr>
                     <th className="p-2 border-b border-neutral-300 dark:border-neutral-800">Name</th>
                     <th className="p-2 border-b border-neutral-300 dark:border-neutral-800">School</th>
@@ -643,7 +643,7 @@ export default function SpellbookBuilder() {
                       <tr
                         key={spell.id}
                         data-testid={`picker-spell-row-${spell.name.replace(/\s+/g, "-").toLowerCase()}`}
-                        className="border-b border-neutral-200 dark:border-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                        className="border-b border-neutral-200 dark:border-neutral-700/50 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       >
                         <td className="p-2">
                           <div className="flex items-center gap-2">

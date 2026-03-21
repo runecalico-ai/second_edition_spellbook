@@ -18,6 +18,8 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div
+      role="status"
+      aria-live="polite"
       className="flex flex-col items-center justify-center py-16 text-center gap-4"
       data-testid={testId}
     >

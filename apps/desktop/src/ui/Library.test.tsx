@@ -348,6 +348,8 @@ describe("Library empty states", () => {
       expect(
         (screen.getByTestId("library-search-input") as HTMLInputElement).value,
       ).toBe("");
+      // Verify the empty-search state is no longer in the DOM
+      expect(screen.queryByTestId("empty-search-reset-button")).toBeNull();
     });
   });
 });

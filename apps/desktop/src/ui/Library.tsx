@@ -657,6 +657,7 @@ export default function Library() {
                   <EmptyState
                     heading="No Spells Yet"
                     description="Your spell library is empty. Create your first spell or import spells from a file."
+                    testId="empty-library-state"
                   >
                     <Link
                       to="/edit/new"
@@ -682,6 +683,7 @@ export default function Library() {
                   <EmptyState
                     heading="No Results"
                     description="No spells match your current search or filters."
+                    testId="empty-search-state"
                   >
                     <button
                       type="button"

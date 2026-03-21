@@ -29,6 +29,16 @@ const emptyFacets = {
   tags: [] as string[],
 };
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function renderLibraryWithViewport() {
   const router = createMemoryRouter([{ path: "/", element: <Library /> }], { initialEntries: ["/"] });
   return render(
@@ -297,6 +307,32 @@ describe("Library empty states", () => {
   });
 
   describe("empty library (no active filters)", () => {
+    it("waits for the current initial search to settle before rendering the empty-library state", async () => {
+      const searchDeferred = createDeferred<unknown[]>();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        switch (cmd) {
+          case "list_facets": return Promise.resolve(emptyFacets);
+          case "list_characters": return Promise.resolve([]);
+          case "list_saved_searches": return Promise.resolve([]);
+          case "search_keyword": return searchDeferred.promise;
+          case "search_semantic": return Promise.resolve([]);
+          default: return Promise.resolve(undefined);
+        }
+      });
+
+      renderLibraryWithViewport();
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("search_keyword", { query: "", filters: expect.any(Object) });
+      });
+      expect(screen.queryByText("No Spells Yet")).toBeNull();
+      expect(screen.queryByText("No Results")).toBeNull();
+
+      searchDeferred.resolve([]);
+
+      expect(await screen.findByText("No Spells Yet")).toBeTruthy();
+    });
+
     it("renders the empty-library heading when no filters are active", async () => {
       renderLibraryWithViewport();
       expect(await screen.findByText("No Spells Yet")).toBeTruthy();
@@ -313,6 +349,91 @@ describe("Library empty states", () => {
   });
 
   describe("empty search (active filters, no results)", () => {
+    it("keeps empty states suppressed until the latest overlapping search settles", async () => {
+      const initialSearchDeferred = createDeferred<unknown[]>();
+      const latestSearchDeferred = createDeferred<unknown[]>();
+      let keywordSearchCalls = 0;
+
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        switch (cmd) {
+          case "list_facets": return Promise.resolve(emptyFacets);
+          case "list_characters": return Promise.resolve([]);
+          case "list_saved_searches": return Promise.resolve([]);
+          case "search_keyword":
+            keywordSearchCalls += 1;
+            return keywordSearchCalls === 1
+              ? initialSearchDeferred.promise
+              : latestSearchDeferred.promise;
+          case "search_semantic": return Promise.resolve([]);
+          default: return Promise.resolve(undefined);
+        }
+      });
+
+      renderLibraryWithViewport();
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("search_keyword", { query: "", filters: expect.any(Object) });
+      });
+
+      fireEvent.change(screen.getByTestId("library-search-input"), {
+        target: { value: "fireball" },
+      });
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("search_keyword", {
+          query: "fireball",
+          filters: expect.any(Object),
+        });
+      });
+
+      initialSearchDeferred.resolve([]);
+
+      await waitFor(() => {
+        expect(screen.queryByText("No Spells Yet")).toBeNull();
+        expect(screen.queryByText("No Results")).toBeNull();
+      });
+
+      latestSearchDeferred.resolve([]);
+
+      expect(await screen.findByText("No Results")).toBeTruthy();
+      expect(screen.queryByText("No Spells Yet")).toBeNull();
+    });
+
+    it("renders the empty-search state for semantic mode after the semantic search settles", async () => {
+      const semanticDeferred = createDeferred<unknown[]>();
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        switch (cmd) {
+          case "list_facets": return Promise.resolve(emptyFacets);
+          case "list_characters": return Promise.resolve([]);
+          case "list_saved_searches": return Promise.resolve([]);
+          case "search_keyword": return Promise.resolve([]);
+          case "search_semantic": return semanticDeferred.promise;
+          default: return Promise.resolve(undefined);
+        }
+      });
+
+      renderLibraryWithViewport();
+      await screen.findByText("No Spells Yet");
+
+      fireEvent.change(screen.getByTestId("library-mode-select"), {
+        target: { value: "semantic" },
+      });
+      fireEvent.change(screen.getByTestId("library-search-input"), {
+        target: { value: "find hidden lore" },
+      });
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("search_semantic", { query: "find hidden lore" });
+      });
+      expect(screen.queryByText("No Results")).toBeNull();
+
+      semanticDeferred.resolve([]);
+
+      expect(await screen.findByText("No Results")).toBeTruthy();
+      expect(screen.getByText(/No spells match your current search/i)).toBeTruthy();
+      expect(screen.queryByText("No Spells Yet")).toBeNull();
+    });
+
     it("renders the empty-search state after a query is typed and search is triggered", async () => {
       renderLibraryWithViewport();
       // Wait for initial empty-library render
@@ -350,6 +471,51 @@ describe("Library empty states", () => {
       ).toBe("");
       // Verify the empty-search state is no longer in the DOM
       expect(screen.queryByTestId("empty-search-reset-button")).toBeNull();
+    });
+
+    it("resetting filters from a saved-search empty state clears the saved-search selection", async () => {
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        switch (cmd) {
+          case "list_facets": return emptyFacets;
+          case "list_characters": return [];
+          case "list_saved_searches":
+            return [
+              {
+                id: 42,
+                name: "Quest Search",
+                filterJson: JSON.stringify({
+                  query: "quest magic",
+                  mode: "keyword",
+                  filters: {},
+                }),
+                createdAt: "2026-03-21",
+              },
+            ];
+          case "search_keyword":
+          case "search_semantic":
+            return [];
+          default:
+            return undefined;
+        }
+      });
+
+      renderLibraryWithViewport();
+      await waitFor(() => {
+        expect(screen.getByTestId("saved-searches-select")).toBeTruthy();
+      });
+
+      fireEvent.change(screen.getByTestId("saved-searches-select"), {
+        target: { value: "42" },
+      });
+
+      expect(await screen.findByText("No Results")).toBeTruthy();
+      expect((screen.getByTestId("saved-searches-select") as HTMLSelectElement).value).toBe("42");
+
+      fireEvent.click(screen.getByTestId("empty-search-reset-button"));
+
+      expect(await screen.findByText("No Spells Yet")).toBeTruthy();
+      expect((screen.getByTestId("saved-searches-select") as HTMLSelectElement).value).toBe("");
+      expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
     });
   });
 });

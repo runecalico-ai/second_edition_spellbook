@@ -39,10 +39,10 @@ Before writing tests, confirm how unit tests are run:
 Read `apps/desktop/package.json` and look for the `scripts` section. All unit test run commands in this plan use:
 
 ```bash
-cd apps/desktop && pnpm test --run
+cd apps/desktop && pnpm test:unit --run
 ```
 
-If the script name differs, substitute accordingly.
+This workspace exposes unit tests through `test:unit`, not `test`.
 
 ---
 
@@ -51,19 +51,21 @@ If the script name differs, substitute accordingly.
 **Files:**
 - Create: `apps/desktop/src/ui/components/EmptyState.tsx`
 
-**Heading level:** `EmptyState` accepts a `headingLevel` prop so each consuming page can match its heading hierarchy. Before rendering, verify the heading level of each consuming page (`Library.tsx`, `SpellbookBuilder.tsx`) and choose the correct level. Library.tsx has an `<h1>` on line 289 — the empty state heading should be `<h2>`. SpellbookBuilder.tsx has an `<h1>` on line 233 — the empty state heading should also be `<h2>`. If either page is refactored and the `<h1>` is removed, adjust accordingly.
+**Heading level:** `EmptyState` accepts a `headingLevel` prop so each consuming page can match its heading hierarchy. Before rendering, verify the heading level of each consuming page (`Library.tsx`, `SpellbookBuilder.tsx`) and choose the correct level. Both pages currently use an `<h1>` page heading, so the empty state heading should be `<h2>`. If either page is refactored and the `<h1>` is removed, adjust accordingly.
 
 - [x] **Step 1.1: Write the component**
 
 ```tsx
 // apps/desktop/src/ui/components/EmptyState.tsx
-import type { ElementType, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface EmptyStateProps {
   heading: string;
   description: string;
-  headingLevel?: ElementType; // default "h2"; use "h3" if the page already uses h2 for sections
+  headingLevel?: "h1" | "h2" | "h3" | "h4" | "h5" | "h6"; // default "h2"; use "h3" if the page already uses h2 for sections
   children?: ReactNode; // CTA buttons / links
+  testId?: string; // defaults to "empty-state"
+  announce?: boolean;
 }
 
 export function EmptyState({
@@ -71,9 +73,15 @@ export function EmptyState({
   description,
   headingLevel: Heading = "h2",
   children,
+  testId = "empty-state",
+  announce = true,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
+    <div
+      role={announce ? "status" : undefined}
+      className="flex flex-col items-center justify-center py-16 text-center gap-4"
+      data-testid={testId}
+    >
       <Heading className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
         {heading}
       </Heading>
@@ -148,39 +156,48 @@ describe("hash display", () => {
     expect(codeEl).not.toHaveAttribute("title");
   });
 
-  it("shows the full hash after clicking Expand", async () => {
+  it("shows the full hash after clicking Expand", () => {
     const expandBtn = screen.getByTestId("spell-detail-hash-expand");
-    await userEvent.click(expandBtn);
+    fireEvent.click(expandBtn);
     const codeEl = screen.getByTestId("spell-detail-hash-display");
     expect(codeEl.textContent).toBe(HASH_FIXTURE);
   });
 
-  it("copy button triggers a success toast without opening a modal dialog", async () => {
+  it("copy button triggers a success toast inside the notification live region without opening a modal dialog", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
     const copyBtn = screen.getByTestId("spell-detail-hash-copy");
-    await userEvent.click(copyBtn);
+    fireEvent.click(copyBtn);
 
     // Confirm clipboard was called with the full hash
     expect(writeText).toHaveBeenCalledWith(HASH_FIXTURE);
-    // Confirm pushNotification was called (not a modal)
+    // Confirm non-modal feedback is shown through the toast/live-region path
     expect(screen.queryByRole("dialog")).toBeNull();
-    // If NotificationViewport is mounted in the test, also assert toast text:
-    // expect(await screen.findByText("Hash copied to clipboard.")).toBeInTheDocument();
+    const viewport = screen.getByTestId("notification-viewport");
+    expect(await within(viewport).findByText("Hash copied to clipboard.")).toBeInTheDocument();
+    expect(viewport.closest("output[aria-live='polite']")).not.toBeNull();
+  });
+
+  it("copy button triggers an error toast inside the notification live region when clipboard write fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard failed"));
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    fireEvent.click(screen.getByTestId("spell-detail-hash-copy"));
+
+    expect(writeText).toHaveBeenCalledWith(HASH_FIXTURE);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const viewport = screen.getByTestId("notification-viewport");
+    expect(await within(viewport).findByText("Failed to copy hash.")).toBeInTheDocument();
+    expect(viewport.closest("output[aria-live='polite']")).not.toBeNull();
   });
 });
 ```
 
-> **Note on interaction pattern:** Before using `userEvent.click` in these tests, check the existing button interaction pattern in `SpellEditor.test.tsx`. If the file already uses `fireEvent.click` for all button interactions (like `Library.test.tsx` does), replace `userEvent.click(...)` with `fireEvent.click(...)` in the hash describe block and skip the `userEvent` import. If the file uses `userEvent`, keep `userEvent.click` and add:
-> ```tsx
-> import userEvent from "@testing-library/user-event";
-> ```
-
 - [x] **Step 2.2: Run tests - expect failures**
 
 ```bash
-cd apps/desktop && pnpm test --run -- SpellEditor
+cd apps/desktop && pnpm test:unit --run -- SpellEditor
 ```
 
 Expected: The hash describe tests fail — current code shows 8 chars and still has `title`.
@@ -253,7 +270,7 @@ Key changes from the old block:
 - [x] **Step 2.4: Run tests - expect pass**
 
 ```bash
-cd apps/desktop && pnpm test --run -- SpellEditor
+cd apps/desktop && pnpm test:unit --run -- SpellEditor
 ```
 
 Expected: All hash describe tests pass. All pre-existing tests pass.
@@ -273,11 +290,17 @@ git commit -m "feat(chunk-3): restyle hash display as card, 16-char truncation, 
 - Modify: `apps/desktop/src/ui/Library.tsx`
 - Modify: `apps/desktop/src/ui/Library.test.tsx`
 
-**Concept:** The current Library renders a single `no-spells-found` row when `spells.length === 0`. We need to distinguish:
+**Concept:** The Library needs to distinguish:
 - **Empty library** — no active query/filters → the database is presumed empty
 - **Empty search** — at least one filter or query is active but returns no results
 
-**`hasActiveFilters` derivation:** Include `selectedSavedSearchId !== null` and `mode !== "keyword"` because `handleResetFilters` resets both. Also update `handleResetFilters` to call `setSelectedSavedSearchId(null)` — currently it does not, which means a saved-search selection is not cleared on reset.
+**Loading boundary:** Do not treat `spells.length === 0` alone as proof that the library is empty. `Library` performs async searches on mount, so the plan must gate empty-state rendering on both:
+- no matching spells after the current search has settled
+- whether any filters/search state are active
+
+Add an explicit settled-results boolean for the current in-flight search (for example `resultsSettledForCurrentSearch`) and reset it whenever a new search begins. Use it to suppress both empty states until the active search for the current query/filter/mode combination has completed. This keeps the route stable and avoids false empty-library or empty-search flashes while a newer async search is still running.
+
+**`hasActiveFilters` derivation:** Include `selectedSavedSearchId !== null` and `mode !== "keyword"` because `handleResetFilters` resets both. Also update `handleResetFilters` to call `setSelectedSavedSearchId(null)` - currently it does not, which means a saved-search selection is not cleared on reset.
 
 **Note on `<Link>` vs `<button>`:** The "Create Spell" and "Import Spells" CTAs are rendered as `<Link>` (`react-router-dom`), which renders as `<a>` elements. These use `Enter` to activate (not `Space`). The testid names use `-button` suffix following the project's testid table convention (same table uses `empty-library-create-button`) — this is an intentional naming convention, not a semantic claim. The visible text "Create Spell" and "Import Spells" is self-describing; no `aria-label` is needed.
 
@@ -291,7 +314,7 @@ Follow the existing file structure:
 - Use `waitFor` for async assertions, consistent with the rest of the file
 - **Do NOT add `userEvent` import** — `Library.test.tsx` uses only `fireEvent` throughout; all button/input interactions in these new tests must also use `fireEvent`
 
-Add the following two `describe` blocks as **sibling top-level describes** alongside the existing `describe("Library notifications (Task 5)")`. Do NOT nest them inside that describe — nesting empty-state tests inside a "notifications" block would produce misleading test output.
+Add the following `describe("Library empty states")` block as a **sibling top-level describe** alongside the existing `describe("Library notifications (Task 5)")`. Do NOT nest it inside that describe - nesting empty-state tests inside a "notifications" block would produce misleading test output.
 
 ```tsx
 describe("Library empty states", () => {
@@ -372,6 +395,60 @@ describe("Library empty states", () => {
         (screen.getByTestId("library-search-input") as HTMLInputElement).value,
       ).toBe("");
     });
+
+    it("treats semantic mode as an active search state even with an empty query", async () => {
+      renderLibraryWithViewport();
+      await screen.findByText("No Spells Yet");
+
+      fireEvent.change(screen.getByTestId("library-mode-select"), {
+        target: { value: "semantic" },
+      });
+      fireEvent.click(screen.getByTestId("library-search-button"));
+
+      expect(await screen.findByText("No Results")).toBeInTheDocument();
+      expect(screen.queryByText("No Spells Yet")).not.toBeInTheDocument();
+    });
+
+    it("treats a selected saved search as an active filter state and reset clears the selection", async () => {
+      vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        switch (cmd) {
+          case "list_facets":
+            return emptyFacets;
+          case "list_characters":
+            return [];
+          case "list_saved_searches":
+            return [
+              {
+                id: 42,
+                name: "Quest Arcana",
+                filterJson: JSON.stringify({
+                  query: "quest magic",
+                  mode: "keyword",
+                  filters: { isQuestSpell: true },
+                }),
+                createdAt: "2026-03-21T00:00:00Z",
+              },
+            ];
+          case "search_keyword":
+          case "search_semantic":
+            return [];
+          default:
+            return undefined;
+        }
+      });
+
+      renderLibraryWithViewport();
+      const savedSearchSelect = await screen.findByTestId("saved-searches-select");
+      fireEvent.change(savedSearchSelect, { target: { value: "42" } });
+
+      expect(await screen.findByText("No Results")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("empty-search-reset-button"));
+
+      expect(await screen.findByText("No Spells Yet")).toBeInTheDocument();
+      expect((screen.getByTestId("saved-searches-select") as HTMLSelectElement).value).toBe("");
+      expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
+    });
   });
 });
 ```
@@ -381,7 +458,7 @@ describe("Library empty states", () => {
 - [x] **Step 3.2: Run tests — expect failures**
 
 ```bash
-cd apps/desktop && pnpm test --run -- Library
+cd apps/desktop && pnpm test:unit --run -- Library
 ```
 
 Expected: The new empty-state tests fail because `EmptyState` is not yet used in Library.
@@ -396,7 +473,7 @@ Add the import at the top:
 import { EmptyState } from "./components/EmptyState";
 ```
 
-Add the `hasActiveFilters` derived boolean just before the `return` statement (after the last `useCallback`/`useEffect`):
+Add the `hasActiveFilters` derived boolean just before the `return` statement (after the last `useCallback`/`useEffect`), then add a settled-results boolean for the current search lifecycle:
 
 ```tsx
 const hasActiveFilters = Boolean(
@@ -413,11 +490,15 @@ const hasActiveFilters = Boolean(
     isCantripFilter ||
     selectedSavedSearchId !== null,
 );
+
+const shouldShowEmptyStates = resultsSettledForCurrentSearch;
 ```
 
 **State variable reference:** `query`, `mode`, `schoolFilters`, `levelMin`, `levelMax`, `sourceFilter`, `classListFilter`, `componentFilter`, `tagFilter`, `isQuestFilter`, `isCantripFilter`, `selectedSavedSearchId` are all declared at the top of `Library`. Their initial values are: `""`, `"keyword"`, `[]`, `""`, `""`, `""`, `""`, `""`, `""`, `false`, `false`, `null` — all coerce to `false` in Boolean context, so `hasActiveFilters` will be `false` on first render (empty library state). ✓
 
 - [x] **Step 3.4: Update `handleResetFilters` to clear the saved search selection**
+
+Implementation note: `hasActiveFilters` may still be `false` on first render, but `shouldShowEmptyStates` must remain `false` whenever the active search is still in flight. Reset it to `false` before each new search and only flip it to `true` when that specific search resolves. The empty-library state should never appear while newer results are pending.
 
 Find `handleResetFilters` in Library.tsx. Add `setSelectedSavedSearchId(null);` to the function body:
 
@@ -438,28 +519,14 @@ const handleResetFilters = () => {
 };
 ```
 
-- [x] **Step 3.5: Replace the `no-spells-found` table row**
+- [x] **Step 3.5: Render the two empty states only after search results have settled**
 
-Find the existing block (search for `no-spells-found`):
+Find the empty-state render site in `Library.tsx` and gate it with the settled-results boolean from Step 3.3.
 
-```tsx
-{spells.length === 0 && (
-  <tr>
-    <td
-      colSpan={5}
-      className="p-8 text-center text-neutral-500"
-      data-testid="no-spells-found"
-    >
-      No spells found.
-    </td>
-  </tr>
-)}
-```
-
-Replace it with:
+Use the following shape:
 
 ```tsx
-{spells.length === 0 && !hasActiveFilters && (
+{shouldShowEmptyStates && spells.length === 0 && !hasActiveFilters && (
   <tr>
     <td colSpan={5}>
       <EmptyState
@@ -484,7 +551,7 @@ Replace it with:
     </td>
   </tr>
 )}
-{spells.length === 0 && hasActiveFilters && (
+{shouldShowEmptyStates && spells.length === 0 && hasActiveFilters && (
   <tr>
     <td colSpan={5}>
       <EmptyState
@@ -509,14 +576,14 @@ Replace it with:
 
 > **`headingLevel` note:** `EmptyState` defaults to `"h2"`. Both Library and SpellbookBuilder have an `<h1>` page heading, so `"h2"` is the correct level — do not pass `headingLevel` explicitly. An `<h2>` inside `<td>` is valid HTML5 (table cells permit flow content including headings).
 
-> **Loading boundary:** Render the empty state immediately when `spells.length === 0`. Do NOT wrap it in a loading indicator. This satisfies both loading boundary spec bullets: the empty state renders as soon as results arrive (no flicker), and no visible loading indicator is added to the route load path.
+> **Loading boundary:** Do NOT render either empty state until the current active search settles. Once the active search resolves, render the appropriate empty state immediately with no transient spinner. This keeps the route stable without introducing stale empty-library or empty-search flashes between searches.
 
 > **`colSpan` verification:** Confirm the `<table>` has exactly 5 `<th>` columns at implementation time before using `colSpan={5}`. The current table has columns: Name, School, Level, Classes, Comp = 5. ✓
 
 - [x] **Step 3.6: Run tests — expect pass**
 
 ```bash
-cd apps/desktop && pnpm test --run -- Library
+cd apps/desktop && pnpm test:unit --run -- Library
 ```
 
 Expected: All new tests pass. All pre-existing Library tests pass.
@@ -536,7 +603,7 @@ git commit -m "feat(chunk-3): add empty-library and empty-search states; fix han
 - Modify: `apps/desktop/src/ui/SpellbookBuilder.tsx`
 - Create: `apps/desktop/src/ui/SpellbookBuilder.test.tsx`
 
-**Focus trap note:** The spell picker in `SpellbookBuilder` is implemented as an ad-hoc `<div className="fixed inset-0 ...">` overlay — it is NOT `Modal.tsx` and does NOT use `showModal()`. It currently lacks a focus trap. This plan introduces a new CTA that opens that picker. **Fixing the picker's focus trap is out of scope for Chunk 3** — it is deferred to Chunk 5 (which will audit and fix focus management across touched flows). Add a TODO comment near the `setPickerOpen(true)` call in the new CTA button as a tracking marker.
+**Picker accessibility note:** The spell picker in `SpellbookBuilder` is implemented as an ad-hoc overlay around a `<dialog open>` element - it is NOT `Modal.tsx` and does NOT use `showModal()`. The current implementation already includes keyboard focus wrapping and trigger tracking, and Chunk 3 must preserve that behavior for the new empty-state CTA. Chunk 5 may still harden modal parity across the app, but this new CTA must not regress open/close focus behavior in Chunk 3.
 
 **`colSpan` verification:** The SpellbookBuilder table has 7 columns: Prep, Known, Name, Level, School, Notes, Actions. `colSpan={7}` is correct at the time of writing. Verify at implementation time.
 
@@ -547,8 +614,7 @@ git commit -m "feat(chunk-3): add empty-library and empty-search states; fix han
 ```tsx
 // apps/desktop/src/ui/SpellbookBuilder.test.tsx
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -600,14 +666,56 @@ describe("empty character spellbook state", () => {
     ).toBeInTheDocument();
   });
 
-  it("clicking Add Spell from Library opens the spell picker", async () => {
+  it("clicking Add Spell from Library opens the spell picker and moves focus into it", async () => {
     renderSpellbookBuilder(1);
-    const addBtn = await screen.findByTestId("empty-character-add-spell-button");
-    await userEvent.click(addBtn);
-    // The picker dialog heading — verify exact casing in SpellbookBuilder.tsx line ~403 before
-    // writing this assertion; current source reads: <h3>Add spells</h3>
+    const addBtn = await screen.findByRole("button", { name: "Add Spell from Library" });
+    expect(screen.queryByRole("dialog", { name: "Add spells" })).toBeNull();
+
+    fireEvent.click(addBtn);
+
+    const dialog = await screen.findByRole("dialog", { name: "Add spells" });
+    const searchInput = within(dialog).getByTestId("spellbook-picker-search-input");
+    expect(document.activeElement).toBe(searchInput);
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
     await waitFor(() => {
-      expect(screen.getByText("Add spells")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Add spells" })).toBeNull();
+      expect(document.activeElement).toBe(addBtn);
+    });
+  });
+
+  it("wraps focus within the picker on Tab and Shift+Tab", async () => {
+    renderSpellbookBuilder(1);
+    const addBtn = await screen.findByRole("button", { name: "Add Spell from Library" });
+
+    fireEvent.click(addBtn);
+
+    const dialog = await screen.findByRole("dialog", { name: "Add spells" });
+    const searchInput = within(dialog).getByTestId("spellbook-picker-search-input");
+    const closeButton = within(dialog).getByRole("button", { name: "Close" });
+
+    closeButton.focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(document.activeElement).toBe(searchInput);
+
+    searchInput.focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(closeButton);
+  });
+
+  it("backdrop click closes the picker and restores focus to the CTA", async () => {
+    renderSpellbookBuilder(1);
+    const addBtn = await screen.findByRole("button", { name: "Add Spell from Library" });
+
+    fireEvent.click(addBtn);
+    await screen.findByRole("dialog", { name: "Add spells" });
+
+    fireEvent.click(screen.getByTestId("spellbook-picker-backdrop"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Add spells" })).toBeNull();
+      expect(document.activeElement).toBe(addBtn);
     });
   });
 });
@@ -616,7 +724,7 @@ describe("empty character spellbook state", () => {
 - [x] **Step 4.2: Run test — expect failure**
 
 ```bash
-cd apps/desktop && pnpm test --run -- SpellbookBuilder
+cd apps/desktop && pnpm test:unit --run -- SpellbookBuilder
 ```
 
 Expected: Tests fail — component doesn't have the new empty state.
@@ -651,7 +759,6 @@ Replace it with:
 {spellbookLoaded && spellbook.length === 0 && (
   <tr>
     <td colSpan={7}>
-      {/* TODO(chunk-5): picker overlay lacks focus trap — tracked for Chunk 5 accessibility pass */}
       <EmptyState
         heading="No Spells Added"
         description="This character's spellbook is empty."
@@ -659,7 +766,7 @@ Replace it with:
         <button
           type="button"
           data-testid="empty-character-add-spell-button"
-          onClick={() => setPickerOpen(true)}
+          onClick={openPicker}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-500 text-sm"
         >
           Add Spell from Library
@@ -670,12 +777,12 @@ Replace it with:
 )}
 ```
 
-The `setPickerOpen(true)` call uses the same state setter as the existing "Add Spells" header button (`data-testid="btn-open-picker"`).
+The new CTA should call the same `openPicker` helper as the existing "Add Spells" header button (`data-testid="btn-open-picker"`), so the trigger-tracking and focus-return path is shared.
 
 - [x] **Step 4.5: Run tests — expect pass**
 
 ```bash
-cd apps/desktop && pnpm test --run -- SpellbookBuilder
+cd apps/desktop && pnpm test:unit --run -- SpellbookBuilder
 ```
 
 Expected: Both tests pass.
@@ -695,9 +802,9 @@ git commit -m "feat(chunk-3): add empty character spellbook state with Add Spell
 
 **Files:**
 - `apps/desktop/index.html` — verify (likely no change needed)
-- `apps/desktop/src/ui/SpellEditor.tsx` — hash card already addressed in Task 2
-- `apps/desktop/src/ui/Library.tsx` — new empty state rows use theme-aware classes (done in Task 3)
-- `apps/desktop/src/ui/SpellbookBuilder.tsx` — new empty state row uses theme-aware classes (done in Task 4); audit picker dialog too
+- `apps/desktop/src/ui/SpellEditor.tsx` - audit the revised hash card surface in both themes
+- `apps/desktop/src/ui/Library.tsx` - audit the full changed view after the empty-state work, not just the new CTA row
+- `apps/desktop/src/ui/SpellbookBuilder.tsx` - audit the full changed view after the empty-state work, including the picker dialog opened by the new CTA
 
 Use the **Light Theme Palette** from `openspec/changes/add-spell-ui-design-and-accessibility/design.md` as reference:
 
@@ -711,7 +818,7 @@ Use the **Light Theme Palette** from `openspec/changes/add-spell-ui-design-and-a
 
 Note: The body element uses `bg-stone-50` (stone palette) for the light background. This is a pre-existing design decision and is not changed by this chunk.
 
-- [ ] **Step 5.1: Verify index.html body classes**
+- [x] **Step 5.1: Verify index.html body classes**
 
 Read `apps/desktop/index.html`. Confirm the `<body>` tag has both light and dark classes:
 
@@ -721,7 +828,7 @@ Read `apps/desktop/index.html`. Confirm the `<body>` tag has both light and dark
 
 This already provides both light and dark coverage. **No change needed** unless it reads differently at implementation time.
 
-- [ ] **Step 5.2: Search SpellEditor.tsx for remaining TODO(chunk-3) markers**
+- [x] **Step 5.2: Search SpellEditor.tsx for remaining TODO(chunk-3) markers**
 
 ```bash
 grep -n "TODO(chunk-3)" apps/desktop/src/ui/SpellEditor.tsx
@@ -729,7 +836,7 @@ grep -n "TODO(chunk-3)" apps/desktop/src/ui/SpellEditor.tsx
 
 Expected: no matches (both were removed in Task 2). If any remain, fix them now.
 
-- [ ] **Step 5.3: Audit SpellbookBuilder.tsx for pre-existing hardcoded dark-only classes**
+- [x] **Step 5.3: Audit SpellbookBuilder.tsx for pre-existing hardcoded dark-only classes**
 
 Search for bare dark-only utility class usages (classes like `bg-neutral-900`, `bg-neutral-800`, `text-neutral-500` used without a corresponding light-mode class):
 
@@ -737,7 +844,7 @@ Search for bare dark-only utility class usages (classes like `bg-neutral-900`, `
 grep -n "className=" apps/desktop/src/ui/SpellbookBuilder.tsx | grep -v "dark:"
 ```
 
-For each match that uses a dark-palette color (neutral-700, neutral-800, neutral-900, neutral-950) without a light-mode variant, assess whether it should be updated. **Scope is limited to surfaces edited in this chunk** (the empty state rows and the picker dialog). The picker dialog at line ~401 uses `bg-neutral-900 border-neutral-700` — these are hardcoded dark-only classes on the picker modal surface. Update them to:
+For each match that uses a dark-palette color (neutral-700, neutral-800, neutral-900, neutral-950) without a light-mode variant, assess whether it should be updated. Because `Library.tsx` and `SpellbookBuilder.tsx` are both edited in this chunk, review the full changed views for legibility and theme parity, not just the exact inserted row. The picker dialog at line ~401 uses `bg-neutral-900 border-neutral-700` - these are hardcoded dark-only classes on the picker modal surface. Update them to:
 
 ```
 bg-white border-neutral-300 dark:bg-neutral-900 dark:border-neutral-700
@@ -745,18 +852,24 @@ bg-white border-neutral-300 dark:bg-neutral-900 dark:border-neutral-700
 
 If these classes are on the picker `<div>` backdrop/container, also update the backdrop: `bg-black/70` is acceptable for the overlay (it is dark in both themes for legibility).
 
-> **Scope reminder:** Do NOT audit and fix the entire SpellbookBuilder table — only the new empty state and the picker dialog that is opened by the new CTA.
+> **Scope reminder:** Do not launch a whole-app theme rewrite here, but do audit the full changed `Library` and `SpellbookBuilder` views touched by Chunk 3 so the resulting screens remain legible in both themes.
 
-- [ ] **Step 5.4: Audit Library.tsx empty state button classes**
+- [x] **Step 5.4: Audit the full changed Library and SpellbookBuilder views in light and dark themes**
 
-Confirm the secondary buttons use:
+Confirm at minimum:
+- the SpellEditor hash card surface, code element, and buttons remain legible in both themes
+- the new empty-state CTAs use theme-aware classes
+- the picker dialog surface and controls use light+dark classes
+- any additional touched controls or text in the changed views remain legible in both modes
+
+Confirm the secondary empty-state buttons use:
 ```
 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600
 ```
 
 The `hover:bg-neutral-300` is an intentional one-step affordance step above the rest state `bg-neutral-200`. This deviates slightly from the named palette `bg-hover = bg-neutral-200` but is an approved interactive hover state.
 
-- [ ] **Step 5.5: Commit theme audit fixes (if any)**
+- [x] **Step 5.5: Commit theme audit fixes (if any)**
 
 ```bash
 git add apps/desktop/src/ui/SpellbookBuilder.tsx
@@ -769,20 +882,21 @@ If no changes were needed, skip this commit.
 
 ## Task 6: Full test suite verification
 
-- [ ] **Step 6.1: Run the complete unit test suite**
+- [x] **Step 6.1: Run the complete unit test suite**
 
 ```bash
-cd apps/desktop && pnpm test --run
+cd apps/desktop && pnpm test:unit --run
 ```
 
 Expected: All tests pass. Zero failures.
 
 If tests fail, diagnose before proceeding. Common causes:
 - Library test: using bare `render(<Library />)` instead of `renderLibraryWithViewport()`
+- Library empty states flashing before search settles: add or fix a settled-results guard for the initial async search
 - `hasActiveFilters` initialized incorrectly (e.g., `mode` starts as `"keyword"` → `mode !== "keyword"` is `false` → correct)
 - `search_keyword` not mocked in SpellbookBuilder tests
 - `selectedSavedSearchId` initial value — confirmed `null` (coerces to `false`) ✓
-- Missing `userEvent` import in test files
+- Missing saved-search reset assertion in Library tests
 
 - [ ] **Step 6.2: Smoke-test in the running app (manual)**
 
@@ -802,6 +916,15 @@ Manual checks:
 8. Open a character spellbook with no spells → "No Spells Added" with "Add Spell from Library" CTA
 9. Click "Add Spell from Library" → picker dialog opens
 10. Toggle theme (Dark ↔ Light) via `/settings` → all new surfaces remain legible in both modes
+
+Additional manual checks for the revised plan:
+11. Reload the Library on a perceptible/slow path  empty states do not flash before the first search settles
+12. Click "Reset Filters" after selecting a saved search  saved-search selection clears as well as the query
+13. Switch Library mode to Semantic with no results  "No Results" appears
+14. Simulate clipboard failure if practical  error toast appears with "Failed to copy hash."
+15. Confirm the empty-spellbook CTA opens the picker, focus moves into the dialog, and `Escape`/backdrop restore focus to the CTA
+16. In both light and dark themes, verify the full changed Library and SpellbookBuilder views remain legible, not just the inserted empty-state rows
+17. Confirm the hash copy success and failure toasts render inside the notification viewport/live-region container, not elsewhere in the page
 
 - [ ] **Step 6.3: Final commit (if any manual fixes were applied)**
 
@@ -840,4 +963,3 @@ git commit -m "fix(chunk-3): address manual smoke-test findings"
 - Cross-app accessibility pass (Chunk 5)
 - E2E test migration or visual regression baselines (Chunk 6)
 - Character, vault, or import-flow modal usage (out of scope)
-- Library table rows other than the empty-state row (hardcoded dark classes elsewhere in Library.tsx are pre-existing and not introduced by this chunk)

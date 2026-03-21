@@ -110,6 +110,25 @@ describe("empty character spellbook state", () => {
     });
   });
 
+  it("pressing Escape closes the picker and restores focus to the empty-state CTA", async () => {
+    renderSpellbookBuilder(1);
+    const addBtn = await screen.findByRole("button", { name: "Add Spell from Library" });
+
+    fireEvent.click(addBtn);
+
+    const dialog = await screen.findByRole("dialog", { name: "Add spells" });
+    expect(document.activeElement).toBe(
+      within(dialog).getByTestId("spellbook-picker-search-input"),
+    );
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Add spells" })).toBeNull();
+      expect(document.activeElement).toBe(addBtn);
+    });
+  });
+
   it("backdrop click closes the picker and restores focus to the empty-state CTA", async () => {
     renderSpellbookBuilder(1);
     const addBtn = await screen.findByRole("button", { name: "Add Spell from Library" });

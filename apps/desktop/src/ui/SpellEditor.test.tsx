@@ -170,11 +170,13 @@ describe("hash display", () => {
 
       expect(writeText).toHaveBeenCalledWith(HASH_FIXTURE);
       expect(screen.queryByRole("dialog")).toBeNull();
+      const viewport = screen.getByTestId("notification-viewport");
       await waitFor(() => {
-        expect(screen.getByTestId("toast-notification-success").textContent ?? "").toContain(
+        expect(within(viewport).getByTestId("toast-notification-success").textContent ?? "").toContain(
           "Hash copied to clipboard.",
         );
       });
+      expect(viewport.closest("output[aria-live='polite']")).not.toBeNull();
     } finally {
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,
@@ -198,11 +200,13 @@ describe("hash display", () => {
 
       expect(writeText).toHaveBeenCalledWith(HASH_FIXTURE);
       expect(screen.queryByRole("dialog")).toBeNull();
+      const viewport = screen.getByTestId("notification-viewport");
       await waitFor(() => {
-        expect(screen.getByTestId("toast-notification-error").textContent ?? "").toContain(
+        expect(within(viewport).getByTestId("toast-notification-error").textContent ?? "").toContain(
           "Failed to copy hash.",
         );
       });
+      expect(viewport.closest("output[aria-live='polite']")).not.toBeNull();
     } finally {
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,

@@ -83,7 +83,9 @@ export default function Library() {
   const [isSaving, setIsSaving] = useState(false);
   const [newSearchName, setNewSearchName] = useState("");
   const [selectedSavedSearchId, setSelectedSavedSearchId] = useState<number | null>(null);
+  const [resultsSettledForCurrentSearch, setResultsSettledForCurrentSearch] = useState(false);
   const saveInputRef = useRef<HTMLInputElement>(null);
+  const searchRequestIdRef = useRef(0);
   const pushNotification = useNotifications((state) => state.pushNotification);
 
   useEffect(() => {
@@ -219,6 +221,9 @@ export default function Library() {
   };
 
   const search = useCallback(async () => {
+    const requestId = ++searchRequestIdRef.current;
+    setResultsSettledForCurrentSearch(false);
+
     let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
     let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
     if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
@@ -236,13 +241,29 @@ export default function Library() {
       isCantrip: isCantripFilter || null,
     };
 
-    if (mode === "semantic") {
-      const results = await invoke<SpellSummary[]>("search_semantic", { query });
+    try {
+      const results =
+        mode === "semantic"
+          ? await invoke<SpellSummary[]>("search_semantic", { query })
+          : await invoke<SpellSummary[]>("search_keyword", { query, filters });
+
+      if (requestId !== searchRequestIdRef.current) {
+        return;
+      }
+
       setSpells(results);
-      return;
+    } catch (e) {
+      if (requestId !== searchRequestIdRef.current) {
+        return;
+      }
+
+      console.error("Failed to search library", e);
+      setSpells([]);
+    } finally {
+      if (requestId === searchRequestIdRef.current) {
+        setResultsSettledForCurrentSearch(true);
+      }
     }
-    const results = await invoke<SpellSummary[]>("search_keyword", { query, filters });
-    setSpells(results);
   }, [
     query,
     mode,
@@ -261,8 +282,7 @@ export default function Library() {
     loadFacets();
     loadCharacters();
     loadSavedSearches();
-    search();
-  }, [loadFacets, loadCharacters, loadSavedSearches, search]);
+  }, [loadFacets, loadCharacters, loadSavedSearches]);
 
   useEffect(() => {
     search();
@@ -282,6 +302,15 @@ export default function Library() {
       isCantripFilter ||
       selectedSavedSearchId !== null,
   );
+
+  const secondaryActionClassName =
+    "rounded-md border border-neutral-300 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700";
+  const filterControlClassName =
+    "rounded-md border border-neutral-300 bg-white px-3 py-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+  const compactFilterControlClassName =
+    "rounded-md border border-neutral-300 bg-white px-3 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+  const filterChipClassName =
+    "cursor-pointer rounded-md border border-neutral-300 bg-white px-3 py-1 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800";
 
   const addToCharacter = async (spellId: number, charIdStr: string) => {
     if (!charIdStr) return;
@@ -308,7 +337,7 @@ export default function Library() {
           <Link
             to="/character"
             data-testid="link-to-characters"
-            className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
+            className={`px-3 py-2 ${secondaryActionClassName}`}
           >
             Characters
           </Link>
@@ -325,7 +354,7 @@ export default function Library() {
 
       <div className="flex flex-wrap gap-2">
         <input
-          className="flex-1 bg-neutral-900 border border-neutral-700 rounded-md px-3 py-2"
+          className={`flex-1 ${filterControlClassName}`}
           placeholder="Search spells…"
           data-testid="library-search-input"
           aria-label="Search spells"
@@ -334,7 +363,7 @@ export default function Library() {
           onKeyDown={(e) => e.key === "Enter" && search()}
         />
         <select
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-2"
+          className={filterControlClassName}
           data-testid="library-mode-select"
           aria-label="Search mode"
           value={mode}
@@ -344,7 +373,7 @@ export default function Library() {
           <option value="semantic">Semantic</option>
         </select>
         <button
-          className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
+          className={`px-3 py-2 ${secondaryActionClassName}`}
           data-testid="library-search-button"
           onClick={search}
           type="button"
@@ -352,7 +381,7 @@ export default function Library() {
           Search
         </button>
         <button
-          className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700 border border-neutral-700"
+          className={`px-3 py-2 ${secondaryActionClassName}`}
           data-testid="library-reset-button"
           onClick={handleResetFilters}
           type="button"
@@ -364,12 +393,12 @@ export default function Library() {
 
       <div className="flex flex-wrap gap-2 text-sm">
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-neutral-400">Schools</span>
+          <span className="text-xs text-neutral-600 dark:text-neutral-400">Schools</span>
           <select
             multiple
             aria-label="Schools filter"
             data-testid="filter-school-select"
-            className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 min-w-[160px]"
+            className={`min-w-[160px] ${compactFilterControlClassName}`}
             value={schoolFilters}
             onChange={(e) =>
               setSchoolFilters(Array.from(e.target.selectedOptions).map((opt) => opt.value))
@@ -383,7 +412,7 @@ export default function Library() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-neutral-400 font-medium">
+          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
             Level range: {levelMin || 0} - {levelMax || 12}
           </span>
           <div className="pt-2 px-1">
@@ -401,16 +430,16 @@ export default function Library() {
                 setLevelMax(String(max));
               }}
             >
-              <Slider.Track className="bg-neutral-800 relative grow rounded-full h-[3px]">
+              <Slider.Track className="relative grow rounded-full h-[3px] bg-neutral-300 dark:bg-neutral-800">
                 <Slider.Range className="absolute bg-blue-500 rounded-full h-full" />
               </Slider.Track>
               <Slider.Thumb
-                className="block w-4 h-4 bg-white shadow-lg rounded-full hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="block h-4 w-4 cursor-pointer rounded-full border border-neutral-300 bg-white shadow-lg hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-100 dark:hover:bg-white"
                 aria-label="Min Level"
                 data-testid="filter-level-min-thumb"
               />
               <Slider.Thumb
-                className="block w-4 h-4 bg-white shadow-lg rounded-full hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className="block h-4 w-4 cursor-pointer rounded-full border border-neutral-300 bg-white shadow-lg hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-100 dark:hover:bg-white"
                 aria-label="Max Level"
                 data-testid="filter-level-max-thumb"
               />
@@ -420,7 +449,7 @@ export default function Library() {
         <select
           aria-label="Source filter"
           data-testid="filter-source-select"
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+          className={compactFilterControlClassName}
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
         >
@@ -434,7 +463,7 @@ export default function Library() {
         <select
           aria-label="Class filter"
           data-testid="filter-class-select"
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+          className={compactFilterControlClassName}
           value={classListFilter}
           onChange={(e) => setClassListFilter(e.target.value)}
         >
@@ -448,7 +477,7 @@ export default function Library() {
         <select
           aria-label="Component filter"
           data-testid="filter-component-select"
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+          className={compactFilterControlClassName}
           value={componentFilter}
           onChange={(e) => setComponentFilter(e.target.value)}
         >
@@ -462,7 +491,7 @@ export default function Library() {
         <select
           aria-label="Tag filter"
           data-testid="filter-tag-select"
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
+          className={compactFilterControlClassName}
           value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value)}
         >
@@ -473,33 +502,33 @@ export default function Library() {
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors">
+        <label className={`flex items-center gap-1.5 ${filterChipClassName}`}>
           <input
             type="checkbox"
             data-testid="filter-quest-checkbox"
             checked={isQuestFilter}
             onChange={(e) => setIsQuestFilter(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-offset-neutral-900"
+            className="h-3.5 w-3.5 rounded border-neutral-400 bg-white text-blue-600 focus:ring-blue-500 focus:ring-offset-white dark:border-neutral-700 dark:bg-neutral-800 dark:focus:ring-offset-neutral-900"
           />
-          <span className="text-xs text-neutral-300">Quest Spells</span>
+          <span className="text-xs text-neutral-700 dark:text-neutral-300">Quest Spells</span>
         </label>
-        <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors">
+        <label className={`flex items-center gap-1.5 ${filterChipClassName}`}>
           <input
             type="checkbox"
             data-testid="filter-cantrip-checkbox"
             checked={isCantripFilter}
             onChange={(e) => setIsCantripFilter(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-offset-neutral-900"
+            className="h-3.5 w-3.5 rounded border-neutral-400 bg-white text-blue-600 focus:ring-blue-500 focus:ring-offset-white dark:border-neutral-700 dark:bg-neutral-800 dark:focus:ring-offset-neutral-900"
           />
-          <span className="text-xs text-neutral-300">Cantrips Only</span>
+          <span className="text-xs text-neutral-700 dark:text-neutral-300">Cantrips Only</span>
         </label>
 
-        <div className="border-l border-neutral-800 mx-1 self-stretch" />
+        <div className="mx-1 self-stretch border-l border-neutral-300 dark:border-neutral-800" />
 
         <div className="flex items-center gap-2">
           {savedSearches.length > 0 && (
             <select
-              className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 text-xs"
+              className={`text-xs ${compactFilterControlClassName}`}
               data-testid="saved-searches-select"
               aria-label="Saved searches"
               onChange={(e) => {
@@ -531,7 +560,7 @@ export default function Library() {
             >
               <input
                 ref={saveInputRef}
-                className="bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-xs w-32"
+                className="w-32 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                 placeholder="Name..."
                 data-testid="save-search-name-input"
                 aria-label="Search name"
@@ -552,7 +581,7 @@ export default function Library() {
               </button>
               <button
                 type="button"
-                className="px-2 py-1 bg-neutral-800 rounded text-xs"
+                className="rounded border border-neutral-300 bg-neutral-200 px-2 py-1 text-xs text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
                 data-testid="btn-save-search-cancel"
                 onClick={() => setIsSaving(false)}
               >
@@ -562,7 +591,7 @@ export default function Library() {
           ) : (
             <button
               type="button"
-              className="px-3 py-1 bg-neutral-800 border border-neutral-700 rounded-md text-xs hover:bg-neutral-700 transition-colors"
+              className={`px-3 py-1 text-xs transition-colors ${secondaryActionClassName}`}
               data-testid="btn-save-search-trigger"
               onClick={() => setIsSaving(true)}
             >
@@ -573,7 +602,7 @@ export default function Library() {
           {savedSearches.length > 0 && (
             <button
               type="button"
-              className="text-xs text-neutral-500 hover:text-red-400 ml-1"
+              className="ml-1 text-xs text-neutral-600 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400"
               data-testid="btn-delete-saved-search"
               onClick={() => {
                 if (selectedSavedSearchId !== null) handleDeleteSavedSearch(selectedSavedSearchId);
@@ -586,18 +615,18 @@ export default function Library() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-neutral-900/30 rounded-md border border-neutral-800">
+      <div className="flex-1 overflow-auto rounded-md border border-neutral-300 bg-white/80 dark:border-neutral-800 dark:bg-neutral-900/30">
         <table
           className="w-full text-sm text-left border-collapse"
           data-testid="spell-library-table"
         >
-          <thead className="text-neutral-400 bg-neutral-900 sticky top-0">
+          <thead className="sticky top-0 bg-neutral-100 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
             <tr>
-              <th className="p-2 border-b border-neutral-800">Name</th>
-              <th className="p-2 border-b border-neutral-800">School</th>
-              <th className="p-2 border-b border-neutral-800 w-16 text-center">Level</th>
-              <th className="p-2 border-b border-neutral-800">Classes</th>
-              <th className="p-2 border-b border-neutral-800 text-center">Comp</th>
+              <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">Name</th>
+              <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">School</th>
+              <th className="w-16 border-b border-neutral-300 p-2 text-center dark:border-neutral-800">Level</th>
+              <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">Classes</th>
+              <th className="border-b border-neutral-300 p-2 text-center dark:border-neutral-800">Comp</th>
             </tr>
           </thead>
           <tbody>
@@ -605,13 +634,13 @@ export default function Library() {
               <tr
                 key={s.id}
                 data-testid={`spell-row-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
-                className="border-b border-neutral-800/50 hover:bg-neutral-800 group"
+                className="group border-b border-neutral-200 hover:bg-neutral-100 dark:border-neutral-800/50 dark:hover:bg-neutral-800"
               >
                 <td className="p-2 space-x-2 flex items-center">
                   <Link
                     to={`/edit/${s.id}`}
                     data-testid={`spell-link-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
-                    className="text-blue-400 hover:underline"
+                    className="text-blue-700 hover:underline dark:text-blue-400"
                   >
                     {s.name}
                   </Link>
@@ -631,7 +660,7 @@ export default function Library() {
                     </span>
                   )}
                   <select
-                    className="ml-2 w-4 h-4 text-xs bg-neutral-800 text-transparent hover:text-white rounded focus:w-auto focus:text-white transition-all"
+                    className="ml-2 h-4 w-4 rounded bg-neutral-200 text-transparent transition-all hover:text-neutral-700 focus:w-auto focus:text-neutral-900 dark:bg-neutral-800 dark:text-transparent dark:hover:text-white dark:focus:text-white"
                     data-testid={`add-to-char-select-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
                     aria-label={`Add ${s.name} to character`}
                     onChange={(e) => addToCharacter(s.id, e.target.value)}
@@ -651,7 +680,7 @@ export default function Library() {
                 <td className="p-2 text-center">{s.components}</td>
               </tr>
             ))}
-            {spells.length === 0 && !hasActiveFilters && (
+            {resultsSettledForCurrentSearch && spells.length === 0 && !hasActiveFilters && (
               <tr>
                 <td colSpan={5}>
                   <EmptyState
@@ -677,7 +706,7 @@ export default function Library() {
                 </td>
               </tr>
             )}
-            {spells.length === 0 && hasActiveFilters && (
+            {resultsSettledForCurrentSearch && spells.length === 0 && hasActiveFilters && (
               <tr>
                 <td colSpan={5}>
                   <EmptyState

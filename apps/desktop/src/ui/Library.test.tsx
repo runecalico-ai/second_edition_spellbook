@@ -274,3 +274,80 @@ describe("Library notifications (Task 5)", () => {
     expect(within(outsideViewport as HTMLElement).queryByText("Spell added to character!")).toBeNull();
   });
 });
+
+describe("Library empty states", () => {
+  beforeEach(() => {
+    useNotifications.setState({ notifications: [] });
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_facets": return emptyFacets;
+        case "list_characters": return [];
+        case "list_saved_searches": return [];
+        case "search_keyword":
+        case "search_semantic": return [];
+        default: return undefined;
+      }
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useNotifications.setState({ notifications: [] });
+    vi.restoreAllMocks();
+  });
+
+  describe("empty library (no active filters)", () => {
+    it("renders the empty-library heading when no filters are active", async () => {
+      renderLibraryWithViewport();
+      expect(await screen.findByText("No Spells Yet")).toBeTruthy();
+      expect(screen.getByText(/Your spell library is empty/i)).toBeTruthy();
+      expect(screen.getByTestId("empty-library-create-button")).toBeTruthy();
+      expect(screen.getByTestId("empty-library-import-button")).toBeTruthy();
+    });
+
+    it("does NOT show the empty-search state when no filters are active", async () => {
+      renderLibraryWithViewport();
+      await screen.findByText("No Spells Yet");
+      expect(screen.queryByText("No Results")).toBeNull();
+    });
+  });
+
+  describe("empty search (active filters, no results)", () => {
+    it("renders the empty-search state after a query is typed and search is triggered", async () => {
+      renderLibraryWithViewport();
+      // Wait for initial empty-library render
+      await screen.findByText("No Spells Yet");
+
+      // Type a query
+      const searchInput = screen.getByTestId("library-search-input");
+      fireEvent.change(searchInput, { target: { value: "fireball" } });
+      // Trigger search explicitly (the component searches on button click or Enter)
+      fireEvent.click(screen.getByTestId("library-search-button"));
+
+      // Now with an active query, the empty-search state should appear
+      expect(await screen.findByText("No Results")).toBeTruthy();
+      expect(screen.getByText(/No spells match your current search/i)).toBeTruthy();
+      expect(screen.getByTestId("empty-search-reset-button")).toBeTruthy();
+      expect(screen.queryByText("No Spells Yet")).toBeNull();
+    });
+
+    it("clicking the empty-search Reset Filters button clears the search query", async () => {
+      renderLibraryWithViewport();
+      await screen.findByText("No Spells Yet");
+
+      fireEvent.change(screen.getByTestId("library-search-input"), {
+        target: { value: "fireball" },
+      });
+      fireEvent.click(screen.getByTestId("library-search-button"));
+      await screen.findByText("No Results");
+
+      fireEvent.click(screen.getByTestId("empty-search-reset-button"));
+
+      // After reset, query clears → back to empty-library state
+      expect(await screen.findByText("No Spells Yet")).toBeTruthy();
+      expect(
+        (screen.getByTestId("library-search-input") as HTMLInputElement).value,
+      ).toBe("");
+    });
+  });
+});

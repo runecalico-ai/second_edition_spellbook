@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useNotifications } from "../store/useNotifications";
+import { EmptyState } from "./components/EmptyState";
 
 type SpellSummary = {
   id: number;
@@ -214,6 +215,7 @@ export default function Library() {
     setTagFilter("");
     setIsQuestFilter(false);
     setIsCantripFilter(false);
+    setSelectedSavedSearchId(null); // NEW: also clear saved search selection
   };
 
   const search = useCallback(async () => {
@@ -265,6 +267,21 @@ export default function Library() {
   useEffect(() => {
     search();
   }, [search]);
+
+  const hasActiveFilters = Boolean(
+    query.trim() ||
+      mode !== "keyword" ||
+      schoolFilters.length > 0 ||
+      levelMin ||
+      levelMax ||
+      sourceFilter ||
+      classListFilter ||
+      componentFilter ||
+      tagFilter ||
+      isQuestFilter ||
+      isCantripFilter ||
+      selectedSavedSearchId !== null,
+  );
 
   const addToCharacter = async (spellId: number, charIdStr: string) => {
     if (!charIdStr) return;
@@ -634,14 +651,47 @@ export default function Library() {
                 <td className="p-2 text-center">{s.components}</td>
               </tr>
             ))}
-            {spells.length === 0 && (
+            {spells.length === 0 && !hasActiveFilters && (
               <tr>
-                <td
-                  colSpan={5}
-                  className="p-8 text-center text-neutral-500"
-                  data-testid="no-spells-found"
-                >
-                  No spells found.
+                <td colSpan={5}>
+                  <EmptyState
+                    heading="No Spells Yet"
+                    description="Your spell library is empty. Create your first spell or import spells from a file."
+                  >
+                    <Link
+                      to="/edit/new"
+                      data-testid="empty-library-create-button"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-500 text-sm"
+                    >
+                      Create Spell
+                    </Link>
+                    <Link
+                      to="/import"
+                      data-testid="empty-library-import-button"
+                      className="px-4 py-2 bg-neutral-200 text-neutral-900 rounded-md hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 text-sm"
+                    >
+                      Import Spells
+                    </Link>
+                  </EmptyState>
+                </td>
+              </tr>
+            )}
+            {spells.length === 0 && hasActiveFilters && (
+              <tr>
+                <td colSpan={5}>
+                  <EmptyState
+                    heading="No Results"
+                    description="No spells match your current search or filters."
+                  >
+                    <button
+                      type="button"
+                      data-testid="empty-search-reset-button"
+                      onClick={handleResetFilters}
+                      className="px-4 py-2 bg-neutral-200 text-neutral-900 rounded-md hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 text-sm"
+                    >
+                      Reset Filters
+                    </button>
+                  </EmptyState>
                 </td>
               </tr>
             )}

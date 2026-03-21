@@ -151,6 +151,30 @@ describe("ComponentCheckboxes – all variant", () => {
     expect(screen.getByTestId("component-checkbox-divine-focus")).not.toBeNull();
     expect(screen.getByTestId("component-checkbox-experience")).not.toBeNull();
   });
+
+  it("all variant preserves component-checkboxes root container", () => {
+    render(
+      <ComponentCheckboxes
+        components={{ verbal: true, somatic: true, material: false, focus: true, divineFocus: true, experience: false }}
+        materialComponents={[]}
+        onChange={() => {}}
+        variant="all"
+      />,
+    );
+    expect(screen.getByTestId("component-checkboxes")).not.toBeNull();
+  });
+
+  it("all variant preserves component-text-preview", () => {
+    render(
+      <ComponentCheckboxes
+        components={{ verbal: true, somatic: false, material: false, focus: false, divineFocus: false, experience: false }}
+        materialComponents={[]}
+        onChange={() => {}}
+        variant="all"
+      />,
+    );
+    expect(screen.getByTestId("component-text-preview")).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

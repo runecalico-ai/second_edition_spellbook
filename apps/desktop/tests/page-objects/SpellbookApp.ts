@@ -133,12 +133,10 @@ export class SpellbookApp {
       isQuest,
     } = options;
 
-    const tradition: SpellTradition =
-      traditionOpt ?? (sphere && !school ? "DIVINE" : "ARCANE");
+    const tradition: SpellTradition = traditionOpt ?? (sphere && !school ? "DIVINE" : "ARCANE");
 
     // Omitted school on ARCANE: deterministic default so E2E saves stay valid after conditional School/Sphere UI.
-    const effectiveSchool =
-      tradition === "ARCANE" ? (school ?? "Alteration") : school;
+    const effectiveSchool = tradition === "ARCANE" ? (school ?? "Alteration") : school;
     console.log(`Creating spell: ${name}`);
     await this.navigate("Add Spell");
     await expect(this.page.getByRole("heading", { name: "New Spell" })).toBeVisible({

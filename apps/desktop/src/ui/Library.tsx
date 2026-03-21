@@ -624,9 +624,13 @@ export default function Library() {
             <tr>
               <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">Name</th>
               <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">School</th>
-              <th className="w-16 border-b border-neutral-300 p-2 text-center dark:border-neutral-800">Level</th>
+              <th className="w-16 border-b border-neutral-300 p-2 text-center dark:border-neutral-800">
+                Level
+              </th>
               <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">Classes</th>
-              <th className="border-b border-neutral-300 p-2 text-center dark:border-neutral-800">Comp</th>
+              <th className="border-b border-neutral-300 p-2 text-center dark:border-neutral-800">
+                Comp
+              </th>
             </tr>
           </thead>
           <tbody>

@@ -1517,7 +1517,9 @@ test.describe("Spell Editor canon-first default", () => {
 
       await page.getByTestId("detail-magic-resistance-expand").click();
       await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
-      await page.getByTestId("magic-resistance-partial-scope").selectOption("secondary_effects_only");
+      await page
+        .getByTestId("magic-resistance-partial-scope")
+        .selectOption("secondary_effects_only");
       await page.getByTestId("magic-resistance-notes").fill("Partial MR note");
 
       await page.getByTestId("btn-save-spell").click();

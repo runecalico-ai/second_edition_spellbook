@@ -86,7 +86,10 @@ function sphereTrimmed(sphere: string | null | undefined): string {
   return (sphere ?? "").trim();
 }
 
-function hasTraditionConflict(school: string | null | undefined, sphere: string | null | undefined): boolean {
+function hasTraditionConflict(
+  school: string | null | undefined,
+  sphere: string | null | undefined,
+): boolean {
   return !!schoolTrimmed(school) && !!sphereTrimmed(sphere);
 }
 
@@ -169,7 +172,9 @@ export const SPELL_EDITOR_AREA_SCALAR_KEYS: readonly SpellEditorValidatedFieldKe
   "area-form-count-per-level",
 ];
 
-export function sortFieldErrorsByFocusOrder(errors: SpellEditorFieldError[]): SpellEditorFieldError[] {
+export function sortFieldErrorsByFocusOrder(
+  errors: SpellEditorFieldError[],
+): SpellEditorFieldError[] {
   const index = new Map<string, number>();
   for (let i = 0; i < SPELL_EDITOR_FOCUS_ORDER.length; i++) {
     const key = SPELL_EDITOR_FOCUS_ORDER[i];
@@ -260,7 +265,10 @@ function validateDurationScalars(spec: DurationSpec | null, out: SpellEditorFiel
   }
 }
 
-function validateCastingTimeScalars(ct: SpellCastingTime | null, out: SpellEditorFieldError[]): void {
+function validateCastingTimeScalars(
+  ct: SpellCastingTime | null,
+  out: SpellEditorFieldError[],
+): void {
   if (!ct) return;
   const base = ct.baseValue;
   if (base !== undefined && !isNonNegativeNumber(base)) {
@@ -378,14 +386,23 @@ function validateAreaScalars(spec: AreaSpec | null, out: SpellEditorFieldError[]
   for (const row of AREA_SCALAR_FIELDS) {
     if (!row.kinds.includes(spec.kind)) continue;
     const scalar = spec[row.prop] as SpellScalar | undefined;
-    pushScalarErrors(out, scalar, row.fixedKey, row.perLevelKey, row.fixedMsg, "Per level must be 0 or greater");
+    pushScalarErrors(
+      out,
+      scalar,
+      row.fixedKey,
+      row.perLevelKey,
+      row.fixedMsg,
+      "Per level must be 0 or greater",
+    );
   }
 }
 
 /**
  * Pure validation for the spell editor form and in-scope structured specs (Chunk 2).
  */
-export function deriveSpellEditorFieldErrors(input: SpellEditorValidationInput): SpellEditorFieldError[] {
+export function deriveSpellEditorFieldErrors(
+  input: SpellEditorValidationInput,
+): SpellEditorFieldError[] {
   const { form, tradition } = input;
   const out: SpellEditorFieldError[] = [];
 
@@ -534,4 +551,3 @@ export function deriveSpellEditorFieldErrors(input: SpellEditorValidationInput):
 
   return out;
 }
-

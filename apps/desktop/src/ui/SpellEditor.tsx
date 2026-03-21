@@ -2154,11 +2154,7 @@ export default function SpellEditor() {
               data-testid="btn-save-spell"
               type="button"
               onClick={save}
-              disabled={
-                parsersPending ||
-                savePending ||
-                (hasAttemptedSubmit && isInvalid)
-              }
+              disabled={parsersPending || savePending || (hasAttemptedSubmit && isInvalid)}
               aria-busy={savePending ? true : undefined}
               className="rounded bg-blue-600 px-3 py-2 font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300 disabled:text-blue-950 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400"
             >
@@ -2249,11 +2245,7 @@ export default function SpellEditor() {
             />
             {isNameInvalid && (
               <div className="animate-in fade-in duration-200">
-                <p
-                  id="spell-name-error"
-                  className={spellErrorText}
-                  data-testid="spell-name-error"
-                >
+                <p id="spell-name-error" className={spellErrorText} data-testid="spell-name-error">
                   Name is required.
                 </p>
               </div>
@@ -2332,7 +2324,11 @@ export default function SpellEditor() {
             </div>
             {isLevelInvalid && (
               <div className="animate-in fade-in duration-200">
-                <p id="error-level-range" className={spellErrorText} data-testid="error-level-range">
+                <p
+                  id="error-level-range"
+                  className={spellErrorText}
+                  data-testid="error-level-range"
+                >
                   Level must be 0-12.
                 </p>
               </div>
@@ -2372,7 +2368,11 @@ export default function SpellEditor() {
             )}
             {hasFieldError("error-cantrip-level") && (
               <div className="animate-in fade-in duration-200">
-                <p id="error-cantrip-level" className={spellErrorText} data-testid="error-cantrip-level">
+                <p
+                  id="error-cantrip-level"
+                  className={spellErrorText}
+                  data-testid="error-cantrip-level"
+                >
                   Cantrips must be Level 0
                 </p>
               </div>
@@ -2710,7 +2710,9 @@ export default function SpellEditor() {
                               onValidationBlur={revealRangeScalarValidation}
                               value={structuredRange ?? undefined}
                               onChange={(spec) => {
-                                const nextSpec = applyPlaywrightRangeDistanceCorruption(spec as RangeSpec);
+                                const nextSpec = applyPlaywrightRangeDistanceCorruption(
+                                  spec as RangeSpec,
+                                );
                                 setStructuredRange(nextSpec);
                                 setDetailDirtyFor("range");
                                 setForm((prev) => ({

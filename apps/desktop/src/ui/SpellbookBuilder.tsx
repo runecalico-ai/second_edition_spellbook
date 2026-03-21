@@ -287,7 +287,11 @@ export default function SpellbookBuilder() {
       <div className="p-4 space-y-2">
         <h2 className="text-xl font-bold">Spellbook Builder</h2>
         <p className="text-neutral-500">Invalid character selection.</p>
-        <Link ref={backLinkRef} to="/character" className="text-sm text-neutral-400 hover:text-white">
+        <Link
+          ref={backLinkRef}
+          to="/character"
+          className="text-sm text-neutral-400 hover:text-white"
+        >
           ← Back to Characters
         </Link>
       </div>
@@ -299,7 +303,11 @@ export default function SpellbookBuilder() {
       <div className="p-4 space-y-2">
         <h2 className="text-xl font-bold">Spellbook Builder</h2>
         <p className="text-neutral-500">Character not found.</p>
-        <Link ref={backLinkRef} to="/character" className="text-sm text-neutral-400 hover:text-white">
+        <Link
+          ref={backLinkRef}
+          to="/character"
+          className="text-sm text-neutral-400 hover:text-white"
+        >
           ← Back to Characters
         </Link>
       </div>
@@ -367,9 +375,7 @@ export default function SpellbookBuilder() {
 
       <div className="text-sm text-neutral-500">{spellbook.length} spells in spellbook</div>
       {spellbookLoaded && spellbook.length === 0 && (
-        <p className="sr-only" role="status">
-          This character's spellbook is empty.
-        </p>
+        <output className="sr-only">This character's spellbook is empty.</output>
       )}
 
       <table className="w-full text-left text-sm border-collapse">
@@ -549,9 +555,9 @@ export default function SpellbookBuilder() {
             </div>
 
             {!character && (
-              <p className="text-xs text-neutral-400" role="status">
+              <output className="text-xs text-neutral-400">
                 Character details are still loading. Spell add actions will unlock shortly.
-              </p>
+              </output>
             )}
 
             <div className="flex flex-wrap gap-3 text-sm">
@@ -619,7 +625,9 @@ export default function SpellbookBuilder() {
                       onChange={(e) => setIsCantripFilter(e.target.checked)}
                       className="w-3.5 h-3.5 rounded border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-blue-600"
                     />
-                    <span className="text-xs text-neutral-700 dark:text-neutral-300">Cantrips Only</span>
+                    <span className="text-xs text-neutral-700 dark:text-neutral-300">
+                      Cantrips Only
+                    </span>
                   </label>
                 </div>
               </div>
@@ -629,10 +637,18 @@ export default function SpellbookBuilder() {
               <table className="w-full text-sm text-left border-collapse">
                 <thead className="text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-700 sticky top-0">
                   <tr>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600">Name</th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600">School</th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600 w-16 text-center">Level</th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600 w-24 text-right">Action</th>
+                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600">
+                      Name
+                    </th>
+                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600">
+                      School
+                    </th>
+                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600 w-16 text-center">
+                      Level
+                    </th>
+                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600 w-24 text-right">
+                      Action
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -676,8 +692,8 @@ export default function SpellbookBuilder() {
                               canAddSpell
                                 ? "bg-blue-600 hover:bg-blue-500"
                                 : alreadyAdded
-                                ? "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 cursor-not-allowed"
-                                : "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 cursor-not-allowed"
+                                  ? "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 cursor-not-allowed"
+                                  : "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 cursor-not-allowed"
                             }`}
                             disabled={!canAddSpell}
                           >

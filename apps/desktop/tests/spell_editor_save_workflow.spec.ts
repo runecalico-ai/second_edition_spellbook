@@ -55,7 +55,7 @@ async function tabUntilSaveSpellButton(page: Page, maxTabs = 100) {
     if (ok) return;
     await page.keyboard.press("Tab");
   }
-  throw new Error('Could not focus btn-save-spell via keyboard');
+  throw new Error("Could not focus btn-save-spell via keyboard");
 }
 
 test.describe("Spell editor save workflow and first-failed-submit UX", () => {
@@ -359,8 +359,12 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     await page.waitForTimeout(200);
 
     await page.getByTestId("range-base-value").blur();
-    await expect(page.getByTestId("error-range-base-value")).toBeVisible({ timeout: TIMEOUTS.short });
-    await expect(page.getByTestId("error-range-base-value")).toHaveText("Base value must be 0 or greater");
+    await expect(page.getByTestId("error-range-base-value")).toBeVisible({
+      timeout: TIMEOUTS.short,
+    });
+    await expect(page.getByTestId("error-range-base-value")).toHaveText(
+      "Base value must be 0 or greater",
+    );
     await app.expectNoBlockingDialog();
 
     await page.getByTestId("range-base-value").fill("10");
@@ -472,11 +476,9 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
         localStorage.setItem("spellbook-theme", t);
       }, theme);
       await page.reload();
-      await page.waitForFunction(
-        (t) => document.documentElement.dataset.theme === t,
-        theme,
-        { timeout: TIMEOUTS.medium },
-      );
+      await page.waitForFunction((t) => document.documentElement.dataset.theme === t, theme, {
+        timeout: TIMEOUTS.medium,
+      });
 
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
@@ -509,11 +511,9 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
         localStorage.setItem("spellbook-theme", t);
       }, theme);
       await page.reload();
-      await page.waitForFunction(
-        (t) => document.documentElement.dataset.theme === t,
-        theme,
-        { timeout: TIMEOUTS.medium },
-      );
+      await page.waitForFunction((t) => document.documentElement.dataset.theme === t, theme, {
+        timeout: TIMEOUTS.medium,
+      });
 
       await page.evaluate(() => {
         window.__SPELLBOOK_E2E_SAVE_INVOKE_DELAY_MS = 1200;

@@ -16,9 +16,12 @@ export function scheduleNotificationDismissals(
   dismissNotification: (id: string) => void,
 ) {
   const timers = notifications.map((notification) =>
-    globalThis.setTimeout(() => {
-      dismissNotification(notification.id);
-    }, Math.max(0, notification.createdAtMs + notification.durationMs - Date.now())),
+    globalThis.setTimeout(
+      () => {
+        dismissNotification(notification.id);
+      },
+      Math.max(0, notification.createdAtMs + notification.durationMs - Date.now()),
+    ),
   );
 
   return () => {

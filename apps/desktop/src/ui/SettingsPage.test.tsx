@@ -77,14 +77,10 @@ describe("SettingsPage interactions", () => {
     render(<SettingsPage />);
 
     const themeSelect = screen.getByLabelText("Theme");
-    expect(themeSelect.getAttribute("data-testid")).toBe(
-      "settings-theme-select",
-    );
+    expect(themeSelect.getAttribute("data-testid")).toBe("settings-theme-select");
 
     const checkbox = screen.getByLabelText("Follow system preference");
-    expect(checkbox.getAttribute("data-testid")).toBe(
-      "settings-follow-system-checkbox",
-    );
+    expect(checkbox.getAttribute("data-testid")).toBe("settings-follow-system-checkbox");
   });
 
   it("unchecking follow-system sets theme to resolved theme and shows that value in the select", () => {

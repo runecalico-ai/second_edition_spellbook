@@ -51,9 +51,7 @@ describe("deriveSpellEditorFieldErrors", () => {
   });
 
   it("empty description preserves description-required validation", () => {
-    const errors = deriveSpellEditorFieldErrors(
-      baseInput({ form: { description: "" } }),
-    );
+    const errors = deriveSpellEditorFieldErrors(baseInput({ form: { description: "" } }));
     expect(errors).toContainEqual({
       field: "spell-description",
       testId: "error-description-required",

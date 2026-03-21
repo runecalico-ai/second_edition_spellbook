@@ -1,10 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import {
-  RouterProvider,
-  createBrowserRouter,
-  type RouteObject,
-} from "react-router-dom";
+import { RouterProvider, createBrowserRouter, type RouteObject } from "react-router-dom";
 import "./index.css";
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
@@ -46,7 +42,10 @@ type ThemeRuntimeRoot = {
   dataset: DOMStringMap;
 };
 
-export function applyResolvedTheme(rootElement: ThemeRuntimeRoot, resolvedTheme: ThemeState["resolvedTheme"]) {
+export function applyResolvedTheme(
+  rootElement: ThemeRuntimeRoot,
+  resolvedTheme: ThemeState["resolvedTheme"],
+) {
   rootElement.classList.toggle("dark", resolvedTheme === "dark");
   rootElement.dataset.theme = resolvedTheme;
 }

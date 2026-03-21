@@ -57,7 +57,9 @@ function renderNewSpellWithLibraryAndNotifications() {
 
 function fillValidNewArcaneSpell() {
   fireEvent.change(screen.getByTestId("spell-name-input"), { target: { value: "Light" } });
-  fireEvent.change(screen.getByTestId("spell-description-textarea"), { target: { value: "Bright." } });
+  fireEvent.change(screen.getByTestId("spell-description-textarea"), {
+    target: { value: "Bright." },
+  });
   fireEvent.change(screen.getByTestId("spell-school-input"), { target: { value: "Evocation" } });
 }
 
@@ -172,9 +174,9 @@ describe("hash display", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
       const viewport = screen.getByTestId("notification-viewport");
       await waitFor(() => {
-        expect(within(viewport).getByTestId("toast-notification-success").textContent ?? "").toContain(
-          "Hash copied to clipboard.",
-        );
+        expect(
+          within(viewport).getByTestId("toast-notification-success").textContent ?? "",
+        ).toContain("Hash copied to clipboard.");
       });
       expect(viewport.closest("output[aria-live='polite']")).not.toBeNull();
     } finally {
@@ -202,9 +204,9 @@ describe("hash display", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
       const viewport = screen.getByTestId("notification-viewport");
       await waitFor(() => {
-        expect(within(viewport).getByTestId("toast-notification-error").textContent ?? "").toContain(
-          "Failed to copy hash.",
-        );
+        expect(
+          within(viewport).getByTestId("toast-notification-error").textContent ?? "",
+        ).toContain("Failed to copy hash.");
       });
       expect(viewport.closest("output[aria-live='polite']")).not.toBeNull();
     } finally {
@@ -254,7 +256,9 @@ describe("SpellEditor inline validation (Task 2)", () => {
     fireEvent.click(screen.getByTestId("btn-save-spell"));
     expect(within(fieldContainer("spell-name-input")).getByTestId("spell-name-error")).toBeTruthy();
     expect(
-      within(fieldContainer("spell-description-textarea")).getByTestId("error-description-required"),
+      within(fieldContainer("spell-description-textarea")).getByTestId(
+        "error-description-required",
+      ),
     ).toBeTruthy();
   });
 
@@ -272,17 +276,27 @@ describe("SpellEditor inline validation (Task 2)", () => {
     const tradition = screen.getByTestId("spell-tradition-select");
     fireEvent.change(tradition, { target: { value: "DIVINE" } });
     expect(screen.getByTestId("error-sphere-required-divine-tradition")).toBeTruthy();
-    expect(within(fieldContainer("spell-sphere-input")).getByTestId("error-sphere-required-divine-tradition")).toBeTruthy();
+    expect(
+      within(fieldContainer("spell-sphere-input")).getByTestId(
+        "error-sphere-required-divine-tradition",
+      ),
+    ).toBeTruthy();
     fireEvent.change(tradition, { target: { value: "ARCANE" } });
     expect(screen.getByTestId("error-school-required-arcane-tradition")).toBeTruthy();
-    expect(within(fieldContainer("spell-school-input")).getByTestId("error-school-required-arcane-tradition")).toBeTruthy();
+    expect(
+      within(fieldContainer("spell-school-input")).getByTestId(
+        "error-school-required-arcane-tradition",
+      ),
+    ).toBeTruthy();
   });
 
   it("validates tradition-dependent fields on tradition change without waiting for blur", () => {
     renderNewSpell();
     fireEvent.change(screen.getByTestId("spell-tradition-select"), { target: { value: "DIVINE" } });
     expect(
-      within(fieldContainer("spell-sphere-input")).getByTestId("error-sphere-required-divine-tradition"),
+      within(fieldContainer("spell-sphere-input")).getByTestId(
+        "error-sphere-required-divine-tradition",
+      ),
     ).toBeTruthy();
   });
 
@@ -300,7 +314,9 @@ describe("SpellEditor inline validation (Task 2)", () => {
     const schoolInput = screen.getByTestId("spell-school-input") as HTMLInputElement;
     expect(schoolInput.value).toBe("");
     expect(
-      within(fieldContainer("spell-school-input")).getByTestId("error-school-required-arcane-tradition"),
+      within(fieldContainer("spell-school-input")).getByTestId(
+        "error-school-required-arcane-tradition",
+      ),
     ).toBeTruthy();
   });
 
@@ -318,10 +334,14 @@ describe("SpellEditor inline validation (Task 2)", () => {
   it("shows Arcane missing-school validation without tradition conflict", () => {
     renderNewSpell();
     fireEvent.change(screen.getByTestId("spell-name-input"), { target: { value: "Test" } });
-    fireEvent.change(screen.getByTestId("spell-description-textarea"), { target: { value: "Desc" } });
+    fireEvent.change(screen.getByTestId("spell-description-textarea"), {
+      target: { value: "Desc" },
+    });
     fireEvent.click(screen.getByTestId("btn-save-spell"));
     expect(
-      within(fieldContainer("spell-school-input")).getByTestId("error-school-required-arcane-tradition"),
+      within(fieldContainer("spell-school-input")).getByTestId(
+        "error-school-required-arcane-tradition",
+      ),
     ).toBeTruthy();
     expect(screen.queryByTestId("error-tradition-conflict")).toBeNull();
   });
@@ -551,7 +571,9 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("library-route")).toBeTruthy();
     });
-    expect(screen.getByTestId("toast-notification-success").textContent ?? "").toContain("Spell saved.");
+    expect(screen.getByTestId("toast-notification-success").textContent ?? "").toContain(
+      "Spell saved.",
+    );
   });
 
   it("resolves save before 300ms without ever showing Saving…", async () => {
@@ -722,10 +744,12 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
 
     let editorMountedWhenPushed = false;
     const origPush = useNotifications.getState().pushNotification;
-    const spy = vi.spyOn(useNotifications.getState(), "pushNotification").mockImplementation((k, m) => {
-      editorMountedWhenPushed = screen.queryByTestId("spell-name-input") !== null;
-      origPush(k, m);
-    });
+    const spy = vi
+      .spyOn(useNotifications.getState(), "pushNotification")
+      .mockImplementation((k, m) => {
+        editorMountedWhenPushed = screen.queryByTestId("spell-name-input") !== null;
+        origPush(k, m);
+      });
 
     renderNewSpellWithLibraryAndNotifications();
     fillValidNewArcaneSpell();
@@ -736,7 +760,9 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
       expect(screen.getByTestId("library-route")).toBeTruthy();
     });
     expect(editorMountedWhenPushed).toBe(true);
-    expect(screen.getByTestId("toast-notification-success").textContent ?? "").toContain("Spell saved.");
+    expect(screen.getByTestId("toast-notification-success").textContent ?? "").toContain(
+      "Spell saved.",
+    );
     spy.mockRestore();
   });
 
@@ -772,7 +798,9 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("library-route")).toBeTruthy();
     });
-    expect(screen.getByTestId("toast-notification-success").textContent ?? "").toContain("Spell saved.");
+    expect(screen.getByTestId("toast-notification-success").textContent ?? "").toContain(
+      "Spell saved.",
+    );
   });
 
   it("does not move focus to the toast dismiss control on successful save", async () => {
@@ -818,7 +846,9 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
       if (cmd !== "get_spell") return Promise.resolve(undefined);
       const spellId = (args as { id?: number } | undefined)?.id;
       if (spellId === 1) {
-        return Promise.resolve(baseLoadedSpell({ id: 1, name: "First Spell", contentHash: firstHash }));
+        return Promise.resolve(
+          baseLoadedSpell({ id: 1, name: "First Spell", contentHash: firstHash }),
+        );
       }
       if (spellId === 2) {
         return secondSpellPromise;
@@ -866,12 +896,16 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     });
 
     await waitFor(() => {
-      expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe("Second Spell");
+      expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe(
+        "Second Spell",
+      );
     });
     expect(screen.getByTestId("btn-save-spell")).toBeTruthy();
     expect(screen.queryByTestId("error-description-required")).toBeNull();
     expect(screen.queryByTestId("spell-save-validation-hint")).toBeNull();
-    expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(`${secondHash.slice(0, 16)}...`);
+    expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(
+      `${secondHash.slice(0, 16)}...`,
+    );
   });
 
   it("keeps the editor visible until save resolves, then navigates to Library", async () => {

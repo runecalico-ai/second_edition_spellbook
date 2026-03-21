@@ -509,7 +509,10 @@ export function StructuredFieldInput({
           />
         )}
       </div>
-      <p className={`text-sm italic ${structuredTextMuted}`} data-testid="casting-time-text-preview">
+      <p
+        className={`text-sm italic ${structuredTextMuted}`}
+        data-testid="casting-time-text-preview"
+      >
         {castingTimeTextPreview || "—"}
       </p>
     </div>

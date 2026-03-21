@@ -290,7 +290,9 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  test("Tradition switch clears the hidden field so live edits do not create a conflict", async ({ appContext }) => {
+  test("Tradition switch clears the hidden field so live edits do not create a conflict", async ({
+    appContext,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();

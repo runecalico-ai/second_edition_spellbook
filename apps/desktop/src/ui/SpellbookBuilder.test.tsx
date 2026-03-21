@@ -61,7 +61,9 @@ describe("empty character spellbook state", () => {
     expect(within(emptyState).getByRole("heading", { name: "No Spells Added" })).not.toBeNull();
     expect(within(emptyState).getByText("This character's spellbook is empty.")).not.toBeNull();
     expect(screen.getByRole("status").textContent).toBe("This character's spellbook is empty.");
-    expect(within(emptyState).getByRole("button", { name: "Add Spell from Library" })).not.toBeNull();
+    expect(
+      within(emptyState).getByRole("button", { name: "Add Spell from Library" }),
+    ).not.toBeNull();
     expect(emptyState.closest("td")?.getAttribute("colspan")).toBe("7");
   });
 

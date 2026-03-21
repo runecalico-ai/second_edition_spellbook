@@ -40,7 +40,9 @@ function createDeferred<T>() {
 }
 
 function renderLibraryWithViewport() {
-  const router = createMemoryRouter([{ path: "/", element: <Library /> }], { initialEntries: ["/"] });
+  const router = createMemoryRouter([{ path: "/", element: <Library /> }], {
+    initialEntries: ["/"],
+  });
   return render(
     <div>
       <RouterProvider router={router} />
@@ -281,7 +283,9 @@ describe("Library notifications (Task 5)", () => {
     });
     const outsideViewport = container.querySelector("[data-testid='spell-library-table']");
     expect(outsideViewport).toBeTruthy();
-    expect(within(outsideViewport as HTMLElement).queryByText("Spell added to character!")).toBeNull();
+    expect(
+      within(outsideViewport as HTMLElement).queryByText("Spell added to character!"),
+    ).toBeNull();
   });
 });
 
@@ -290,12 +294,17 @@ describe("Library empty states", () => {
     useNotifications.setState({ notifications: [] });
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       switch (cmd) {
-        case "list_facets": return emptyFacets;
-        case "list_characters": return [];
-        case "list_saved_searches": return [];
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
         case "search_keyword":
-        case "search_semantic": return [];
-        default: return undefined;
+        case "search_semantic":
+          return [];
+        default:
+          return undefined;
       }
     });
   });
@@ -311,19 +320,28 @@ describe("Library empty states", () => {
       const searchDeferred = createDeferred<unknown[]>();
       vi.mocked(invoke).mockImplementation((cmd: string) => {
         switch (cmd) {
-          case "list_facets": return Promise.resolve(emptyFacets);
-          case "list_characters": return Promise.resolve([]);
-          case "list_saved_searches": return Promise.resolve([]);
-          case "search_keyword": return searchDeferred.promise;
-          case "search_semantic": return Promise.resolve([]);
-          default: return Promise.resolve(undefined);
+          case "list_facets":
+            return Promise.resolve(emptyFacets);
+          case "list_characters":
+            return Promise.resolve([]);
+          case "list_saved_searches":
+            return Promise.resolve([]);
+          case "search_keyword":
+            return searchDeferred.promise;
+          case "search_semantic":
+            return Promise.resolve([]);
+          default:
+            return Promise.resolve(undefined);
         }
       });
 
       renderLibraryWithViewport();
 
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledWith("search_keyword", { query: "", filters: expect.any(Object) });
+        expect(invoke).toHaveBeenCalledWith("search_keyword", {
+          query: "",
+          filters: expect.any(Object),
+        });
       });
       expect(screen.queryByText("No Spells Yet")).toBeNull();
       expect(screen.queryByText("No Results")).toBeNull();
@@ -356,23 +374,31 @@ describe("Library empty states", () => {
 
       vi.mocked(invoke).mockImplementation((cmd: string) => {
         switch (cmd) {
-          case "list_facets": return Promise.resolve(emptyFacets);
-          case "list_characters": return Promise.resolve([]);
-          case "list_saved_searches": return Promise.resolve([]);
+          case "list_facets":
+            return Promise.resolve(emptyFacets);
+          case "list_characters":
+            return Promise.resolve([]);
+          case "list_saved_searches":
+            return Promise.resolve([]);
           case "search_keyword":
             keywordSearchCalls += 1;
             return keywordSearchCalls === 1
               ? initialSearchDeferred.promise
               : latestSearchDeferred.promise;
-          case "search_semantic": return Promise.resolve([]);
-          default: return Promise.resolve(undefined);
+          case "search_semantic":
+            return Promise.resolve([]);
+          default:
+            return Promise.resolve(undefined);
         }
       });
 
       renderLibraryWithViewport();
 
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledWith("search_keyword", { query: "", filters: expect.any(Object) });
+        expect(invoke).toHaveBeenCalledWith("search_keyword", {
+          query: "",
+          filters: expect.any(Object),
+        });
       });
 
       fireEvent.change(screen.getByTestId("library-search-input"), {
@@ -403,12 +429,18 @@ describe("Library empty states", () => {
       const semanticDeferred = createDeferred<unknown[]>();
       vi.mocked(invoke).mockImplementation((cmd: string) => {
         switch (cmd) {
-          case "list_facets": return Promise.resolve(emptyFacets);
-          case "list_characters": return Promise.resolve([]);
-          case "list_saved_searches": return Promise.resolve([]);
-          case "search_keyword": return Promise.resolve([]);
-          case "search_semantic": return semanticDeferred.promise;
-          default: return Promise.resolve(undefined);
+          case "list_facets":
+            return Promise.resolve(emptyFacets);
+          case "list_characters":
+            return Promise.resolve([]);
+          case "list_saved_searches":
+            return Promise.resolve([]);
+          case "search_keyword":
+            return Promise.resolve([]);
+          case "search_semantic":
+            return semanticDeferred.promise;
+          default:
+            return Promise.resolve(undefined);
         }
       });
 
@@ -466,9 +498,7 @@ describe("Library empty states", () => {
 
       // After reset, query clears → back to empty-library state
       expect(await screen.findByText("No Spells Yet")).toBeTruthy();
-      expect(
-        (screen.getByTestId("library-search-input") as HTMLInputElement).value,
-      ).toBe("");
+      expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
       // Verify the empty-search state is no longer in the DOM
       expect(screen.queryByTestId("empty-search-reset-button")).toBeNull();
     });
@@ -476,8 +506,10 @@ describe("Library empty states", () => {
     it("resetting filters from a saved-search empty state clears the saved-search selection", async () => {
       vi.mocked(invoke).mockImplementation(async (cmd: string) => {
         switch (cmd) {
-          case "list_facets": return emptyFacets;
-          case "list_characters": return [];
+          case "list_facets":
+            return emptyFacets;
+          case "list_characters":
+            return [];
           case "list_saved_searches":
             return [
               {

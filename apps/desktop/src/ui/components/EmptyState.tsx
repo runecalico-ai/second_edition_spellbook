@@ -27,12 +27,8 @@ export function EmptyState({
       <Heading className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
         {heading}
       </Heading>
-      <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-sm">
-        {description}
-      </p>
-      {children && (
-        <div className="flex gap-3 flex-wrap justify-center">{children}</div>
-      )}
+      <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-sm">{description}</p>
+      {children && <div className="flex gap-3 flex-wrap justify-center">{children}</div>}
     </div>
   );
 }

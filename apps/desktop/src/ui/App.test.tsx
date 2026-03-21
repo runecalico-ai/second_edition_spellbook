@@ -9,7 +9,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { useNotifications } from "../store/useNotifications";
 import { useTheme } from "../store/useTheme";
-import App, { createVaultStartupFailureModal, createVaultStartupWarningModal, getThemeAnnouncement } from "./App";
+import App, {
+  createVaultStartupFailureModal,
+  createVaultStartupWarningModal,
+  getThemeAnnouncement,
+} from "./App";
 
 function resetThemeState() {
   useTheme.setState({

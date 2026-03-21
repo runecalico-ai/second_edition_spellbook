@@ -152,9 +152,7 @@ test.describe("theme and feedback foundations", () => {
       .filter({ hasText: "Hash copied to clipboard." });
     const successToast = matchingSuccessToasts.last();
 
-    await expect(
-      viewport.evaluate((element) => element.tagName),
-    ).resolves.toBe("OUTPUT");
+    await expect(viewport.evaluate((element) => element.tagName)).resolves.toBe("OUTPUT");
     await expect(viewport).toHaveAttribute("aria-live", "polite");
     await expect(matchingSuccessToasts).toHaveCount(1);
     await expect(successToast).toBeVisible({ timeout: TIMEOUTS.medium });

@@ -8,7 +8,10 @@ import type {
 } from "../../../types/spell";
 import { areaToText, defaultAreaSpec } from "../../../types/spell";
 import { useMemo } from "react";
-import type { SpellEditorFieldError, SpellEditorValidatedFieldKey } from "../../spellEditorValidation";
+import type {
+  SpellEditorFieldError,
+  SpellEditorValidatedFieldKey,
+} from "../../spellEditorValidation";
 import { ScalarInput, type ScalarFieldValidationError } from "./ScalarInput";
 
 const areaSelectClass =
@@ -423,7 +426,10 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             baseValueTestId="area-form-thickness-value"
             perLevelTestId="area-form-thickness-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-thickness-value")}
-            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-thickness-per-level")}
+            perLevelFieldError={pickAreaScalarErr(
+              visibleFieldErrors,
+              "area-form-thickness-per-level",
+            )}
           />
           <select
             data-testid="area-form-shape-unit"

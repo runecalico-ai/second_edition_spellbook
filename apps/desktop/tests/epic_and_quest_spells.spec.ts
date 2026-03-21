@@ -49,7 +49,9 @@ test.describe("Epic and Quest Spells", () => {
       await page.getByTestId("spell-level-input").fill("10");
       await page.getByTestId("spell-school-input").fill("Evocation");
       await page.getByTestId("spell-classes-input").fill("Priest, Cleric");
-      await page.getByTestId("spell-description-textarea").fill("This should fail client validation.");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("This should fail client validation.");
       await page.getByTestId("btn-save-spell").click();
 
       await app.expectFieldError("error-epic-arcane-class-restriction");

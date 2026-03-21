@@ -111,7 +111,7 @@ The existing hash block has two `// TODO(chunk-3)` comments on the buttons — t
 
 ### Step 2.1: Write failing tests
 
-- [ ] **Step 2.1: Add hash display describe block to SpellEditor.test.tsx**
+- [x] **Step 2.1: Add hash display describe block to SpellEditor.test.tsx**
 
 The existing test file uses a `renderEditSpell(spellData)` helper (or similar) and `baseLoadedSpell(overrides)` factory for test data. Find the existing factory/helper and confirm its shape. Then:
 
@@ -177,7 +177,7 @@ describe("hash display", () => {
 > import userEvent from "@testing-library/user-event";
 > ```
 
-- [ ] **Step 2.2: Run tests — expect failures**
+- [x] **Step 2.2: Run tests - expect failures**
 
 ```bash
 cd apps/desktop && pnpm test --run -- SpellEditor
@@ -187,7 +187,7 @@ Expected: The hash describe tests fail — current code shows 8 chars and still 
 
 ### Step 2.2: Implement hash display changes in SpellEditor.tsx
 
-- [ ] **Step 2.3: Implement hash display changes**
+- [x] **Step 2.3: Implement hash display changes**
 
 Find the hash block by searching for `spell-detail-hash-display` in `SpellEditor.tsx`. Replace the entire block with:
 
@@ -250,7 +250,7 @@ Key changes from the old block:
 - All buttons use theme-aware light+dark classes
 - Both `// TODO(chunk-3)` comments are removed
 
-- [ ] **Step 2.4: Run tests — expect pass**
+- [x] **Step 2.4: Run tests - expect pass**
 
 ```bash
 cd apps/desktop && pnpm test --run -- SpellEditor
@@ -258,7 +258,7 @@ cd apps/desktop && pnpm test --run -- SpellEditor
 
 Expected: All hash describe tests pass. All pre-existing tests pass.
 
-- [ ] **Step 2.5: Commit**
+- [x] **Step 2.5: Commit**
 
 ```bash
 git add apps/desktop/src/ui/SpellEditor.tsx apps/desktop/src/ui/SpellEditor.test.tsx

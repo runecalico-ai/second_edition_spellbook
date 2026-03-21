@@ -770,6 +770,7 @@ export default function SpellEditor() {
   const resetStructuredLoadState = useCallback(() => {
     setForm(createEmptySpellForm());
     setTradition("ARCANE");
+    setHashExpanded(false);
     setStructuredRange(null);
     setStructuredDuration(null);
     setStructuredCastingTime(null);
@@ -2178,42 +2179,48 @@ export default function SpellEditor() {
       )}
 
       {!isNew && form.contentHash && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-neutral-400">Content hash:</span>
-          <code
-            className="px-2 py-1 rounded bg-neutral-800 text-neutral-300 font-mono text-xs"
-            data-testid="spell-detail-hash-display"
-            title={form.contentHash}
-          >
-            {hashExpanded ? form.contentHash : `${form.contentHash.slice(0, 8)}...`}
-          </code>
-          {/* TODO(chunk-3): remove hardcoded dark-only classes — replace with theme-aware equivalents */}
-          <button
-            type="button"
-            data-testid="spell-detail-hash-copy"
-            disabled={savePending}
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(form.contentHash ?? "");
-                pushNotification("success", "Hash copied to clipboard.");
-              } catch {
-                pushNotification("error", "Failed to copy hash.");
-              }
-            }}
-            className="px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded hover:bg-neutral-700"
-          >
-            Copy
-          </button>
-          {/* TODO(chunk-3): remove hardcoded dark-only classes — replace with theme-aware equivalents */}
-          <button
-            type="button"
-            data-testid="spell-detail-hash-expand"
-            disabled={savePending}
-            onClick={() => setHashExpanded((e) => !e)}
-            className="px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded hover:bg-neutral-700"
-          >
-            {hashExpanded ? "Collapse" : "Expand"}
-          </button>
+        <div
+          className="p-3 rounded-lg border bg-neutral-100 border-neutral-300 dark:bg-neutral-800 dark:border-neutral-700"
+          data-testid="spell-detail-hash-card"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+              Content hash:
+            </span>
+            <code
+              className="px-2 py-0.5 rounded border bg-white border-neutral-300 text-neutral-700 font-mono text-xs dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300"
+              data-testid="spell-detail-hash-display"
+            >
+              {hashExpanded ? form.contentHash : `${form.contentHash.slice(0, 16)}...`}
+            </code>
+            <button
+              type="button"
+              aria-label="Copy content hash"
+              data-testid="spell-detail-hash-copy"
+              disabled={savePending}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(form.contentHash ?? "");
+                  pushNotification("success", "Hash copied to clipboard.");
+                } catch {
+                  pushNotification("error", "Failed to copy hash.");
+                }
+              }}
+              className="px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              aria-label={hashExpanded ? "Collapse content hash" : "Expand content hash"}
+              data-testid="spell-detail-hash-expand"
+              disabled={savePending}
+              onClick={() => setHashExpanded((e) => !e)}
+              className="px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            >
+              {hashExpanded ? "Collapse" : "Expand"}
+            </button>
+          </div>
         </div>
       )}
 

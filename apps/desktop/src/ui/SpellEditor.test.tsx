@@ -108,6 +108,110 @@ function fieldContainer(testId: string) {
   return container;
 }
 
+const HASH_FIXTURE = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
+describe("hash display", () => {
+  beforeEach(async () => {
+    useNotifications.setState({ notifications: [] });
+    await renderEditSpell(baseLoadedSpell({ contentHash: HASH_FIXTURE }));
+    render(<NotificationViewport />);
+  });
+
+  afterEach(() => {
+    cleanup();
+    useNotifications.setState({ notifications: [] });
+    vi.restoreAllMocks();
+  });
+
+  it("renders the hash as a card with 16-character truncation in the collapsed state", () => {
+    const card = screen.getByTestId("spell-detail-hash-card");
+    const display = screen.getByTestId("spell-detail-hash-display");
+    const copyButton = screen.getByTestId("spell-detail-hash-copy");
+    const expandButton = screen.getByTestId("spell-detail-hash-expand");
+
+    expect(card.contains(display)).toBe(true);
+    expect(card.contains(copyButton)).toBe(true);
+    expect(card.contains(expandButton)).toBe(true);
+    expect(display.textContent).toBe(`${HASH_FIXTURE.slice(0, 16)}...`);
+  });
+
+  it("omits a title attribute on the hash display", () => {
+    expect(screen.getByTestId("spell-detail-hash-display").hasAttribute("title")).toBe(false);
+  });
+
+  it("uses accessible labels for copy and expand controls and expands to the full hash", () => {
+    expect(screen.getByTestId("spell-detail-hash-copy").getAttribute("aria-label")).toBe(
+      "Copy content hash",
+    );
+    expect(screen.getByTestId("spell-detail-hash-expand").getAttribute("aria-label")).toBe(
+      "Expand content hash",
+    );
+
+    fireEvent.click(screen.getByTestId("spell-detail-hash-expand"));
+
+    expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(HASH_FIXTURE);
+    expect(screen.getByTestId("spell-detail-hash-expand").getAttribute("aria-label")).toBe(
+      "Collapse content hash",
+    );
+  });
+
+  it("copies the full hash and shows the success toast", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText,
+      },
+    });
+
+    try {
+      fireEvent.click(screen.getByTestId("spell-detail-hash-copy"));
+
+      expect(writeText).toHaveBeenCalledWith(HASH_FIXTURE);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await waitFor(() => {
+        expect(screen.getByTestId("toast-notification-success").textContent ?? "").toContain(
+          "Hash copied to clipboard.",
+        );
+      });
+    } finally {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
+  });
+
+  it("shows an error toast when copying the hash fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard failed"));
+    const originalClipboard = navigator.clipboard;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText,
+      },
+    });
+
+    try {
+      fireEvent.click(screen.getByTestId("spell-detail-hash-copy"));
+
+      expect(writeText).toHaveBeenCalledWith(HASH_FIXTURE);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await waitFor(() => {
+        expect(screen.getByTestId("toast-notification-error").textContent ?? "").toContain(
+          "Failed to copy hash.",
+        );
+      });
+    } finally {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
+  });
+});
+
 describe("SpellEditor inline validation (Task 2)", () => {
   beforeEach(() => {
     alertMock.mockClear();
@@ -703,12 +807,14 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     const secondSpellPromise = new Promise<SpellDetail>((resolve) => {
       resolveSecondSpell = resolve;
     });
+    const firstHash = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
+    const secondHash = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
 
     vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
       if (cmd !== "get_spell") return Promise.resolve(undefined);
       const spellId = (args as { id?: number } | undefined)?.id;
       if (spellId === 1) {
-        return Promise.resolve(baseLoadedSpell({ id: 1, name: "First Spell" }));
+        return Promise.resolve(baseLoadedSpell({ id: 1, name: "First Spell", contentHash: firstHash }));
       }
       if (spellId === 2) {
         return secondSpellPromise;
@@ -725,6 +831,9 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     await waitFor(() => {
       expect(screen.queryByText("Loading...")).toBeNull();
     });
+
+    fireEvent.click(screen.getByTestId("spell-detail-hash-expand"));
+    expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(firstHash);
 
     fireEvent.change(screen.getByTestId("spell-description-textarea"), { target: { value: "" } });
     fireEvent.click(screen.getByTestId("btn-save-spell"));
@@ -743,7 +852,13 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     expect(screen.queryByTestId("btn-save-spell")).toBeNull();
 
     await act(async () => {
-      resolveSecondSpell?.(baseLoadedSpell({ id: 2, name: "Second Spell" }));
+      resolveSecondSpell?.(
+        baseLoadedSpell({
+          id: 2,
+          name: "Second Spell",
+          contentHash: secondHash,
+        }),
+      );
     });
 
     await waitFor(() => {
@@ -752,6 +867,7 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     expect(screen.getByTestId("btn-save-spell")).toBeTruthy();
     expect(screen.queryByTestId("error-description-required")).toBeNull();
     expect(screen.queryByTestId("spell-save-validation-hint")).toBeNull();
+    expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(`${secondHash.slice(0, 16)}...`);
   });
 
   it("keeps the editor visible until save resolves, then navigates to Library", async () => {

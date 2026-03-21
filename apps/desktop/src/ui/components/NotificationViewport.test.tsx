@@ -15,8 +15,10 @@ function resetNotifications() {
 
 describe("NotificationViewport", () => {
   beforeEach(resetNotifications);
-  afterEach(cleanup);
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
   it("renders a polite live-region viewport that stacks upward", () => {
     const html = renderToStaticMarkup(<NotificationViewport />);

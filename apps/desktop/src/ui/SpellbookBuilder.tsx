@@ -514,7 +514,7 @@ export default function SpellbookBuilder() {
             data-testid="spellbook-picker-dialog"
             ref={pickerDialogRef}
             onKeyDown={handlePickerKeyDown}
-            className="relative bg-neutral-900 border border-neutral-700 rounded-lg w-[80vw] max-w-4xl p-4 space-y-4"
+            className="relative bg-white border border-neutral-300 dark:bg-neutral-900 dark:border-neutral-700 rounded-lg w-[80vw] max-w-4xl p-4 space-y-4"
           >
             <div className="flex items-center justify-between">
               <h3 id="spellbook-picker-heading" className="text-lg font-semibold">

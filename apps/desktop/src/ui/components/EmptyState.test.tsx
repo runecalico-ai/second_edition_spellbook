@@ -56,8 +56,8 @@ describe("EmptyState", () => {
 
   it("applies a custom testId override", () => {
     const html = renderToStaticMarkup(
-      <EmptyState heading="No spells found" description="Add a spell to get started." testId="library-empty-state" />,
+      <EmptyState heading="No spells found" description="Add a spell to get started." testId="empty-library-state" />,
     );
-    expect(html).toContain('data-testid="library-empty-state"');
+    expect(html).toContain('data-testid="empty-library-state"');
   });
 });

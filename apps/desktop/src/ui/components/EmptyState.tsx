@@ -7,6 +7,7 @@ interface EmptyStateProps {
   headingLevel?: "h1" | "h2" | "h3" | "h4" | "h5" | "h6"; // default "h2"; use "h3" if the page already uses h2 for sections
   children?: ReactNode; // CTA buttons / links
   testId?: string; // defaults to "empty-state"
+  announce?: boolean;
 }
 
 export function EmptyState({
@@ -15,10 +16,11 @@ export function EmptyState({
   headingLevel: Heading = "h2",
   children,
   testId = "empty-state",
+  announce = true,
 }: EmptyStateProps) {
   return (
     <div
-      role="status"
+      role={announce ? "status" : undefined}
       className="flex flex-col items-center justify-center py-16 text-center gap-4"
       data-testid={testId}
     >

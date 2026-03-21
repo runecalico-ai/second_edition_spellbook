@@ -283,7 +283,7 @@ git commit -m "feat(chunk-3): restyle hash display as card, 16-char truncation, 
 
 ### Step 3.1: Write failing tests
 
-- [ ] **Step 3.1: Add empty state tests to Library.test.tsx**
+- [x] **Step 3.1: Add empty state tests to Library.test.tsx**
 
 Follow the existing file structure:
 - Mock pattern: `vi.mocked(invoke).mockImplementation(async (cmd) => { ... })`
@@ -378,7 +378,7 @@ describe("Library empty states", () => {
 
 > **Search trigger note:** The test fires the search button explicitly (`library-search-button`) after setting the input value. Do NOT rely on auto-search by input change alone — verify how Library.tsx triggers search (button click, `Enter`, or reactive `useEffect`) and fire accordingly. Using the search button is the safest, most deterministic approach.
 
-- [ ] **Step 3.2: Run tests — expect failures**
+- [x] **Step 3.2: Run tests — expect failures**
 
 ```bash
 cd apps/desktop && pnpm test --run -- Library
@@ -388,7 +388,7 @@ Expected: The new empty-state tests fail because `EmptyState` is not yet used in
 
 ### Step 3.2: Implement changes in Library.tsx
 
-- [ ] **Step 3.3: Add EmptyState import and hasActiveFilters to Library.tsx**
+- [x] **Step 3.3: Add EmptyState import and hasActiveFilters to Library.tsx**
 
 Add the import at the top:
 
@@ -417,7 +417,7 @@ const hasActiveFilters = Boolean(
 
 **State variable reference:** `query`, `mode`, `schoolFilters`, `levelMin`, `levelMax`, `sourceFilter`, `classListFilter`, `componentFilter`, `tagFilter`, `isQuestFilter`, `isCantripFilter`, `selectedSavedSearchId` are all declared at the top of `Library`. Their initial values are: `""`, `"keyword"`, `[]`, `""`, `""`, `""`, `""`, `""`, `""`, `false`, `false`, `null` — all coerce to `false` in Boolean context, so `hasActiveFilters` will be `false` on first render (empty library state). ✓
 
-- [ ] **Step 3.4: Update `handleResetFilters` to clear the saved search selection**
+- [x] **Step 3.4: Update `handleResetFilters` to clear the saved search selection**
 
 Find `handleResetFilters` in Library.tsx. Add `setSelectedSavedSearchId(null);` to the function body:
 
@@ -438,7 +438,7 @@ const handleResetFilters = () => {
 };
 ```
 
-- [ ] **Step 3.5: Replace the `no-spells-found` table row**
+- [x] **Step 3.5: Replace the `no-spells-found` table row**
 
 Find the existing block (search for `no-spells-found`):
 
@@ -513,7 +513,7 @@ Replace it with:
 
 > **`colSpan` verification:** Confirm the `<table>` has exactly 5 `<th>` columns at implementation time before using `colSpan={5}`. The current table has columns: Name, School, Level, Classes, Comp = 5. ✓
 
-- [ ] **Step 3.6: Run tests — expect pass**
+- [x] **Step 3.6: Run tests — expect pass**
 
 ```bash
 cd apps/desktop && pnpm test --run -- Library
@@ -521,7 +521,7 @@ cd apps/desktop && pnpm test --run -- Library
 
 Expected: All new tests pass. All pre-existing Library tests pass.
 
-- [ ] **Step 3.7: Commit**
+- [x] **Step 3.7: Commit**
 
 ```bash
 git add apps/desktop/src/ui/Library.tsx apps/desktop/src/ui/Library.test.tsx
@@ -542,7 +542,7 @@ git commit -m "feat(chunk-3): add empty-library and empty-search states; fix han
 
 ### Step 4.1: Write failing tests
 
-- [ ] **Step 4.1: Create SpellbookBuilder.test.tsx**
+- [x] **Step 4.1: Create SpellbookBuilder.test.tsx**
 
 ```tsx
 // apps/desktop/src/ui/SpellbookBuilder.test.tsx
@@ -613,7 +613,7 @@ describe("empty character spellbook state", () => {
 });
 ```
 
-- [ ] **Step 4.2: Run test — expect failure**
+- [x] **Step 4.2: Run test — expect failure**
 
 ```bash
 cd apps/desktop && pnpm test --run -- SpellbookBuilder
@@ -621,15 +621,17 @@ cd apps/desktop && pnpm test --run -- SpellbookBuilder
 
 Expected: Tests fail — component doesn't have the new empty state.
 
+Implementation note: the workspace already contained partial Task 4 changes when execution started, so the initial targeted run did not serve as a clean red phase. The step was still executed before final verification.
+
 ### Step 4.2: Implement changes in SpellbookBuilder.tsx
 
-- [ ] **Step 4.3: Add EmptyState import to SpellbookBuilder.tsx**
+- [x] **Step 4.3: Add EmptyState import to SpellbookBuilder.tsx**
 
 ```tsx
 import { EmptyState } from "./components/EmptyState";
 ```
 
-- [ ] **Step 4.4: Replace the existing empty spellbook table row**
+- [x] **Step 4.4: Replace the existing empty spellbook table row**
 
 Find the current block (search for "No spells added yet"):
 
@@ -670,7 +672,7 @@ Replace it with:
 
 The `setPickerOpen(true)` call uses the same state setter as the existing "Add Spells" header button (`data-testid="btn-open-picker"`).
 
-- [ ] **Step 4.5: Run tests — expect pass**
+- [x] **Step 4.5: Run tests — expect pass**
 
 ```bash
 cd apps/desktop && pnpm test --run -- SpellbookBuilder
@@ -678,7 +680,9 @@ cd apps/desktop && pnpm test --run -- SpellbookBuilder
 
 Expected: Both tests pass.
 
-- [ ] **Step 4.6: Commit**
+Verification note: final targeted verification was run with `cd apps/desktop && pnpm test:unit --run -- EmptyState SpellbookBuilder` because this workspace exposes unit tests via the `test:unit` script rather than `test`.
+
+- [x] **Step 4.6: Commit**
 
 ```bash
 git add apps/desktop/src/ui/SpellbookBuilder.tsx apps/desktop/src/ui/SpellbookBuilder.test.tsx

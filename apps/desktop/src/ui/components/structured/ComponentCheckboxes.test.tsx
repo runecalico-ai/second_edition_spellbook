@@ -270,7 +270,7 @@ describe("ComponentCheckboxes – material subform", () => {
       />,
     );
     // This MUST FAIL: data-testid="material-subform" does not exist on the container yet
-    expect(screen.getByTestId("material-subform")).not.toBeNull();
+    expect(screen.queryByTestId("material-subform")).not.toBeNull();
   });
 
   it("component-text-preview remains present when material rows are rendered", () => {
@@ -282,6 +282,16 @@ describe("ComponentCheckboxes – material subform", () => {
       />,
     );
     expect(screen.getByTestId("component-text-preview")).not.toBeNull();
-    expect(screen.getByTestId("material-component-row")).not.toBeNull();
+  });
+
+  it("material-component-row renders inside root container when material enabled with rows", () => {
+    render(
+      <ComponentCheckboxes
+        components={{ verbal: true, somatic: false, material: true, focus: false, divineFocus: false, experience: false }}
+        materialComponents={[{ name: "Eye of newt", quantity: 1, isConsumed: false }]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getAllByTestId("material-component-row")).toHaveLength(1);
   });
 });

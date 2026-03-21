@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
-import type { DurationSpec, RangeSpec } from "../../../types/spell";
+import type { DurationSpec, RangeSpec, SpellCastingTime } from "../../../types/spell";
 import { StructuredFieldInput } from "./StructuredFieldInput";
 
 afterEach(() => {
@@ -43,7 +43,7 @@ describe("StructuredFieldInput – range mode", () => {
     const container = document.createElement("div");
     container.innerHTML = html;
     const root = container.querySelector('[data-testid="structured-field-input"]');
-    expect(root?.className).toContain("border"); // FAILS: current class is "space-y-2"
+    expect(root?.className.split(" ")).toContain("border"); // FAILS: current class is "space-y-2"
   });
 
   it("range distance mode renders range-base-value scalar input", () => {
@@ -151,7 +151,7 @@ describe("StructuredFieldInput – duration mode", () => {
     const container = document.createElement("div");
     container.innerHTML = html;
     const root = container.querySelector('[data-testid="structured-field-input"]');
-    expect(root?.className).toContain("border"); // FAILS: current class is "space-y-2"
+    expect(root?.className.split(" ")).toContain("border"); // FAILS: current class is "space-y-2"
   });
 });
 
@@ -204,6 +204,17 @@ describe("StructuredFieldInput – casting_time mode", () => {
     const container = document.createElement("div");
     container.innerHTML = html;
     const root = container.querySelector('[data-testid="structured-field-input"]');
-    expect(root?.className).toContain("border"); // FAILS: current class is "space-y-2"
+    expect(root?.className.split(" ")).toContain("border"); // FAILS: current class is "space-y-2"
+  });
+
+  it("casting-time with special unit renders raw-legacy input inside root", () => {
+    const specialSpec: SpellCastingTime = { text: "", unit: "special", rawLegacyValue: "some text" };
+    render(
+      <StructuredFieldInput fieldType="casting_time" value={specialSpec} onChange={() => {}} />,
+    );
+    const root = screen.getByTestId("structured-field-input");
+    const rawLegacy = screen.getByTestId("casting-time-raw-legacy");
+    expect(rawLegacy).not.toBeNull();
+    expect(root.contains(rawLegacy)).toBe(true);
   });
 });

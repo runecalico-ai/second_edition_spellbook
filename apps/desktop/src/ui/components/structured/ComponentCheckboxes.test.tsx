@@ -235,4 +235,29 @@ describe("ComponentCheckboxes – material subform", () => {
     // Assert the NEW expected class is present — this FAILS now:
     expect(html).toContain("dark:bg-neutral-800"); // FAILS: currently plain bg-neutral-900
   });
+
+  // MUST FAIL: data-testid="material-subform" does not exist on the container yet
+  it("enabling Material reveals a visually nested material-subform container", () => {
+    render(
+      <ComponentCheckboxes
+        components={{ verbal: false, somatic: false, material: true, focus: false, divineFocus: false, experience: false }}
+        materialComponents={[]}
+        onChange={() => {}}
+      />,
+    );
+    // This MUST FAIL: data-testid="material-subform" does not exist on the container yet
+    expect(screen.getByTestId("material-subform")).not.toBeNull();
+  });
+
+  it("component-text-preview remains present when material rows are rendered", () => {
+    render(
+      <ComponentCheckboxes
+        components={{ verbal: true, somatic: false, material: true, focus: false, divineFocus: false, experience: false }}
+        materialComponents={[{ name: "Eye of newt", quantity: 1, isConsumed: false }]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("component-text-preview")).not.toBeNull();
+    expect(screen.getByTestId("material-component-row")).not.toBeNull();
+  });
 });

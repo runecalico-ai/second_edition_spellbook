@@ -189,6 +189,7 @@ describe("Library notifications (Task 5)", () => {
       expect(within(viewport).getByTestId("toast-notification-error")).toBeTruthy();
     });
     expect(alertSpy).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(confirmBtn);
     expect(notificationViewport().contains(document.activeElement)).toBe(false);
   });
 
@@ -235,6 +236,7 @@ describe("Library notifications (Task 5)", () => {
       expect(within(viewport).getByTestId("toast-notification-error")).toBeTruthy();
     });
     expect(alertSpy).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(deleteBtn);
     expect(notificationViewport().contains(document.activeElement)).toBe(false);
   });
 

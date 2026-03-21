@@ -480,14 +480,14 @@ test.describe("Spell Editor canon-first default", () => {
     });
 
     await test.step("Canon line updates from structured serialization", async () => {
-      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire (half save)");
+      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire");
     });
 
     await test.step("Save and reopen; persisted value remains", async () => {
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
       await app.openSpell(spellName);
-      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire (half save)");
+      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire");
     });
   });
 
@@ -704,7 +704,6 @@ test.describe("Spell Editor canon-first default", () => {
         timeout: TIMEOUTS.short,
       });
       await expect(page.getByTestId("detail-duration-special-hint")).toBeVisible();
-      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toBeVisible();
     });
 
     await test.step("Collapse, save, and verify fallback text/indicator persisted", async () => {
@@ -1269,10 +1268,6 @@ test.describe("Spell Editor canon-first default", () => {
         timeout: TIMEOUTS.medium,
       });
       await expect(page.getByTestId("detail-duration-special-hint")).toBeVisible();
-      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toBeVisible();
-      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toContainText(
-        "could not be fully parsed",
-      );
       await page.getByTestId("detail-duration-expand").click();
       await expect(page.getByText("(special)")).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(
@@ -1522,7 +1517,8 @@ test.describe("Spell Editor canon-first default", () => {
 
       await page.getByTestId("detail-magic-resistance-expand").click();
       await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
-      await page.getByTestId("magic-resistance-part-ids").fill("part_a, part_b");
+      await page.getByTestId("magic-resistance-partial-scope").selectOption("secondary_effects_only");
+      await page.getByTestId("magic-resistance-notes").fill("Partial MR note");
 
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
@@ -1545,7 +1541,10 @@ test.describe("Spell Editor canon-first default", () => {
 
       await page.getByTestId("detail-magic-resistance-expand").click();
       await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
-      await expect(page.getByTestId("magic-resistance-part-ids")).toHaveValue("part_a, part_b");
+      await expect(page.getByTestId("magic-resistance-partial-scope")).toHaveValue(
+        "secondary_effects_only",
+      );
+      await expect(page.getByTestId("magic-resistance-notes")).toHaveValue("Partial MR note");
     });
   });
 

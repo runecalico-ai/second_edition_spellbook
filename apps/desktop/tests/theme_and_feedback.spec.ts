@@ -147,12 +147,16 @@ test.describe("theme and feedback foundations", () => {
     await page.getByTestId("spell-detail-hash-copy").click();
 
     const viewport = page.getByTestId("notification-viewport");
-    const successToast = page.getByTestId("toast-notification-success");
+    const matchingSuccessToasts = viewport
+      .getByTestId("toast-notification-success")
+      .filter({ hasText: "Hash copied to clipboard." });
+    const successToast = matchingSuccessToasts.last();
 
     await expect(
       viewport.evaluate((element) => element.tagName),
     ).resolves.toBe("OUTPUT");
     await expect(viewport).toHaveAttribute("aria-live", "polite");
+    await expect(matchingSuccessToasts).toHaveCount(1);
     await expect(successToast).toBeVisible({ timeout: TIMEOUTS.medium });
     await expect(successToast).toContainText("Hash copied to clipboard.");
     // Wait for the toast to auto-dismiss (default 3000ms + buffer)

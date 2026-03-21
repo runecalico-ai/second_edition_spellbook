@@ -113,6 +113,15 @@ describe("deriveSpellEditorFieldErrors", () => {
     });
   });
 
+  it("Epic level without school does not also emit the generic Arcane-tradition school error", () => {
+    const errors = deriveSpellEditorFieldErrors(
+      baseInput({
+        form: { level: 10, school: "", sphere: null },
+      }),
+    );
+    expect(errors.some((e) => e.testId === "error-school-required-arcane-tradition")).toBe(false);
+  });
+
   it("Epic spell with priest/cleric classes and no Wizard/Mage returns error-epic-arcane-class-restriction", () => {
     const errors = deriveSpellEditorFieldErrors(
       baseInput({
@@ -159,6 +168,16 @@ describe("deriveSpellEditorFieldErrors", () => {
       message: "Sphere is required for Quest (Divine) spells.",
       focusTarget: "spell-sphere",
     });
+  });
+
+  it("Quest spell without sphere does not also emit the generic Divine-tradition sphere error", () => {
+    const errors = deriveSpellEditorFieldErrors(
+      baseInput({
+        tradition: "DIVINE",
+        form: { level: 8, isQuestSpell: 1, school: null, sphere: "" },
+      }),
+    );
+    expect(errors.some((e) => e.testId === "error-sphere-required-divine-tradition")).toBe(false);
   });
 
   it("epic-plus-quest conflict preserves blocking validation", () => {

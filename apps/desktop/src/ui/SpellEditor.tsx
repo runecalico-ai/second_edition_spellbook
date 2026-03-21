@@ -615,13 +615,8 @@ function getParserFallbackLabel(field: DetailFieldKey): string {
   }
 }
 
-export default function SpellEditor() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { alert: modalAlert, confirm: modalConfirm } = useModal();
-  const pushNotification = useNotifications((state) => state.pushNotification);
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState<SpellDetail>({
+function createEmptySpellForm(): SpellDetail {
+  return {
     name: "",
     level: 1,
     description: "",
@@ -639,7 +634,16 @@ export default function SpellEditor() {
     reversible: 0,
     isQuestSpell: 0,
     isCantrip: 0,
-  });
+  };
+}
+
+export default function SpellEditor() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { alert: modalAlert, confirm: modalConfirm } = useModal();
+  const pushNotification = useNotifications((state) => state.pushNotification);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState<SpellDetail>(() => createEmptySpellForm());
   const [printStatus, setPrintStatus] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
   const [structuredRange, setStructuredRange] = useState<RangeSpec | null>(null);
@@ -764,6 +768,8 @@ export default function SpellEditor() {
   /** Focus management: on expand focus first focusable in panel; on collapse focus the expand button. */
   const prevExpandedDetailRef = useRef<DetailFieldKey | null>(null);
   const resetStructuredLoadState = useCallback(() => {
+    setForm(createEmptySpellForm());
+    setTradition("ARCANE");
     setStructuredRange(null);
     setStructuredDuration(null);
     setStructuredCastingTime(null);
@@ -783,6 +789,10 @@ export default function SpellEditor() {
     setSuppressExpandParse({});
     setParsersPending(false);
     setParserFallbackFields(new Set());
+    setHasAttemptedSubmit(false);
+    setFieldValidationVisible(new Set());
+    setHasUnsavedState(false);
+    unsavedRef.current = false;
     expandedDetailRef.current = null;
     prevExpandedDetailRef.current = null;
   }, []);
@@ -1802,7 +1812,7 @@ export default function SpellEditor() {
   }, [visibleFieldErrors]);
 
   const ariaInvalidForField = (field: SpellEditorValidatedFieldKey) =>
-    visibleFieldErrors.some((e) => e.field === field) ? ("true" as const) : ("false" as const);
+    visibleFieldErrors.some((e) => e.field === field) ? ("true" as const) : undefined;
   const save = async () => {
     try {
       if (isInvalid) {
@@ -2145,7 +2155,6 @@ export default function SpellEditor() {
               onClick={save}
               disabled={
                 parsersPending ||
-                loading ||
                 savePending ||
                 (hasAttemptedSubmit && isInvalid)
               }
@@ -2375,6 +2384,11 @@ export default function SpellEditor() {
               onChange={(e) => {
                 const next = e.target.value as Tradition;
                 setTradition(next);
+                if (next === "ARCANE") {
+                  handleChange("sphere", null);
+                } else {
+                  handleChange("school", null);
+                }
                 revealFieldValidation("spell-tradition", "spell-school", "spell-sphere");
               }}
               className={`w-full border p-2 ${spellInputSurface} ${

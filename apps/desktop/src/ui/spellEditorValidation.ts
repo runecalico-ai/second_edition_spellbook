@@ -491,7 +491,7 @@ export function deriveSpellEditorFieldErrors(input: SpellEditorValidationInput):
     });
   }
 
-  if (tradition === "ARCANE" && !schoolTrimmed(school)) {
+  if (tradition === "ARCANE" && level < 10 && !schoolTrimmed(school)) {
     out.push({
       field: "spell-school",
       testId: "error-school-required-arcane-tradition",
@@ -509,7 +509,7 @@ export function deriveSpellEditorFieldErrors(input: SpellEditorValidationInput):
     });
   }
 
-  if (tradition === "DIVINE" && !sphereTrimmed(sphere)) {
+  if (tradition === "DIVINE" && form.isQuestSpell !== 1 && !sphereTrimmed(sphere)) {
     out.push({
       field: "spell-sphere",
       testId: "error-sphere-required-divine-tradition",

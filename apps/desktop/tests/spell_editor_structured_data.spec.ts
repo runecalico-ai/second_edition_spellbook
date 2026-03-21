@@ -290,55 +290,88 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  // Tradition conflict on new spell: Arcane school is retained when switching to Divine and filling sphere.
-  // (Plan also mentions edit of a pre-seeded record with both columns; import rejects that shape for new data.)
-  test("Tradition conflict derives from live school/sphere edits", async ({ appContext }) => {
+  test("Tradition switch clears the hidden field so live edits do not create a conflict", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Tradition Switch Clear ${runId}`;
 
-    await test.step("Arcane school then Divine sphere creates conflict", async () => {
+    await test.step("Switching Arcane to Divine clears School before Sphere is entered", async () => {
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
-      await page.getByTestId("spell-name-input").fill("Tradition Live Conflict");
+      await page.getByTestId("spell-name-input").fill(spellName);
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
       await expect(page.getByTestId("spell-tradition-select")).toHaveValue("ARCANE");
       await page.getByTestId("spell-school-input").fill("Evocation");
       await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
+      await expect(page.getByTestId("spell-school-input")).toHaveCount(0);
+      await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
+      await page.getByTestId("spell-classes-input").fill("Cleric");
       await page.getByTestId("spell-sphere-input").fill("Combat");
 
-      await expect(page.getByTestId("error-tradition-conflict")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
+      await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
     });
 
-    await test.step("Clearing sphere removes conflict banner immediately", async () => {
-      await page.getByTestId("spell-sphere-input").fill("");
+    await test.step("Save succeeds without any inline conflict banner or modal", async () => {
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+
+      await page.getByPlaceholder(/Search spells/i).fill(spellName);
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await expect(app.getSpellRow(spellName)).toBeVisible({ timeout: TIMEOUTS.medium });
       await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
+      await app.expectNoBlockingDialog();
     });
   });
 
-  test("Tradition conflict blocks save when both school and sphere are set", async ({
+  test("Seeded conflicted edit path shows inline tradition conflict until user resolves it", async ({
     appContext,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const spellName = `Seeded Tradition Conflict ${runId}`;
 
-    await test.step("Open new spell, set school under Arcane then sphere under Divine", async () => {
-      await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
-      await page.getByTestId("spell-name-input").fill("Tradition Save Block");
-      await page.getByTestId("spell-level-input").fill("1");
-      await page.getByTestId("spell-description-textarea").fill("Description.");
-      await page.getByTestId("spell-school-input").fill("Evocation");
-      await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
-      await page.getByTestId("spell-sphere-input").fill("Combat");
+    await test.step("Seed a legacy spell row with both School and Sphere populated", async () => {
+      await app.navigate("Library");
+      await page.evaluate(async (name: string) => {
+        const inv = (
+          window as Window & {
+            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
+          }
+        ).__TAURI_INTERNALS__?.invoke;
+        if (!inv) throw new Error("Tauri invoke not available");
+        await inv("test_seed_conflicted_spell", { name });
+      }, spellName);
+      await page.reload();
     });
 
-    await test.step("Save is blocked with inline conflict error only (no validation modal)", async () => {
+    await test.step("Opening the seeded spell shows the inline conflict and blocks save without a modal", async () => {
+      await app.openSpell(spellName);
+      await app.expectFieldError("error-tradition-conflict");
       await page.getByTestId("btn-save-spell").click();
       await app.expectFieldError("error-tradition-conflict");
       await app.expectNoBlockingDialog();
+    });
+
+    await test.step("Switching to Divine clears the hidden School and allows save", async () => {
+      await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
+      await expect(page.getByTestId("spell-school-field")).toHaveCount(0);
+      await expect(page.getByTestId("spell-school-input")).toHaveCount(0);
+      await expect(page.getByTestId("spell-sphere-input")).toHaveValue("Combat");
+      await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
+
+      await page.getByTestId("btn-save-spell").click();
+      await app.waitForLibrary();
+      await app.expectToastSuccessInViewport("Spell saved.");
+      await app.expectNoBlockingDialog();
+
+      await app.openSpell(spellName);
+      await expect(page.getByTestId("spell-tradition-select")).toHaveValue("DIVINE");
+      await expect(page.getByTestId("spell-school-field")).toHaveCount(0);
+      await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
     });
   });
 
@@ -372,9 +405,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
   });
 
-  // Option A (remove-both-tradition): Import rejects spells with both school and sphere.
-  // The "open conflicted spell → banner → dismiss" UI is only reachable for pre-existing/legacy
-  // DB records (e.g. before this change); we do not seed such records in E2E.
+  // Import still rejects newly-ingested records with both school and sphere.
   test("Import rejects spell with both school and sphere; spell does not appear in library", async ({
     appContext,
   }) => {

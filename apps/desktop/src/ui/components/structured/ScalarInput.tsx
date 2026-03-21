@@ -124,7 +124,7 @@ export function ScalarInput({
           id={activeInputId}
           data-testid={activeInputId}
           aria-label={mode === "fixed" ? "Base value" : "Per level"}
-          aria-invalid={activeError ? "true" : "false"}
+          aria-invalid={activeError ? "true" : undefined}
           aria-describedby={activeError ? activeError.testId : undefined}
           value={effectiveValue}
           onChange={(e) =>

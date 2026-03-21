@@ -141,7 +141,9 @@ export class SpellbookApp {
       tradition === "ARCANE" ? (school ?? "Alteration") : school;
     console.log(`Creating spell: ${name}`);
     await this.navigate("Add Spell");
-    await expect(this.page.getByRole("heading", { name: "New Spell" })).toBeVisible();
+    await expect(this.page.getByRole("heading", { name: "New Spell" })).toBeVisible({
+      timeout: TIMEOUTS.medium,
+    });
 
     await this.page.waitForLoadState("networkidle");
     await this.page.waitForTimeout(500); // Allow React state to settle after mount

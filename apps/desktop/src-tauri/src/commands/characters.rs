@@ -12,6 +12,21 @@ use tauri::State;
 const LIST_TYPE_KNOWN: &str = "KNOWN";
 const LIST_TYPE_PREPARED: &str = "PREPARED";
 
+#[cfg(debug_assertions)]
+fn require_test_data_dir_override() -> Result<(), AppError> {
+    if let Some(path) = std::env::var_os("SPELLBOOK_DATA_DIR") {
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        if normalized.contains("/apps/desktop/tests/tmp/data-") {
+            return Ok(());
+        }
+    }
+
+    Err(AppError::Unknown(
+        "Test seed commands require SPELLBOOK_DATA_DIR to point at the Playwright isolated test vault"
+            .to_string(),
+    ))
+}
+
 /// Sync helper for building character class spell list. Used by the command and by tests.
 fn get_character_class_spells_with_conn(
     conn: &Connection,
@@ -944,12 +959,36 @@ pub async fn test_seed_spell(
     name: String,
     hash: String,
 ) -> Result<i64, AppError> {
+    require_test_data_dir_override()?;
     let pool = state.inner().clone();
     let id = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         conn.execute(
             "INSERT INTO spell (name, level, description, content_hash) VALUES (?, 1, 'Test', ?)",
             params![name, hash],
+        )?;
+        Ok::<i64, AppError>(conn.last_insert_rowid())
+    })
+    .await
+    .map_err(|e| AppError::Unknown(e.to_string()))??;
+    Ok(id)
+}
+
+/// Test-only: inserts a legacy-conflicted spell row with both school and sphere populated.
+/// Only use in E2E tests that need to open an existing invalid record and verify repair flows.
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub async fn test_seed_conflicted_spell(
+    state: State<'_, Arc<Pool>>,
+    name: String,
+) -> Result<i64, AppError> {
+    require_test_data_dir_override()?;
+    let pool = state.inner().clone();
+    let id = tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        conn.execute(
+            "INSERT INTO spell (name, school, sphere, class_list, level, description) VALUES (?, 'Evocation', 'Combat', 'Wizard, Cleric', 1, 'Legacy conflicted spell for E2E.')",
+            params![name],
         )?;
         Ok::<i64, AppError>(conn.last_insert_rowid())
     })
@@ -967,6 +1006,7 @@ pub async fn test_seed_character_with_orphan_spell(
     state: State<'_, Arc<Pool>>,
     character_name: String,
 ) -> Result<(), AppError> {
+    require_test_data_dir_override()?;
     let pool = state.inner().clone();
     let name = character_name;
     tokio::task::spawn_blocking(move || {

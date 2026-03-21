@@ -15,6 +15,25 @@ async function clearPlaywrightEditorHooks(page: Page) {
   });
 }
 
+async function fillValidSpellForSave(page: Page, name: string) {
+  await page.getByTestId("spell-name-input").fill(name);
+  await page.getByTestId("spell-level-input").fill("1");
+  await page.getByTestId("spell-description-textarea").fill("Theme-aware save body.");
+  await page.getByTestId("spell-classes-input").fill("Wizard");
+  await page.getByTestId("spell-school-input").fill("Evocation");
+}
+
+async function getButtonVisualState(page: Page) {
+  return page.getByTestId("btn-save-spell").evaluate((el) => {
+    const styles = getComputedStyle(el);
+    return {
+      backgroundColor: styles.backgroundColor,
+      color: styles.color,
+      cursor: styles.cursor,
+    };
+  });
+}
+
 async function tabUntilTestId(page: Page, testId: string, maxTabs = 80) {
   for (let i = 0; i < maxTabs; i++) {
     const match = await page.evaluate((want) => {
@@ -70,7 +89,12 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     await expect(page).toHaveURL(/\//);
 
     await app.expectToastSuccessInViewport("Spell saved.");
-    await expect(page.getByTestId("toast-dismiss-button")).not.toBeFocused();
+    const saveToast = page
+      .getByTestId("notification-viewport")
+      .getByTestId("toast-notification-success")
+      .filter({ hasText: "Spell saved." })
+      .last();
+    await expect(saveToast.getByTestId("toast-dismiss-button")).not.toBeFocused();
     await app.expectNoBlockingDialog();
   });
 
@@ -463,5 +487,73 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
       await expect(page.getByTestId("spell-name-input")).toHaveAttribute("aria-invalid", "true");
       await app.expectNoBlockingDialog();
     }
+  });
+
+  test("delayed save progress styling is explicit in both light and dark themes", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const pendingStates: Array<{
+      theme: "light" | "dark";
+      enabledBackground: string;
+      pendingBackground: string;
+      pendingColor: string;
+    }> = [];
+
+    for (const theme of ["light", "dark"] as const) {
+      const runId = generateRunId();
+      const spellName = `Theme Save ${theme} ${runId}`;
+
+      await page.evaluate((t) => {
+        localStorage.setItem("spellbook-theme", t);
+      }, theme);
+      await page.reload();
+      await page.waitForFunction(
+        (t) => document.documentElement.dataset.theme === t,
+        theme,
+        { timeout: TIMEOUTS.medium },
+      );
+
+      await page.evaluate(() => {
+        window.__SPELLBOOK_E2E_SAVE_INVOKE_DELAY_MS = 1200;
+      });
+
+      await app.navigate("Add Spell");
+      await page.waitForTimeout(500);
+      await fillValidSpellForSave(page, spellName);
+
+      const enabledState = await getButtonVisualState(page);
+      await page.getByTestId("btn-save-spell").click();
+
+      await expect(page.getByTestId("btn-save-spell")).toBeDisabled();
+      await expect(page.getByTestId("btn-save-spell")).toHaveText("Saving…", {
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByTestId("btn-save-spell")).toHaveAttribute("aria-busy", "true");
+
+      const pendingState = await getButtonVisualState(page);
+      expect(pendingState.backgroundColor).not.toBe(enabledState.backgroundColor);
+      expect(pendingState.cursor).toBe("not-allowed");
+
+      pendingStates.push({
+        theme,
+        enabledBackground: enabledState.backgroundColor,
+        pendingBackground: pendingState.backgroundColor,
+        pendingColor: pendingState.color,
+      });
+
+      await app.waitForLibrary();
+      await app.expectToastSuccessInViewport("Spell saved.");
+      await app.expectNoBlockingDialog();
+    }
+
+    const lightPending = pendingStates.find((state) => state.theme === "light");
+    const darkPending = pendingStates.find((state) => state.theme === "dark");
+
+    expect(lightPending).toBeDefined();
+    expect(darkPending).toBeDefined();
+    expect(lightPending?.pendingBackground).not.toBe(darkPending?.pendingBackground);
+    expect(lightPending?.pendingColor).not.toBe(darkPending?.pendingColor);
   });
 });

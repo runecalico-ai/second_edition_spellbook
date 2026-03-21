@@ -178,6 +178,24 @@ describe("SpellEditor inline validation (Task 2)", () => {
     ).toBeTruthy();
   });
 
+  it("clears the hidden mutually exclusive field when tradition changes", () => {
+    renderNewSpell();
+    fireEvent.change(screen.getByTestId("spell-school-input"), { target: { value: "Evocation" } });
+
+    fireEvent.change(screen.getByTestId("spell-tradition-select"), { target: { value: "DIVINE" } });
+    fireEvent.change(screen.getByTestId("spell-sphere-input"), { target: { value: "Fire" } });
+
+    expect(screen.queryByTestId("error-tradition-conflict")).toBeNull();
+
+    fireEvent.change(screen.getByTestId("spell-tradition-select"), { target: { value: "ARCANE" } });
+
+    const schoolInput = screen.getByTestId("spell-school-input") as HTMLInputElement;
+    expect(schoolInput.value).toBe("");
+    expect(
+      within(fieldContainer("spell-school-input")).getByTestId("error-school-required-arcane-tradition"),
+    ).toBeTruthy();
+  });
+
   it("mounts the newly relevant tradition field with fade-in animation and unmounts the other immediately", () => {
     renderNewSpell();
     expect(screen.getByTestId("spell-school-field").className).toMatch(/animate-in/);
@@ -240,6 +258,12 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     expect(err.id).toBe("spell-name-error");
   });
 
+  it("omits aria-invalid when a top-level field currently has no error", () => {
+    renderNewSpell();
+    const name = screen.getByTestId("spell-name-input");
+    expect(name.hasAttribute("aria-invalid")).toBe(false);
+  });
+
   it("moves focus to the first invalid field on first failed submit", async () => {
     renderNewSpell();
     fireEvent.click(screen.getByTestId("btn-save-spell"));
@@ -296,6 +320,26 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const msg = within(scalarRoot).getByTestId("error-range-base-value");
     expect(msg.textContent?.trim()).toBe("Base value must be 0 or greater");
     expect(msg.id).toBe("error-range-base-value");
+  });
+
+  it("omits aria-invalid on ScalarInput when the active scalar field is valid", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        canonicalData: JSON.stringify({
+          range: {
+            kind: "distance",
+            unit: "ft",
+            distance: { mode: "fixed", value: 120 },
+            text: "120 ft",
+          },
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("detail-range-expand"));
+
+    const baseInput = screen.getByTestId("range-base-value");
+    expect(baseInput.hasAttribute("aria-invalid")).toBe(false);
   });
 
   it("shows casting-time base validation with correct copy, ARIA, and same-container adjacency", async () => {
@@ -652,6 +696,62 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     fireEvent.change(screen.getByTestId("spell-description-textarea"), { target: { value: "Y" } });
     fireEvent.change(screen.getByTestId("spell-school-input"), { target: { value: "Evocation" } });
     expect(saveBtn.disabled).toBe(false);
+  });
+
+  it("resets validation UI and hides stale editor content while a different spell loads into the same editor", async () => {
+    let resolveSecondSpell: ((spell: SpellDetail) => void) | undefined;
+    const secondSpellPromise = new Promise<SpellDetail>((resolve) => {
+      resolveSecondSpell = resolve;
+    });
+
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd !== "get_spell") return Promise.resolve(undefined);
+      const spellId = (args as { id?: number } | undefined)?.id;
+      if (spellId === 1) {
+        return Promise.resolve(baseLoadedSpell({ id: 1, name: "First Spell" }));
+      }
+      if (spellId === 2) {
+        return secondSpellPromise;
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const router = createMemoryRouter([{ path: "/edit/:id", element: <SpellEditor /> }], {
+      initialEntries: ["/edit/1"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading...")).toBeNull();
+    });
+
+    fireEvent.change(screen.getByTestId("spell-description-textarea"), { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+    expect(screen.getByTestId("error-description-required")).toBeTruthy();
+    expect(screen.getByTestId("spell-save-validation-hint")).toBeTruthy();
+
+    await act(async () => {
+      await router.navigate("/edit/2");
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("error-description-required")).toBeNull();
+      expect(screen.queryByTestId("spell-save-validation-hint")).toBeNull();
+    });
+    expect(screen.getByText("Loading...")).toBeTruthy();
+    expect(screen.queryByTestId("btn-save-spell")).toBeNull();
+
+    await act(async () => {
+      resolveSecondSpell?.(baseLoadedSpell({ id: 2, name: "Second Spell" }));
+    });
+
+    await waitFor(() => {
+      expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe("Second Spell");
+    });
+    expect(screen.getByTestId("btn-save-spell")).toBeTruthy();
+    expect(screen.queryByTestId("error-description-required")).toBeNull();
+    expect(screen.queryByTestId("spell-save-validation-hint")).toBeNull();
   });
 
   it("keeps the editor visible until save resolves, then navigates to Library", async () => {

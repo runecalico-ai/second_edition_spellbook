@@ -231,6 +231,22 @@ describe("hash display", () => {
   });
 });
 
+describe("SpellEditor structured detail controls", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("exposes field-specific accessible names for expand buttons", async () => {
+    await renderEditSpell(baseLoadedSpell());
+
+    expect(screen.getByRole("button", { name: "Expand Range" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Duration" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Casting Time" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Expand Components" })).toBeTruthy();
+  });
+});
+
 describe("SpellEditor inline validation (Task 2)", () => {
   beforeEach(() => {
     alertMock.mockClear();
@@ -461,6 +477,41 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const msg = within(scalarRoot).getByTestId("error-range-base-value");
     expect(msg.textContent?.trim()).toBe("Base value must be 0 or greater");
     expect(msg.id).toBe("error-range-base-value");
+  });
+
+  it("expands and focuses the first invalid structured field when it is collapsed on submit", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        canonicalData: JSON.stringify({
+          range: {
+            kind: "distance",
+            unit: "ft",
+            distance: { mode: "fixed", value: -1 },
+            text: "-1 ft",
+          },
+        }),
+      }),
+    );
+
+    expect(screen.getByTestId("detail-range-expand").getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("detail-range-expand").getAttribute("aria-expanded")).toBe(
+        "true",
+      );
+    });
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+
+    expect(document.activeElement).toBe(screen.getByTestId("range-base-value"));
   });
 
   it("omits aria-invalid on ScalarInput when the active scalar field is valid", async () => {
@@ -910,6 +961,119 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
       "Spell saved.",
     );
     spy.mockRestore();
+  });
+
+  it("includes structured component specs in the create payload after structured editing", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "create_spell") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    fireEvent.click(screen.getByTestId("detail-components-expand"));
+    await waitFor(() => {
+      expect(screen.getByTestId("component-checkboxes")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("component-checkbox-material"));
+    await waitFor(() => {
+      expect(screen.getByTestId("material-subform")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("material-component-add"));
+    fireEvent.change(screen.getByTestId("material-component-name"), {
+      target: { value: "Bat guano" },
+    });
+    fireEvent.change(screen.getByTestId("material-component-gp-value"), {
+      target: { value: "50" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("btn-save-spell"));
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "create_spell")).toBe(true);
+    });
+
+    const createCall = vi.mocked(invoke).mock.calls.find((call) => call[0] === "create_spell");
+    const payload = (createCall?.[1] as { spell: SpellDetail }).spell;
+
+    expect(payload.componentsSpec).toMatchObject({ material: true });
+    expect(payload.materialComponentsSpec).toMatchObject([
+      {
+        name: "Bat guano",
+        gpValue: 50,
+      },
+    ]);
+  });
+
+  it("includes structured component specs in the update payload after structured editing", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "get_spell") return Promise.resolve(baseLoadedSpell());
+      if (cmd === "update_spell") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    await act(async () => {
+      render(
+        <div>
+          <RouterProvider
+            router={createMemoryRouter(
+              [
+                { path: "/", element: <div data-testid="library-route">Library</div> },
+                { path: "/edit/:id", element: <SpellEditor /> },
+              ],
+              { initialEntries: ["/edit/1"] },
+            )}
+          />
+          <NotificationViewport />
+        </div>,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading...")).toBeNull();
+    });
+
+    fireEvent.click(screen.getByTestId("detail-components-expand"));
+    await waitFor(() => {
+      expect(screen.getByTestId("component-checkboxes")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("component-checkbox-material"));
+    await waitFor(() => {
+      expect(screen.getByTestId("material-subform")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("material-component-add"));
+    fireEvent.change(screen.getByTestId("material-component-name"), {
+      target: { value: "Amber resin" },
+    });
+    fireEvent.change(screen.getByTestId("material-component-unit"), {
+      target: { value: "dram" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("btn-save-spell"));
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "update_spell")).toBe(true);
+    });
+
+    const updateCall = vi.mocked(invoke).mock.calls.find((call) => call[0] === "update_spell");
+    const payload = (updateCall?.[1] as { spell: SpellDetail }).spell;
+
+    expect(payload.componentsSpec).toMatchObject({ material: true });
+    expect(payload.materialComponentsSpec).toMatchObject([
+      {
+        name: "Amber resin",
+        unit: "dram",
+      },
+    ]);
   });
 
   it("shows the same success toast after update_spell", async () => {

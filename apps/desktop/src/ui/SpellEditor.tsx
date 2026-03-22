@@ -1814,11 +1814,37 @@ export default function SpellEditor() {
 
   const ariaInvalidForField = (field: SpellEditorValidatedFieldKey) =>
     visibleFieldErrors.some((e) => e.field === field) ? ("true" as const) : undefined;
+
+  const detailFieldForFocusTarget = useCallback(
+    (focusTarget: string): DetailFieldKey | null => {
+      if (focusTarget.startsWith("range-")) return "range";
+      if (focusTarget.startsWith("duration-")) return "duration";
+      if (focusTarget.startsWith("casting-time-")) return "castingTime";
+      if (focusTarget.startsWith("area-form-")) return "area";
+      if (focusTarget.startsWith("damage-form-")) return "damage";
+      if (focusTarget.startsWith("saving-throw-")) return "savingThrow";
+      if (focusTarget.startsWith("magic-resistance-")) return "magicResistance";
+      return null;
+    },
+    [],
+  );
+
   const save = async () => {
     try {
       if (isInvalid) {
         setHasAttemptedSubmit(true);
         const sorted = sortFieldErrorsByFocusOrder(fieldErrors);
+        const firstError = sorted[0];
+        const needsPanelExpansion =
+          firstError && !(document.getElementById(firstError.focusTarget) instanceof HTMLElement);
+        const detailField = firstError
+          ? detailFieldForFocusTarget(firstError.focusTarget)
+          : null;
+
+        if (needsPanelExpansion && detailField) {
+          await expandDetailField(detailField);
+        }
+
         requestAnimationFrame(() => {
           for (const err of sorted) {
             const el = document.getElementById(err.focusTarget);
@@ -1966,12 +1992,6 @@ export default function SpellEditor() {
 
       const normalizedSchool = (spellData.school ?? "").trim();
       const normalizedSphere = (spellData.sphere ?? "").trim();
-      const normalizedSpellData: SpellDetail = {
-        ...spellData,
-        school: normalizedSchool || null,
-        sphere: normalizedSphere || null,
-      };
-
       const componentsEditedInExpandedMode =
         detailDirty.components || detailDirty.materialComponents || hasExpandedComponentsEdit;
       const shouldSendComponentsSpec =
@@ -1987,6 +2007,12 @@ export default function SpellEditor() {
       if (shouldSendMaterialComponentsSpec) {
         spellData.materialComponentsSpec = structuredMaterialComponents;
       }
+
+      const normalizedSpellData: SpellDetail = {
+        ...spellData,
+        school: normalizedSchool || null,
+        sphere: normalizedSphere || null,
+      };
 
       await sleepPlaywrightSaveInvokeDelay();
 
@@ -2670,6 +2696,7 @@ export default function SpellEditor() {
                       <button
                         type="button"
                         data-testid={`detail-${kebabField}-expand`}
+                        aria-label={`${isExpanded ? "Collapse" : "Expand"} ${label}`}
                         aria-expanded={isExpanded}
                         aria-controls={isExpanded ? panelId : undefined}
                         onClick={() =>

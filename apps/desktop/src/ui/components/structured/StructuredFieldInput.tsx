@@ -133,7 +133,10 @@ export function StructuredFieldInput({
 
     return (
       <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
-        <div className={structuredPrimaryControlRowClass}>
+        <div
+          className={structuredPrimaryControlRowClass}
+          data-testid="structured-field-primary-row"
+        >
           <select
             data-testid="range-kind-select"
             aria-label="Range kind"
@@ -217,7 +220,10 @@ export function StructuredFieldInput({
             />
           )}
         </div>
-        <div className={structuredSupportingRowClass}>
+        <div
+          className={structuredSupportingRowClass}
+          data-testid="structured-field-supporting-row"
+        >
           <textarea
             data-testid="range-notes"
             aria-label="Range notes"
@@ -231,7 +237,10 @@ export function StructuredFieldInput({
             className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-600 ${structuredInputClass}`}
           />
         </div>
-        <div className={structuredPreviewRowClass}>
+        <div
+          className={structuredPreviewRowClass}
+          data-testid="structured-field-preview-row"
+        >
           <output
             className={structuredPreviewOutputClass}
             data-testid="range-text-preview"
@@ -254,7 +263,10 @@ export function StructuredFieldInput({
 
     return (
       <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
-        <div className={structuredPrimaryControlRowClass}>
+        <div
+          className={structuredPrimaryControlRowClass}
+          data-testid="structured-field-primary-row"
+        >
           <select
             data-testid="duration-kind-select"
             aria-label="Duration kind"
@@ -392,7 +404,10 @@ export function StructuredFieldInput({
             />
           )}
         </div>
-        <div className={structuredSupportingRowClass}>
+        <div
+          className={structuredSupportingRowClass}
+          data-testid="structured-field-supporting-row"
+        >
           <textarea
             data-testid="duration-notes"
             aria-label="Duration notes"
@@ -406,7 +421,10 @@ export function StructuredFieldInput({
             className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-600 ${structuredInputClass}`}
           />
         </div>
-        <div className={structuredPreviewRowClass}>
+        <div
+          className={structuredPreviewRowClass}
+          data-testid="structured-field-preview-row"
+        >
           <output
             className={structuredPreviewOutputClass}
             data-testid="duration-text-preview"
@@ -435,7 +453,10 @@ export function StructuredFieldInput({
 
   return (
     <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
-      <div className={structuredPrimaryControlRowClass}>
+      <div
+        className={structuredPrimaryControlRowClass}
+        data-testid="structured-field-primary-row"
+      >
         <div className={structuredInlineScalarClusterClass}>
           <div className="flex flex-col gap-1">
             <input
@@ -547,7 +568,10 @@ export function StructuredFieldInput({
           />
         )}
       </div>
-      <div className={structuredPreviewRowClass}>
+      <div
+        className={structuredPreviewRowClass}
+        data-testid="structured-field-preview-row"
+      >
         <output
           className={structuredPreviewOutputClass}
           data-testid="casting-time-text-preview"

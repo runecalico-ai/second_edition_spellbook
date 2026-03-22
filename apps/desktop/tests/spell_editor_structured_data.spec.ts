@@ -364,14 +364,18 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Open new spell, expand Components, enable Material", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Material Test Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
       await page.getByTestId("detail-components-expand").click();
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("component-checkboxes")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
       await page.getByTestId("component-checkbox-material").check();
-      await page.waitForTimeout(100);
+      await expect(
+        page.getByTestId("component-checkboxes").getByTestId("material-subform"),
+      ).toBeVisible({ timeout: TIMEOUTS.medium });
     });
 
     await test.step("Add first material and set name", async () => {
@@ -381,7 +385,9 @@ test.describe("Spell Editor structured data and hash display", () => {
       await expect(componentCheckboxes.getByTestId("component-text-preview")).toBeVisible();
       await expect(materialSubform).toBeVisible();
       await page.getByTestId("material-component-add").click();
-      await page.waitForTimeout(100);
+      await expect(materialSubform.getByTestId("material-component-row")).toHaveCount(1, {
+        timeout: TIMEOUTS.medium,
+      });
       const nameInput = materialSubform.getByTestId("material-component-name").first();
       await nameInput.fill("Bat guano");
       await expect(nameInput).toHaveValue("Bat guano");
@@ -393,17 +399,15 @@ test.describe("Spell Editor structured data and hash display", () => {
       const qtyInput = materialSubform.getByTestId("material-component-quantity").first();
       await qtyInput.fill("0.5");
       await qtyInput.blur();
-      await page.waitForTimeout(100);
       // Validation clamps to >= 1; quantity 1 is displayed as 1.0 (hashing consistency)
-      await expect(qtyInput).toHaveValue("1.0");
+      await expect(qtyInput).toHaveValue("1.0", { timeout: TIMEOUTS.medium });
     });
 
     await test.step("Add second material component", async () => {
       await page.getByTestId("material-component-add").click();
-      await page.waitForTimeout(100);
       const materialSubform = page.getByTestId("component-checkboxes").getByTestId("material-subform");
       const materialRows = materialSubform.getByTestId("material-component-row");
-      await expect(materialRows).toHaveCount(2);
+      await expect(materialRows).toHaveCount(2, { timeout: TIMEOUTS.medium });
       const secondNameInput = materialSubform.getByTestId("material-component-name").nth(1);
       await secondNameInput.fill("Sulfur");
       await expect(secondNameInput).toHaveValue("Sulfur");
@@ -413,9 +417,8 @@ test.describe("Spell Editor structured data and hash display", () => {
       const materialSubform = page.getByTestId("component-checkboxes").getByTestId("material-subform");
       const removeButton = materialSubform.getByTestId("material-component-remove").first();
       await removeButton.click();
-      await page.waitForTimeout(100);
       const materialRows = materialSubform.getByTestId("material-component-row");
-      await expect(materialRows).toHaveCount(1);
+      await expect(materialRows).toHaveCount(1, { timeout: TIMEOUTS.medium });
       // Verify remaining material is the second one (Sulfur)
       const remainingName = materialSubform.getByTestId("material-component-name").first();
       await expect(remainingName).toHaveValue("Sulfur");

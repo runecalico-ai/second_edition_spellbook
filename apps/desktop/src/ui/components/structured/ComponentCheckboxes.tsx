@@ -98,7 +98,10 @@ export function ComponentCheckboxes({
       className="space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-100"
       data-testid="component-checkboxes"
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-4">
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-4"
+        data-testid="component-checkbox-strip"
+      >
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -224,7 +227,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
 
       {materials.map((m, idx) => (
         <div
-          key={`material-${idx}-${m.name || "unnamed"}-${m.quantity || 0}`}
+          key={`material-${idx}`}
           className="grid gap-2 p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-sm border border-neutral-200 dark:border-neutral-700"
           data-testid="material-component-row"
         >

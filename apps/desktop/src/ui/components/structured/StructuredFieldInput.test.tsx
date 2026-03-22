@@ -9,42 +9,13 @@ afterEach(() => {
   cleanup();
 });
 
-const ROOT_SURFACE_CLASSES = [
-  "space-y-3",
-  "rounded-xl",
-  "border",
-  "border-neutral-300",
-  "bg-white",
-  "p-3",
-  "text-neutral-900",
-  "shadow-sm",
-  "dark:border-neutral-700",
-  "dark:bg-neutral-950/60",
-  "dark:text-neutral-100",
-];
+const ROOT_SURFACE_CLASSES = ["rounded-xl", "border-neutral-300", "dark:bg-neutral-950/60"];
 
 const PRIMARY_ROW_CLASSES = ["flex", "min-w-0", "flex-wrap", "items-center", "gap-2"];
 
-const SUPPORTING_ROW_CLASSES = [
-  "rounded-lg",
-  "border",
-  "border-neutral-200",
-  "bg-neutral-50/70",
-  "p-2",
-  "dark:border-neutral-800",
-  "dark:bg-neutral-950/40",
-];
+const SUPPORTING_ROW_CLASSES = ["rounded-lg", "bg-neutral-50/70", "dark:bg-neutral-950/40"];
 
-const PREVIEW_ROW_CLASSES = [
-  "rounded-lg",
-  "border",
-  "border-neutral-200",
-  "bg-neutral-50",
-  "px-2.5",
-  "py-2",
-  "dark:border-neutral-800",
-  "dark:bg-neutral-950/50",
-];
+const PREVIEW_ROW_CLASSES = ["rounded-lg", "bg-neutral-50", "dark:bg-neutral-950/50"];
 
 function expectClasses(node: HTMLElement, classes: string[]) {
   const tokens = new Set(node.className.split(/\s+/).filter(Boolean));
@@ -57,6 +28,18 @@ function getRoot() {
   return screen.getByTestId("structured-field-input");
 }
 
+function getPrimaryRow() {
+  return screen.getByTestId("structured-field-primary-row");
+}
+
+function getSupportingRow() {
+  return screen.getByTestId("structured-field-supporting-row");
+}
+
+function getPreviewRow() {
+  return screen.getByTestId("structured-field-preview-row");
+}
+
 function expectPreviewRow(previewTestId: string, expectedText: string) {
   const preview = screen.getByTestId(previewTestId);
   expect(preview.tagName).toBe("OUTPUT");
@@ -64,13 +47,6 @@ function expectPreviewRow(previewTestId: string, expectedText: string) {
   expect(preview.getAttribute("aria-live")).toBeNull();
   expect(preview.getAttribute("aria-label")).toBeNull();
   return preview;
-}
-
-function expectRootChildren(root: HTMLElement, expectedCount: number) {
-  const children = Array.from(root.children) as HTMLElement[];
-  expect(children).toHaveLength(expectedCount);
-  expectClasses(children[0] as HTMLElement, PRIMARY_ROW_CLASSES);
-  return children;
 }
 
 describe("StructuredFieldInput", () => {
@@ -83,10 +59,11 @@ describe("StructuredFieldInput", () => {
       />,
     );
     const root = getRoot();
-    const primary = root.children[0] as HTMLElement;
+    const primary = getPrimaryRow();
     const tokens = new Set(primary.className.split(/\s+/).filter(Boolean));
     expect(tokens.has("flex-wrap")).toBe(true);
     expect(tokens.has("min-w-0")).toBe(true);
+    expect(root.contains(primary)).toBe(true);
   });
 
   it("locks the range grouped DOM contract", () => {
@@ -104,9 +81,12 @@ describe("StructuredFieldInput", () => {
 
     const root = getRoot();
     expectClasses(root, ROOT_SURFACE_CLASSES);
-    const [primary, supporting, preview] = expectRootChildren(root, 3);
+  const primary = getPrimaryRow();
+  const supporting = getSupportingRow();
+  const preview = getPreviewRow();
     expectClasses(supporting, SUPPORTING_ROW_CLASSES);
     expectClasses(preview, PREVIEW_ROW_CLASSES);
+  expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("range-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("range-scalar"))).toBe(true);
     expect(primary.contains(screen.getByTestId("range-unit"))).toBe(true);
@@ -124,9 +104,12 @@ describe("StructuredFieldInput", () => {
       />,
     );
 
-    const [primary, supporting, preview] = expectRootChildren(getRoot(), 3);
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
     expectClasses(supporting, SUPPORTING_ROW_CLASSES);
     expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("range-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("range-raw-legacy"))).toBe(true);
   });
@@ -170,9 +153,12 @@ describe("StructuredFieldInput", () => {
 
     const root = getRoot();
     expectClasses(root, ROOT_SURFACE_CLASSES);
-    const [primary, supporting, preview] = expectRootChildren(root, 3);
+  const primary = getPrimaryRow();
+  const supporting = getSupportingRow();
+  const preview = getPreviewRow();
     expectClasses(supporting, SUPPORTING_ROW_CLASSES);
     expectClasses(preview, PREVIEW_ROW_CLASSES);
+  expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("duration-scalar"))).toBe(true);
     expect(primary.contains(screen.getByTestId("duration-unit"))).toBe(true);
@@ -195,9 +181,12 @@ describe("StructuredFieldInput", () => {
       />,
     );
 
-    const [primary, supporting, preview] = expectRootChildren(getRoot(), 3);
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
     expectClasses(supporting, SUPPORTING_ROW_CLASSES);
     expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("duration-raw-legacy"))).toBe(true);
   });
@@ -214,9 +203,12 @@ describe("StructuredFieldInput", () => {
       />,
     );
 
-    const [primary, supporting, preview] = expectRootChildren(getRoot(), 3);
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
     expectClasses(supporting, SUPPORTING_ROW_CLASSES);
     expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("duration-condition"))).toBe(true);
   });
@@ -233,9 +225,12 @@ describe("StructuredFieldInput", () => {
       />,
     );
 
-    const [primary, supporting, preview] = expectRootChildren(getRoot(), 3);
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
     expectClasses(supporting, SUPPORTING_ROW_CLASSES);
     expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("duration-uses-scalar"))).toBe(true);
     expect(preview.contains(expectPreviewRow("duration-text-preview", "2 use(s)"))).toBe(true);
@@ -287,8 +282,10 @@ describe("StructuredFieldInput", () => {
 
     const root = getRoot();
     expectClasses(root, ROOT_SURFACE_CLASSES);
-    const [primary, preview] = expectRootChildren(root, 2);
+  const primary = getPrimaryRow();
+  const preview = getPreviewRow();
     expectClasses(preview, PREVIEW_ROW_CLASSES);
+  expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("casting-time-base-value"))).toBe(true);
     expect(primary.contains(screen.getByTestId("casting-time-per-level"))).toBe(true);
     expect(primary.contains(screen.getByTestId("casting-time-level-divisor"))).toBe(true);

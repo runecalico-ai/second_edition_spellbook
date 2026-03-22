@@ -123,6 +123,22 @@ describe("ComponentCheckboxes – vsm variant", () => {
     expect(root.contains(preview)).toBe(true);
   });
 
+  it("renders the checkbox strip in a dedicated grouped container", () => {
+    render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={() => {}}
+      />,
+    );
+    const root = screen.getByTestId("component-checkboxes");
+    const strip = screen.getByTestId("component-checkbox-strip");
+    expect(root.contains(strip)).toBe(true);
+    expect(within(strip).getByTestId("component-checkbox-verbal")).toBeTruthy();
+    expect(within(strip).getByTestId("component-checkbox-somatic")).toBeTruthy();
+    expect(within(strip).getByTestId("component-checkbox-material")).toBeTruthy();
+  });
+
   it("text preview shows dash when no components selected", () => {
     render(
       <ComponentCheckboxes
@@ -269,6 +285,7 @@ describe("ComponentCheckboxes – material subform", () => {
     const subform = screen.getByTestId("material-subform");
     const tokens = new Set(subform.className.split(/\s+/).filter(Boolean));
     expect(tokens.has("dark:bg-neutral-950/60")).toBe(true);
+    expect(tokens.has("border-neutral-300")).toBe(true);
   });
 
   it("material component rows use theme-aware row background class", () => {
@@ -282,6 +299,7 @@ describe("ComponentCheckboxes – material subform", () => {
     const row = screen.getAllByTestId("material-component-row")[0] as HTMLElement;
     const tokens = new Set(row.className.split(/\s+/).filter(Boolean));
     expect(tokens.has("dark:bg-neutral-800")).toBe(true);
+    expect(tokens.has("bg-neutral-50")).toBe(true);
   });
 
   it("enabling Material reveals a visually nested material-subform container", () => {
@@ -315,6 +333,28 @@ describe("ComponentCheckboxes – material subform", () => {
       />,
     );
     expect(screen.getAllByTestId("material-component-row")).toHaveLength(1);
+  });
+
+  it("preserves the material row DOM node when editable values change", () => {
+    const { rerender } = render(
+      <ComponentCheckboxes
+        components={withMaterial}
+        materialComponents={[{ name: "Bat fur", quantity: 1, isConsumed: false }]}
+        onChange={() => {}}
+      />,
+    );
+
+    const initialRow = screen.getByTestId("material-component-row");
+
+    rerender(
+      <ComponentCheckboxes
+        components={withMaterial}
+        materialComponents={[{ name: "Bat guano", quantity: 1, isConsumed: false }]}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("material-component-row")).toBe(initialRow);
   });
 });
 

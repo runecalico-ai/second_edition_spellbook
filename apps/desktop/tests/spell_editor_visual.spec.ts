@@ -68,12 +68,13 @@ async function openSpellInEditor(_page: Page, app: SpellbookApp): Promise<void> 
   await seedVisualSpell(app);
 }
 
-async function prepareFullEditorScreenshot(page: Page, app: SpellbookApp, theme: HtmlTheme) {
+async function prepareComponentsExpandedEditorScreenshot(
+  page: Page,
+  app: SpellbookApp,
+  theme: HtmlTheme,
+) {
   await page.setViewportSize({ width: 1440, height: 2200 });
   await openSpellInEditor(page, app);
-  await expandStructuredField(page, "range");
-  await expandStructuredField(page, "duration");
-  await expandStructuredField(page, "casting-time");
   await expandComponents(page);
   await setHtmlTheme(page, theme);
   await page.addStyleTag({
@@ -114,6 +115,23 @@ test.describe("Spell editor visual contract", () => {
     });
   });
 
+  test("StructuredFieldInput range state matches dark-mode screenshot", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await openSpellInEditor(page, app);
+    await setHtmlTheme(page, "dark");
+    await expandStructuredField(page, "range");
+
+    const rangeSection = page.getByTestId("structured-panel-range");
+    await expect(rangeSection).toBeVisible({ timeout: TIMEOUTS.medium });
+    await rangeSection.scrollIntoViewIfNeeded();
+
+    await expect(rangeSection).toHaveScreenshot("spell-editor-structured-range-dark.png", {
+      animations: "disabled",
+    });
+  });
+
   test("StructuredFieldInput duration state matches screenshot", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -128,6 +146,26 @@ test.describe("Spell editor visual contract", () => {
     await expect(durationSection).toHaveScreenshot("spell-editor-structured-duration.png", {
       animations: "disabled",
     });
+  });
+
+  test("StructuredFieldInput duration state matches dark-mode screenshot", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await openSpellInEditor(page, app);
+    await setHtmlTheme(page, "dark");
+    await expandStructuredField(page, "duration");
+
+    const durationSection = page.getByTestId("structured-panel-duration");
+    await expect(durationSection).toBeVisible({ timeout: TIMEOUTS.medium });
+    await durationSection.scrollIntoViewIfNeeded();
+
+    await expect(durationSection).toHaveScreenshot(
+      "spell-editor-structured-duration-dark.png",
+      {
+        animations: "disabled",
+      },
+    );
   });
 
   test("StructuredFieldInput casting time state matches screenshot", async ({ appContext }) => {
@@ -146,10 +184,30 @@ test.describe("Spell editor visual contract", () => {
     });
   });
 
-  test("full spell editor in light mode matches screenshot", async ({ appContext }) => {
+  test("StructuredFieldInput casting time state matches dark-mode screenshot", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    await prepareFullEditorScreenshot(page, app, "light");
+
+    await openSpellInEditor(page, app);
+    await setHtmlTheme(page, "dark");
+    await expandStructuredField(page, "casting-time");
+
+    const castingTimeSection = page.getByTestId("structured-panel-casting-time");
+    await expect(castingTimeSection).toBeVisible({ timeout: TIMEOUTS.medium });
+    await castingTimeSection.scrollIntoViewIfNeeded();
+
+    await expect(castingTimeSection).toHaveScreenshot(
+      "spell-editor-structured-casting-time-dark.png",
+      {
+        animations: "disabled",
+      },
+    );
+  });
+
+  test("spell editor with components expanded in light mode matches screenshot", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    await prepareComponentsExpandedEditorScreenshot(page, app, "light");
 
     await expect(page).toHaveScreenshot("spell-editor-light.png", {
       animations: "disabled",
@@ -157,10 +215,10 @@ test.describe("Spell editor visual contract", () => {
     });
   });
 
-  test("full spell editor in dark mode matches screenshot", async ({ appContext }) => {
+  test("spell editor with components expanded in dark mode matches screenshot", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    await prepareFullEditorScreenshot(page, app, "dark");
+    await prepareComponentsExpandedEditorScreenshot(page, app, "dark");
 
     await expect(page).toHaveScreenshot("spell-editor-dark.png", {
       animations: "disabled",

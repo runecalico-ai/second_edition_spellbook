@@ -48,7 +48,7 @@ export const RangeDistancePerLevel: Story = {
       kind: "distance",
       distance: { mode: "per_level", value: 10, perLevel: 5 },
       unit: "yd",
-      text: "10 ft + 5 ft/level",
+      text: "10 yd + 5 yd/level",
     },
     onChange: fn(),
   },
@@ -115,6 +115,20 @@ export const DurationTime: Story = {
       unit: "round",
       duration: { mode: "fixed", value: 1 },
       text: "1 round",
+    },
+    onChange: fn(),
+  },
+};
+
+export const DurationWithNotes: Story = {
+  args: {
+    fieldType: "duration",
+    value: {
+      kind: "time",
+      unit: "round",
+      duration: { mode: "fixed", value: 3 },
+      text: "3 rounds",
+      notes: "Duration halved in anti-magic field",
     },
     onChange: fn(),
   },

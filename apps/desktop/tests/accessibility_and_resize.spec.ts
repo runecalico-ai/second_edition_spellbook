@@ -3,6 +3,12 @@ import { TIMEOUTS } from "./fixtures/constants";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 test.describe("Resize Hardening — 900px viewport", () => {
+  // Safety net: restore default viewport even if a test fails mid-resize.
+  // Each test also restores inline, but this afterEach ensures cleanup on assertion failures.
+  test.afterEach(async ({ appContext }) => {
+    await appContext.page.setViewportSize({ width: 1280, height: 768 }).catch(() => {});
+  });
+
   test("spell editor structured fields do not overflow at 900px window width", async ({
     appContext,
   }) => {
@@ -26,18 +32,15 @@ test.describe("Resize Hardening — 900px viewport", () => {
       await page.waitForTimeout(500); // 500ms matches standard settlement wait in this codebase
     });
 
-    await test.step("Confirm viewport width is actually 900px", async () => {
-      // setViewportSize() in CDP/WebView2 mode sets the emulated viewport.
-      // If window.innerWidth !== 900, the resize did not take effect in the real window —
-      // in that case skip the test rather than failing hard, since the overflow check below
-      // would be testing the wrong viewport. Re-run the resize test manually at 900px.
+    // Confirm viewport width OUTSIDE a step so test.skip() propagates correctly to the test
+    // runner. test.skip() throws a SkipError that must reach the test runner directly —
+    // calling it inside a test.step() callback risks having it caught by the step wrapper.
+    // setViewportSize() in CDP/WebView2 mode sets the emulated viewport; if innerWidth !== 900,
+    // the resize did not take effect and the overflow check below would test the wrong viewport.
+    {
       const innerWidth = await page.evaluate(() => window.innerWidth);
-      if (innerWidth !== 900) {
-        test.skip(true, `setViewportSize did not resize the WebView2 window (got ${innerWidth}px). Verify this test manually at 900px.`);
-        return;
-      }
-      expect(innerWidth).toBe(900);
-    });
+      test.skip(innerWidth !== 900, `setViewportSize did not resize the WebView2 window (got ${innerWidth}px). Verify this test manually at 900px.`);
+    }
 
     await test.step("Verify no horizontal scrollbar on spell editor page", async () => {
       // Checks root-level overflow. Note: content hidden by overflow:hidden on parents

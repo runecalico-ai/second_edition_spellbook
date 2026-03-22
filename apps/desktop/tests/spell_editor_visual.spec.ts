@@ -64,13 +64,13 @@ async function expandComponents(page: Page) {
   await expect(page.getByTestId("component-checkboxes")).toBeVisible({ timeout: TIMEOUTS.medium });
 }
 
-async function openExpandedVisualSpell(page: Page, app: SpellbookApp): Promise<void> {
+async function openSpellInEditor(_page: Page, app: SpellbookApp): Promise<void> {
   await seedVisualSpell(app);
 }
 
 async function prepareFullEditorScreenshot(page: Page, app: SpellbookApp, theme: HtmlTheme) {
   await page.setViewportSize({ width: 1440, height: 2200 });
-  await openExpandedVisualSpell(page, app);
+  await openSpellInEditor(page, app);
   await expandStructuredField(page, "range");
   await expandStructuredField(page, "duration");
   await expandStructuredField(page, "casting-time");
@@ -102,10 +102,10 @@ test.describe("Spell editor visual contract", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    await openExpandedVisualSpell(page, app);
+    await openSpellInEditor(page, app);
     await expandStructuredField(page, "range");
 
-    const rangeSection = page.locator('section[aria-label="Structured Range"]');
+    const rangeSection = page.getByTestId("structured-panel-range");
     await expect(rangeSection).toBeVisible({ timeout: TIMEOUTS.medium });
     await rangeSection.scrollIntoViewIfNeeded();
 
@@ -118,10 +118,10 @@ test.describe("Spell editor visual contract", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    await openExpandedVisualSpell(page, app);
+    await openSpellInEditor(page, app);
     await expandStructuredField(page, "duration");
 
-    const durationSection = page.locator('section[aria-label="Structured Duration"]');
+    const durationSection = page.getByTestId("structured-panel-duration");
     await expect(durationSection).toBeVisible({ timeout: TIMEOUTS.medium });
     await durationSection.scrollIntoViewIfNeeded();
 
@@ -134,10 +134,10 @@ test.describe("Spell editor visual contract", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    await openExpandedVisualSpell(page, app);
+    await openSpellInEditor(page, app);
     await expandStructuredField(page, "casting-time");
 
-    const castingTimeSection = page.locator('section[aria-label="Structured Casting Time"]');
+    const castingTimeSection = page.getByTestId("structured-panel-casting-time");
     await expect(castingTimeSection).toBeVisible({ timeout: TIMEOUTS.medium });
     await castingTimeSection.scrollIntoViewIfNeeded();
 

@@ -636,6 +636,39 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     expect((structured.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
       .toBe(true);
   });
+
+  it("moves focus to the first focusable child when expanding a structured panel", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        canonicalData: JSON.stringify({
+          range: {
+            kind: "distance",
+            unit: "ft",
+            distance: { mode: "fixed", value: 30 },
+            text: "30 ft",
+          },
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("detail-range-expand"));
+
+    // Structured panel renders immediately when canonical data is present (no async parse)
+    const panel = document.getElementById("detail-range-panel") as HTMLElement;
+    expect(panel).not.toBeNull();
+    const kindSelect = within(panel).getByTestId("range-kind-select");
+    expect(kindSelect).not.toBeNull();
+
+    // The focus management effect queues a requestAnimationFrame; flush it via act
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+
+    // After RAF flush, focus should be on the first focusable child
+    expect(document.activeElement).toBe(kindSelect);
+  });
 });
 
 describe("SpellEditor save progress and success feedback (Task 4)", () => {

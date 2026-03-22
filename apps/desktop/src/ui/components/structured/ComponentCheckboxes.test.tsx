@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { MaterialComponentSpec, SpellComponents } from "../../../types/spell";
 import { ComponentCheckboxes } from "./ComponentCheckboxes";
 
 afterEach(() => {
@@ -96,6 +96,18 @@ describe("ComponentCheckboxes – vsm variant", () => {
       />,
     );
     expect(screen.getByTestId("component-text-preview")).not.toBeNull();
+  });
+
+  it("component-text-preview renders as an output element", () => {
+    render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={() => {}}
+      />,
+    );
+    const preview = screen.getByTestId("component-text-preview");
+    expect(preview.tagName).toBe("OUTPUT");
   });
 
   it("component-text-preview is a descendant of component-checkboxes", () => {
@@ -230,37 +242,48 @@ describe("ComponentCheckboxes – material subform", () => {
     expect(screen.getAllByTestId("material-component-row")).toHaveLength(2);
   });
 
-  // MUST FAIL: material subform should use theme-aware dark: prefixed surface classes,
-  // but currently uses bare dark-only classes (bg-neutral-900/50, border-neutral-800)
-  it("material subform uses theme-aware surface classes not dark-only", () => {
-    const html = renderToStaticMarkup(
+  it("material-component-row renders directly inside material-subform", () => {
+    render(
+      <ComponentCheckboxes
+        components={withMaterial}
+        materialComponents={[
+          { name: "Bat fur", quantity: 1, isConsumed: false },
+          { name: "Sulphur", quantity: 1, isConsumed: true },
+        ]}
+        onChange={() => {}}
+      />,
+    );
+    const subform = screen.getByTestId("material-subform");
+    const rows = within(subform).getAllByTestId("material-component-row");
+    expect(rows).toHaveLength(2);
+  });
+
+  it("material subform uses theme-aware surface classes", () => {
+    render(
       <ComponentCheckboxes
         components={withMaterial}
         materialComponents={[]}
         onChange={() => {}}
       />,
     );
-    // Currently the material container has class "space-y-2 p-2 bg-neutral-900/50 rounded border border-neutral-800"
-    // It does NOT have dark: prefixed surface classes. Task 3 will fix this.
-    // Assert the NEW expected class is present — this FAILS now:
-    expect(html).toContain("dark:bg-neutral-900"); // FAILS: currently bg-neutral-900/50 not dark:bg-neutral-900
+    const subform = screen.getByTestId("material-subform");
+    const tokens = new Set(subform.className.split(/\s+/).filter(Boolean));
+    expect(tokens.has("dark:bg-neutral-950/60")).toBe(true);
   });
 
-  // MUST FAIL: material row items also use bare dark-only bg (no dark: prefix)
   it("material component rows use theme-aware row background class", () => {
-    const html = renderToStaticMarkup(
+    render(
       <ComponentCheckboxes
         components={withMaterial}
         materialComponents={[{ name: "Bat fur", quantity: 1, isConsumed: false }]}
         onChange={() => {}}
       />,
     );
-    // Currently row div has "grid gap-2 p-2 bg-neutral-900 rounded text-sm" — no dark: prefix
-    // Assert the NEW expected class is present — this FAILS now:
-    expect(html).toContain("dark:bg-neutral-800"); // FAILS: currently plain bg-neutral-900
+    const row = screen.getAllByTestId("material-component-row")[0] as HTMLElement;
+    const tokens = new Set(row.className.split(/\s+/).filter(Boolean));
+    expect(tokens.has("dark:bg-neutral-800")).toBe(true);
   });
 
-  // MUST FAIL: data-testid="material-subform" does not exist on the container yet
   it("enabling Material reveals a visually nested material-subform container", () => {
     render(
       <ComponentCheckboxes
@@ -269,7 +292,6 @@ describe("ComponentCheckboxes – material subform", () => {
         onChange={() => {}}
       />,
     );
-    // This MUST FAIL: data-testid="material-subform" does not exist on the container yet
     expect(screen.queryByTestId("material-subform")).not.toBeNull();
   });
 
@@ -352,7 +374,10 @@ describe("ComponentCheckboxes – destructive confirmation", () => {
     fireEvent.click(matCheckbox);
     await Promise.resolve();
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const [resultComp, resultMaterials] = onChange.mock.calls[0] as unknown as [SpellComponents, MaterialComponentSpec[]];
+    expect(resultComp.material).toBe(false);
+    expect(resultMaterials).toHaveLength(0);
   });
 
   it("does NOT call onChange when confirm returns false", async () => {

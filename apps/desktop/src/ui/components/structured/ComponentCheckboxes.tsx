@@ -65,11 +65,18 @@ export function ComponentCheckboxes({
             }));
         const ok = await confirm();
         if (!ok) return;
-        updateMaterials([]);
+        // Single atomic call: uncheck material and clear rows together so
+        // React batch-writes do not restore the stale material list via the
+        // updateComponents closure.
+        const cleared = isVsm
+          ? { ...comp, material: false, focus: false, divineFocus: false, experience: false }
+          : { ...comp, material: false };
+        onChange(cleared, []);
+        return;
       }
       updateComponents({ ...comp, material: checked });
     },
-    [comp, materials.length, updateComponents, updateMaterials, onUncheckMaterialConfirm],
+    [comp, isVsm, materials.length, onChange, onUncheckMaterialConfirm, updateComponents],
   );
 
   const textPreview = isVsm
@@ -157,12 +164,12 @@ export function ComponentCheckboxes({
           </>
         )}
       </div>
-      <p
-        className="text-sm italic text-neutral-600 dark:text-neutral-400 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-950/50"
+      <output
+        className="text-sm italic text-neutral-700 dark:text-neutral-300 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-950/50"
         data-testid="component-text-preview"
       >
         {textPreview}
-      </p>
+      </output>
 
       {comp.material && <MaterialSubForm materials={materials} onChange={updateMaterials} />}
     </div>
@@ -200,7 +207,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
 
   return (
     <div
-      className="mt-1 space-y-2 rounded-xl border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900"
+      className="mt-1 space-y-2 rounded-xl border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-950/60"
       data-testid="material-subform"
     >
       <div className="flex justify-between items-center">
@@ -225,7 +232,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
             <input
               type="text"
               data-testid="material-component-name"
-              aria-label="Material name"
+              aria-label={`Material ${idx + 1} name`}
               placeholder="Name (required)"
               value={m.name}
               onChange={(e) => updateMaterial(idx, { name: e.target.value })}
@@ -235,7 +242,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
               type="text"
               inputMode="decimal"
               data-testid="material-component-quantity"
-              aria-label="Quantity"
+              aria-label={`Material ${idx + 1} quantity`}
               placeholder="1.0"
               value={m.quantity == null || m.quantity === 1 ? "1.0" : String(m.quantity)}
               onChange={(e) => {
@@ -249,7 +256,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
               type="text"
               inputMode="decimal"
               data-testid="material-component-gp-value"
-              aria-label="GP value"
+              aria-label={`Material ${idx + 1} GP value`}
               placeholder="GP"
               value={m.gpValue ?? ""}
               onChange={(e) => {
@@ -282,7 +289,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
           <input
             type="text"
             data-testid="material-component-unit"
-            aria-label="Unit"
+            aria-label={`Material ${idx + 1} unit`}
             placeholder="Unit (e.g. grams)"
             value={m.unit ?? ""}
             onChange={(e) => updateMaterial(idx, { unit: e.target.value || undefined })}
@@ -290,7 +297,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
           />
           <textarea
             data-testid="material-component-description"
-            aria-label="Description"
+            aria-label={`Material ${idx + 1} description`}
             placeholder="Description (optional)"
             value={m.description ?? ""}
             onChange={(e) => updateMaterial(idx, { description: e.target.value || undefined })}

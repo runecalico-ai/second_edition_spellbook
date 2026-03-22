@@ -74,6 +74,21 @@ function expectRootChildren(root: HTMLElement, expectedCount: number) {
 }
 
 describe("StructuredFieldInput", () => {
+  it("primary control row includes flex-wrap for 900px layout compatibility", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="range"
+        value={{ kind: "distance", unit: "ft", distance: { mode: "fixed", value: 10 } } as RangeSpec}
+        onChange={() => {}}
+      />,
+    );
+    const root = getRoot();
+    const primary = root.children[0] as HTMLElement;
+    const tokens = new Set(primary.className.split(/\s+/).filter(Boolean));
+    expect(tokens.has("flex-wrap")).toBe(true);
+    expect(tokens.has("min-w-0")).toBe(true);
+  });
+
   it("locks the range grouped DOM contract", () => {
     render(
       <StructuredFieldInput
@@ -223,6 +238,7 @@ describe("StructuredFieldInput", () => {
     expectClasses(preview, PREVIEW_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("duration-uses-scalar"))).toBe(true);
+    expect(preview.contains(expectPreviewRow("duration-text-preview", "2 use(s)"))).toBe(true);
   });
 
   it("duration kind changes recompute text and clear stale structured fields", () => {

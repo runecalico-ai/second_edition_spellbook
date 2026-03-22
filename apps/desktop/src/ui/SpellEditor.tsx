@@ -2693,6 +2693,7 @@ export default function SpellEditor() {
                     <section
                       ref={expandedPanelRef}
                       id={panelId}
+                      data-testid={`structured-panel-${kebabField}`}
                       aria-label={`Structured ${label}`}
                       tabIndex={-1}
                       className="mt-1 rounded-lg border border-neutral-200 bg-white/70 p-2 dark:border-neutral-700 dark:bg-neutral-950/40"

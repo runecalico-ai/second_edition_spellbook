@@ -274,7 +274,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
               type="button"
               data-testid="material-component-remove"
               onClick={() => removeMaterial(idx)}
-              className="px-2 py-1 text-xs text-red-500 dark:text-red-400 bg-transparent dark:bg-neutral-900/30 hover:bg-red-50 dark:hover:bg-neutral-800 rounded"
+              className="px-2 py-1 text-xs text-red-500 dark:text-red-400 bg-transparent dark:bg-neutral-900/30 hover:bg-red-50 dark:hover:bg-neutral-800 rounded focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
             >
               Remove
             </button>

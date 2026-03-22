@@ -313,7 +313,7 @@ git commit -m "feat(chunk-4): integrate structured visual polish into spell edit
 - Modify: `apps/desktop/src/ui/components/structured/ComponentCheckboxes.stories.tsx`
 - Verify: `apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx`
 
-- [ ] **Step 1: Add or retune stories for visual verification targets**
+- [x] **Step 1: Add or retune stories for visual verification targets**
 
 Update stories so they cover the polished states that matter for Chunk 4:
 - `StructuredFieldInput`: at minimum one populated range story, one populated duration story, one populated casting-time story, and one special/raw story
@@ -321,11 +321,11 @@ Update stories so they cover the polished states that matter for Chunk 4:
 
 If the existing stories already cover a state, keep the story name stable and only adjust args if needed.
 
-- [ ] **Step 2: Verify `SpellEditorCanonFirst.stories.tsx` still presents the polished groups correctly**
+- [x] **Step 2: Verify `SpellEditorCanonFirst.stories.tsx` still presents the polished groups correctly**
 
 Do a read-only audit of the canon-first stories and only patch if the new visual group wrappers require small story-surface adjustments. Do not refactor story architecture.
 
-- [ ] **Step 3: Run the Storybook Vitest project**
+- [x] **Step 3: Run the Storybook Vitest project**
 
 Run:
 ```powershell
@@ -335,7 +335,7 @@ pnpm --dir apps/desktop test:storybook -- src/ui/components/structured/Structure
 Expected:
 - PASS.
 
-- [ ] **Step 4: Commit the story updates**
+- [x] **Step 4: Commit the story updates**
 
 ```powershell
 git add apps/desktop/src/ui/components/structured/StructuredFieldInput.stories.tsx apps/desktop/src/ui/components/structured/ComponentCheckboxes.stories.tsx apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx

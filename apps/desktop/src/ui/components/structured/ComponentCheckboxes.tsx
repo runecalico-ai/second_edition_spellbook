@@ -209,7 +209,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
           type="button"
           data-testid="material-component-add"
           onClick={addMaterial}
-          className="px-2 py-1 text-xs bg-neutral-700 hover:bg-neutral-600 rounded"
+          className="px-2 py-1 text-xs rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 dark:text-neutral-100"
         >
           Add
         </button>
@@ -274,7 +274,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
               type="button"
               data-testid="material-component-remove"
               onClick={() => removeMaterial(idx)}
-              className="px-2 py-1 text-xs text-red-400 hover:bg-neutral-800 rounded"
+              className="px-2 py-1 text-xs text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-neutral-800 rounded"
             >
               Remove
             </button>

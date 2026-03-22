@@ -110,6 +110,19 @@ function fieldContainer(testId: string) {
   return container;
 }
 
+function detailFieldRoot(field: string) {
+  const input = screen.getByTestId(`detail-${field}-input`);
+  const root = input.parentElement?.parentElement;
+  if (!root) {
+    throw new Error(`missing structured detail root for ${field}`);
+  }
+  return root;
+}
+
+function isBefore(left: Element, right: Element) {
+  return Boolean(left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
 const HASH_FIXTURE = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
 describe("hash display", () => {
@@ -522,6 +535,106 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const msg = within(scalarRoot).getByTestId("error-area-form-radius-value");
     expect(msg.textContent?.trim()).toBe("Radius must be 0 or greater");
     expect(msg.id).toBe("error-area-form-radius-value");
+  });
+
+  it("keeps the range detail label, expand control, and structured surface in a coherent order", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        canonicalData: JSON.stringify({
+          range: {
+            kind: "distance",
+            unit: "ft",
+            distance: { mode: "fixed", value: 120 },
+            text: "120 ft",
+          },
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("detail-range-expand"));
+
+    const root = detailFieldRoot("range");
+    const label = root.querySelector('label[for="detail-range-input"]');
+    const input = screen.getByTestId("detail-range-input");
+    const expand = screen.getByTestId("detail-range-expand");
+    const panel = document.getElementById("detail-range-panel");
+
+    expect(label).toBeTruthy();
+    expect(isBefore(label!, input)).toBe(true);
+    expect(isBefore(input, expand)).toBe(true);
+    expect(isBefore(expand, panel!)).toBe(true);
+
+    const structured = within(panel!).getByTestId("structured-field-input");
+    const kindSelect = within(structured).getByTestId("range-kind-select");
+    const preview = within(panel!).getByTestId("range-text-preview");
+
+    expect(structured.contains(preview)).toBe(true);
+    expect((kindSelect.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
+      .toBe(true);
+  });
+
+  it("keeps the components panel surface subtle and nests the material subform inside it", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        canonicalData: JSON.stringify({
+          components: {
+            verbal: true,
+            somatic: true,
+            material: true,
+          },
+          material_components: [
+            {
+              name: "ruby dust",
+              quantity: 1,
+              gpValue: 100,
+              isConsumed: true,
+            },
+          ],
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("detail-components-expand"));
+
+    const root = detailFieldRoot("components");
+    const label = root.querySelector('label[for="detail-components-input"]');
+    const input = screen.getByTestId("detail-components-input");
+    const expand = screen.getByTestId("detail-components-expand");
+    const panel = document.getElementById("detail-components-panel");
+    const componentGroup = within(panel!).getByTestId("component-checkboxes");
+    const materialSubform = within(componentGroup).getByTestId("material-subform");
+
+    expect(label).toBeTruthy();
+    expect(isBefore(label!, input)).toBe(true);
+    expect(isBefore(input, expand)).toBe(true);
+    expect(isBefore(expand, panel!)).toBe(true);
+    expect(panel?.contains(componentGroup)).toBe(true);
+    expect(componentGroup.contains(materialSubform)).toBe(true);
+  });
+
+  it("keeps special-hint text below the structured group inside the expanded panel", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        canonicalData: JSON.stringify({
+          range: {
+            kind: "special",
+            raw_legacy_value: "Far beyond the stars",
+            text: "Far beyond the stars",
+          },
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("detail-range-expand"));
+
+    const panel = document.getElementById("detail-range-panel");
+    const structured = within(panel!).getByTestId("structured-field-input");
+    const hint = within(panel!).getByTestId("detail-range-special-hint");
+
+    expect(panel?.contains(structured)).toBe(true);
+    expect(panel?.contains(hint)).toBe(true);
+    expect((structured.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
+      .toBe(true);
   });
 });
 

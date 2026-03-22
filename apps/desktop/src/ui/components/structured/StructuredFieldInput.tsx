@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { clampScalar, parseNumericInput } from "../../../lib/validation";
-import type { DurationSpec, RangeSpec, SpellCastingTime, SpellScalar } from "../../../types/spell";
+import type { DurationSpec, RangeSpec, SpellCastingTime } from "../../../types/spell";
 import {
   CASTING_TIME_UNIT_LABELS,
   type CastingTimeUnit,
@@ -47,7 +47,23 @@ const structuredInputClass =
 const structuredInputInvalidClass =
   "bg-white dark:bg-neutral-900 border-red-400 dark:border-red-600 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
 
-const structuredTextMuted = "text-neutral-600 dark:text-neutral-500";
+const structuredGroupSurfaceClass =
+  "space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-100";
+
+const structuredPrimaryControlRowClass = "flex min-w-0 flex-wrap items-center gap-2";
+
+const structuredSupportingRowClass =
+  "rounded-lg border border-neutral-200 bg-neutral-50/70 p-2 dark:border-neutral-800 dark:bg-neutral-950/40";
+
+const structuredPreviewRowClass =
+  "rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-950/50";
+
+const structuredInlineScalarClusterClass = "flex min-w-0 flex-wrap items-center gap-2";
+
+const structuredTextMuted = "text-neutral-600 dark:text-neutral-400";
+
+const structuredPreviewOutputClass =
+  "text-sm italic text-neutral-700 dark:text-neutral-300";
 
 interface StructuredFieldInputProps {
   fieldType: "range" | "duration" | "casting_time";
@@ -116,8 +132,8 @@ export function StructuredFieldInput({
     ];
 
     return (
-      <div className="space-y-2" data-testid="structured-field-input">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+        <div className={structuredPrimaryControlRowClass}>
           <select
             data-testid="range-kind-select"
             aria-label="Range kind"
@@ -149,7 +165,7 @@ export function StructuredFieldInput({
             ))}
           </select>
           {isDistanceKind && (
-            <>
+            <div className={structuredInlineScalarClusterClass}>
               <ScalarInput
                 value={spec.distance ?? { mode: "fixed", value: 0 }}
                 onChange={(d) => {
@@ -181,7 +197,7 @@ export function StructuredFieldInput({
                   </option>
                 ))}
               </select>
-            </>
+            </div>
           )}
           {(isSpecial || spec.rawLegacyValue) && (
             <input
@@ -201,21 +217,28 @@ export function StructuredFieldInput({
             />
           )}
         </div>
-        <textarea
-          data-testid="range-notes"
-          aria-label="Range notes"
-          placeholder="Range notes (optional)..."
-          value={spec.notes ?? ""}
-          onChange={(e) => {
-            const next = { ...spec, notes: e.target.value || undefined };
-            next.text = rangeToText(next);
-            onChange(next);
-          }}
-          className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-600 ${structuredInputClass}`}
-        />
-        <p className={`text-sm italic ${structuredTextMuted}`} data-testid="range-text-preview">
-          {rangeTextPreview || "—"}
-        </p>
+        <div className={structuredSupportingRowClass}>
+          <textarea
+            data-testid="range-notes"
+            aria-label="Range notes"
+            placeholder="Range notes (optional)..."
+            value={spec.notes ?? ""}
+            onChange={(e) => {
+              const next = { ...spec, notes: e.target.value || undefined };
+              next.text = rangeToText(next);
+              onChange(next);
+            }}
+            className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-600 ${structuredInputClass}`}
+          />
+        </div>
+        <div className={structuredPreviewRowClass}>
+          <output
+            className={structuredPreviewOutputClass}
+            data-testid="range-text-preview"
+          >
+            {rangeTextPreview || "—"}
+          </output>
+        </div>
       </div>
     );
   }
@@ -230,8 +253,8 @@ export function StructuredFieldInput({
     const isSpecial = spec.kind === "special";
 
     return (
-      <div className="space-y-2" data-testid="structured-field-input">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+        <div className={structuredPrimaryControlRowClass}>
           <select
             data-testid="duration-kind-select"
             aria-label="Duration kind"
@@ -281,7 +304,7 @@ export function StructuredFieldInput({
             ))}
           </select>
           {isTime && (
-            <>
+            <div className={structuredInlineScalarClusterClass}>
               <ScalarInput
                 value={spec.duration ?? { mode: "fixed", value: 1 }}
                 onChange={(d) => {
@@ -315,7 +338,7 @@ export function StructuredFieldInput({
                   ),
                 )}
               </select>
-            </>
+            </div>
           )}
           {isCondition && (
             <input
@@ -334,20 +357,22 @@ export function StructuredFieldInput({
             />
           )}
           {isUsageLimited && (
-            <ScalarInput
-              value={spec.uses ?? { mode: "fixed", value: 1 }}
-              onChange={(u) => {
-                const next = { ...spec, uses: u };
-                next.text = durationToText(next);
-                onChange(next);
-              }}
-              data-testid="duration-uses-scalar"
-              baseValueTestId="duration-uses-value"
-              perLevelTestId="duration-uses-per-level"
-              onFieldBlur={onValidationBlur}
-              fixedFieldError={pickScalarErr(visibleFieldErrors, "duration-uses-value")}
-              perLevelFieldError={pickScalarErr(visibleFieldErrors, "duration-uses-per-level")}
-            />
+            <div className={structuredInlineScalarClusterClass}>
+              <ScalarInput
+                value={spec.uses ?? { mode: "fixed", value: 1 }}
+                onChange={(u) => {
+                  const next = { ...spec, uses: u };
+                  next.text = durationToText(next);
+                  onChange(next);
+                }}
+                data-testid="duration-uses-scalar"
+                baseValueTestId="duration-uses-value"
+                perLevelTestId="duration-uses-per-level"
+                onFieldBlur={onValidationBlur}
+                fixedFieldError={pickScalarErr(visibleFieldErrors, "duration-uses-value")}
+                perLevelFieldError={pickScalarErr(visibleFieldErrors, "duration-uses-per-level")}
+              />
+            </div>
           )}
           {(isSpecial || spec.rawLegacyValue) && (
             <input
@@ -367,21 +392,28 @@ export function StructuredFieldInput({
             />
           )}
         </div>
-        <textarea
-          data-testid="duration-notes"
-          aria-label="Duration notes"
-          placeholder="Duration notes (optional)..."
-          value={spec.notes ?? ""}
-          onChange={(e) => {
-            const next = { ...spec, notes: e.target.value || undefined };
-            next.text = durationToText(next);
-            onChange(next);
-          }}
-          className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-600 ${structuredInputClass}`}
-        />
-        <p className={`text-sm italic ${structuredTextMuted}`} data-testid="duration-text-preview">
-          {durationTextPreview || "—"}
-        </p>
+        <div className={structuredSupportingRowClass}>
+          <textarea
+            data-testid="duration-notes"
+            aria-label="Duration notes"
+            placeholder="Duration notes (optional)..."
+            value={spec.notes ?? ""}
+            onChange={(e) => {
+              const next = { ...spec, notes: e.target.value || undefined };
+              next.text = durationToText(next);
+              onChange(next);
+            }}
+            className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-600 ${structuredInputClass}`}
+          />
+        </div>
+        <div className={structuredPreviewRowClass}>
+          <output
+            className={structuredPreviewOutputClass}
+            data-testid="duration-text-preview"
+          >
+            {durationTextPreview || "—"}
+          </output>
+        </div>
       </div>
     );
   }
@@ -402,81 +434,87 @@ export function StructuredFieldInput({
   };
 
   return (
-    <div className="space-y-2" data-testid="structured-field-input">
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1">
-          <input
-            type="text"
-            inputMode="decimal"
-            id="casting-time-base-value"
-            data-testid="casting-time-base-value"
-            aria-label="Base value"
-            aria-invalid={ctBaseErr ? "true" : "false"}
-            aria-describedby={ctBaseErr ? ctBaseErr.testId : undefined}
-            className={`w-16 rounded px-2 py-1 text-sm ${ctBaseErr ? structuredInputInvalidClass : structuredInputClass}`}
-            value={baseValue}
-            onChange={(e) => {
-              const v = clampScalar(parseNumericInput(e.target.value));
-              updateCt({ baseValue: v });
-            }}
-            onBlur={() => onValidationBlur?.()}
-          />
-          {ctBaseErr && (
-            <div className="animate-in fade-in duration-200 max-w-[min(100%,12rem)]">
-              <p
-                id={ctBaseErr.testId}
-                data-testid={ctBaseErr.testId}
-                className="text-xs text-red-700 dark:text-red-400"
-              >
-                {ctBaseErr.message}
-              </p>
-            </div>
-          )}
+    <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+      <div className={structuredPrimaryControlRowClass}>
+        <div className={structuredInlineScalarClusterClass}>
+          <div className="flex flex-col gap-1">
+            <input
+              type="text"
+              inputMode="decimal"
+              id="casting-time-base-value"
+              data-testid="casting-time-base-value"
+              aria-label="Base value"
+              aria-invalid={ctBaseErr ? "true" : "false"}
+              aria-describedby={ctBaseErr ? ctBaseErr.testId : undefined}
+              className={`w-16 rounded px-2 py-1 text-sm ${ctBaseErr ? structuredInputInvalidClass : structuredInputClass}`}
+              value={baseValue}
+              onChange={(e) => {
+                const v = clampScalar(parseNumericInput(e.target.value));
+                updateCt({ baseValue: v });
+              }}
+              onBlur={() => onValidationBlur?.()}
+            />
+            {ctBaseErr && (
+              <div className="animate-in fade-in duration-200 max-w-[min(100%,12rem)]">
+                <p
+                  id={ctBaseErr.testId}
+                  data-testid={ctBaseErr.testId}
+                  className="text-xs text-red-700 dark:text-red-400"
+                >
+                  {ctBaseErr.message}
+                </p>
+              </div>
+            )}
+          </div>
+          <span className={`${structuredTextMuted} text-xs font-medium leading-none`}>+</span>
+          <div className="flex flex-col gap-1">
+            <input
+              type="text"
+              inputMode="decimal"
+              id="casting-time-per-level"
+              data-testid="casting-time-per-level"
+              aria-label="Per level"
+              aria-invalid={ctPerErr ? "true" : "false"}
+              aria-describedby={ctPerErr ? ctPerErr.testId : undefined}
+              className={`w-14 rounded px-2 py-1 text-sm ${ctPerErr ? structuredInputInvalidClass : structuredInputClass}`}
+              value={perLevel}
+              onChange={(e) => {
+                const v = clampScalar(parseNumericInput(e.target.value));
+                updateCt({ perLevel: v });
+              }}
+              onBlur={() => onValidationBlur?.()}
+            />
+            {ctPerErr && (
+              <div className="animate-in fade-in duration-200 max-w-[min(100%,12rem)]">
+                <p
+                  id={ctPerErr.testId}
+                  data-testid={ctPerErr.testId}
+                  className="text-xs text-red-700 dark:text-red-400"
+                >
+                  {ctPerErr.message}
+                </p>
+              </div>
+            )}
+          </div>
+          <span className={`${structuredTextMuted} text-xs font-medium leading-none`}>/</span>
+          <div className="flex flex-col gap-1">
+            <input
+              type="text"
+              inputMode="decimal"
+              data-testid="casting-time-level-divisor"
+              aria-label="Level divisor"
+              className={`w-12 rounded px-2 py-1 text-sm ${structuredInputClass}`}
+              value={levelDivisor}
+              onChange={(e) => {
+                const v = Math.max(1, Math.floor(parseNumericInput(e.target.value)) || 1);
+                updateCt({ levelDivisor: v });
+              }}
+            />
+          </div>
+          <span className={`${structuredTextMuted} text-xs font-medium leading-none`}>
+            /level
+          </span>
         </div>
-        <span className={`${structuredTextMuted} text-sm pb-2`}>+</span>
-        <div className="flex flex-col gap-1">
-          <input
-            type="text"
-            inputMode="decimal"
-            id="casting-time-per-level"
-            data-testid="casting-time-per-level"
-            aria-label="Per level"
-            aria-invalid={ctPerErr ? "true" : "false"}
-            aria-describedby={ctPerErr ? ctPerErr.testId : undefined}
-            className={`w-14 rounded px-2 py-1 text-sm ${ctPerErr ? structuredInputInvalidClass : structuredInputClass}`}
-            value={perLevel}
-            onChange={(e) => {
-              const v = clampScalar(parseNumericInput(e.target.value));
-              updateCt({ perLevel: v });
-            }}
-            onBlur={() => onValidationBlur?.()}
-          />
-          {ctPerErr && (
-            <div className="animate-in fade-in duration-200 max-w-[min(100%,12rem)]">
-              <p
-                id={ctPerErr.testId}
-                data-testid={ctPerErr.testId}
-                className="text-xs text-red-700 dark:text-red-400"
-              >
-                {ctPerErr.message}
-              </p>
-            </div>
-          )}
-        </div>
-        <span className={`${structuredTextMuted} text-sm pb-2`}>/</span>
-        <input
-          type="text"
-          inputMode="decimal"
-          data-testid="casting-time-level-divisor"
-          aria-label="Level divisor"
-          className={`w-12 rounded px-2 py-1 text-sm ${structuredInputClass}`}
-          value={levelDivisor}
-          onChange={(e) => {
-            const v = Math.max(1, Math.floor(parseNumericInput(e.target.value)) || 1);
-            updateCt({ levelDivisor: v });
-          }}
-        />
-        <span className={`${structuredTextMuted} text-sm pb-2`}>/level</span>
         <select
           data-testid="casting-time-unit"
           aria-label="Casting time unit"
@@ -509,12 +547,14 @@ export function StructuredFieldInput({
           />
         )}
       </div>
-      <p
-        className={`text-sm italic ${structuredTextMuted}`}
-        data-testid="casting-time-text-preview"
-      >
-        {castingTimeTextPreview || "—"}
-      </p>
+      <div className={structuredPreviewRowClass}>
+        <output
+          className={structuredPreviewOutputClass}
+          data-testid="casting-time-text-preview"
+        >
+          {castingTimeTextPreview || "—"}
+        </output>
+      </div>
     </div>
   );
 }

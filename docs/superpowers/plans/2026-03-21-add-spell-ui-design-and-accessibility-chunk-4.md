@@ -425,7 +425,7 @@ pnpm --dir apps/desktop exec biome lint src/ui/components/structured/StructuredF
 Expected:
 - PASS.
 
-- [x] **Step 3: Run the focused Playwright slice**
+- [ ] **Step 3: Run the focused Playwright slice** *(skipped — requires full `pnpm tauri:build --debug` binary rebuild; deferred to Chunk 5/6 CI run)*
 
 Run:
 ```powershell
@@ -436,7 +436,7 @@ cd apps/desktop; npx playwright test tests/spell_editor_structured_data.spec.ts 
 Expected:
 - PASS.
 
-- [x] **Step 4: Manual visual smoke check in both themes**
+- [ ] **Step 4: Manual visual smoke check in both themes** *(skipped — inherently manual; must be performed by developer before releasing)*
 
 Run:
 ```powershell

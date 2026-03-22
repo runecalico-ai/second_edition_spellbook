@@ -608,7 +608,7 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     expect(isBefore(label as Element, input)).toBe(true);
     expect(isBefore(input, expand)).toBe(true);
     expect(isBefore(expand, panel)).toBe(true);
-    expect(panel?.contains(componentGroup)).toBe(true);
+    expect(panel.contains(componentGroup)).toBe(true);
     expect(componentGroup.contains(materialSubform)).toBe(true);
   });
 
@@ -631,8 +631,8 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const structured = within(panel).getByTestId("structured-field-input");
     const hint = within(panel).getByTestId("detail-range-special-hint");
 
-    expect(panel?.contains(structured)).toBe(true);
-    expect(panel?.contains(hint)).toBe(true);
+    expect(panel.contains(structured)).toBe(true);
+    expect(panel.contains(hint)).toBe(true);
     expect((structured.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
       .toBe(true);
   });

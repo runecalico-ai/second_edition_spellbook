@@ -100,6 +100,7 @@ test.describe("Resize Hardening — 900px viewport", () => {
       await app.createSpell({
         name: spellName,
         level: "1",
+        description: "Resize hardening test spell.",
       });
       // After save, spell is in Library; open it for editing
       await app.waitForLibrary();

@@ -2649,21 +2649,24 @@ export default function SpellEditor() {
                 (field === "materialComponents" && false); // Reserved: no "special" kind for material row today; shares component state
 
               return (
-                <div key={field} className="flex flex-col gap-1">
-                  <label htmlFor={inputId} className="text-xs text-neutral-500">
+                <div
+                  key={field}
+                  className="rounded-xl border border-neutral-200 bg-white/70 p-2 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/30 dark:text-neutral-100"
+                >
+                  <label htmlFor={inputId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
                     {label}
                   </label>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-0.5">
                     <input
                       id={inputId}
                       data-testid={`detail-${kebabField}-input`}
                       type="text"
                       aria-label={label}
-                      className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+                      className="w-full rounded border border-neutral-300 bg-white p-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
                       value={String(value)}
                       onChange={(e) => handleChange(field, e.target.value)}
                     />
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
                         data-testid={`detail-${kebabField}-expand`}
@@ -2672,13 +2675,13 @@ export default function SpellEditor() {
                         onClick={() =>
                           isExpanded ? collapseExpandedField() : expandDetailField(field)
                         }
-                        className="text-xs text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                        className="rounded px-1 text-xs text-blue-700 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-300 dark:hover:text-blue-200"
                       >
                         {isExpanded ? "Collapse" : "Expand"}
                       </button>
                       {isSpecial && !isExpanded && (
                         <span
-                          className="text-xs text-amber-500"
+                          className="text-xs text-amber-600 dark:text-amber-400"
                           title="Stored as text; not fully structured for hashing"
                         >
                           (special)
@@ -2692,7 +2695,7 @@ export default function SpellEditor() {
                       id={panelId}
                       aria-label={`Structured ${label}`}
                       tabIndex={-1}
-                      className="mt-2 rounded border border-neutral-300 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-900/80"
+                      className="mt-1 rounded-lg border border-neutral-200 bg-white/70 p-2 dark:border-neutral-700 dark:bg-neutral-950/40"
                     >
                       {isLoading ? (
                         <div

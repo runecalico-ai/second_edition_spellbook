@@ -114,31 +114,35 @@ Work top-to-bottom. Each chunk is intended to be implementable and reviewable on
 ### library
 
 #### Hash display
-- [ ] Restyle the existing hash display in `apps/desktop/src/ui/SpellEditor.tsx` as a dedicated card in the spell detail header area.
-- [ ] Preserve collapsed and expanded states.
-- [ ] Show 16 characters in the collapsed state (previously 8).
-- [ ] Remove the `title` attribute from the hash `<code>` element.
-- [ ] Replace modal-based copy confirmation with transient non-modal success feedback plus a polite live-region announcement.
+- [x] Restyle the existing hash display in `apps/desktop/src/ui/SpellEditor.tsx` as a dedicated card in the spell detail header area.
+- [x] Preserve collapsed and expanded states.
+- [x] Show 16 characters in the collapsed state (previously 8).
+- [x] Remove the `title` attribute from the hash `<code>` element.
+- [x] Replace modal-based copy confirmation with transient non-modal success feedback plus a polite live-region announcement.
 
 #### Spell detail loading boundaries
-- [ ] Avoid introducing flickering loading indicators for imperceptible route loads.
-- [ ] If a route load is perceptible, ensure the loading state is intentional and stable.
+- [x] Avoid introducing flickering loading indicators for imperceptible route loads.
+  - [x] Verify a fast spell-detail route transition does not briefly flash a loading-only state before the editor content appears.
+  - [x] Verify previously rendered editor content is not replaced by a transient loading indicator during same-editor data refreshes that settle within a perceptually instant interval.
+- [x] If a route load is perceptible, ensure the loading state is intentional and stable.
+  - [x] Verify a perceptible spell-detail route load shows a single, stable loading state rather than flashing between partial and loading-only content.
+  - [x] Verify the loading state persists until the target spell data is ready, then resolves directly to the final editor content without intermediate flicker.
 
 #### Empty states
 All three empty states share a common skeleton: heading, one-line description, CTA buttons (no icon). Copy is defined in design.md Decision 16.
 
-- [ ] Add an empty-library state: heading "No Spells Yet", description "Your spell library is empty. Create your first spell or import spells from a file."
-- [ ] Add CTA buttons: "Create Spell" and "Import Spells".
-- [ ] Add an empty-search state: heading "No Results", description "No spells match your current search or filters."
-- [ ] Provide a clear reset action ("Reset Filters").
-- [ ] Add a dedicated empty state for the character spellbook flow: heading "No Spells Added", description "This character's spellbook is empty."
-- [ ] Add CTA: "Add Spell from Library".
+- [x] Add an empty-library state: heading "No Spells Yet", description "Your spell library is empty. Create your first spell or import spells from a file."
+- [x] Add CTA buttons: "Create Spell" and "Import Spells".
+- [x] Add an empty-search state: heading "No Results", description "No spells match your current search or filters."
+- [x] Provide a clear reset action ("Reset Filters").
+- [x] Add a dedicated empty state for the character spellbook flow: heading "No Spells Added", description "This character's spellbook is empty."
+- [x] Add CTA: "Add Spell from Library".
 
 ### theme-and-feedback
 
 #### Theme coverage on touched surfaces
-- [ ] Remove hardcoded dark-only classes from `apps/desktop/index.html` and edited surfaces.
-- [ ] Verify muted text, borders, controls, and feedback states stay legible in both light and dark modes for the views changed in this chunk.
+- [x] Remove hardcoded dark-only classes from `apps/desktop/index.html` and edited surfaces.
+- [x] Verify muted text, borders, controls, and feedback states stay legible in both light and dark modes for the views changed in this chunk.
 
 ---
 
@@ -153,7 +157,7 @@ All three empty states share a common skeleton: heading, one-line description, C
 #### Structured field layout and presentation
 - [ ] Define `StructuredFieldInput` layout: horizontal grouping for scalar, unit, and related controls with existing spacing utilities.
 - [ ] Define label placement and container treatment for structured field groups.
-- [ ] Define `ComponentCheckboxes` spacing and preview treatment.
+- [x] Define `ComponentCheckboxes` spacing and preview treatment.
 
 ### theme-and-feedback
 

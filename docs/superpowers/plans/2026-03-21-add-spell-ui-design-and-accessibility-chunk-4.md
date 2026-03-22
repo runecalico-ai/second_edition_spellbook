@@ -217,7 +217,7 @@ git commit -m "feat(chunk-4): polish structured field input grouping"
 - Modify: `apps/desktop/src/ui/components/structured/ComponentCheckboxes.tsx`
 - Reuse: `apps/desktop/src/ui/components/structured/ComponentCheckboxes.test.tsx`
 
-- [ ] **Step 1: Replace dark-only checkbox and material-surface styling**
+- [x] **Step 1: Replace dark-only checkbox and material-surface styling**
 
 Update `ComponentCheckboxes.tsx` so the checkbox strip, preview row, and material subform use explicit light/dark classes instead of the current dark-only combinations:
 - replace checkbox input backgrounds that assume `bg-neutral-900`
@@ -228,7 +228,7 @@ Update `ComponentCheckboxes.tsx` so the checkbox strip, preview row, and materia
 Preserve all current behaviors and testids.
 Use `StructuredFieldInput.tsx`, `ScalarInput.tsx`, and the expanded detail panel in `SpellEditor.tsx` as the palette reference so `ComponentCheckboxes` converges on the same surface language rather than inventing a new one.
 
-- [ ] **Step 2: Add explicit group wrappers**
+- [x] **Step 2: Add explicit group wrappers**
 
 Restructure the component so it has:
 - one wrapper for the checkbox strip
@@ -237,7 +237,7 @@ Restructure the component so it has:
 
 The material container should visually read as subordinate to the checkbox strip, not as a separate unrelated form.
 
-- [ ] **Step 3: Improve spacing and preview treatment**
+- [x] **Step 3: Improve spacing and preview treatment**
 
 Apply spacing so:
 - checkboxes form a readable cluster with consistent row and column gaps
@@ -247,7 +247,7 @@ Apply spacing so:
 
 Do not add new icons, helper text, or feature copy in this chunk.
 
-- [ ] **Step 4: Re-run the focused `ComponentCheckboxes` unit test**
+- [x] **Step 4: Re-run the focused `ComponentCheckboxes` unit test**
 
 Run:
 ```powershell
@@ -257,7 +257,7 @@ pnpm --dir apps/desktop test:unit -- src/ui/components/structured/ComponentCheck
 Expected:
 - PASS.
 
-- [ ] **Step 5: Commit the `ComponentCheckboxes` layout pass**
+- [x] **Step 5: Commit the `ComponentCheckboxes` layout pass**
 
 ```powershell
 git add apps/desktop/src/ui/components/structured/ComponentCheckboxes.tsx apps/desktop/src/ui/components/structured/ComponentCheckboxes.test.tsx
@@ -270,7 +270,7 @@ git commit -m "feat(chunk-4): polish component checkbox grouping and material pr
 - Modify: `apps/desktop/src/ui/SpellEditor.tsx`
 - Modify: `apps/desktop/src/ui/SpellEditor.test.tsx`
 
-- [ ] **Step 1: Write failing integration tests for structured-panel treatment**
+- [x] **Step 1: Write failing integration tests for structured-panel treatment**
 
 Extend `SpellEditor.test.tsx` with focused checks for:
 - expanded structured detail panels render the field label, expand/collapse control, and structured group in a coherent order
@@ -280,7 +280,7 @@ Extend `SpellEditor.test.tsx` with focused checks for:
 
 Use existing structured-field render paths already covered by the editor tests. Avoid full screenshots in unit tests.
 
-- [ ] **Step 2: Refine only the touched detail-panel wrappers**
+- [x] **Step 2: Refine only the touched detail-panel wrappers**
 
 In `SpellEditor.tsx`, limit changes to the structured-detail area around line 2690 and:
 - tighten the spacing between the detail label, text input, expand button, and expanded panel
@@ -289,7 +289,7 @@ In `SpellEditor.tsx`, limit changes to the structured-detail area around line 26
 
 This chunk should leave top-level unrelated inputs alone even though many still use dark-first classes.
 
-- [ ] **Step 3: Re-run the editor unit slice**
+- [x] **Step 3: Re-run the editor unit slice**
 
 Run:
 ```powershell
@@ -299,7 +299,7 @@ pnpm --dir apps/desktop test:unit -- src/ui/SpellEditor.test.tsx
 Expected:
 - PASS.
 
-- [ ] **Step 4: Commit the editor integration pass**
+- [x] **Step 4: Commit the editor integration pass**
 
 ```powershell
 git add apps/desktop/src/ui/SpellEditor.tsx apps/desktop/src/ui/SpellEditor.test.tsx

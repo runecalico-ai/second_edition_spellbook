@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
 @layer utilities {
   .animate-in {
     animation-duration: 200ms;
@@ -35,5 +40,13 @@
       transform: scale(1);
       opacity: 1;
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .zoom-in-95,
+  .fade-in {
+    animation: none !important;
   }
 }

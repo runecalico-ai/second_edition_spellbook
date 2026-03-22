@@ -1,5 +1,5 @@
 import clsx from "classnames";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { useModal } from "../../store/useModal";
 import type { ModalButton, ModalType } from "../../store/useModal";
 
@@ -16,7 +16,7 @@ interface ModalShellProps {
   type: ModalType;
   title: string;
   message: string | string[];
-  buttons: ModalButton[];
+  buttons: Array<ModalButton & { testId?: string }>;
   customContent?: ReactNode;
   dismissible?: boolean;
   onRequestClose: () => void;
@@ -32,7 +32,46 @@ export function ModalShell({
   dismissible = true,
   onRequestClose,
 }: ModalShellProps) {
-  if (!isOpen) return null;
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const descriptionId = useId();
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return;
+    }
+
+    if (isOpen) {
+      triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      if (!dialog.open) {
+        if (typeof dialog.showModal === "function") {
+          dialog.showModal();
+        }
+      }
+      return;
+    }
+
+    if (dialog.open) {
+      if (typeof dialog.close === "function") {
+        dialog.close();
+      }
+    }
+
+    if (!triggerRef.current) {
+      return;
+    }
+
+    if (triggerRef.current.isConnected) {
+      triggerRef.current.focus();
+    } else {
+      if (!document.body.hasAttribute("tabindex")) {
+        document.body.tabIndex = -1;
+      }
+      document.body.focus();
+    }
+    triggerRef.current = null;
+  }, [isOpen]);
 
   const typeStyles = {
     info: "border-blue-500 bg-blue-500/10 text-blue-400",
@@ -48,30 +87,35 @@ export function ModalShell({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <button
-        type="button"
-        aria-label="Close modal"
-        data-testid="modal-backdrop"
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 border-none p-0 m-0 w-full h-full cursor-default"
-        onClick={() => {
-          if (dismissible) {
-            onRequestClose();
-          }
-        }}
-      />
-
-      {/* Modal Container */}
-      <dialog
-        open
-        aria-modal="true"
-        aria-labelledby="modal-title"
-        data-testid="modal-dialog"
+    <dialog
+      ref={dialogRef}
+      aria-modal="true"
+      aria-labelledby="modal-title"
+      aria-describedby={descriptionId}
+      data-testid="modal-dialog"
+      className="fixed inset-0 z-[100] m-0 flex h-full w-full max-h-none max-w-none items-center justify-center overflow-y-auto border-none bg-transparent p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && dismissible) {
+          onRequestClose();
+        }
+      }}
+      onCancel={(e) => {
+        e.preventDefault();
+        if (dismissible) {
+          onRequestClose();
+        }
+      }}
+    >
+      <div
+        data-testid="modal-content"
         className={clsx(
-          "relative w-full max-w-md overflow-hidden rounded-xl border bg-neutral-900 shadow-2xl animate-in zoom-in-95 duration-200",
+          "relative my-auto w-full max-w-md overflow-y-auto rounded-xl border bg-neutral-900 shadow-2xl animate-in zoom-in-95 duration-200",
+          "max-h-[calc(100vh-2rem)] overflow-x-hidden",
           typeStyles[type],
         )}
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
       >
         {/* Glow effect */}
         <div
@@ -166,9 +210,11 @@ export function ModalShell({
           </div>
 
           {customContent ? (
-            <div className="text-neutral-300">{customContent}</div>
+            <div id={descriptionId} className="text-neutral-300">
+              {customContent}
+            </div>
           ) : (
-            <div className="text-neutral-300 space-y-2">
+            <div id={descriptionId} className="text-neutral-300 space-y-2">
               {Array.isArray(message) ? (
                 <ul className="list-disc list-inside space-y-1">
                   {message.map((m, i) => (
@@ -187,7 +233,7 @@ export function ModalShell({
                 <button
                   key={`${i}-${btn.label}`}
                   type="button"
-                  data-testid={buttonTestId(btn.label)}
+                  data-testid={btn.testId ?? buttonTestId(btn.label)}
                   onClick={() => btn.onClick?.()}
                   className={clsx(
                     "px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95",
@@ -200,8 +246,8 @@ export function ModalShell({
             </div>
           )}
         </div>
-      </dialog>
-    </div>
+      </div>
+    </dialog>
   );
 }
 

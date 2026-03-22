@@ -143,6 +143,18 @@ describe("StructuredFieldInput – duration mode", () => {
     expect(screen.getByTestId("duration-base-value")).not.toBeNull();
   });
 
+  it("duration time mode renders both scalar and unit controls inside the grouped root", () => {
+    const timeSpec: DurationSpec = { kind: "time", unit: "round", duration: { mode: "fixed", value: 3 } };
+    render(
+      <StructuredFieldInput fieldType="duration" value={timeSpec} onChange={() => {}} />,
+    );
+    const root = screen.getByTestId("structured-field-input");
+    const scalar = screen.getByTestId("duration-base-value");
+    const unitSelect = screen.getByTestId("duration-unit");
+    expect(root.contains(scalar)).toBe(true);
+    expect(root.contains(unitSelect)).toBe(true);
+  });
+
   // MUST FAIL: root container should have "border" class (group surface), but current code only has "space-y-2"
   it("duration mode root container has group surface border class", () => {
     const html = renderToStaticMarkup(

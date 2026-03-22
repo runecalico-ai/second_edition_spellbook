@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComponentCheckboxes } from "./ComponentCheckboxes";
 
 afterEach(() => {
@@ -293,5 +293,83 @@ describe("ComponentCheckboxes – material subform", () => {
       />,
     );
     expect(screen.getAllByTestId("material-component-row")).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Interaction: onChange callback invocation
+// ---------------------------------------------------------------------------
+describe("ComponentCheckboxes – onChange callbacks", () => {
+  it("fires onChange when verbal checkbox is changed", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={onChange}
+      />,
+    );
+    const verbCheckbox = getByTestId("component-checkbox-verbal") as HTMLInputElement;
+    fireEvent.click(verbCheckbox);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const [calledComponents] = onChange.mock.calls[0];
+    expect(calledComponents.verbal).toBe(true);
+  });
+
+  it("fires onChange when somatic checkbox is changed", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={onChange}
+      />,
+    );
+    const somCheckbox = getByTestId("component-checkbox-somatic") as HTMLInputElement;
+    fireEvent.click(somCheckbox);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const [calledComponents] = onChange.mock.calls[0];
+    expect(calledComponents.somatic).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Interaction: destructive confirmation path
+// ---------------------------------------------------------------------------
+describe("ComponentCheckboxes – destructive confirmation", () => {
+  it("calls onUncheckMaterialConfirm when unchecking material with rows present", async () => {
+    const confirm = vi.fn().mockResolvedValue(true);
+    const onChange = vi.fn();
+    const { getByTestId } = render(
+      <ComponentCheckboxes
+        components={withMaterial}
+        materialComponents={[{ name: "Bat fur", quantity: 1, isConsumed: false }]}
+        onChange={onChange}
+        onUncheckMaterialConfirm={confirm}
+      />,
+    );
+    const matCheckbox = getByTestId("component-checkbox-material") as HTMLInputElement;
+    fireEvent.click(matCheckbox);
+    await Promise.resolve();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it("does NOT call onChange when confirm returns false", async () => {
+    const confirm = vi.fn().mockResolvedValue(false);
+    const onChange = vi.fn();
+    const { getByTestId } = render(
+      <ComponentCheckboxes
+        components={withMaterial}
+        materialComponents={[{ name: "Bat fur", quantity: 1, isConsumed: false }]}
+        onChange={onChange}
+        onUncheckMaterialConfirm={confirm}
+      />,
+    );
+    const matCheckbox = getByTestId("component-checkbox-material") as HTMLInputElement;
+    fireEvent.click(matCheckbox);
+    await Promise.resolve();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

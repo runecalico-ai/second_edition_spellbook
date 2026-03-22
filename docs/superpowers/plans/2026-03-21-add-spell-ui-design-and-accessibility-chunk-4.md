@@ -349,7 +349,7 @@ git commit -m "test(chunk-4): update structured editor stories for visual polish
 - Modify: `apps/desktop/tests/theme_and_feedback.spec.ts`
 - Create: `apps/desktop/tests/spell_editor_visual.spec.ts`
 
-- [ ] **Step 1: Extend the structured-data spec with layout-oriented assertions**
+- [x] **Step 1: Extend the structured-data spec with layout-oriented assertions**
 
 In `spell_editor_structured_data.spec.ts`, add focused checks to existing structured-field scenarios so they assert:
 - preview output remains visible and positioned with the owning field after edits
@@ -359,7 +359,7 @@ In `spell_editor_structured_data.spec.ts`, add focused checks to existing struct
 
 Keep these assertions structural and readable. Do not add brittle pixel-value checks here.
 
-- [ ] **Step 2: Add theme coverage for structured surfaces**
+- [x] **Step 2: Add theme coverage for structured surfaces**
 
 In `theme_and_feedback.spec.ts`, add a dedicated structured-editor theme check that:
 - opens a spell with expanded structured fields
@@ -369,7 +369,7 @@ In `theme_and_feedback.spec.ts`, add a dedicated structured-editor theme check t
 
 This is the Chunk 4 theme-coverage requirement from `tasks.md`; it does not replace the heavier change-wide visual-regression audit in Chunk 6.
 
-- [ ] **Step 3: Add a focused structured-editor screenshot spec**
+- [x] **Step 3: Add a focused structured-editor screenshot spec**
 
 Create `apps/desktop/tests/spell_editor_visual.spec.ts` with `toHaveScreenshot()` coverage for:
 - representative `StructuredFieldInput` states
@@ -378,7 +378,7 @@ Create `apps/desktop/tests/spell_editor_visual.spec.ts` with `toHaveScreenshot()
 
 Use stable fixtures or existing test setup helpers already used by the structured-data specs. Prefer class toggling on `<html>` only for screenshot isolation; keep the real theme-flow verification in `theme_and_feedback.spec.ts`.
 
-- [ ] **Step 4: Rebuild the debug Tauri app and run the focused Playwright slice**
+- [x] **Step 4: Rebuild the debug Tauri app and run the focused Playwright slice**
 
 Run:
 ```powershell
@@ -390,7 +390,7 @@ cd apps/desktop; npx playwright test tests/spell_editor_structured_data.spec.ts 
 Expected:
 - PASS.
 
-- [ ] **Step 5: Commit the focused browser verification**
+- [x] **Step 5: Commit the focused browser verification**
 
 ```powershell
 git add apps/desktop/tests/spell_editor_structured_data.spec.ts apps/desktop/tests/theme_and_feedback.spec.ts apps/desktop/tests/spell_editor_visual.spec.ts

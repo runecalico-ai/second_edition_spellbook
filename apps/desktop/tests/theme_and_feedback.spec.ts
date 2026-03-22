@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
@@ -19,6 +19,100 @@ async function openSettings(page: Page) {
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible({
     timeout: TIMEOUTS.medium,
   });
+}
+
+type RgbColor = {
+  r: number;
+  g: number;
+  b: number;
+};
+
+function parseRgbColor(color: string): RgbColor {
+  const match = color.match(/\d+(\.\d+)?/g);
+  if (!match || match.length < 3) {
+    throw new Error(`Unable to parse RGB color: ${color}`);
+  }
+
+  return {
+    r: Number(match[0]),
+    g: Number(match[1]),
+    b: Number(match[2]),
+  };
+}
+
+function toLinearRgb(channel: number): number {
+  const normalized = channel / 255;
+  return normalized <= 0.03928
+    ? normalized / 12.92
+    : ((normalized + 0.055) / 1.055) ** 2.4;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const fg = parseRgbColor(foreground);
+  const bg = parseRgbColor(background);
+
+  const fgLuminance =
+    0.2126 * toLinearRgb(fg.r) + 0.7152 * toLinearRgb(fg.g) + 0.0722 * toLinearRgb(fg.b);
+  const bgLuminance =
+    0.2126 * toLinearRgb(bg.r) + 0.7152 * toLinearRgb(bg.g) + 0.0722 * toLinearRgb(bg.b);
+
+  const lighter = Math.max(fgLuminance, bgLuminance);
+  const darker = Math.min(fgLuminance, bgLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function getTextColor(locator: Locator) {
+  return locator.evaluate((el) => {
+    const styles = getComputedStyle(el);
+    return styles.color;
+  });
+}
+
+async function getSurfaceBackground(locator: Locator) {
+  return locator.evaluate((el) => {
+    let backgroundNode: HTMLElement | null = el as HTMLElement;
+
+    while (backgroundNode) {
+      const styles = getComputedStyle(backgroundNode);
+      if (styles.backgroundColor && styles.backgroundColor !== "rgba(0, 0, 0, 0)") {
+        return styles.backgroundColor;
+      }
+
+      backgroundNode = backgroundNode.parentElement;
+    }
+
+    return "";
+  });
+}
+
+async function expectReadableContrast(
+  foregroundLocator: Locator,
+  surfaceLocator: Locator,
+  minimumContrast = 4.5,
+) {
+  await expect(foregroundLocator).toBeVisible({ timeout: TIMEOUTS.medium });
+  await expect(surfaceLocator).toBeVisible({ timeout: TIMEOUTS.medium });
+
+  const color = await getTextColor(foregroundLocator);
+  const backgroundColor = await getSurfaceBackground(surfaceLocator);
+  expect(backgroundColor).not.toBe("");
+  expect(color).not.toBe(backgroundColor);
+  expect(contrastRatio(color, backgroundColor)).toBeGreaterThanOrEqual(minimumContrast);
+}
+
+async function expandStructuredEditorField(
+  page: Page,
+  field: "range" | "components",
+  visibleTestId: string,
+) {
+  await page.getByTestId(`detail-${field}-expand`).click();
+
+  const loading = page.getByTestId(`detail-${field}-loading`);
+  if (await loading.count()) {
+    await expect(loading).not.toBeVisible({ timeout: TIMEOUTS.medium });
+  }
+
+  await expect(page.getByTestId(visibleTestId)).toBeVisible({ timeout: TIMEOUTS.medium });
 }
 
 test.describe("theme and feedback foundations", () => {
@@ -59,6 +153,92 @@ test.describe("theme and feedback foundations", () => {
 
     await expect(page.getByTestId("settings-theme-select")).toHaveValue("dark");
     await waitForResolvedTheme(page, "dark");
+  });
+
+  test("structured spell editor surfaces stay legible when switching from light to dark mode", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const spellName = `Structured Theme Spell ${Date.now()}`;
+
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.evaluate(() => {
+      window.localStorage.removeItem("spellbook-theme");
+    });
+    await page.reload();
+    await waitForResolvedTheme(page, "light");
+
+    await app.createSpell({
+      name: spellName,
+      level: "1",
+      description: "Theme coverage spell.",
+      school: "Evocation",
+      classes: "Wizard",
+      range: "30 ft",
+      components: "V, S, M",
+      materialComponents: "bat fur",
+    });
+
+    await app.openSpell(spellName);
+
+    await test.step("Light mode surfaces stay readable while expanded", async () => {
+      await expandStructuredEditorField(page, "range", "range-kind-select");
+
+      const structuredField = page.getByTestId("structured-field-input");
+      const rangePreview = structuredField.getByTestId("range-text-preview");
+      const rangeKindSelect = structuredField.getByTestId("range-kind-select");
+      await expect(rangePreview).toHaveText(/30 ft/i);
+
+      await expectReadableContrast(rangePreview, structuredField);
+      await expectReadableContrast(rangeKindSelect, structuredField, 3);
+
+      await expandStructuredEditorField(page, "components", "component-checkboxes");
+
+      const componentSurface = page.getByTestId("component-checkboxes");
+      const componentPreview = componentSurface.getByTestId("component-text-preview");
+      const materialSubform = componentSurface.getByTestId("material-subform");
+      const materialNameInput = componentSurface.getByTestId("material-component-name").first();
+      await expect(materialSubform).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(componentPreview).toHaveText(/V,\s*S,\s*M/i);
+
+      await expectReadableContrast(componentPreview, componentSurface);
+      await expectReadableContrast(materialNameInput, materialSubform, 3);
+    });
+
+    await test.step("Switch to dark mode through settings", async () => {
+      await openSettings(page);
+      const themeSelect = page.getByTestId("settings-theme-select");
+      const followSystemCheckbox = page.getByTestId("settings-follow-system-checkbox");
+      await followSystemCheckbox.uncheck();
+      await themeSelect.selectOption("dark");
+      await waitForResolvedTheme(page, "dark");
+    });
+
+    await test.step("Dark mode surfaces remain readable after reopening the editor", async () => {
+      await app.openSpell(spellName);
+      await expandStructuredEditorField(page, "range", "range-kind-select");
+
+      const darkStructuredField = page.getByTestId("structured-field-input");
+      const darkRangePreview = darkStructuredField.getByTestId("range-text-preview");
+      const darkRangeKindSelect = darkStructuredField.getByTestId("range-kind-select");
+      await expect(darkRangePreview).toHaveText(/30 ft/i);
+
+      await expectReadableContrast(darkRangePreview, darkStructuredField);
+      await expectReadableContrast(darkRangeKindSelect, darkStructuredField, 3);
+
+      await expandStructuredEditorField(page, "components", "component-checkboxes");
+
+      const darkComponentSurface = page.getByTestId("component-checkboxes");
+      const darkComponentPreview = darkComponentSurface.getByTestId("component-text-preview");
+      const darkMaterialSubform = darkComponentSurface.getByTestId("material-subform");
+      const darkMaterialInput = darkComponentSurface.getByTestId("material-component-name").first();
+      await expect(darkMaterialSubform).toBeVisible({ timeout: TIMEOUTS.medium });
+      await expect(darkComponentPreview).toHaveText(/V,\s*S,\s*M/i);
+
+      await expectReadableContrast(darkComponentPreview, darkComponentSurface);
+      await expectReadableContrast(darkMaterialInput, darkMaterialSubform, 3);
+    });
   });
 
   test("announces System mode when re-enabling follow-system after an explicit theme", async ({

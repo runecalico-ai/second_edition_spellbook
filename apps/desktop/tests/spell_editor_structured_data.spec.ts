@@ -1,11 +1,83 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { Locator, Page } from "@playwright/test";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SELECTORS, SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal } from "./utils/dialog-handler";
+
+async function expectNoHorizontalOverflow(locator: Locator) {
+  await expect(locator).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        locator.evaluate((element) => {
+          const containerRect = (element as HTMLElement).getBoundingClientRect();
+          const children = Array.from((element as HTMLElement).querySelectorAll("*"));
+          const widestRight = children.reduce((maxRight, child) => {
+            const { right } = child.getBoundingClientRect();
+            return Math.max(maxRight, right);
+          }, containerRect.right);
+
+          return {
+            clientWidth: (element as HTMLElement).clientWidth,
+            overflowRight: Math.max(0, widestRight - containerRect.right),
+            scrollWidth: (element as HTMLElement).scrollWidth,
+          };
+        }),
+      {
+        timeout: TIMEOUTS.medium,
+      },
+    )
+    .toMatchObject({
+      clientWidth: expect.any(Number),
+      overflowRight: expect.any(Number),
+      scrollWidth: expect.any(Number),
+    });
+
+  const layout = await locator.evaluate((element) => {
+    const containerRect = (element as HTMLElement).getBoundingClientRect();
+    const children = Array.from((element as HTMLElement).querySelectorAll("*"));
+    const widestRight = children.reduce((maxRight, child) => {
+      const { right } = child.getBoundingClientRect();
+      return Math.max(maxRight, right);
+    }, containerRect.right);
+
+    return {
+      clientWidth: (element as HTMLElement).clientWidth,
+      overflowRight: Math.max(0, widestRight - containerRect.right),
+      scrollWidth: (element as HTMLElement).scrollWidth,
+    };
+  });
+
+  expect(layout.clientWidth).toBeGreaterThan(0);
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 4);
+  expect(layout.overflowRight).toBeLessThanOrEqual(4);
+}
+
+async function waitForStructuredField(page: Page, field: "range" | "duration" | "casting-time") {
+  await page.getByTestId(`detail-${field}-expand`).click();
+
+  const loading = page.getByTestId(`detail-${field}-loading`);
+  if (await loading.count()) {
+    await expect(loading).not.toBeVisible({ timeout: TIMEOUTS.medium });
+  }
+
+  const childByField = {
+    range: "range-kind-select",
+    duration: "duration-kind-select",
+    "casting-time": "casting-time-unit",
+  } as const;
+
+  const structuredField = page.getByTestId("structured-field-input");
+  await expect(structuredField.getByTestId(childByField[field])).toBeVisible({
+    timeout: TIMEOUTS.medium,
+  });
+
+  return structuredField;
+}
 
 test.describe("Spell Editor structured data and hash display", () => {
   test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
@@ -97,6 +169,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     const app = new SpellbookApp(page);
 
     await test.step("Open new spell and set range", async () => {
+      await page.setViewportSize({ width: 900, height: 1100 });
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
       await page.getByTestId("spell-name-input").fill("Range Test Spell");
@@ -106,20 +179,38 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand Range then select Distance kind and enter value", async () => {
-      await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(500);
+      await waitForStructuredField(page, "range");
       await page.getByTestId("range-kind-select").selectOption("distance");
-      await page.waitForTimeout(100);
       await page.getByTestId("range-base-value").fill("30");
       await page.getByTestId("range-unit").selectOption("ft");
-      await page.waitForTimeout(100);
+
+      const preview = page.getByTestId("structured-field-input").getByTestId("range-text-preview");
+      await expect(preview).toHaveText(/30 ft/i, { timeout: TIMEOUTS.medium });
     });
 
-    await test.step("Verify text preview", async () => {
-      const preview = page.getByTestId("range-text-preview");
+    await test.step("Verify range preview stays attached across expanded and collapsed editing flows", async () => {
+      const structuredField = page.getByTestId("structured-field-input");
+      const preview = structuredField.getByTestId("range-text-preview");
+
+      await expect(structuredField.getByTestId("range-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await expect(preview).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(preview).toContainText("30");
       await expect(preview).toContainText("ft");
+
+      await page.getByTestId("range-base-value").fill("45");
+      await expect(preview).toHaveText(/45 ft/i, { timeout: TIMEOUTS.medium });
+      await expect(preview).not.toContainText("30 ft");
+      await expect(structuredField.getByTestId("range-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expectNoHorizontalOverflow(structuredField);
+
+      await page.getByTestId("detail-range-expand").click();
+      await expect(page.getByTestId("detail-range-input")).toHaveValue(/45 ft/i);
+      await waitForStructuredField(page, "range");
+      await expect(structuredField.getByTestId("range-text-preview")).toHaveText(/45 ft/i);
     });
   });
 
@@ -128,6 +219,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     const app = new SpellbookApp(page);
 
     await test.step("Open new spell", async () => {
+      await page.setViewportSize({ width: 900, height: 1100 });
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
       await page.getByTestId("spell-name-input").fill("Duration Test Spell");
@@ -136,19 +228,74 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand Duration then select Time kind and enter value", async () => {
-      await page.getByTestId("detail-duration-expand").click();
-      await page.waitForTimeout(500);
+      await waitForStructuredField(page, "duration");
       await page.getByTestId("duration-kind-select").selectOption("time");
-      await page.waitForTimeout(100);
       await page.getByTestId("duration-base-value").fill("1");
       await page.getByTestId("duration-unit").selectOption("round");
-      await page.waitForTimeout(100);
+
+      const preview = page
+        .getByTestId("structured-field-input")
+        .getByTestId("duration-text-preview");
+      await expect(preview).toHaveText(/1 round/i, { timeout: TIMEOUTS.medium });
     });
 
-    await test.step("Verify duration text preview", async () => {
-      const preview = page.getByTestId("duration-text-preview");
+    await test.step(
+      "Verify duration preview stays attached across expanded and collapsed editing flows",
+      async () => {
+      const structuredField = page.getByTestId("structured-field-input");
+      const preview = structuredField.getByTestId("duration-text-preview");
+
+      await expect(structuredField.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await expect(preview).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(preview).toContainText("round");
+
+      await page.getByTestId("duration-base-value").fill("2");
+      await expect(preview).toHaveText(/2 rounds?/i, { timeout: TIMEOUTS.medium });
+      await expect(preview).not.toContainText("1 round");
+      await expect(structuredField.getByTestId("duration-kind-select")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expectNoHorizontalOverflow(structuredField);
+
+      await page.getByTestId("detail-duration-expand").click();
+      await expect(page.getByTestId("detail-duration-input")).toHaveValue(/2 rounds?/i);
+      await waitForStructuredField(page, "duration");
+      await expect(structuredField.getByTestId("duration-text-preview")).toHaveText(
+        /2 rounds?/i,
+      );
+    });
+  });
+
+  test("StructuredFieldInput: casting time preview stays grouped through edits and collapse", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Open new spell and set viewport", async () => {
+      await page.setViewportSize({ width: 900, height: 1100 });
+      await app.navigate("Add Spell");
+      await page.getByTestId("spell-name-input").fill("Casting Time Test Spell");
+      await page.getByTestId("spell-level-input").fill("1");
+      await page.getByTestId("spell-description-textarea").fill("Description.");
+    });
+
+    await test.step("Expand Casting Time and edit its grouped controls", async () => {
+      const structuredField = await waitForStructuredField(page, "casting-time");
+      await page.getByTestId("casting-time-base-value").fill("2");
+      await page.getByTestId("casting-time-unit").selectOption("segment");
+
+      const preview = structuredField.getByTestId("casting-time-text-preview");
+      await expect(preview).toHaveText(/2 segments?/i, { timeout: TIMEOUTS.medium });
+      await expect(preview).not.toContainText("1 segment");
+      await expectNoHorizontalOverflow(structuredField);
+
+      await page.getByTestId("detail-casting-time-expand").click();
+      await expect(page.getByTestId("detail-casting-time-input")).toHaveValue(/2 segments?/i);
+      await waitForStructuredField(page, "casting-time");
+      await expect(page.getByTestId("casting-time-text-preview")).toHaveText(/2 segments?/i);
     });
   });
 
@@ -157,6 +304,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     const app = new SpellbookApp(page);
 
     await test.step("Open new spell", async () => {
+      await page.setViewportSize({ width: 900, height: 1100 });
       await app.navigate("Add Spell");
       await page.waitForTimeout(500);
       await page.getByTestId("spell-name-input").fill("Component Test Spell");
@@ -166,24 +314,45 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Expand Components then check Verbal and Somatic", async () => {
       await page.getByTestId("detail-components-expand").click();
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("component-checkboxes")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
       await page.getByTestId("component-checkbox-verbal").check();
       await page.getByTestId("component-checkbox-somatic").check();
-      await page.waitForTimeout(100);
+
+      const preview = page.getByTestId("component-checkboxes").getByTestId("component-text-preview");
+      await expect(preview).toHaveText(/^V,\s*S$/);
     });
 
-    await test.step("Verify text preview shows V, S", async () => {
-      const preview = page.getByTestId("component-text-preview");
+    await test.step("Verify preview stays visible as Material reveals the nested subform", async () => {
+      const componentCheckboxes = page.getByTestId("component-checkboxes");
+      const preview = componentCheckboxes.getByTestId("component-text-preview");
+
+      await expect(componentCheckboxes).toBeVisible();
       await expect(preview).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(preview).toContainText("V, S");
     });
 
     await test.step("Check Material and verify sub-form appears", async () => {
       await page.getByTestId("component-checkbox-material").check();
-      await page.waitForTimeout(100);
-      await expect(page.getByTestId("material-component-add")).toBeVisible({
+      const componentCheckboxes = page.getByTestId("component-checkboxes");
+      const materialSubform = componentCheckboxes.getByTestId("material-subform");
+
+      await expect(materialSubform).toBeVisible();
+      await expect(materialSubform.getByTestId("material-component-add")).toBeVisible({
         timeout: TIMEOUTS.short,
       });
+      await expect(componentCheckboxes.getByTestId("component-text-preview")).toHaveText(
+        /^V,\s*S,\s*M$/,
+      );
+      await expectNoHorizontalOverflow(componentCheckboxes);
+
+      await page.getByTestId("detail-components-expand").click();
+      await expect(page.getByTestId("detail-components-input")).toHaveValue(/V,\s*S,\s*M/);
+      await page.getByTestId("detail-components-expand").click();
+      await expect(componentCheckboxes.getByTestId("component-text-preview")).toHaveText(
+        /^V,\s*S,\s*M$/,
+      );
     });
   });
 
@@ -206,15 +375,22 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Add first material and set name", async () => {
+      const componentCheckboxes = page.getByTestId("component-checkboxes");
+      const materialSubform = componentCheckboxes.getByTestId("material-subform");
+
+      await expect(componentCheckboxes.getByTestId("component-text-preview")).toBeVisible();
+      await expect(materialSubform).toBeVisible();
       await page.getByTestId("material-component-add").click();
       await page.waitForTimeout(100);
-      const nameInput = page.getByTestId("material-component-name").first();
+      const nameInput = materialSubform.getByTestId("material-component-name").first();
       await nameInput.fill("Bat guano");
       await expect(nameInput).toHaveValue("Bat guano");
+      await expect(materialSubform.getByTestId("material-component-row")).toHaveCount(1);
     });
 
     await test.step("Set quantity and verify min 1", async () => {
-      const qtyInput = page.getByTestId("material-component-quantity").first();
+      const materialSubform = page.getByTestId("component-checkboxes").getByTestId("material-subform");
+      const qtyInput = materialSubform.getByTestId("material-component-quantity").first();
       await qtyInput.fill("0.5");
       await qtyInput.blur();
       await page.waitForTimeout(100);
@@ -225,21 +401,23 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Add second material component", async () => {
       await page.getByTestId("material-component-add").click();
       await page.waitForTimeout(100);
-      const materialRows = page.getByTestId("material-component-row");
+      const materialSubform = page.getByTestId("component-checkboxes").getByTestId("material-subform");
+      const materialRows = materialSubform.getByTestId("material-component-row");
       await expect(materialRows).toHaveCount(2);
-      const secondNameInput = page.getByTestId("material-component-name").nth(1);
+      const secondNameInput = materialSubform.getByTestId("material-component-name").nth(1);
       await secondNameInput.fill("Sulfur");
       await expect(secondNameInput).toHaveValue("Sulfur");
     });
 
     await test.step("Remove first material component", async () => {
-      const removeButton = page.getByTestId("material-component-remove").first();
+      const materialSubform = page.getByTestId("component-checkboxes").getByTestId("material-subform");
+      const removeButton = materialSubform.getByTestId("material-component-remove").first();
       await removeButton.click();
       await page.waitForTimeout(100);
-      const materialRows = page.getByTestId("material-component-row");
+      const materialRows = materialSubform.getByTestId("material-component-row");
       await expect(materialRows).toHaveCount(1);
       // Verify remaining material is the second one (Sulfur)
-      const remainingName = page.getByTestId("material-component-name").first();
+      const remainingName = materialSubform.getByTestId("material-component-name").first();
       await expect(remainingName).toHaveValue("Sulfur");
     });
   });

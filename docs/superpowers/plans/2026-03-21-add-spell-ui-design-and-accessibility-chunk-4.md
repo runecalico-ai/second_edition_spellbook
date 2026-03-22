@@ -402,7 +402,7 @@ git commit -m "test(chunk-4): cover structured editor polish with theme and scre
 **Files:**
 - Verify all files touched in Tasks 1-6
 
-- [ ] **Step 1: Run the focused unit and storybook checks**
+- [x] **Step 1: Run the focused unit and storybook checks**
 
 Run:
 ```powershell
@@ -414,7 +414,7 @@ pnpm --dir apps/desktop test:storybook -- src/ui/components/structured/Structure
 Expected:
 - PASS.
 
-- [ ] **Step 2: Run typecheck and lint on touched files**
+- [x] **Step 2: Run typecheck and lint on touched files**
 
 Run:
 ```powershell
@@ -425,7 +425,7 @@ pnpm --dir apps/desktop exec biome lint src/ui/components/structured/StructuredF
 Expected:
 - PASS.
 
-- [ ] **Step 3: Run the focused Playwright slice**
+- [x] **Step 3: Run the focused Playwright slice**
 
 Run:
 ```powershell
@@ -436,7 +436,7 @@ cd apps/desktop; npx playwright test tests/spell_editor_structured_data.spec.ts 
 Expected:
 - PASS.
 
-- [ ] **Step 4: Manual visual smoke check in both themes**
+- [x] **Step 4: Manual visual smoke check in both themes**
 
 Run:
 ```powershell
@@ -452,7 +452,7 @@ Check manually:
 6. Resize the window to approximately `900px` wide and confirm the touched structured groups wrap instead of overflowing horizontally.
 7. Confirm no obvious spacing regression makes Chunk 5 resize hardening harder.
 
-- [ ] **Step 5: Prepare commit handoff**
+- [x] **Step 5: Prepare commit handoff**
 
 ```powershell
 git add docs/superpowers/plans/2026-03-21-add-spell-ui-design-and-accessibility-chunk-4.md apps/desktop/src/ui/components/structured/StructuredFieldInput.tsx apps/desktop/src/ui/components/structured/ComponentCheckboxes.tsx apps/desktop/src/ui/components/structured/StructuredFieldInput.test.ts apps/desktop/src/ui/components/structured/StructuredFieldInput.test.tsx apps/desktop/src/ui/components/structured/ComponentCheckboxes.test.tsx apps/desktop/src/ui/components/structured/StructuredFieldInput.stories.tsx apps/desktop/src/ui/components/structured/ComponentCheckboxes.stories.tsx apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx apps/desktop/src/ui/SpellEditor.tsx apps/desktop/src/ui/SpellEditor.test.tsx apps/desktop/tests/spell_editor_structured_data.spec.ts apps/desktop/tests/theme_and_feedback.spec.ts apps/desktop/tests/spell_editor_visual.spec.ts

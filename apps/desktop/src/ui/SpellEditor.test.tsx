@@ -557,16 +557,16 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const label = root.querySelector('label[for="detail-range-input"]');
     const input = screen.getByTestId("detail-range-input");
     const expand = screen.getByTestId("detail-range-expand");
-    const panel = document.getElementById("detail-range-panel");
+    const panel = document.getElementById("detail-range-panel") as HTMLElement;
 
     expect(label).toBeTruthy();
-    expect(isBefore(label!, input)).toBe(true);
+    expect(isBefore(label as Element, input)).toBe(true);
     expect(isBefore(input, expand)).toBe(true);
-    expect(isBefore(expand, panel!)).toBe(true);
+    expect(isBefore(expand, panel)).toBe(true);
 
-    const structured = within(panel!).getByTestId("structured-field-input");
+    const structured = within(panel).getByTestId("structured-field-input");
     const kindSelect = within(structured).getByTestId("range-kind-select");
-    const preview = within(panel!).getByTestId("range-text-preview");
+    const preview = within(panel).getByTestId("range-text-preview");
 
     expect(structured.contains(preview)).toBe(true);
     expect((kindSelect.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
@@ -600,14 +600,14 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const label = root.querySelector('label[for="detail-components-input"]');
     const input = screen.getByTestId("detail-components-input");
     const expand = screen.getByTestId("detail-components-expand");
-    const panel = document.getElementById("detail-components-panel");
-    const componentGroup = within(panel!).getByTestId("component-checkboxes");
+    const panel = document.getElementById("detail-components-panel") as HTMLElement;
+    const componentGroup = within(panel).getByTestId("component-checkboxes");
     const materialSubform = within(componentGroup).getByTestId("material-subform");
 
     expect(label).toBeTruthy();
-    expect(isBefore(label!, input)).toBe(true);
+    expect(isBefore(label as Element, input)).toBe(true);
     expect(isBefore(input, expand)).toBe(true);
-    expect(isBefore(expand, panel!)).toBe(true);
+    expect(isBefore(expand, panel)).toBe(true);
     expect(panel?.contains(componentGroup)).toBe(true);
     expect(componentGroup.contains(materialSubform)).toBe(true);
   });
@@ -627,9 +627,9 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
 
     fireEvent.click(screen.getByTestId("detail-range-expand"));
 
-    const panel = document.getElementById("detail-range-panel");
-    const structured = within(panel!).getByTestId("structured-field-input");
-    const hint = within(panel!).getByTestId("detail-range-special-hint");
+    const panel = document.getElementById("detail-range-panel") as HTMLElement;
+    const structured = within(panel).getByTestId("structured-field-input");
+    const hint = within(panel).getByTestId("detail-range-special-hint");
 
     expect(panel?.contains(structured)).toBe(true);
     expect(panel?.contains(hint)).toBe(true);

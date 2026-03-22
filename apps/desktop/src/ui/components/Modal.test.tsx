@@ -187,6 +187,23 @@ describe("Modal", () => {
     expect(dialog.open).toBe(false);
   });
 
+  it("does not force a closed native dialog to display as flex", () => {
+    const { getByTestId } = render(
+      <ModalShell
+        isOpen={false}
+        type="info"
+        title=""
+        message=""
+        buttons={[]}
+        onRequestClose={() => {}}
+      />,
+    );
+
+    const dialog = getByTestId("modal-dialog");
+    expect(dialog.className.split(/\s+/)).not.toContain("flex");
+    expect(dialog.className).toContain("[&[open]]:flex");
+  });
+
   it("does not move focus on an initial closed render", () => {
     const sentinel = document.createElement("button");
     sentinel.type = "button";

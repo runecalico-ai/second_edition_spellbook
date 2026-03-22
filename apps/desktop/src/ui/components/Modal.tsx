@@ -93,7 +93,7 @@ export function ModalShell({
       aria-labelledby="modal-title"
       aria-describedby={descriptionId}
       data-testid="modal-dialog"
-      className="fixed inset-0 z-[100] m-0 flex h-full w-full max-h-none max-w-none items-center justify-center overflow-y-auto border-none bg-transparent p-4"
+      className="fixed inset-0 z-[100] m-0 h-full w-full max-h-none max-w-none items-center justify-center overflow-y-auto border-none bg-transparent p-4 [&[open]]:flex"
       onClick={(e) => {
         if (e.target === e.currentTarget && dismissible) {
           onRequestClose();

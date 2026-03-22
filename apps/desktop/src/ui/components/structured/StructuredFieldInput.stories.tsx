@@ -48,6 +48,7 @@ export const RangeDistancePerLevel: Story = {
       kind: "distance",
       distance: { mode: "per_level", value: 10, perLevel: 5 },
       unit: "yd",
+      text: "10 ft + 5 ft/level",
     },
     onChange: fn(),
   },
@@ -69,6 +70,20 @@ export const RangeSpecial: Story = {
     value: {
       kind: "special",
       rawLegacyValue: "Special range description",
+    },
+    onChange: fn(),
+  },
+};
+
+export const RangeWithNotes: Story = {
+  args: {
+    fieldType: "range",
+    value: {
+      kind: "distance",
+      distance: { mode: "fixed", value: 30 },
+      unit: "ft",
+      text: "30 ft",
+      notes: "Range doubles outdoors in open terrain",
     },
     onChange: fn(),
   },
@@ -112,6 +127,7 @@ export const DurationTimePerLevel: Story = {
       kind: "time",
       unit: "hour",
       duration: { mode: "per_level", value: 1, perLevel: 1 },
+      text: "1 hr/level",
     },
     onChange: fn(),
   },

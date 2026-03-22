@@ -155,8 +155,8 @@ All three empty states share a common skeleton: heading, one-line description, C
 ### library
 
 #### Structured field layout and presentation
-- [ ] Define `StructuredFieldInput` layout: horizontal grouping for scalar, unit, and related controls with existing spacing utilities.
-- [ ] Define label placement and container treatment for structured field groups.
+- [x] Define `StructuredFieldInput` layout: horizontal grouping for scalar, unit, and related controls with existing spacing utilities.
+- [x] Define label placement and container treatment for structured field groups.
 - [x] Define `ComponentCheckboxes` spacing and preview treatment.
 
 ### theme-and-feedback

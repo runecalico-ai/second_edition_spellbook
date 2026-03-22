@@ -78,7 +78,7 @@ function CanonRow({
           data-testid={`${testIdPrefix}-input`}
           type="text"
           aria-label={label}
-          className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded text-sm"
+          className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 p-2 rounded text-sm"
           value={value}
           onChange={(e) => onValueChange(e.target.value)}
         />
@@ -104,7 +104,7 @@ function CanonRow({
         <section
           id={`${testIdPrefix}-panel`}
           aria-label={`Structured ${label}`}
-          className="mt-2 p-3 rounded border border-neutral-700 bg-neutral-900/80"
+          className="mt-2 p-3 rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/80"
         >
           {children}
         </section>
@@ -330,6 +330,8 @@ export const CastingTimeExpanded: Story = {
       text: "1 minute",
       unit: "minute",
       baseValue: 1,
+      perLevel: 0,
+      levelDivisor: 1,
     });
     return (
       <div className="space-y-3 text-sm max-w-md">

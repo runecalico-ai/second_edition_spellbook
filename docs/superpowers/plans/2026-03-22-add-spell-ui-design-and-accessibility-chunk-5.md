@@ -981,10 +981,13 @@ Existing incorrect pattern to fix: inputs that have BOTH a visible `<label>` AND
 ## Task 6: Color Contrast Verification and Fixes
 
 **Files:**
-- Modify: `apps/desktop/src/ui/SpellEditor.tsx` (if violations found)
-- Modify: `apps/desktop/src/ui/Library.tsx` (if violations found)
-- Modify: `apps/desktop/src/ui/SettingsPage.tsx` (if violations found)
-- Modify: `apps/desktop/src/ui/App.tsx` (if violations found)
+- Modify: `apps/desktop/src/ui/SpellEditor.tsx`
+- Modify: `apps/desktop/src/ui/Library.tsx`
+- Modify: `apps/desktop/src/ui/SettingsPage.tsx`
+- Modify: `apps/desktop/src/ui/App.tsx`
+- Modify: `apps/desktop/src/ui/components/WarningBanner.tsx`
+- Modify: `apps/desktop/src/ui/components/ArtifactRow.tsx`
+- Modify: `apps/desktop/src/ui/components/structured/` (`ScalarInput.tsx`, `StructuredFieldInput.tsx`, `ComponentCheckboxes.tsx`, `AreaForm.tsx`, related tests/stories)
 
 ### Background
 
@@ -1014,7 +1017,7 @@ Known risk areas to verify:
 
 The main risk is error/warning text in light mode and placeholder text.
 
-- [ ] **Step 6.1: Audit and fix error text contrast in light mode**
+- [x] **Step 6.1: Audit and fix error text contrast in light mode**
 
   Search in `SpellEditor.tsx`, `Library.tsx`, `SettingsPage.tsx` for error-state text classes:
 
@@ -1031,7 +1034,7 @@ The main risk is error/warning text in light mode and placeholder text.
   - `text-red-600` (#dc2626) on `bg-white` (#ffffff): ~5.9:1 — PASS
   - `text-red-400` (#f87171) on `bg-neutral-900` (#171717): ~5.3:1 — PASS (dark mode)
 
-- [ ] **Step 6.2: Audit and fix warning text contrast**
+- [x] **Step 6.2: Audit and fix warning text contrast**
 
   Search for `text-yellow-` classes used for small warning text.
 
@@ -1039,7 +1042,7 @@ The main risk is error/warning text in light mode and placeholder text.
 
   `text-yellow-400` (#facc15) on dark `bg-neutral-900`: ~9.7:1 — PASS.
 
-- [ ] **Step 6.3: Audit and fix placeholder/muted text contrast**
+- [x] **Step 6.3: Audit and fix placeholder/muted text contrast**
 
   Search for `placeholder-` and `text-neutral-500` classes on light backgrounds.
 
@@ -1049,7 +1052,7 @@ The main risk is error/warning text in light mode and placeholder text.
 
   If `text-neutral-400` (#a3a3a3) on `bg-white` (#ffffff): ~2.6:1 — FAILS. Fix: use `text-neutral-500 dark:text-neutral-400`.
 
-- [ ] **Step 6.3b: Audit ALL muted/secondary text colors (not just error/warning)**
+- [x] **Step 6.3b: Audit ALL muted/secondary text colors (not just error/warning)**
 
   Search for these patterns in touched files and verify they meet 4.5:1 on their backgrounds:
   ```bash
@@ -1066,7 +1069,7 @@ The main risk is error/warning text in light mode and placeholder text.
 
   Also audit disabled button text: disabled buttons that use `text-neutral-500` on `bg-neutral-100` light: check the combination. If failing, use `text-neutral-600 dark:text-neutral-400` for disabled state.
 
-- [ ] **Step 6.3c: Audit large text elements for 3:1 ratio**
+- [x] **Step 6.3c: Audit large text elements for 3:1 ratio**
 
   Large text (≥ 18px or ≥ 14px bold) only needs 3:1. Search for heading elements and large text classes:
   ```bash
@@ -1089,21 +1092,32 @@ The main risk is error/warning text in light mode and placeholder text.
 
   **Whichever option you choose**: Be consistent. Do not mix upgraded borders in some components and kept `border-neutral-300` in others.
 
-- [ ] **Step 6.5: Run unit tests to ensure no regressions**
+- [x] **Step 6.5: Run unit tests to ensure no regressions**
 
   Run: `cd apps/desktop && npx vitest run`
 
   Expected: All tests PASS.
 
-- [ ] **Step 6.6: Commit**
+- [x] **Step 6.6: Commit**
 
   ```bash
-  git add apps/desktop/src/ui/SpellEditor.tsx \
+  git add apps/desktop/src/ui/App.tsx \
           apps/desktop/src/ui/Library.tsx \
           apps/desktop/src/ui/SettingsPage.tsx \
-          apps/desktop/src/ui/App.tsx
+          apps/desktop/src/ui/SpellEditor.tsx \
+          apps/desktop/src/ui/components/ArtifactRow.tsx \
+          apps/desktop/src/ui/components/WarningBanner.tsx \
+          apps/desktop/src/ui/components/structured/AreaForm.tsx \
+          apps/desktop/src/ui/components/structured/ComponentCheckboxes.test.tsx \
+          apps/desktop/src/ui/components/structured/ComponentCheckboxes.tsx \
+          apps/desktop/src/ui/components/structured/ScalarInput.tsx \
+          apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx \
+          apps/desktop/src/ui/components/structured/StructuredFieldInput.test.tsx \
+          apps/desktop/src/ui/components/structured/StructuredFieldInput.tsx
   git commit -m "feat(chunk-5): fix color contrast violations on error/warning text"
   ```
+
+  **Done:** Commit `b3537c5` on branch `add-spell-ui-design-and-accessibility`.
 
 ---
 

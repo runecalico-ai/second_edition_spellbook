@@ -36,6 +36,10 @@ export function SettingsPage() {
 
   return (
     <section className="space-y-6 rounded-2xl border border-stone-200 bg-white/90 p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
+      {/*
+        Layout shell borders: border-stone-200 on white is below WCAG 3:1 for non-text UI.
+        Accepted deviation for chunk-5 Task 6; form controls use border-neutral-500.
+      */}
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-sm text-stone-600 dark:text-neutral-300">
@@ -65,7 +69,7 @@ export function SettingsPage() {
               id="settings-theme-select"
               data-testid="settings-theme-select"
               aria-describedby="settings-appearance-hint"
-              className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-900"
+              className="w-full rounded-lg border border-neutral-500 bg-white px-3 py-2 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
               value={getSelectableThemeValue(mode, resolvedTheme)}
               disabled={isFollowingSystem}
               onChange={handleThemeChange}
@@ -86,7 +90,7 @@ export function SettingsPage() {
               aria-describedby="settings-appearance-hint"
               checked={isFollowingSystem}
               onChange={handleSystemToggle}
-              className="h-4 w-4 rounded border-stone-300 bg-white text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-900"
+              className="h-4 w-4 rounded border-neutral-500 bg-white text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-900"
             />
             Follow system preference
           </label>

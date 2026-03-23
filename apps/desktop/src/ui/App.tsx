@@ -262,6 +262,10 @@ export default function App() {
         {themeAnnouncement}
       </div>
       <div className="mx-auto max-w-6xl space-y-4">
+        {/*
+          Layout shell borders use border-stone-200/80 on white (~1.3:1), below WCAG 3:1 for non-text UI.
+          Accepted deviation for chunk-5 Task 6: interactive controls use stronger borders and focus-visible rings.
+        */}
         <header className="flex items-center justify-between rounded-2xl border border-stone-200/80 bg-white/90 px-4 py-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
           <div className="text-xl font-semibold select-none">Spellbook</div>
           <div className="flex items-center gap-3">
@@ -302,7 +306,7 @@ export default function App() {
               to="/settings"
               data-testid="settings-gear-button"
               aria-label="Settings"
-              className="rounded-full border border-stone-300 bg-stone-100 p-2 text-stone-900 transition-colors hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+              className="rounded-full border border-neutral-500 bg-stone-100 p-2 text-stone-900 transition-colors hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
             >
               <svg
                 viewBox="0 0 24 24"

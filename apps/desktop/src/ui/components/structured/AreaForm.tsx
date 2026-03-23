@@ -15,7 +15,7 @@ import type {
 import { ScalarInput, type ScalarFieldValidationError } from "./ScalarInput";
 
 const areaSelectClass =
-  "rounded border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+  "rounded border border-neutral-500 bg-white px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 
 function pickAreaScalarErr(
   errors: SpellEditorFieldError[] | undefined,
@@ -667,7 +667,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
               text: rawLegacyValue,
             });
           }}
-          className="min-w-[200px] flex-1 rounded border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+          className="min-w-[200px] flex-1 rounded border border-neutral-500 bg-white px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
         />
       )}
 
@@ -677,10 +677,10 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
         placeholder="Area notes (optional)..."
         value={spec.notes ?? ""}
         onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
-        className="min-h-[60px] w-full rounded border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+        className="min-h-[60px] w-full rounded border border-neutral-500 bg-white px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
       />
 
-      <p className="text-sm text-neutral-500 italic" data-testid="area-text-preview">
+      <p className="text-sm text-neutral-500 italic dark:text-neutral-400" data-testid="area-text-preview">
         {textPreview || "—"}
       </p>
     </div>

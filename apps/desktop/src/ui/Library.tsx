@@ -305,11 +305,11 @@ export default function Library() {
 
   const focusVisibleRingClassName =
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
-  const secondaryActionClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-300 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700`;
-  const filterControlClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-300 bg-white px-3 py-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`;
-  const compactFilterControlClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-300 bg-white px-3 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`;
+  const secondaryActionClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-500 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700`;
+  const filterControlClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-500 bg-white px-3 py-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`;
+  const compactFilterControlClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-500 bg-white px-3 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`;
   const filterChipClassName =
-    "cursor-pointer rounded-md border border-neutral-300 bg-white px-3 py-1 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800";
+    "cursor-pointer rounded-md border border-neutral-500 bg-white px-3 py-1 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800";
 
   const addToCharacter = async (spellId: number, charIdStr: string) => {
     if (!charIdStr) return;
@@ -440,7 +440,7 @@ export default function Library() {
           </span>
           <div className="pt-2 px-1">
             <Slider.Root
-              className="relative flex items-center select-none touch-none w-32 h-5"
+              className="relative flex h-6 w-32 touch-none select-none items-center"
               aria-labelledby="library-level-range-label"
               data-testid="filter-level-slider"
               value={[
@@ -454,16 +454,16 @@ export default function Library() {
                 setLevelMax(String(max));
               }}
             >
-              <Slider.Track className="relative grow rounded-full h-[3px] bg-neutral-300 dark:bg-neutral-800">
+              <Slider.Track className="relative h-[3px] grow rounded-full bg-neutral-400 dark:bg-neutral-800">
                 <Slider.Range className="absolute bg-blue-500 rounded-full h-full" />
               </Slider.Track>
               <Slider.Thumb
-                className={`${focusVisibleRingClassName} block h-4 w-4 cursor-pointer rounded-full border border-neutral-300 bg-white shadow-lg hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-100 dark:hover:bg-white`}
+                className={`${focusVisibleRingClassName} block h-6 w-6 min-h-6 min-w-6 cursor-pointer rounded-full border border-neutral-500 bg-white shadow-lg hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-100 dark:hover:bg-white`}
                 aria-label="Min Level"
                 data-testid="filter-level-min-thumb"
               />
               <Slider.Thumb
-                className={`${focusVisibleRingClassName} block h-4 w-4 cursor-pointer rounded-full border border-neutral-300 bg-white shadow-lg hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-100 dark:hover:bg-white`}
+                className={`${focusVisibleRingClassName} block h-6 w-6 min-h-6 min-w-6 cursor-pointer rounded-full border border-neutral-500 bg-white shadow-lg hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-100 dark:hover:bg-white`}
                 aria-label="Max Level"
                 data-testid="filter-level-max-thumb"
               />
@@ -564,7 +564,7 @@ export default function Library() {
             data-testid="filter-quest-checkbox"
             checked={isQuestFilter}
             onChange={(e) => setIsQuestFilter(e.target.checked)}
-            className={`${focusVisibleRingClassName} h-3.5 w-3.5 rounded border-neutral-400 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-800`}
+            className={`${focusVisibleRingClassName} h-3.5 w-3.5 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-800`}
           />
           <span className="text-xs text-neutral-700 dark:text-neutral-300">Quest Spells</span>
         </label>
@@ -574,12 +574,12 @@ export default function Library() {
             data-testid="filter-cantrip-checkbox"
             checked={isCantripFilter}
             onChange={(e) => setIsCantripFilter(e.target.checked)}
-            className={`${focusVisibleRingClassName} h-3.5 w-3.5 rounded border-neutral-400 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-800`}
+            className={`${focusVisibleRingClassName} h-3.5 w-3.5 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-800`}
           />
           <span className="text-xs text-neutral-700 dark:text-neutral-300">Cantrips Only</span>
         </label>
 
-        <div className="mx-1 self-stretch border-l border-neutral-300 dark:border-neutral-800" />
+        <div className="mx-1 self-stretch border-l border-neutral-500 dark:border-neutral-800" />
 
         <div className="flex items-center gap-2">
           {savedSearches.length > 0 && (
@@ -632,7 +632,7 @@ export default function Library() {
                 <input
                   ref={saveInputRef}
                   id="save-search-name-input"
-                  className={`${focusVisibleRingClassName} w-32 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
+                  className={`${focusVisibleRingClassName} w-32 rounded-md border border-neutral-500 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
                   placeholder="Name…"
                   data-testid="save-search-name-input"
                   value={newSearchName}
@@ -653,7 +653,7 @@ export default function Library() {
               </button>
               <button
                 type="button"
-                className={`${focusVisibleRingClassName} rounded border border-neutral-300 bg-neutral-200 px-2 py-1 text-xs text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700`}
+                className={`${focusVisibleRingClassName} rounded border border-neutral-500 bg-neutral-200 px-2 py-1 text-xs text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700`}
                 data-testid="btn-save-search-cancel"
                 aria-label="Cancel saving search"
                 onClick={() => setIsSaving(false)}
@@ -675,7 +675,7 @@ export default function Library() {
           {savedSearches.length > 0 && (
             <button
               type="button"
-              className={`${focusVisibleRingClassName} ml-1 text-xs text-neutral-600 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:text-red-400`}
+              className={`${focusVisibleRingClassName} ml-1 text-xs text-neutral-600 hover:text-red-600 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-400 dark:disabled:text-neutral-600 dark:hover:text-red-400`}
               data-testid="btn-delete-saved-search"
               disabled={selectedSavedSearchId === null}
               onClick={() => {
@@ -689,7 +689,7 @@ export default function Library() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto rounded-md border border-neutral-300 bg-white/80 dark:border-neutral-800 dark:bg-neutral-900/30">
+      <div className="flex-1 overflow-auto rounded-md border border-neutral-500 bg-white/80 dark:border-neutral-800 dark:bg-neutral-900/30">
         <table
           className="w-full text-sm text-left border-collapse"
           data-testid="spell-library-table"
@@ -697,24 +697,24 @@ export default function Library() {
           <caption className="sr-only">Spell library results</caption>
           <thead className="sticky top-0 bg-neutral-100 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
             <tr>
-              <th scope="col" className="border-b border-neutral-300 p-2 dark:border-neutral-800">
+              <th scope="col" className="border-b border-neutral-500 p-2 dark:border-neutral-800">
                 Name
               </th>
-              <th scope="col" className="border-b border-neutral-300 p-2 dark:border-neutral-800">
+              <th scope="col" className="border-b border-neutral-500 p-2 dark:border-neutral-800">
                 School
               </th>
               <th
                 scope="col"
-                className="w-16 border-b border-neutral-300 p-2 text-center dark:border-neutral-800"
+                className="w-16 border-b border-neutral-500 p-2 text-center dark:border-neutral-800"
               >
                 Level
               </th>
-              <th scope="col" className="border-b border-neutral-300 p-2 dark:border-neutral-800">
+              <th scope="col" className="border-b border-neutral-500 p-2 dark:border-neutral-800">
                 Classes
               </th>
               <th
                 scope="col"
-                className="border-b border-neutral-300 p-2 text-center dark:border-neutral-800"
+                className="border-b border-neutral-500 p-2 text-center dark:border-neutral-800"
               >
                 Components
               </th>
@@ -736,28 +736,28 @@ export default function Library() {
                     {s.name}
                   </Link>
                   {s.isQuestSpell === 1 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-700 dark:text-yellow-400">
                       Quest
                     </span>
                   )}
                   {s.level >= 10 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-700 dark:text-purple-400">
                       Epic
                     </span>
                   )}
                   {s.level === 0 && s.isCantrip === 1 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-500 dark:text-neutral-400">
                       Cantrip
                     </span>
                   )}
                   <select
-                    className={`${focusVisibleRingClassName} ml-2 h-4 w-4 rounded bg-neutral-200 text-transparent transition-all hover:text-neutral-700 dark:bg-neutral-800 dark:text-transparent dark:hover:text-white`}
+                    className={`${focusVisibleRingClassName} ml-2 min-h-6 min-w-[7.5rem] rounded-md border border-neutral-500 bg-white px-1.5 py-1 text-sm text-neutral-900 transition-colors dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
                     data-testid={`add-to-char-select-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
                     aria-label={`Add ${s.name} to character`}
                     onChange={(e) => addToCharacter(s.id, e.target.value)}
                     value=""
                   >
-                    <option value="">+</option>
+                    <option value="">Add to character…</option>
                     {characters.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}

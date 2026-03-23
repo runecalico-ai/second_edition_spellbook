@@ -76,8 +76,8 @@ import {
 
 const spellInputSurface =
   "rounded border bg-white p-2 text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100";
-const spellInputBorderOk = "border-neutral-300 dark:border-neutral-700";
-const spellInputBorderInvalid = "border-red-400 dark:border-red-600";
+const spellInputBorderOk = "border-neutral-500 dark:border-neutral-700";
+const spellInputBorderInvalid = "border-red-600 dark:border-red-600";
 const spellFocusVisibleRing =
   "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 const spellInvalidFocusVisibleRing =
@@ -2105,7 +2105,7 @@ export default function SpellEditor() {
     <div className="p-4 max-w-2xl mx-auto space-y-4 overflow-auto h-full">
       {parsersPending && (
         <div
-          className="rounded border border-blue-600/50 bg-blue-600/10 px-3 py-2 text-sm text-blue-300"
+          className="rounded border border-blue-600/50 bg-blue-600/10 px-3 py-2 text-sm text-blue-800 dark:text-blue-300"
           data-testid="parsers-pending-indicator"
           aria-live="polite"
         >
@@ -2118,17 +2118,17 @@ export default function SpellEditor() {
           <h1 className="text-2xl font-bold">{isNew ? "New Spell" : "Edit Spell"}</h1>
           <div className="flex gap-2">
             {form.isQuestSpell === 1 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-700 dark:text-yellow-400">
                 Quest
               </span>
             )}
             {form.level >= 10 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-700 dark:text-purple-400">
                 Epic
               </span>
             )}
             {form.level === 0 && form.isCantrip === 1 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
+              <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-500 dark:text-neutral-400">
                 Cantrip
               </span>
             )}
@@ -2147,7 +2147,7 @@ export default function SpellEditor() {
                   data-testid="print-page-size-select"
                   disabled={savePending}
                   onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
-                  className={`bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700 ${spellFocusVisibleRing}`}
+                  className={`bg-neutral-800 text-neutral-100 text-xs rounded px-2 py-1 border border-neutral-700 ${spellFocusVisibleRing}`}
                 >
                   <option value="letter">Letter</option>
                   <option value="a4">A4</option>
@@ -2157,7 +2157,7 @@ export default function SpellEditor() {
                   data-testid="btn-print-compact"
                   disabled={savePending}
                   onClick={() => printSpell("compact")}
-                  className={`px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
+                  className={`px-3 py-2 text-xs text-neutral-100 bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
                 >
                   Print Compact
                 </button>
@@ -2166,7 +2166,7 @@ export default function SpellEditor() {
                   data-testid="btn-print-stat-block"
                   disabled={savePending}
                   onClick={() => printSpell("stat-block")}
-                  className={`px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
+                  className={`px-3 py-2 text-xs text-neutral-100 bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
                 >
                   Print Stat-block
                 </button>
@@ -2179,7 +2179,7 @@ export default function SpellEditor() {
                 type="button"
                 disabled={parsersPending || savePending}
                 onClick={handleDelete}
-                className={`px-3 py-2 text-red-400 hover:bg-neutral-800 rounded ${spellFocusVisibleRing}`}
+                className={`px-3 py-2 text-red-600 hover:bg-red-50 hover:text-red-800 dark:text-red-400 dark:hover:bg-neutral-800 dark:hover:text-red-200 rounded ${spellFocusVisibleRing}`}
               >
                 Delete
               </button>
@@ -2200,7 +2200,7 @@ export default function SpellEditor() {
                 }
                 navigate("/");
               }}
-              className={`px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded ${spellFocusVisibleRing}`}
+              className={`px-3 py-2 text-neutral-100 bg-neutral-700 hover:bg-neutral-600 rounded ${spellFocusVisibleRing}`}
             >
               Cancel
             </button>
@@ -2229,14 +2229,14 @@ export default function SpellEditor() {
         </div>
       </div>
       {printStatus && (
-        <div className="text-xs text-neutral-400" data-testid="print-status-message">
+        <div className="text-xs text-neutral-500 dark:text-neutral-400" data-testid="print-status-message">
           {printStatus}
         </div>
       )}
 
       {!isNew && form.contentHash && (
         <div
-          className="p-3 rounded-lg border bg-neutral-100 border-neutral-300 dark:bg-neutral-800 dark:border-neutral-700"
+          className="p-3 rounded-lg border bg-neutral-100 border-neutral-500 dark:bg-neutral-800 dark:border-neutral-700"
           data-testid="spell-detail-hash-card"
         >
           <div className="flex flex-wrap items-center gap-2">
@@ -2245,7 +2245,7 @@ export default function SpellEditor() {
             </span>
             <code
               id="spell-detail-hash-value"
-              className="px-2 py-0.5 rounded border bg-white border-neutral-300 text-neutral-700 font-mono text-xs dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300"
+              className="px-2 py-0.5 rounded border bg-white border-neutral-500 text-neutral-700 font-mono text-xs dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300"
               data-testid="spell-detail-hash-display"
             >
               {hashExpanded ? form.contentHash : `${form.contentHash.slice(0, 16)}...`}
@@ -2262,7 +2262,7 @@ export default function SpellEditor() {
                   pushNotification("error", "Failed to copy hash.");
                 }
               }}
-              className={`px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${spellFocusVisibleRing}`}
+              className={`px-2 py-1 text-xs rounded border bg-white border-neutral-500 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${spellFocusVisibleRing}`}
             >
               Copy
             </button>
@@ -2273,7 +2273,7 @@ export default function SpellEditor() {
               aria-expanded={hashExpanded}
               aria-controls="spell-detail-hash-value"
               onClick={() => setHashExpanded((e) => !e)}
-              className={`px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${spellFocusVisibleRing}`}
+              className={`px-2 py-1 text-xs rounded border bg-white border-neutral-500 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${spellFocusVisibleRing}`}
             >
               {hashExpanded ? "Collapse" : "Expand"}
             </button>
@@ -2346,14 +2346,14 @@ export default function SpellEditor() {
             />
             <div
               id="spell-level-display"
-              className="mt-1 text-xs text-neutral-600 dark:text-neutral-500"
+              className="mt-1 text-xs text-neutral-600 dark:text-neutral-400"
               data-testid="spell-level-display"
             >
               {getLevelDisplay(form.level)}
             </div>
             <div className="flex gap-4 mt-2">
               <label
-                className={`flex items-center gap-2 cursor-pointer group ${form.level !== 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                className={`flex items-center gap-2 ${form.level !== 0 ? "cursor-not-allowed" : "cursor-pointer group"}`}
               >
                 <input
                   type="checkbox"
@@ -2364,14 +2364,20 @@ export default function SpellEditor() {
                     handleChange("isCantrip", e.target.checked ? 1 : 0);
                     revealFieldValidation("spell-level");
                   }}
-                  className={`w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 ${spellFocusVisibleRing}`}
+                  className={`h-4 w-4 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-900 ${spellFocusVisibleRing}`}
                 />
-                <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
+                <span
+                  className={`text-sm ${
+                    form.level !== 0
+                      ? "text-neutral-600 dark:text-neutral-500"
+                      : "text-neutral-500 group-hover:text-neutral-600 dark:text-neutral-400 dark:group-hover:text-neutral-300"
+                  }`}
+                >
                   Cantrip
                 </span>
               </label>
               <label
-                className={`flex items-center gap-2 cursor-pointer group ${form.level !== 8 ? "opacity-50 cursor-not-allowed" : ""}`}
+                className={`flex items-center gap-2 ${form.level !== 8 ? "cursor-not-allowed" : "cursor-pointer group"}`}
               >
                 <input
                   type="checkbox"
@@ -2382,9 +2388,15 @@ export default function SpellEditor() {
                     handleChange("isQuestSpell", e.target.checked ? 1 : 0);
                     revealFieldValidation("spell-level");
                   }}
-                  className={`w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 ${spellFocusVisibleRing}`}
+                  className={`h-4 w-4 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-900 ${spellFocusVisibleRing}`}
                 />
-                <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
+                <span
+                  className={`text-sm ${
+                    form.level !== 8
+                      ? "text-neutral-600 dark:text-neutral-500"
+                      : "text-neutral-500 group-hover:text-neutral-600 dark:text-neutral-400 dark:group-hover:text-neutral-300"
+                  }`}
+                >
                   Quest Spell
                 </span>
               </label>
@@ -2499,7 +2511,7 @@ export default function SpellEditor() {
               <input
                 id="spell-school"
                 data-testid="spell-school-input"
-                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-school"))} ${
+                className={`w-full border p-2 disabled:bg-neutral-100 disabled:text-neutral-600 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-school"))} ${
                   isFieldInvalid("spell-school")
                     ? spellInputBorderInvalid
                     : spellInputBorderOk
@@ -2546,7 +2558,7 @@ export default function SpellEditor() {
               <input
                 id="spell-sphere"
                 data-testid="spell-sphere-input"
-                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-sphere"))} ${
+                className={`w-full border p-2 disabled:bg-neutral-100 disabled:text-neutral-600 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-sphere"))} ${
                   isFieldInvalid("spell-sphere")
                     ? spellInputBorderInvalid
                     : spellInputBorderOk
@@ -2613,49 +2625,49 @@ export default function SpellEditor() {
           </div>
           {/* Add more fields as needed for MVP */}
           <div>
-            <label htmlFor="spell-source" className="block text-sm text-neutral-400">
+            <label htmlFor="spell-source" className="block text-sm text-neutral-500 dark:text-neutral-400">
               Source
             </label>
             <input
               id="spell-source"
               data-testid="spell-source-input"
-              className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded ${spellFocusVisibleRing}`}
+              className={`w-full ${spellInputSurface} ${spellInputBorderOk} ${spellFocusVisibleRing}`}
               value={form.source || ""}
               onChange={(e) => handleChange("source", e.target.value)}
             />
           </div>
           <div>
-            <label htmlFor="spell-edition" className="block text-sm text-neutral-400">
+            <label htmlFor="spell-edition" className="block text-sm text-neutral-500 dark:text-neutral-400">
               Edition
             </label>
             <input
               id="spell-edition"
               data-testid="spell-edition-input"
-              className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded ${spellFocusVisibleRing}`}
+              className={`w-full ${spellInputSurface} ${spellInputBorderOk} ${spellFocusVisibleRing}`}
               value={form.edition || ""}
               onChange={(e) => handleChange("edition", e.target.value)}
             />
           </div>
           <div>
-            <label htmlFor="spell-author" className="block text-sm text-neutral-400">
+            <label htmlFor="spell-author" className="block text-sm text-neutral-500 dark:text-neutral-400">
               Author
             </label>
             <input
               id="spell-author"
               data-testid="spell-author-input"
-              className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded ${spellFocusVisibleRing}`}
+              className={`w-full ${spellInputSurface} ${spellInputBorderOk} ${spellFocusVisibleRing}`}
               value={form.author || ""}
               onChange={(e) => handleChange("author", e.target.value)}
             />
           </div>
           <div>
-            <label htmlFor="spell-license" className="block text-sm text-neutral-400">
+            <label htmlFor="spell-license" className="block text-sm text-neutral-500 dark:text-neutral-400">
               License
             </label>
             <input
               id="spell-license"
               data-testid="spell-license-input"
-              className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded ${spellFocusVisibleRing}`}
+              className={`w-full ${spellInputSurface} ${spellInputBorderOk} ${spellFocusVisibleRing}`}
               value={form.license || ""}
               onChange={(e) => handleChange("license", e.target.value)}
             />
@@ -2665,18 +2677,18 @@ export default function SpellEditor() {
               id="spell-reversible"
               data-testid="chk-reversible"
               type="checkbox"
-              className={`h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 ${spellFocusVisibleRing}`}
+              className={`h-4 w-4 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-900 ${spellFocusVisibleRing}`}
               checked={Boolean(form.reversible)}
               onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
             />
-            <label htmlFor="spell-reversible" className="text-sm text-neutral-400">
+            <label htmlFor="spell-reversible" className="text-sm text-neutral-500 dark:text-neutral-400">
               Reversible
             </label>
           </div>
         </div>
 
         <div>
-          <span className="block text-sm text-neutral-400">Details</span>
+          <span className="block text-sm text-neutral-500 dark:text-neutral-400">Details</span>
           <div className="space-y-3 text-sm">
             {DETAIL_FIELD_ORDER.map((field) => {
               const label =
@@ -2723,7 +2735,7 @@ export default function SpellEditor() {
                       id={inputId}
                       data-testid={`detail-${kebabField}-input`}
                       type="text"
-                      className={`w-full rounded border border-neutral-300 bg-white p-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 ${spellFocusVisibleRing}`}
+                      className={`w-full rounded border border-neutral-500 bg-white p-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 ${spellFocusVisibleRing}`}
                       value={String(value)}
                       onChange={(e) => handleChange(field, e.target.value)}
                     />
@@ -2744,7 +2756,7 @@ export default function SpellEditor() {
                       </button>
                       {isSpecial && !isExpanded && (
                         <span
-                          className="text-xs text-amber-600 dark:text-amber-400"
+                          className="text-xs text-amber-800 dark:text-amber-400"
                           title="Stored as text; not fully structured for hashing"
                         >
                           (special)
@@ -2761,9 +2773,10 @@ export default function SpellEditor() {
                       tabIndex={-1}
                       className="mt-1 rounded-lg border border-neutral-200 bg-white/70 p-2 dark:border-neutral-700 dark:bg-neutral-950/40"
                     >
+                      {/* Task 6: inner panel border-neutral-200 is grouping-only; primary inputs use border-neutral-500 */}
                       {isLoading ? (
                         <div
-                          className="text-sm text-neutral-500"
+                          className="text-sm text-neutral-500 dark:text-neutral-400"
                           data-testid={`detail-${kebabField}-loading`}
                         >
                           Loading…
@@ -2932,7 +2945,7 @@ export default function SpellEditor() {
                           )}
                           {isSpecial && (
                             <p
-                              className="mt-2 text-xs text-amber-500"
+                              className="mt-2 text-xs text-amber-700 dark:text-amber-400"
                               data-testid={`detail-${kebabField}-special-hint`}
                             >
                               Could not be fully parsed; original text preserved.
@@ -2949,13 +2962,13 @@ export default function SpellEditor() {
         </div>
 
         <div>
-          <label htmlFor="spell-tags" className="block text-sm text-neutral-400">
+          <label htmlFor="spell-tags" className="block text-sm text-neutral-500 dark:text-neutral-400">
             Tags
           </label>
           <textarea
             id="spell-tags"
             data-testid="spell-tags-input"
-            className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px] ${spellFocusVisibleRing}`}
+            className={`w-full min-h-[80px] ${spellInputSurface} ${spellInputBorderOk} ${spellFocusVisibleRing}`}
             placeholder="Comma-separated tags"
             aria-describedby="spell-tags-hint"
             value={form.tags || ""}
@@ -3000,9 +3013,9 @@ export default function SpellEditor() {
         </div>
 
         {form.artifacts && form.artifacts.length > 0 && (
-          <div className="bg-neutral-900/50 p-3 rounded-md border border-neutral-800 space-y-2">
+          <div className="rounded-md border border-neutral-700 bg-neutral-900 p-3 space-y-2 dark:border-neutral-600">
             <div className="flex justify-between items-center">
-              <h3 className="text-sm font-semibold text-neutral-300">Provenance (Imports)</h3>
+              <h3 className="text-sm font-semibold text-neutral-100">Provenance (Imports)</h3>
               <button
                 type="button"
                 data-testid="btn-reparse-artifact"
@@ -3033,7 +3046,7 @@ export default function SpellEditor() {
                     setLoading(false);
                   }
                 }}
-                className={`text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
+                className={`text-xs text-neutral-100 px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
               >
                 Reparse
               </button>

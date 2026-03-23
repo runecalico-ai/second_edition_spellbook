@@ -285,7 +285,7 @@ describe("ComponentCheckboxes – material subform", () => {
     const subform = screen.getByTestId("material-subform");
     const tokens = new Set(subform.className.split(/\s+/).filter(Boolean));
     expect(tokens.has("dark:bg-neutral-950/60")).toBe(true);
-    expect(tokens.has("border-neutral-300")).toBe(true);
+    expect(tokens.has("border-neutral-500")).toBe(true);
   });
 
   it("material component rows use theme-aware row background class", () => {

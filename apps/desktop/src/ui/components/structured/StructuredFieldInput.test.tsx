@@ -9,7 +9,7 @@ afterEach(() => {
   cleanup();
 });
 
-const ROOT_SURFACE_CLASSES = ["rounded-xl", "border-neutral-300", "dark:bg-neutral-950/60"];
+const ROOT_SURFACE_CLASSES = ["rounded-xl", "border-neutral-500", "dark:bg-neutral-950/60"];
 
 const PRIMARY_ROW_CLASSES = ["flex", "min-w-0", "flex-wrap", "items-center", "gap-2"];
 

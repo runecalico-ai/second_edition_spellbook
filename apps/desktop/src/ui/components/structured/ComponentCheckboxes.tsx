@@ -95,7 +95,7 @@ export function ComponentCheckboxes({
 
   return (
     <div
-      className="space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-100"
+      className="space-y-3 rounded-xl border border-neutral-500 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-100"
       data-testid="component-checkboxes"
     >
       <div
@@ -108,7 +108,7 @@ export function ComponentCheckboxes({
             data-testid="component-checkbox-verbal"
             checked={comp.verbal}
             onChange={(e) => updateComponents({ ...comp, verbal: e.target.checked })}
-            className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
+            className="w-4 h-4 rounded border-neutral-500 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
           />
           <span className="text-sm">Verbal (V)</span>
         </label>
@@ -118,7 +118,7 @@ export function ComponentCheckboxes({
             data-testid="component-checkbox-somatic"
             checked={comp.somatic}
             onChange={(e) => updateComponents({ ...comp, somatic: e.target.checked })}
-            className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
+            className="w-4 h-4 rounded border-neutral-500 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
           />
           <span className="text-sm">Somatic (S)</span>
         </label>
@@ -128,7 +128,7 @@ export function ComponentCheckboxes({
             data-testid="component-checkbox-material"
             checked={comp.material}
             onChange={(e) => handleMaterialChange(e.target.checked)}
-            className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
+            className="w-4 h-4 rounded border-neutral-500 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
           />
           <span className="text-sm">Material (M)</span>
         </label>
@@ -140,7 +140,7 @@ export function ComponentCheckboxes({
                 data-testid="component-checkbox-focus"
                 checked={comp.focus}
                 onChange={(e) => updateComponents({ ...comp, focus: e.target.checked })}
-                className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
+                className="w-4 h-4 rounded border-neutral-500 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
               />
               <span className="text-sm">Focus (F)</span>
             </label>
@@ -150,7 +150,7 @@ export function ComponentCheckboxes({
                 data-testid="component-checkbox-divine-focus"
                 checked={comp.divineFocus}
                 onChange={(e) => updateComponents({ ...comp, divineFocus: e.target.checked })}
-                className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
+                className="w-4 h-4 rounded border-neutral-500 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
               />
               <span className="text-sm">Divine Focus (DF)</span>
             </label>
@@ -160,7 +160,7 @@ export function ComponentCheckboxes({
                 data-testid="component-checkbox-experience"
                 checked={comp.experience}
                 onChange={(e) => updateComponents({ ...comp, experience: e.target.checked })}
-                className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
+                className="w-4 h-4 rounded border-neutral-500 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
               />
               <span className="text-sm">Experience (XP)</span>
             </label>
@@ -210,7 +210,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
 
   return (
     <div
-      className="mt-1 space-y-2 rounded-xl border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-950/60"
+      className="mt-1 space-y-2 rounded-xl border border-neutral-500 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-950/60"
       data-testid="material-subform"
     >
       <div className="flex justify-between items-center">
@@ -239,7 +239,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
               placeholder="Name (required)"
               value={m.name}
               onChange={(e) => updateMaterial(idx, { name: e.target.value })}
-              className="flex-1 min-w-[120px] bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 min-w-[120px] bg-white dark:bg-neutral-800 border border-neutral-500 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
               type="text"
@@ -253,7 +253,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
                 const clamped = Math.max(VALIDATION.quantityMinDecimal, clampScalar(v));
                 updateMaterial(idx, { quantity: clamped === 1 ? 1.0 : clamped });
               }}
-              className="w-16 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-16 bg-white dark:bg-neutral-800 border border-neutral-500 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
               type="text"
@@ -268,7 +268,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
                   gpValue: Number.isNaN(v) || v < 0 ? undefined : v,
                 });
               }}
-              className="w-16 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-16 bg-white dark:bg-neutral-800 border border-neutral-500 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <label className="flex items-center gap-1 cursor-pointer whitespace-nowrap">
               <input
@@ -276,15 +276,20 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
                 data-testid="material-component-consumed"
                 checked={m.isConsumed ?? false}
                 onChange={(e) => updateMaterial(idx, { isConsumed: e.target.checked })}
-                className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
+                className="w-4 h-4 rounded border-neutral-500 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
               />
               <span className="text-xs">Consumed</span>
             </label>
             <button
               type="button"
               data-testid="material-component-remove"
+              aria-label={
+                m.name.trim()
+                  ? `Remove material ${m.name.trim()}`
+                  : `Remove material row ${idx + 1}`
+              }
               onClick={() => removeMaterial(idx)}
-              className="px-2 py-1 text-xs text-red-500 dark:text-red-400 bg-transparent dark:bg-neutral-900/30 hover:bg-red-50 dark:hover:bg-neutral-800 rounded focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
+              className="px-2 py-1 text-xs text-red-600 dark:text-red-400 bg-transparent dark:bg-neutral-900/30 hover:bg-red-50 dark:hover:bg-neutral-800 rounded focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
             >
               Remove
             </button>
@@ -296,7 +301,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
             placeholder="Unit (e.g. grams)"
             value={m.unit ?? ""}
             onChange={(e) => updateMaterial(idx, { unit: e.target.value || undefined })}
-            className="w-full max-w-[200px] bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full max-w-[200px] bg-white dark:bg-neutral-800 border border-neutral-500 dark:border-neutral-700 rounded px-2 py-1 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <textarea
             data-testid="material-component-description"
@@ -304,7 +309,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
             placeholder="Description (optional)"
             value={m.description ?? ""}
             onChange={(e) => updateMaterial(idx, { description: e.target.value || undefined })}
-            className="w-full min-h-[40px] bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full min-h-[40px] bg-white dark:bg-neutral-800 border border-neutral-500 dark:border-neutral-700 rounded px-2 py-1 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       ))}

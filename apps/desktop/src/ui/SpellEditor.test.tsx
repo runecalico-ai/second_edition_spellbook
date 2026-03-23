@@ -492,6 +492,153 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     expect(err.id).toBe("spell-name-error");
   });
 
+  it("wires aria-invalid and aria-describedby for the description textarea when it is invalid", async () => {
+    renderNewSpell();
+
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    const description = screen.getByTestId("spell-description-textarea");
+    await waitFor(() => {
+      expect(description.getAttribute("aria-invalid")).toBe("true");
+    });
+    expect(description.getAttribute("aria-describedby")).toBe("error-description-required");
+    expect(screen.getByTestId("error-description-required").id).toBe("error-description-required");
+  });
+
+  it("clears description ARIA error wiring once the textarea becomes valid again", async () => {
+    renderNewSpell();
+
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    const description = screen.getByTestId("spell-description-textarea");
+    await waitFor(() => {
+      expect(description.getAttribute("aria-invalid")).toBe("true");
+    });
+
+    fireEvent.change(description, { target: { value: "Recovered description" } });
+
+    await waitFor(() => {
+      expect(description.getAttribute("aria-invalid")).toBeNull();
+      expect(description.getAttribute("aria-describedby")).toBeNull();
+    });
+  });
+
+  it("wires aria-invalid and aria-describedby for invalid level, school, sphere, and classes fields", async () => {
+    const expectAriaErrorWiring = (inputTestId: string, errorTestId: string) => {
+      const input = screen.getByTestId(inputTestId);
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(input.getAttribute("aria-describedby")).toBe(errorTestId);
+      expect(screen.getByTestId(errorTestId).id).toBe(errorTestId);
+    };
+
+    const invalidLevelSpell = await renderEditSpell(baseLoadedSpell({ level: 13 }));
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+    await waitFor(() => {
+      expect(screen.getByTestId("error-level-range")).toBeTruthy();
+    });
+    expectAriaErrorWiring("spell-level-input", "error-level-range");
+    invalidLevelSpell.unmount();
+
+    const missingSchoolSpell = await renderEditSpell(baseLoadedSpell({ school: "" }));
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+    await waitFor(() => {
+      expect(screen.getByTestId("error-school-required-arcane-tradition")).toBeTruthy();
+    });
+    expectAriaErrorWiring("spell-school-input", "error-school-required-arcane-tradition");
+    missingSchoolSpell.unmount();
+
+    const newSpell = renderNewSpell();
+    fireEvent.change(screen.getByTestId("spell-tradition-select"), { target: { value: "DIVINE" } });
+    await waitFor(() => {
+      expect(screen.getByTestId("error-sphere-required-divine-tradition")).toBeTruthy();
+    });
+    expectAriaErrorWiring("spell-sphere-input", "error-sphere-required-divine-tradition");
+    newSpell.unmount();
+
+    await renderEditSpell(
+      baseLoadedSpell({
+        level: 10,
+        school: "Evocation",
+        sphere: null,
+        classList: "Cleric",
+      }),
+    );
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+    await waitFor(() => {
+      expect(screen.getByTestId("error-epic-arcane-class-restriction")).toBeTruthy();
+    });
+    expectAriaErrorWiring("spell-classes-input", "error-epic-arcane-class-restriction");
+  });
+
+  it("concatenates multiple spell-level error ids into aria-describedby", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        level: 13,
+        school: "Evocation",
+        sphere: "Fire",
+        isQuestSpell: 1,
+        isCantrip: 1,
+        classList: "Mage",
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("error-level-range")).toBeTruthy();
+      expect(screen.getByTestId("error-epic-quest-conflict")).toBeTruthy();
+      expect(screen.getByTestId("error-cantrip-level")).toBeTruthy();
+    });
+
+    const level = screen.getByTestId("spell-level-input");
+    expect(level.getAttribute("aria-invalid")).toBe("true");
+    expect(level.getAttribute("aria-describedby")?.split(/\s+/)).toEqual([
+      "error-level-range",
+      "error-epic-quest-conflict",
+      "error-cantrip-level",
+    ]);
+    expect(screen.getByTestId("error-level-range").id).toBe("error-level-range");
+    expect(screen.getByTestId("error-epic-quest-conflict").id).toBe("error-epic-quest-conflict");
+    expect(screen.getByTestId("error-cantrip-level").id).toBe("error-cantrip-level");
+  });
+
+  it("reveals and focuses the hidden school field for an invalid epic Divine spell", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        level: 10,
+        school: "",
+        sphere: "Healing",
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    const school = await screen.findByTestId("spell-school-input");
+    await waitFor(() => {
+      expect(school.getAttribute("aria-invalid")).toBe("true");
+      expect(document.activeElement).toBe(school);
+    });
+  });
+
+  it("reveals and focuses the hidden sphere field for an invalid Arcane quest spell", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        level: 8,
+        school: "Evocation",
+        sphere: "",
+        isQuestSpell: 1,
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    const sphere = await screen.findByTestId("spell-sphere-input");
+    await waitFor(() => {
+      expect(sphere.getAttribute("aria-invalid")).toBe("true");
+      expect(document.activeElement).toBe(sphere);
+    });
+  });
+
   it("omits aria-invalid when a top-level field currently has no error", () => {
     renderNewSpell();
     const name = screen.getByTestId("spell-name-input");
@@ -528,6 +675,76 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const tradition = screen.getByTestId("spell-tradition-select");
     expect(tradition.getAttribute("aria-invalid")).toBe("true");
     expect(tradition.getAttribute("aria-describedby")).toBe("error-tradition-conflict");
+  });
+
+  it("applies the danger focus-visible ring to every invalid top-level field driven by field validation", async () => {
+    const invalidArcaneSpell = await renderEditSpell(
+      baseLoadedSpell({
+        name: "",
+        description: "",
+        level: 13,
+        school: "",
+        sphere: null,
+      }),
+    );
+
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("spell-name-error")).toBeTruthy();
+      expect(screen.getByTestId("error-description-required")).toBeTruthy();
+      expect(screen.getByTestId("error-level-range")).toBeTruthy();
+      expect(screen.getByTestId("error-school-required-arcane")).toBeTruthy();
+    });
+
+    [
+      "spell-name-input",
+      "spell-description-textarea",
+      "spell-level-input",
+      "spell-school-input",
+    ].forEach(expectDangerFocusRing);
+
+    invalidArcaneSpell.unmount();
+
+    const newSpell = renderNewSpell();
+
+    fireEvent.change(screen.getByTestId("spell-tradition-select"), { target: { value: "DIVINE" } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("error-sphere-required-divine-tradition")).toBeTruthy();
+    });
+    expectDangerFocusRing("spell-sphere-input");
+
+    newSpell.unmount();
+
+    const epicSpell = await renderEditSpell(
+      baseLoadedSpell({
+        level: 10,
+        school: "Evocation",
+        sphere: null,
+        classList: "Cleric",
+      }),
+    );
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("error-epic-arcane-class-restriction")).toBeTruthy();
+    });
+    expectDangerFocusRing("spell-classes-input");
+
+    epicSpell.unmount();
+
+    await renderEditSpell(
+      baseLoadedSpell({
+        school: "Evocation",
+        sphere: "Fire",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("error-tradition-conflict")).toBeTruthy();
+    });
+    expectDangerFocusRing("spell-tradition-select");
   });
 
   it("applies the standard focus-visible ring to every interactive SpellEditor control", async () => {
@@ -598,6 +815,12 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     fireEvent.change(screen.getByTestId("spell-tradition-select"), { target: { value: "DIVINE" } });
     await waitFor(() => {
       expect(screen.getByTestId("spell-sphere-input")).toBeTruthy();
+    });
+    fireEvent.change(screen.getByTestId("spell-sphere-input"), {
+      target: { value: "Healing" },
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("error-sphere-required-divine-tradition")).toBeNull();
     });
     expectStandardFocusRing("spell-sphere-input");
 

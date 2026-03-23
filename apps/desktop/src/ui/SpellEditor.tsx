@@ -80,11 +80,17 @@ const spellInputBorderOk = "border-neutral-300 dark:border-neutral-700";
 const spellInputBorderInvalid = "border-red-400 dark:border-red-600";
 const spellFocusVisibleRing =
   "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
+const spellInvalidFocusVisibleRing =
+  "focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 const spellLabelClass = "block text-sm text-neutral-600 dark:text-neutral-400";
 const spellErrorText = "text-xs text-red-700 dark:text-red-400 mt-1";
 const spellSaveHintClass = "text-right text-xs text-red-700 dark:text-red-400";
 const spellConflictBannerClass =
   "mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100";
+
+function getSpellFocusVisibleRing(isInvalid: boolean): string {
+  return isInvalid ? spellInvalidFocusVisibleRing : spellFocusVisibleRing;
+}
 
 function applyPlaywrightRangeDistanceCorruption(spec: RangeSpec): RangeSpec {
   if (typeof window === "undefined" || !window.__IS_PLAYWRIGHT__) return spec;
@@ -1806,6 +1812,10 @@ export default function SpellEditor() {
   const isLevelInvalid = hasFieldError("error-level-range");
   const isArcaneMissingSchool = hasFieldError("error-school-required-arcane-tradition");
   const isDivineMissingSphere = hasFieldError("error-sphere-required-divine-tradition");
+  const isFieldInvalid = (field: SpellEditorValidatedFieldKey) =>
+    visibleFieldErrors.some((e) => e.field === field);
+  const showSchoolField = tradition === "ARCANE" || isFieldInvalid("spell-school");
+  const showSphereField = tradition === "DIVINE" || isFieldInvalid("spell-sphere");
 
   const describedByByField = useMemo(() => {
     const m = new Map<SpellEditorValidatedFieldKey, string>();
@@ -1817,7 +1827,7 @@ export default function SpellEditor() {
   }, [visibleFieldErrors]);
 
   const ariaInvalidForField = (field: SpellEditorValidatedFieldKey) =>
-    visibleFieldErrors.some((e) => e.field === field) ? ("true" as const) : undefined;
+    isFieldInvalid(field) ? ("true" as const) : undefined;
 
   const detailFieldForFocusTarget = useCallback(
     (focusTarget: string): DetailFieldKey | null => {
@@ -2262,7 +2272,7 @@ export default function SpellEditor() {
             <input
               id="spell-name"
               data-testid="spell-name-input"
-              className={`w-full border p-2 ${spellInputSurface} ${spellFocusVisibleRing} ${
+              className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-name"))} ${
                 isNameInvalid ? spellInputBorderInvalid : spellInputBorderOk
               }`}
               placeholder="Spell Name"
@@ -2296,10 +2306,8 @@ export default function SpellEditor() {
             <input
               id="spell-level"
               data-testid="spell-level-input"
-              className={`w-full border p-2 ${spellInputSurface} ${spellFocusVisibleRing} ${
-                isLevelInvalid ||
-                hasFieldError("error-epic-quest-conflict") ||
-                hasFieldError("error-cantrip-level")
+              className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-level"))} ${
+                isFieldInvalid("spell-level")
                   ? spellInputBorderInvalid
                   : spellInputBorderOk
               }`}
@@ -2436,8 +2444,8 @@ export default function SpellEditor() {
                 }
                 revealFieldValidation("spell-tradition", "spell-school", "spell-sphere");
               }}
-              className={`w-full border p-2 ${spellInputSurface} ${spellFocusVisibleRing} ${
-                hasFieldError("error-tradition-conflict")
+              className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-tradition"))} ${
+                isFieldInvalid("spell-tradition")
                   ? "border-amber-400 dark:border-amber-600"
                   : spellInputBorderOk
               }`}
@@ -2459,7 +2467,7 @@ export default function SpellEditor() {
               </div>
             )}
           </div>
-          {tradition === "ARCANE" && (
+          {showSchoolField && (
             <div
               key="spell-school-field"
               data-testid="spell-school-field"
@@ -2471,10 +2479,8 @@ export default function SpellEditor() {
               <input
                 id="spell-school"
                 data-testid="spell-school-input"
-                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${spellFocusVisibleRing} ${
-                  hasFieldError("error-school-required-arcane") ||
-                  hasFieldError("error-epic-level-arcane-only") ||
-                  isArcaneMissingSchool
+                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-school"))} ${
+                  isFieldInvalid("spell-school")
                     ? spellInputBorderInvalid
                     : spellInputBorderOk
                 }`}
@@ -2508,7 +2514,7 @@ export default function SpellEditor() {
               )}
             </div>
           )}
-          {tradition === "DIVINE" && (
+          {showSphereField && (
             <div
               key="spell-sphere-field"
               data-testid="spell-sphere-field"
@@ -2520,10 +2526,8 @@ export default function SpellEditor() {
               <input
                 id="spell-sphere"
                 data-testid="spell-sphere-input"
-                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${spellFocusVisibleRing} ${
-                  hasFieldError("error-sphere-required-divine") ||
-                  hasFieldError("error-quest-spell-divine-only") ||
-                  isDivineMissingSphere
+                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-sphere"))} ${
+                  isFieldInvalid("spell-sphere")
                     ? spellInputBorderInvalid
                     : spellInputBorderOk
                 }`}
@@ -2564,8 +2568,8 @@ export default function SpellEditor() {
             <input
               id="spell-classes"
               data-testid="spell-classes-input"
-              className={`w-full border p-2 ${spellInputSurface} ${spellFocusVisibleRing} ${
-                hasFieldError("error-epic-arcane-class-restriction")
+              className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-classes"))} ${
+                isFieldInvalid("spell-classes")
                   ? spellInputBorderInvalid
                   : spellInputBorderOk
               }`}
@@ -2945,7 +2949,7 @@ export default function SpellEditor() {
           <textarea
             id="spell-description"
             data-testid="spell-description-textarea"
-            className={`min-h-[200px] w-full flex-1 border p-2 font-mono ${spellInputSurface} ${spellFocusVisibleRing} ${
+            className={`min-h-[200px] w-full flex-1 border p-2 font-mono ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-description"))} ${
               isDescriptionInvalid ? spellInputBorderInvalid : spellInputBorderOk
             }`}
             value={form.description}

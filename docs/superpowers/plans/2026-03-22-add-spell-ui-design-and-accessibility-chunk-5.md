@@ -917,6 +917,7 @@ Rules:
 - Modify: `apps/desktop/src/ui/SpellEditor.tsx`
 - Modify: `apps/desktop/src/ui/Library.tsx`
 - Modify: `apps/desktop/src/ui/SettingsPage.tsx`
+- Modify (same delivery, accessible-name / `aria-describedby` hardening): `apps/desktop/src/ui/SpellEditor.test.tsx`, `apps/desktop/src/ui/components/structured/ScalarInput.tsx`, `StructuredFieldInput.tsx`, `StructuredFieldInput.test.tsx`, `DamageForm.tsx`, `AreaForm.tsx`
 
 ### Background
 
@@ -930,7 +931,7 @@ Existing correct pattern (from Chunk 2): invalid fields have `aria-invalid="true
 
 Existing incorrect pattern to fix: inputs that have BOTH a visible `<label>` AND a redundant `aria-label` with the same text — remove the `aria-label` in those cases.
 
-- [ ] **Step 5.1: Audit SpellEditor.tsx for label/aria associations**
+- [x] **Step 5.1: Audit SpellEditor.tsx for label/aria associations**
 
   Read `apps/desktop/src/ui/SpellEditor.tsx`.
 
@@ -944,28 +945,36 @@ Existing incorrect pattern to fix: inputs that have BOTH a visible `<label>` AND
   3. Is there help text below the field (e.g., a hint about format)? → Add `aria-describedby` referencing the help text element's `id` (in addition to any error `aria-describedby`; use space-separated ids: `aria-describedby="help-field-name error-field-name"`).
   4. Placeholder text alone is NOT a substitute for a label — it disappears when the user types.
 
-- [ ] **Step 5.2: Audit Library.tsx for label/aria associations**
+- [x] **Step 5.2: Audit Library.tsx for label/aria associations**
 
   Apply the same rules. The Library filter inputs (schools, min/max level, source, class, component, tag) already have `aria-label` per the existing code — verify these are necessary (i.e., no visible label exists for those filter controls).
 
-- [ ] **Step 5.3: Audit SettingsPage.tsx for label/aria associations**
+- [x] **Step 5.3: Audit SettingsPage.tsx for label/aria associations**
 
   The settings theme select and follow-system checkbox should have visible `<label>` elements per the spec (design.md Decision 9). Verify they have proper `htmlFor`/`id` pairings.
 
-- [ ] **Step 5.4: Run unit tests to ensure no regressions**
+- [x] **Step 5.4: Run unit tests to ensure no regressions**
 
   Run: `cd apps/desktop && npx vitest run`
 
   Expected: All tests PASS.
 
-- [ ] **Step 5.5: Commit**
+- [x] **Step 5.5: Commit**
 
   ```bash
   git add apps/desktop/src/ui/SpellEditor.tsx \
           apps/desktop/src/ui/Library.tsx \
-          apps/desktop/src/ui/SettingsPage.tsx
+          apps/desktop/src/ui/SettingsPage.tsx \
+          apps/desktop/src/ui/SpellEditor.test.tsx \
+          apps/desktop/src/ui/components/structured/ScalarInput.tsx \
+          apps/desktop/src/ui/components/structured/StructuredFieldInput.tsx \
+          apps/desktop/src/ui/components/structured/StructuredFieldInput.test.tsx \
+          apps/desktop/src/ui/components/structured/DamageForm.tsx \
+          apps/desktop/src/ui/components/structured/AreaForm.tsx
   git commit -m "feat(chunk-5): fix label associations and aria-describedby on touched pages"
   ```
+
+  **Done:** Commit `917544d` on branch `add-spell-ui-design-and-accessibility`.
 
 ---
 

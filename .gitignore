@@ -46,3 +46,8 @@ storybook-static
 
 # Local Claude Settings
 .claude/settings.local.json
+
+# Windows Stuff
+ehthumbs.db
+Thumbs.db
+desktop.ini

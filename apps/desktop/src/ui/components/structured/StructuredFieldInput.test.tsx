@@ -40,12 +40,18 @@ function getPreviewRow() {
   return screen.getByTestId("structured-field-preview-row");
 }
 
+const PREVIEW_ARIA_LABEL: Record<string, string> = {
+  "range-text-preview": "Computed range text",
+  "duration-text-preview": "Computed duration text",
+  "casting-time-text-preview": "Computed casting time text",
+};
+
 function expectPreviewRow(previewTestId: string, expectedText: string) {
   const preview = screen.getByTestId(previewTestId);
   expect(preview.tagName).toBe("OUTPUT");
   expect(preview.textContent).toBe(expectedText);
   expect(preview.getAttribute("aria-live")).toBeNull();
-  expect(preview.getAttribute("aria-label")).toBeNull();
+  expect(preview.getAttribute("aria-label")).toBe(PREVIEW_ARIA_LABEL[previewTestId] ?? null);
   return preview;
 }
 

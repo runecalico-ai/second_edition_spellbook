@@ -351,26 +351,42 @@ export default function Library() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <input
-          className={`flex-1 ${filterControlClassName}`}
-          placeholder="Search spells…"
-          data-testid="library-search-input"
-          aria-label="Search spells"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && search()}
-        />
-        <select
-          className={filterControlClassName}
-          data-testid="library-mode-select"
-          aria-label="Search mode"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as "keyword" | "semantic")}
-        >
-          <option value="keyword">Keyword</option>
-          <option value="semantic">Semantic</option>
-        </select>
+      <div className="flex flex-wrap gap-2 items-end">
+        <div className="flex min-w-[140px] flex-1 flex-col gap-1">
+          <label
+            htmlFor="library-search-input"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Search
+          </label>
+          <input
+            id="library-search-input"
+            className={filterControlClassName}
+            placeholder="Keywords or spell name…"
+            data-testid="library-search-input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && search()}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-mode-select"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Mode
+          </label>
+          <select
+            id="library-mode-select"
+            className={filterControlClassName}
+            data-testid="library-mode-select"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as "keyword" | "semantic")}
+          >
+            <option value="keyword">Keyword</option>
+            <option value="semantic">Semantic</option>
+          </select>
+        </div>
         <button
           className={`px-3 py-2 ${secondaryActionClassName}`}
           data-testid="library-search-button"
@@ -392,10 +408,15 @@ export default function Library() {
 
       <div className="flex flex-wrap gap-2 text-sm">
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-neutral-600 dark:text-neutral-400">Schools</span>
+          <label
+            htmlFor="library-filter-schools"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Schools
+          </label>
           <select
+            id="library-filter-schools"
             multiple
-            aria-label="Schools filter"
             data-testid="filter-school-select"
             className={`min-w-[160px] ${compactFilterControlClassName}`}
             value={schoolFilters}
@@ -411,12 +432,16 @@ export default function Library() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+          <span
+            id="library-level-range-label"
+            className="text-xs font-medium text-neutral-600 dark:text-neutral-400"
+          >
             Level range: {levelMin || 0} - {levelMax || 12}
           </span>
           <div className="pt-2 px-1">
             <Slider.Root
               className="relative flex items-center select-none touch-none w-32 h-5"
+              aria-labelledby="library-level-range-label"
               data-testid="filter-level-slider"
               value={[
                 levelMin ? Number.parseInt(levelMin) : 0,
@@ -445,62 +470,94 @@ export default function Library() {
             </Slider.Root>
           </div>
         </div>
-        <select
-          aria-label="Source filter"
-          data-testid="filter-source-select"
-          className={compactFilterControlClassName}
-          value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
-        >
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-filter-source"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Source
+          </label>
+          <select
+            id="library-filter-source"
+            data-testid="filter-source-select"
+            className={compactFilterControlClassName}
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+          >
           <option value="">All sources</option>
           {facets.sources.map((source) => (
             <option key={source} value={source}>
               {source}
             </option>
           ))}
-        </select>
-        <select
-          aria-label="Class filter"
-          data-testid="filter-class-select"
-          className={compactFilterControlClassName}
-          value={classListFilter}
-          onChange={(e) => setClassListFilter(e.target.value)}
-        >
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-filter-class"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Class
+          </label>
+          <select
+            id="library-filter-class"
+            data-testid="filter-class-select"
+            className={compactFilterControlClassName}
+            value={classListFilter}
+            onChange={(e) => setClassListFilter(e.target.value)}
+          >
           <option value="">All classes</option>
           {facets.classList.map((className) => (
             <option key={className} value={className}>
               {className}
             </option>
           ))}
-        </select>
-        <select
-          aria-label="Component filter"
-          data-testid="filter-component-select"
-          className={compactFilterControlClassName}
-          value={componentFilter}
-          onChange={(e) => setComponentFilter(e.target.value)}
-        >
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-filter-component"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Component filter
+          </label>
+          <select
+            id="library-filter-component"
+            data-testid="filter-component-select"
+            className={compactFilterControlClassName}
+            value={componentFilter}
+            onChange={(e) => setComponentFilter(e.target.value)}
+          >
           <option value="">All components</option>
           {facets.components.map((component) => (
             <option key={component} value={component}>
               {component}
             </option>
           ))}
-        </select>
-        <select
-          aria-label="Tag filter"
-          data-testid="filter-tag-select"
-          className={compactFilterControlClassName}
-          value={tagFilter}
-          onChange={(e) => setTagFilter(e.target.value)}
-        >
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-filter-tag"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Tags
+          </label>
+          <select
+            id="library-filter-tag"
+            data-testid="filter-tag-select"
+            className={compactFilterControlClassName}
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+          >
           <option value="">All tags</option>
           {facets.tags.map((tag) => (
             <option key={tag} value={tag}>
               {tag}
             </option>
           ))}
-        </select>
+          </select>
+        </div>
         <label className={`flex items-center gap-1.5 ${filterChipClassName}`}>
           <input
             type="checkbox"
@@ -526,50 +583,66 @@ export default function Library() {
 
         <div className="flex items-center gap-2">
           {savedSearches.length > 0 && (
-            <select
-              className={`text-xs ${compactFilterControlClassName}`}
-              data-testid="saved-searches-select"
-              aria-label="Saved searches"
-              onChange={(e) => {
-                const raw = e.target.value;
-                if (!raw) {
-                  setSelectedSavedSearchId(null);
-                  return;
-                }
-                const id = Number.parseInt(raw, 10);
-                const saved = savedSearches.find((s) => s.id === id);
-                if (saved) loadSearch(saved);
-                setSelectedSavedSearchId(id);
-              }}
-              value={selectedSavedSearchId !== null ? String(selectedSavedSearchId) : ""}
-            >
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="library-saved-searches-select"
+                className="text-xs text-neutral-600 dark:text-neutral-400"
+              >
+                Saved searches
+              </label>
+              <select
+                id="library-saved-searches-select"
+                className={`text-xs ${compactFilterControlClassName}`}
+                data-testid="saved-searches-select"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (!raw) {
+                    setSelectedSavedSearchId(null);
+                    return;
+                  }
+                  const id = Number.parseInt(raw, 10);
+                  const saved = savedSearches.find((s) => s.id === id);
+                  if (saved) loadSearch(saved);
+                  setSelectedSavedSearchId(id);
+                }}
+                value={selectedSavedSearchId !== null ? String(selectedSavedSearchId) : ""}
+              >
               <option value="">Saved Searches</option>
               {savedSearches.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
               ))}
-            </select>
+              </select>
+            </div>
           )}
 
           {isSaving ? (
             <div
-              className="flex gap-1 animate-in slide-in-from-right-1 duration-200"
+              className="flex items-end gap-1 animate-in slide-in-from-right-1 duration-200"
               data-testid="save-search-container"
             >
-              <input
-                ref={saveInputRef}
-                className={`${focusVisibleRingClassName} w-32 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
-                placeholder="Name..."
-                data-testid="save-search-name-input"
-                aria-label="Search name"
-                value={newSearchName}
-                onChange={(e) => setNewSearchName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveSearch();
-                  if (e.key === "Escape") setIsSaving(false);
-                }}
-              />
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="save-search-name-input"
+                  className="text-xs text-neutral-600 dark:text-neutral-400"
+                >
+                  Save as
+                </label>
+                <input
+                  ref={saveInputRef}
+                  id="save-search-name-input"
+                  className={`${focusVisibleRingClassName} w-32 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
+                  placeholder="Name…"
+                  data-testid="save-search-name-input"
+                  value={newSearchName}
+                  onChange={(e) => setNewSearchName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveSearch();
+                    if (e.key === "Escape") setIsSaving(false);
+                  }}
+                />
+              </div>
               <button
                 type="button"
                 className={`${focusVisibleRingClassName} px-2 py-1 bg-blue-700 text-white rounded text-xs`}
@@ -602,8 +675,9 @@ export default function Library() {
           {savedSearches.length > 0 && (
             <button
               type="button"
-              className={`${focusVisibleRingClassName} ml-1 text-xs text-neutral-600 hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400`}
+              className={`${focusVisibleRingClassName} ml-1 text-xs text-neutral-600 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:text-red-400`}
               data-testid="btn-delete-saved-search"
+              disabled={selectedSavedSearchId === null}
               onClick={() => {
                 if (selectedSavedSearchId !== null) handleDeleteSavedSearch(selectedSavedSearchId);
               }}
@@ -620,16 +694,29 @@ export default function Library() {
           className="w-full text-sm text-left border-collapse"
           data-testid="spell-library-table"
         >
+          <caption className="sr-only">Spell library results</caption>
           <thead className="sticky top-0 bg-neutral-100 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
             <tr>
-              <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">Name</th>
-              <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">School</th>
-              <th className="w-16 border-b border-neutral-300 p-2 text-center dark:border-neutral-800">
+              <th scope="col" className="border-b border-neutral-300 p-2 dark:border-neutral-800">
+                Name
+              </th>
+              <th scope="col" className="border-b border-neutral-300 p-2 dark:border-neutral-800">
+                School
+              </th>
+              <th
+                scope="col"
+                className="w-16 border-b border-neutral-300 p-2 text-center dark:border-neutral-800"
+              >
                 Level
               </th>
-              <th className="border-b border-neutral-300 p-2 dark:border-neutral-800">Classes</th>
-              <th className="border-b border-neutral-300 p-2 text-center dark:border-neutral-800">
-                Comp
+              <th scope="col" className="border-b border-neutral-300 p-2 dark:border-neutral-800">
+                Classes
+              </th>
+              <th
+                scope="col"
+                className="border-b border-neutral-300 p-2 text-center dark:border-neutral-800"
+              >
+                Components
               </th>
             </tr>
           </thead>

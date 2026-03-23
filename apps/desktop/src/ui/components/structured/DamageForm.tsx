@@ -285,7 +285,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
             <div className="flex flex-wrap items-center gap-2">
               <select
                 data-testid="damage-form-part-type"
-                aria-label="Damage type"
+                aria-label={`Damage part ${idx + 1} type`}
                 value={part.damageType}
                 onChange={(e) => updatePart(idx, { damageType: e.target.value as DamageType })}
                 className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
@@ -301,7 +301,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               <input
                 type="text"
                 data-testid="damage-form-part-formula"
-                aria-label="Dice formula"
+                aria-label={`Damage part ${idx + 1} dice formula`}
                 placeholder="e.g. 2d6+3"
                 value={formatDicePool(part.base)}
                 onChange={(e) => {
@@ -322,7 +322,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   type="text"
                   inputMode="decimal"
                   data-testid="damage-form-part-per-die-modifier"
-                  aria-label="Per die modifier"
+                  aria-label={`Damage part ${idx + 1} per die modifier`}
                   placeholder="+0"
                   className="w-12 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-1 text-sm text-neutral-100 font-mono"
                   value={part.base.terms?.[0]?.perDieModifier ?? ""}
@@ -339,7 +339,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               <input
                 type="text"
                 data-testid="damage-form-part-label"
-                aria-label="Label"
+                aria-label={`Damage part ${idx + 1} label`}
                 placeholder="Label (optional)"
                 value={part.label ?? ""}
                 onChange={(e) => updatePart(idx, { label: e.target.value || undefined })}
@@ -347,7 +347,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               />
               <select
                 data-testid="damage-form-part-mr-interaction"
-                aria-label="MR interaction"
+                aria-label={`Damage part ${idx + 1} magic resistance interaction`}
                 value={part.mrInteraction ?? "normal"}
                 onChange={(e) =>
                   updatePart(idx, { mrInteraction: e.target.value as DamagePart["mrInteraction"] })
@@ -381,7 +381,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   </span>
                   <select
                     data-testid="damage-form-part-application-scope"
-                    aria-label="Application scope"
+                    aria-label={`Damage part ${idx + 1} application scope`}
                     value={part.application?.scope ?? "per_target"}
                     onChange={(e) =>
                       updatePart(idx, {
@@ -406,7 +406,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   <input
                     type="number"
                     data-testid="damage-form-part-application-ticks"
-                    aria-label="Ticks"
+                    aria-label={`Damage part ${idx + 1} application ticks`}
                     placeholder="Ticks"
                     value={part.application?.ticks ?? ""}
                     onChange={(e) => {
@@ -423,7 +423,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   <input
                     type="text"
                     data-testid="damage-form-part-application-tick-driver"
-                    aria-label="Tick driver"
+                    aria-label={`Damage part ${idx + 1} tick driver`}
                     placeholder="Tick driver (e.g. round)"
                     value={part.application?.tickDriver ?? ""}
                     onChange={(e) =>
@@ -447,7 +447,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   </span>
                   <select
                     data-testid="damage-form-part-save-kind"
-                    aria-label="Save kind"
+                    aria-label={`Damage part ${idx + 1} save kind`}
                     value={part.save?.kind ?? "none"}
                     onChange={(e) =>
                       updatePart(idx, {
@@ -475,7 +475,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   <input
                     type="number"
                     data-testid="damage-form-part-clamp-min"
-                    aria-label="Min damage"
+                    aria-label={`Damage part ${idx + 1} minimum damage clamp`}
                     placeholder="Min"
                     value={part.clampTotal?.minTotal ?? part.clamp_total?.min_total ?? ""}
                     onChange={(e) => {
@@ -492,7 +492,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   <input
                     type="number"
                     data-testid="damage-form-part-clamp-max"
-                    aria-label="Max damage"
+                    aria-label={`Damage part ${idx + 1} maximum damage clamp`}
                     placeholder="Max"
                     value={part.clampTotal?.maxTotal ?? part.clamp_total?.max_total ?? ""}
                     onChange={(e) => {
@@ -539,7 +539,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 >
                   <select
                     data-testid="damage-form-part-scaling-kind"
-                    aria-label="Scaling kind"
+                    aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} kind`}
                     value={rule.kind}
                     onChange={(e) => {
                       const scaling = [...(part.scaling ?? [])];
@@ -556,7 +556,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   </select>
                   <select
                     data-testid="damage-form-part-scaling-driver"
-                    aria-label="Scaling driver"
+                    aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} driver`}
                     value={rule.driver}
                     onChange={(e) => {
                       const scaling = [...(part.scaling ?? [])];
@@ -576,7 +576,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     <input
                       type="number"
                       data-testid="damage-form-part-scaling-step"
-                      aria-label="Scaling step"
+                      aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} step`}
                       placeholder="Step"
                       className="w-10 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
                       value={rule.step}
@@ -592,7 +592,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     <input
                       type="text"
                       data-testid="damage-form-part-scaling-dice-increment"
-                      aria-label="Dice increment (e.g. 1d6)"
+                      aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} dice increment`}
                       placeholder="e.g. 1d6"
                       className="w-16 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 font-mono"
                       value={
@@ -622,7 +622,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     <input
                       type="number"
                       data-testid="damage-form-part-scaling-flat-increment"
-                      aria-label="Flat increment"
+                      aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} flat increment`}
                       placeholder="+1"
                       className="w-12 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
                       value={rule.flatIncrement ?? rule.flat_increment ?? ""}
@@ -637,7 +637,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   <button
                     type="button"
                     data-testid="damage-form-part-remove-scaling"
-                    aria-label="Remove scaling rule"
+                    aria-label={`Remove damage part ${idx + 1} scaling rule ${sIdx + 1}`}
                     onClick={() => {
                       const scaling = part.scaling?.filter((_, i) => i !== sIdx);
                       updatePart(idx, { scaling });
@@ -652,7 +652,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
 
             <textarea
               data-testid="damage-form-part-notes"
-              aria-label="Part notes"
+              aria-label={`Damage part ${idx + 1} notes`}
               placeholder="Part notes (optional)"
               value={part.notes ?? ""}
               onChange={(e) => updatePart(idx, { notes: e.target.value || undefined })}

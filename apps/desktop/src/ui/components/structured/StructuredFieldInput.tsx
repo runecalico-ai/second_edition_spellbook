@@ -177,6 +177,7 @@ export function StructuredFieldInput({
                   onChange(next);
                 }}
                 data-testid="range-scalar"
+                accessibleNamePrefix="Range "
                 baseValueTestId="range-base-value"
                 perLevelTestId="range-per-level"
                 onFieldBlur={onValidationBlur}
@@ -207,7 +208,7 @@ export function StructuredFieldInput({
               type="text"
               readOnly={!isSpecial}
               data-testid="range-raw-legacy"
-              aria-label="Raw legacy value"
+              aria-label="Range raw legacy value"
               placeholder="Original text"
               value={spec.rawLegacyValue ?? ""}
               onChange={(e) => {
@@ -244,6 +245,7 @@ export function StructuredFieldInput({
           <output
             className={structuredPreviewOutputClass}
             data-testid="range-text-preview"
+            aria-label="Computed range text"
           >
             {rangeTextPreview || "—"}
           </output>
@@ -325,6 +327,7 @@ export function StructuredFieldInput({
                   onChange(next);
                 }}
                 data-testid="duration-scalar"
+                accessibleNamePrefix="Duration time "
                 baseValueTestId="duration-base-value"
                 perLevelTestId="duration-per-level"
                 onFieldBlur={onValidationBlur}
@@ -356,7 +359,7 @@ export function StructuredFieldInput({
             <input
               type="text"
               data-testid="duration-condition"
-              aria-label="Condition"
+              aria-label="Duration condition"
               placeholder="Condition text"
               value={spec.condition ?? ""}
               onChange={(e) => {
@@ -378,6 +381,7 @@ export function StructuredFieldInput({
                   onChange(next);
                 }}
                 data-testid="duration-uses-scalar"
+                accessibleNamePrefix="Duration uses "
                 baseValueTestId="duration-uses-value"
                 perLevelTestId="duration-uses-per-level"
                 onFieldBlur={onValidationBlur}
@@ -391,7 +395,7 @@ export function StructuredFieldInput({
               type="text"
               readOnly={!isSpecial}
               data-testid="duration-raw-legacy"
-              aria-label="Raw legacy value"
+              aria-label="Duration raw legacy value"
               placeholder="Original text"
               value={spec.rawLegacyValue ?? ""}
               onChange={(e) => {
@@ -428,6 +432,7 @@ export function StructuredFieldInput({
           <output
             className={structuredPreviewOutputClass}
             data-testid="duration-text-preview"
+            aria-label="Computed duration text"
           >
             {durationTextPreview || "—"}
           </output>
@@ -464,7 +469,7 @@ export function StructuredFieldInput({
               inputMode="decimal"
               id="casting-time-base-value"
               data-testid="casting-time-base-value"
-              aria-label="Base value"
+              aria-label="Casting time base value"
               aria-invalid={ctBaseErr ? "true" : "false"}
               aria-describedby={ctBaseErr ? ctBaseErr.testId : undefined}
               className={`w-16 rounded px-2 py-1 text-sm ${ctBaseErr ? structuredInputInvalidClass : structuredInputClass}`}
@@ -494,7 +499,7 @@ export function StructuredFieldInput({
               inputMode="decimal"
               id="casting-time-per-level"
               data-testid="casting-time-per-level"
-              aria-label="Per level"
+              aria-label="Casting time per level"
               aria-invalid={ctPerErr ? "true" : "false"}
               aria-describedby={ctPerErr ? ctPerErr.testId : undefined}
               className={`w-14 rounded px-2 py-1 text-sm ${ctPerErr ? structuredInputInvalidClass : structuredInputClass}`}
@@ -523,7 +528,7 @@ export function StructuredFieldInput({
               type="text"
               inputMode="decimal"
               data-testid="casting-time-level-divisor"
-              aria-label="Level divisor"
+              aria-label="Casting time level divisor"
               className={`w-12 rounded px-2 py-1 text-sm ${structuredInputClass}`}
               value={levelDivisor}
               onChange={(e) => {
@@ -538,7 +543,7 @@ export function StructuredFieldInput({
         </div>
         <select
           data-testid="casting-time-unit"
-          aria-label="Casting time unit"
+          aria-label="Casting time unit selector"
           value={ct.unit}
           onChange={(e) => {
             const unit = e.target.value as CastingTimeUnit;
@@ -560,7 +565,7 @@ export function StructuredFieldInput({
             type="text"
             readOnly={ct.unit !== "special"}
             data-testid="casting-time-raw-legacy"
-            aria-label="Raw legacy value"
+            aria-label="Casting time raw legacy value"
             placeholder="Original text"
             value={ct.rawLegacyValue ?? ""}
             onChange={(e) => updateCt({ rawLegacyValue: e.target.value || undefined })}
@@ -575,6 +580,7 @@ export function StructuredFieldInput({
         <output
           className={structuredPreviewOutputClass}
           data-testid="casting-time-text-preview"
+          aria-label="Computed casting time text"
         >
           {castingTimeTextPreview || "—"}
         </output>

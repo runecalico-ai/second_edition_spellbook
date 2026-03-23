@@ -171,20 +171,20 @@ describe("hash display", () => {
     expect(screen.getByTestId("spell-detail-hash-display").hasAttribute("title")).toBe(false);
   });
 
-  it("uses accessible labels for copy and expand controls and expands to the full hash", () => {
-    expect(screen.getByTestId("spell-detail-hash-copy").getAttribute("aria-label")).toBe(
-      "Copy content hash",
-    );
-    expect(screen.getByTestId("spell-detail-hash-expand").getAttribute("aria-label")).toBe(
-      "Expand content hash",
-    );
+  it("uses visible button names for copy and expand controls and expands to the full hash", () => {
+    const expandButton = screen.getByTestId("spell-detail-hash-expand");
+    expect(screen.getByTestId("spell-detail-hash-copy").getAttribute("aria-label")).toBeNull();
+    expect(expandButton.getAttribute("aria-label")).toBeNull();
+    expect(expandButton.getAttribute("aria-expanded")).toBe("false");
+    expect(expandButton.getAttribute("aria-controls")).toBe("spell-detail-hash-value");
+    expect(screen.getByRole("button", { name: "Copy" })).toBe(screen.getByTestId("spell-detail-hash-copy"));
+    expect(screen.getByRole("button", { name: "Expand" })).toBe(expandButton);
 
-    fireEvent.click(screen.getByTestId("spell-detail-hash-expand"));
+    fireEvent.click(expandButton);
 
     expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(HASH_FIXTURE);
-    expect(screen.getByTestId("spell-detail-hash-expand").getAttribute("aria-label")).toBe(
-      "Collapse content hash",
-    );
+    expect(expandButton.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Collapse" })).toBe(expandButton);
   });
 
   it("copies the full hash and shows the success toast", async () => {
@@ -536,7 +536,10 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("error-level-range")).toBeTruthy();
     });
-    expectAriaErrorWiring("spell-level-input", "error-level-range");
+    const levelInput = screen.getByTestId("spell-level-input");
+    expect(levelInput.getAttribute("aria-invalid")).toBe("true");
+    expect(levelInput.getAttribute("aria-describedby")).toBe("error-level-range spell-level-display");
+    expect(screen.getByTestId("error-level-range").id).toBe("error-level-range");
     invalidLevelSpell.unmount();
 
     const missingSchoolSpell = await renderEditSpell(baseLoadedSpell({ school: "" }));
@@ -596,6 +599,7 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
       "error-level-range",
       "error-epic-quest-conflict",
       "error-cantrip-level",
+      "spell-level-display",
     ]);
     expect(screen.getByTestId("error-level-range").id).toBe("error-level-range");
     expect(screen.getByTestId("error-epic-quest-conflict").id).toBe("error-epic-quest-conflict");

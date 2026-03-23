@@ -48,7 +48,10 @@ export function SettingsPage() {
           <h2 id="settings-appearance-heading" className="text-lg font-semibold">
             Appearance
           </h2>
-          <p className="text-sm text-stone-600 dark:text-neutral-300">
+          <p
+            id="settings-appearance-hint"
+            className="text-sm text-stone-600 dark:text-neutral-300"
+          >
             Choose a theme or follow your operating system preference.
           </p>
         </div>
@@ -61,6 +64,7 @@ export function SettingsPage() {
             <select
               id="settings-theme-select"
               data-testid="settings-theme-select"
+              aria-describedby="settings-appearance-hint"
               className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-900"
               value={getSelectableThemeValue(mode, resolvedTheme)}
               disabled={isFollowingSystem}
@@ -79,6 +83,7 @@ export function SettingsPage() {
               id="settings-follow-system-checkbox"
               type="checkbox"
               data-testid="settings-follow-system-checkbox"
+              aria-describedby="settings-appearance-hint"
               checked={isFollowingSystem}
               onChange={handleSystemToggle}
               className="h-4 w-4 rounded border-stone-300 bg-white text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-900"

@@ -1810,10 +1810,13 @@ export default function SpellEditor() {
   const isNameInvalid = hasFieldError("spell-name-error");
   const isDescriptionInvalid = hasFieldError("error-description-required");
   const isLevelInvalid = hasFieldError("error-level-range");
+  const hasLevelColumnSchoolSphereMessages =
+    hasFieldError("error-epic-level-arcane-only") || hasFieldError("error-quest-spell-divine-only");
   const isArcaneMissingSchool = hasFieldError("error-school-required-arcane-tradition");
   const isDivineMissingSphere = hasFieldError("error-sphere-required-divine-tradition");
   const isFieldInvalid = (field: SpellEditorValidatedFieldKey) =>
     visibleFieldErrors.some((e) => e.field === field);
+  const isLevelControlInvalid = isFieldInvalid("spell-level") || hasLevelColumnSchoolSphereMessages;
   const showSchoolField = tradition === "ARCANE" || isFieldInvalid("spell-school");
   const showSphereField = tradition === "DIVINE" || isFieldInvalid("spell-sphere");
 
@@ -1823,6 +1826,17 @@ export default function SpellEditor() {
       const prev = m.get(e.field);
       m.set(e.field, prev ? `${prev} ${e.testId}` : e.testId);
     }
+    const levelParts: string[] = [];
+    const levelBase = m.get("spell-level");
+    if (levelBase) levelParts.push(...levelBase.split(" "));
+    if (visibleFieldErrors.some((e) => e.testId === "error-epic-level-arcane-only")) {
+      levelParts.push("error-epic-level-arcane-only");
+    }
+    if (visibleFieldErrors.some((e) => e.testId === "error-quest-spell-divine-only")) {
+      levelParts.push("error-quest-spell-divine-only");
+    }
+    levelParts.push("spell-level-display");
+    m.set("spell-level", levelParts.join(" "));
     return m;
   }, [visibleFieldErrors]);
 
@@ -2124,21 +2138,23 @@ export default function SpellEditor() {
           <div className="space-x-2">
             {!isNew && (
               <>
-                  <select
-                    value={pageSize}
-                    data-testid="print-page-size-select"
-                    aria-label="Print page size"
-                    disabled={savePending}
-                    onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
-                    className={`bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700 ${spellFocusVisibleRing}`}
-                  >
+                <label htmlFor="print-page-size-select" className="sr-only">
+                  Print page size
+                </label>
+                <select
+                  id="print-page-size-select"
+                  value={pageSize}
+                  data-testid="print-page-size-select"
+                  disabled={savePending}
+                  onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
+                  className={`bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700 ${spellFocusVisibleRing}`}
+                >
                   <option value="letter">Letter</option>
                   <option value="a4">A4</option>
                 </select>
                 <button
                   type="button"
                   data-testid="btn-print-compact"
-                  aria-label="Print compact version"
                   disabled={savePending}
                   onClick={() => printSpell("compact")}
                   className={`px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
@@ -2148,7 +2164,6 @@ export default function SpellEditor() {
                 <button
                   type="button"
                   data-testid="btn-print-stat-block"
-                  aria-label="Print stat-block version"
                   disabled={savePending}
                   onClick={() => printSpell("stat-block")}
                   className={`px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
@@ -2196,6 +2211,9 @@ export default function SpellEditor() {
               onClick={save}
               disabled={parsersPending || savePending || (hasAttemptedSubmit && isInvalid)}
               aria-busy={savePending ? true : undefined}
+              aria-describedby={
+                hasAttemptedSubmit && isInvalid ? "spell-save-validation-hint" : undefined
+              }
               className={`rounded bg-blue-600 px-3 py-2 font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300 disabled:text-blue-950 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellFocusVisibleRing}`}
             >
               {saveShowsDelayedLabel ? "Saving…" : "Save Spell"}
@@ -2203,7 +2221,9 @@ export default function SpellEditor() {
           </div>
           {hasAttemptedSubmit && isInvalid && (
             <div className={`animate-in fade-in duration-200 ${spellSaveHintClass}`}>
-              <p data-testid="spell-save-validation-hint">Fix the errors above to save</p>
+              <p id="spell-save-validation-hint" data-testid="spell-save-validation-hint">
+                Fix the errors above to save
+              </p>
             </div>
           )}
         </div>
@@ -2224,6 +2244,7 @@ export default function SpellEditor() {
               Content hash:
             </span>
             <code
+              id="spell-detail-hash-value"
               className="px-2 py-0.5 rounded border bg-white border-neutral-300 text-neutral-700 font-mono text-xs dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300"
               data-testid="spell-detail-hash-display"
             >
@@ -2231,7 +2252,6 @@ export default function SpellEditor() {
             </code>
             <button
               type="button"
-              aria-label="Copy content hash"
               data-testid="spell-detail-hash-copy"
               disabled={savePending}
               onClick={async () => {
@@ -2248,9 +2268,10 @@ export default function SpellEditor() {
             </button>
             <button
               type="button"
-              aria-label={hashExpanded ? "Collapse content hash" : "Expand content hash"}
               data-testid="spell-detail-hash-expand"
               disabled={savePending}
+              aria-expanded={hashExpanded}
+              aria-controls="spell-detail-hash-value"
               onClick={() => setHashExpanded((e) => !e)}
               className={`px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${spellFocusVisibleRing}`}
             >
@@ -2264,6 +2285,7 @@ export default function SpellEditor() {
         disabled={parsersPending || savePending}
         className="m-0 min-h-0 min-w-0 w-full border-0 p-0"
       >
+        <legend className="sr-only">{isNew ? "New spell" : "Edit spell"}</legend>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label htmlFor="spell-name" className={spellLabelClass}>
@@ -2306,10 +2328,8 @@ export default function SpellEditor() {
             <input
               id="spell-level"
               data-testid="spell-level-input"
-              className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-level"))} ${
-                isFieldInvalid("spell-level")
-                  ? spellInputBorderInvalid
-                  : spellInputBorderOk
+              className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isLevelControlInvalid)} ${
+                isLevelControlInvalid ? spellInputBorderInvalid : spellInputBorderOk
               }`}
               type="number"
               value={form.level}
@@ -2321,10 +2341,11 @@ export default function SpellEditor() {
                 if (clamped !== 8) handleChange("isQuestSpell", 0);
               }}
               onBlur={() => revealFieldValidation("spell-level")}
-              aria-invalid={ariaInvalidForField("spell-level")}
+              aria-invalid={isLevelControlInvalid ? "true" : undefined}
               aria-describedby={describedByByField.get("spell-level")}
             />
             <div
+              id="spell-level-display"
               className="mt-1 text-xs text-neutral-600 dark:text-neutral-500"
               data-testid="spell-level-display"
             >
@@ -2432,7 +2453,6 @@ export default function SpellEditor() {
             <select
               id="spell-tradition"
               data-testid="spell-tradition-select"
-              aria-label="Spell tradition"
               value={tradition}
               onChange={(e) => {
                 const next = e.target.value as Tradition;
@@ -2703,7 +2723,6 @@ export default function SpellEditor() {
                       id={inputId}
                       data-testid={`detail-${kebabField}-input`}
                       type="text"
-                      aria-label={label}
                       className={`w-full rounded border border-neutral-300 bg-white p-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 ${spellFocusVisibleRing}`}
                       value={String(value)}
                       onChange={(e) => handleChange(field, e.target.value)}
@@ -2711,6 +2730,7 @@ export default function SpellEditor() {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
+                        id={expandId}
                         data-testid={`detail-${kebabField}-expand`}
                         aria-label={`${isExpanded ? "Collapse" : "Expand"} ${label}`}
                         aria-expanded={isExpanded}
@@ -2937,9 +2957,16 @@ export default function SpellEditor() {
             data-testid="spell-tags-input"
             className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px] ${spellFocusVisibleRing}`}
             placeholder="Comma-separated tags"
+            aria-describedby="spell-tags-hint"
             value={form.tags || ""}
             onChange={(e) => handleChange("tags", e.target.value)}
           />
+          <p
+            id="spell-tags-hint"
+            className="mt-1 text-xs text-neutral-500 dark:text-neutral-400"
+          >
+            Separate multiple tags with commas.
+          </p>
         </div>
 
         <div className="flex flex-1 flex-col">

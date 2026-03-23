@@ -218,6 +218,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.radius ?? { mode: "fixed", value: 0 }}
             onChange={(r) => updateSpec({ radius: r })}
             data-testid="area-form-radius"
+            accessibleNamePrefix="Area radius "
             baseValueTestId="area-form-radius-value"
             perLevelTestId="area-form-radius-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-value")}
@@ -247,6 +248,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.length ?? { mode: "fixed", value: 0 }}
             onChange={(l) => updateSpec({ length: l })}
             data-testid="area-form-length"
+            accessibleNamePrefix="Area length "
             baseValueTestId="area-form-length-value"
             perLevelTestId="area-form-length-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-value")}
@@ -276,6 +278,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.length ?? { mode: "fixed", value: 0 }}
             onChange={(l) => updateSpec({ length: l })}
             data-testid="area-form-length"
+            accessibleNamePrefix="Area rectangle length "
             baseValueTestId="area-form-length-value"
             perLevelTestId="area-form-length-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-value")}
@@ -286,6 +289,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.width ?? { mode: "fixed", value: 0 }}
             onChange={(w) => updateSpec({ width: w })}
             data-testid="area-form-width"
+            accessibleNamePrefix="Area rectangle width "
             baseValueTestId="area-form-width-value"
             perLevelTestId="area-form-width-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-width-value")}
@@ -315,6 +319,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.length ?? { mode: "fixed", value: 0 }}
             onChange={(l) => updateSpec({ length: l })}
             data-testid="area-form-length"
+            accessibleNamePrefix="Area prism length "
             baseValueTestId="area-form-length-value"
             perLevelTestId="area-form-length-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-value")}
@@ -325,6 +330,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.width ?? { mode: "fixed", value: 0 }}
             onChange={(w) => updateSpec({ width: w })}
             data-testid="area-form-width"
+            accessibleNamePrefix="Area prism width "
             baseValueTestId="area-form-width-value"
             perLevelTestId="area-form-width-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-width-value")}
@@ -335,6 +341,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.height ?? { mode: "fixed", value: 0 }}
             onChange={(h) => updateSpec({ height: h })}
             data-testid="area-form-height"
+            accessibleNamePrefix="Area prism height "
             baseValueTestId="area-form-height-value"
             perLevelTestId="area-form-height-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-value")}
@@ -364,6 +371,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.radius ?? { mode: "fixed", value: 0 }}
             onChange={(r) => updateSpec({ radius: r })}
             data-testid="area-form-radius"
+            accessibleNamePrefix="Area cylinder radius "
             baseValueTestId="area-form-radius-value"
             perLevelTestId="area-form-radius-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-value")}
@@ -374,6 +382,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.height ?? { mode: "fixed", value: 0 }}
             onChange={(h) => updateSpec({ height: h })}
             data-testid="area-form-height"
+            accessibleNamePrefix="Area cylinder height "
             baseValueTestId="area-form-height-value"
             perLevelTestId="area-form-height-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-value")}
@@ -403,6 +412,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.length ?? { mode: "fixed", value: 0 }}
             onChange={(l) => updateSpec({ length: l })}
             data-testid="area-form-length"
+            accessibleNamePrefix="Area wall length "
             baseValueTestId="area-form-length-value"
             perLevelTestId="area-form-length-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-value")}
@@ -413,6 +423,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.height ?? { mode: "fixed", value: 0 }}
             onChange={(h) => updateSpec({ height: h })}
             data-testid="area-form-height"
+            accessibleNamePrefix="Area wall height "
             baseValueTestId="area-form-height-value"
             perLevelTestId="area-form-height-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-value")}
@@ -423,6 +434,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.thickness ?? { mode: "fixed", value: 0 }}
             onChange={(t) => updateSpec({ thickness: t })}
             data-testid="area-form-thickness"
+            accessibleNamePrefix="Area wall thickness "
             baseValueTestId="area-form-thickness-value"
             perLevelTestId="area-form-thickness-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-thickness-value")}
@@ -455,6 +467,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.edge ?? { mode: "fixed", value: 0 }}
             onChange={(e) => updateSpec({ edge: e })}
             data-testid="area-form-edge"
+            accessibleNamePrefix="Area cube edge "
             baseValueTestId="area-form-edge-value"
             perLevelTestId="area-form-edge-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-edge-value")}
@@ -484,6 +497,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.surfaceArea ?? { mode: "fixed", value: 0 }}
             onChange={(s) => updateSpec({ surfaceArea: s })}
             data-testid="area-form-surface-area"
+            accessibleNamePrefix="Area surface "
             baseValueTestId="area-form-surface-area-value"
             perLevelTestId="area-form-surface-area-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-surface-area-value")}
@@ -516,6 +530,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.volume ?? { mode: "fixed", value: 0 }}
             onChange={(v) => updateSpec({ volume: v })}
             data-testid="area-form-volume"
+            accessibleNamePrefix="Area volume "
             baseValueTestId="area-form-volume-value"
             perLevelTestId="area-form-volume-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-volume-value")}
@@ -560,6 +575,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.tileCount ?? { mode: "fixed", value: 1 }}
             onChange={(t) => updateSpec({ tileCount: t })}
             data-testid="area-form-tile-count"
+            accessibleNamePrefix="Area tile count "
             baseValueTestId="area-form-tile-count-value"
             perLevelTestId="area-form-tile-count-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-tile-count-value")}
@@ -579,6 +595,7 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
             value={spec.count ?? { mode: "fixed", value: 1 }}
             onChange={(c) => updateSpec({ count: c })}
             data-testid="area-form-count"
+            accessibleNamePrefix="Area target count "
             baseValueTestId="area-form-count-value"
             perLevelTestId="area-form-count-per-level"
             fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-count-value")}

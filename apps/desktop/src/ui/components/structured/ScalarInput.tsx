@@ -34,6 +34,8 @@ interface ScalarInputProps {
   fixedFieldError?: ScalarFieldValidationError | null;
   /** Inline validation for per-level mode (Chunk 2 / Task 3). */
   perLevelFieldError?: ScalarFieldValidationError | null;
+  /** Prepended to control aria-labels so multiple scalars on one screen stay distinguishable (e.g. "Range "). */
+  accessibleNamePrefix?: string;
 }
 
 const DEFAULT_SCALAR: SpellScalar = { mode: "fixed", value: 0 };
@@ -47,14 +49,23 @@ export function ScalarInput({
   onFieldBlur,
   fixedFieldError,
   perLevelFieldError,
+  accessibleNamePrefix = "",
 }: ScalarInputProps) {
   const mode = value.mode ?? "fixed";
+  const p = accessibleNamePrefix;
   const numValue = mode === "fixed" ? (value.value ?? 0) : (value.value ?? 0);
   const perLevel = value.perLevel ?? value.per_level ?? 0;
 
   const activeError = mode === "fixed" ? fixedFieldError : perLevelFieldError;
   const activeInputId = mode === "fixed" ? baseValueTestId : perLevelTestId;
   const advisory = isAboveAdvisoryCap(mode === "fixed" ? numValue : perLevel);
+  const advisoryId = `${testId}-advisory-cap`;
+  const valueDescribedBy = [
+    activeError?.testId,
+    advisory ? advisoryId : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const handleValueChange = (raw: string) => {
     const parsed = parseNumericInput(raw);
@@ -109,7 +120,7 @@ export function ScalarInput({
       <div className="flex flex-wrap items-center gap-2">
         <select
           data-testid={`${testId}-mode`}
-          aria-label="Scalar mode"
+          aria-label={p ? `${p}scalar mode` : "Scalar mode"}
           value={mode}
           onChange={(e) => handleModeChange(e.target.value as "fixed" | "per_level")}
           className={`rounded border px-2 py-1 text-sm ${selectSurfaceClass}`}
@@ -122,9 +133,17 @@ export function ScalarInput({
           inputMode="decimal"
           id={activeInputId}
           data-testid={activeInputId}
-          aria-label={mode === "fixed" ? "Base value" : "Per level"}
+          aria-label={
+            mode === "fixed"
+              ? p
+                ? `${p}base value`
+                : "Base value"
+              : p
+                ? `${p}per level`
+                : "Per level"
+          }
           aria-invalid={activeError ? "true" : undefined}
-          aria-describedby={activeError ? activeError.testId : undefined}
+          aria-describedby={valueDescribedBy || undefined}
           value={effectiveValue}
           onChange={(e) =>
             mode === "fixed"
@@ -136,6 +155,7 @@ export function ScalarInput({
         />
         {advisory && (
           <p
+            id={advisoryId}
             className="text-[10px] font-medium text-amber-700 dark:text-amber-400"
             data-testid="scalar-advisory-cap-warning"
           >

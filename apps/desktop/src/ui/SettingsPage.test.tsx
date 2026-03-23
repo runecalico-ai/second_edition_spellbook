@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useTheme } from "../store/useTheme";
 import {
   SettingsPage,
@@ -18,17 +17,22 @@ function resetThemeState() {
 
 describe("SettingsPage", () => {
   beforeEach(resetThemeState);
+  afterEach(cleanup);
 
-  it("renders the appearance section and settings controls", () => {
-    const html = renderToStaticMarkup(<SettingsPage />);
+  it("renders the appearance section and settings controls with the standard focus ring pattern", () => {
+    render(<SettingsPage />);
 
-    expect(html).toContain("Appearance");
-    expect(html).toContain('data-testid="settings-theme-select"');
-    expect(html).toContain('data-testid="settings-follow-system-checkbox"');
-    expect(html).toContain('value="light"');
-    expect(html).toContain("Light</option>");
-    expect(html).toContain('value="dark"');
-    expect(html).toContain("Dark</option>");
+    expect(screen.getByText("Appearance")).toBeTruthy();
+    expect(screen.getByTestId("settings-theme-select").className).toContain(
+      "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900",
+    );
+    expect(screen.getByTestId("settings-follow-system-checkbox").className).toContain(
+      "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900",
+    );
+    expect((screen.getByTestId("settings-theme-select") as HTMLSelectElement).value).toBe("dark");
+    expect((screen.getByTestId("settings-follow-system-checkbox") as HTMLInputElement).checked).toBe(
+      true,
+    );
   });
 
   it("disables the select while follow system is enabled", () => {
@@ -37,10 +41,12 @@ describe("SettingsPage", () => {
       resolvedTheme: "dark",
     });
 
-    const html = renderToStaticMarkup(<SettingsPage />);
+    render(<SettingsPage />);
 
-    expect(html).toContain('disabled=""');
-    expect(html).toContain('checked=""');
+    expect((screen.getByTestId("settings-theme-select") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByTestId("settings-follow-system-checkbox") as HTMLInputElement).checked).toBe(
+      true,
+    );
   });
 
   it("preserves the resolved theme when follow system is turned off", () => {
@@ -60,12 +66,12 @@ describe("SettingsPage", () => {
   });
 
   it("pairs labels with the native controls", () => {
-    const html = renderToStaticMarkup(<SettingsPage />);
+    render(<SettingsPage />);
 
-    expect(html).toContain('for="settings-theme-select"');
-    expect(html).toContain('id="settings-theme-select"');
-    expect(html).toContain('for="settings-follow-system-checkbox"');
-    expect(html).toContain('id="settings-follow-system-checkbox"');
+    expect(screen.getByLabelText("Theme").getAttribute("id")).toBe("settings-theme-select");
+    expect(screen.getByLabelText("Follow system preference").getAttribute("id")).toBe(
+      "settings-follow-system-checkbox",
+    );
   });
 });
 

@@ -61,7 +61,7 @@ export function SettingsPage() {
             <select
               id="settings-theme-select"
               data-testid="settings-theme-select"
-              className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-900"
               value={getSelectableThemeValue(mode, resolvedTheme)}
               disabled={isFollowingSystem}
               onChange={handleThemeChange}
@@ -81,6 +81,7 @@ export function SettingsPage() {
               data-testid="settings-follow-system-checkbox"
               checked={isFollowingSystem}
               onChange={handleSystemToggle}
+              className="h-4 w-4 rounded border-stone-300 bg-white text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-900"
             />
             Follow system preference
           </label>

@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { SpellDetail } from "../types/spell";
 import { useNotifications } from "../store/useNotifications";
 import { NotificationViewport } from "./components/NotificationViewport";
+import { DETAIL_FIELD_ORDER } from "./detailDirty";
 import SpellEditor from "./SpellEditor";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -124,6 +125,22 @@ function isBefore(left: Element, right: Element) {
 }
 
 const HASH_FIXTURE = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
+function expectStandardFocusRing(testId: string) {
+  const className = screen.getByTestId(testId).className;
+  expect(className).toContain("focus-visible:ring-2");
+  expect(className).toContain("focus-visible:ring-blue-500");
+  expect(className).toContain("focus-visible:ring-offset-1");
+  expect(className).toContain("dark:focus-visible:ring-offset-neutral-900");
+}
+
+function expectDangerFocusRing(testId: string) {
+  const className = screen.getByTestId(testId).className;
+  expect(className).toContain("focus-visible:ring-2");
+  expect(className).toContain("focus-visible:ring-red-500");
+  expect(className).toContain("focus-visible:ring-offset-1");
+  expect(className).toContain("dark:focus-visible:ring-offset-neutral-900");
+}
 
 describe("hash display", () => {
   beforeEach(async () => {
@@ -382,6 +399,66 @@ describe("SpellEditor inline validation (Task 2)", () => {
     expect(screen.getByTestId("spell-name-error")).toBeTruthy();
     expect(screen.queryByTestId("spell-save-validation-hint")).toBeNull();
   });
+
+  it("does not save when Enter is pressed during IME composition in the name field", async () => {
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-name-input"), {
+        key: "Enter",
+        code: "Enter",
+        isComposing: true,
+      });
+    });
+
+    expect(
+      vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell"),
+    ).toHaveLength(0);
+    expect(screen.queryByTestId("library-route")).toBeNull();
+  });
+
+  it("saves when Enter is pressed in the name field outside IME composition", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "create_spell") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-name-input"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    expect(
+      vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell"),
+    ).toHaveLength(1);
+    await waitFor(() => {
+      expect(screen.getByTestId("library-route")).toBeTruthy();
+    });
+  });
+
+  it("sets beforeunload returnValue when there are unsaved changes", () => {
+    renderNewSpell();
+
+    fireEvent.change(screen.getByTestId("spell-name-input"), { target: { value: "Light" } });
+
+    const event = new Event("beforeunload", { cancelable: true });
+    Object.defineProperty(event, "returnValue", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect((event as Event & { returnValue: string }).returnValue).toBe("");
+  });
 });
 
 describe("SpellEditor accessibility and structured validation (Task 3)", () => {
@@ -451,6 +528,84 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const tradition = screen.getByTestId("spell-tradition-select");
     expect(tradition.getAttribute("aria-invalid")).toBe("true");
     expect(tradition.getAttribute("aria-describedby")).toBe("error-tradition-conflict");
+  });
+
+  it("applies the standard focus-visible ring to every interactive SpellEditor control", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        contentHash: HASH_FIXTURE,
+        artifacts: [
+          {
+            id: 1,
+            spellId: 1,
+            type: "import",
+            path: "spell.txt",
+            hash: HASH_FIXTURE,
+            importedAt: "2024-01-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    [
+      "print-page-size-select",
+      "btn-print-compact",
+      "btn-print-stat-block",
+      "btn-delete-spell",
+      "btn-cancel-edit",
+      "btn-save-spell",
+      "spell-detail-hash-copy",
+      "spell-detail-hash-expand",
+      "spell-name-input",
+      "spell-level-input",
+      "chk-cantrip",
+      "chk-quest",
+      "spell-tradition-select",
+      "spell-school-input",
+      "spell-classes-input",
+      "spell-source-input",
+      "spell-edition-input",
+      "spell-author-input",
+      "spell-license-input",
+      "chk-reversible",
+      "spell-tags-input",
+      "spell-description-textarea",
+      "btn-reparse-artifact",
+    ].forEach(expectStandardFocusRing);
+
+    fireEvent.click(screen.getByTestId("detail-components-expand"));
+    await waitFor(() => {
+      expect(screen.getByTestId("component-checkboxes")).toBeTruthy();
+    });
+    [
+      "component-checkbox-verbal",
+      "component-checkbox-somatic",
+      "component-checkbox-material",
+    ].forEach(expectStandardFocusRing);
+
+    fireEvent.click(screen.getByTestId("component-checkbox-material"));
+    await waitFor(() => {
+      expect(screen.getByTestId("material-subform")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("material-component-add"));
+    await waitFor(() => {
+      expect(screen.getByTestId("material-component-remove")).toBeTruthy();
+    });
+    expectStandardFocusRing("material-component-consumed");
+    expectDangerFocusRing("material-component-remove");
+
+    fireEvent.change(screen.getByTestId("spell-tradition-select"), { target: { value: "DIVINE" } });
+    await waitFor(() => {
+      expect(screen.getByTestId("spell-sphere-input")).toBeTruthy();
+    });
+    expectStandardFocusRing("spell-sphere-input");
+
+    DETAIL_FIELD_ORDER.forEach((field) => {
+      const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+      expectStandardFocusRing(`detail-${kebabField}-input`);
+      expectStandardFocusRing(`detail-${kebabField}-expand`);
+    });
   });
 
   it("shows range scalar validation with correct copy, ARIA, and same-container adjacency", async () => {

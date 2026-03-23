@@ -40,7 +40,10 @@ export function createVaultStartupWarningModal(
     title: "Vault Integrity Check",
     message: formatVaultIntegritySummary(summary),
     type:
-      summary.unrecoverable.length > 0 || summary.warningCount > 0 || summary.repairedCount > 0
+      summary.unrecoverable.length > 0 ||
+      summary.warningCount > 0 ||
+      summary.repairedCount > 0 ||
+      summary.reexportedCount > 0
         ? "warning"
         : "info",
     dismissible: true,
@@ -119,7 +122,7 @@ export default function App() {
       to={to}
       data-testid={`nav-link-${label.toLowerCase()}`}
       className={clsx(
-        "rounded-md px-3 py-2 transition-colors",
+        "rounded-md px-3 py-2 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900",
         pathname === to || (to === "/" && pathname === "/")
           ? "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-950"
           : "text-stone-700 hover:bg-stone-200/80 hover:text-stone-950 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-neutral-50",
@@ -267,7 +270,7 @@ export default function App() {
                 type="button"
                 data-testid="btn-backup"
                 onClick={handleBackup}
-                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
               >
                 Backup
               </button>
@@ -275,7 +278,7 @@ export default function App() {
                 type="button"
                 data-testid="btn-vault-maintenance"
                 onClick={openVaultMaintenance}
-                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
               >
                 Vault
               </button>
@@ -283,7 +286,7 @@ export default function App() {
                 type="button"
                 data-testid="btn-restore"
                 onClick={handleRestore}
-                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
               >
                 Restore
               </button>
@@ -299,7 +302,7 @@ export default function App() {
               to="/settings"
               data-testid="settings-gear-button"
               aria-label="Settings"
-              className="rounded-full border border-stone-300 bg-stone-100 p-2 text-stone-900 transition-colors hover:bg-stone-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+              className="rounded-full border border-stone-300 bg-stone-100 p-2 text-stone-900 transition-colors hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
             >
               <svg
                 viewBox="0 0 24 24"

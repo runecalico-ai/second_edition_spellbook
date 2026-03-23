@@ -55,6 +55,23 @@ function notificationViewport() {
   return screen.getByTestId("notification-viewport");
 }
 
+function expectFocusVisibleRing(element: HTMLElement) {
+  const className = element.className;
+
+  expect(className).toContain("focus-visible:ring-2");
+  expect(className).toContain("focus-visible:ring-blue-500");
+  expect(className).toContain("focus-visible:ring-offset-1");
+  expect(className).toContain("dark:focus-visible:ring-offset-neutral-900");
+}
+
+function expectNoLegacyFocusOverrides(element: HTMLElement) {
+  const className = element.className;
+
+  expect(className).not.toContain("focus:w-auto");
+  expect(className).not.toContain("focus:text-neutral-900");
+  expect(className).not.toContain("dark:focus:text-white");
+}
+
 describe("Library notifications (Task 5)", () => {
   let alertSpy: ReturnType<typeof vi.spyOn>;
 
@@ -404,6 +421,7 @@ describe("Library empty states", () => {
       fireEvent.change(screen.getByTestId("library-search-input"), {
         target: { value: "fireball" },
       });
+      fireEvent.click(screen.getByTestId("library-search-button"));
 
       await waitFor(() => {
         expect(invoke).toHaveBeenCalledWith("search_keyword", {
@@ -453,6 +471,7 @@ describe("Library empty states", () => {
       fireEvent.change(screen.getByTestId("library-search-input"), {
         target: { value: "find hidden lore" },
       });
+      fireEvent.click(screen.getByTestId("library-search-button"));
 
       await waitFor(() => {
         expect(invoke).toHaveBeenCalledWith("search_semantic", { query: "find hidden lore" });
@@ -548,6 +567,192 @@ describe("Library empty states", () => {
       expect(await screen.findByText("No Spells Yet")).toBeTruthy();
       expect((screen.getByTestId("saved-searches-select") as HTMLSelectElement).value).toBe("");
       expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
+    });
+  });
+});
+
+describe("Library focus indicators", () => {
+  beforeEach(() => {
+    useNotifications.setState({ notifications: [] });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useNotifications.setState({ notifications: [] });
+    vi.restoreAllMocks();
+  });
+
+  it("adds visible focus rings to the search, filter, saved-search, and spell-row controls", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_facets":
+          return {
+            schools: ["Evocation"],
+            sources: ["PHB"],
+            levels: [3],
+            classList: ["Mage"],
+            components: ["V, S, M"],
+            tags: ["Combat"],
+          };
+        case "list_characters":
+          return [{ id: 1, name: "Alice" }];
+        case "list_saved_searches":
+          return [
+            {
+              id: 42,
+              name: "Prepared Spells",
+              filterJson: JSON.stringify({
+                query: "",
+                mode: "keyword",
+                filters: {},
+              }),
+              createdAt: "2026-03-21",
+            },
+          ];
+        case "search_keyword":
+          return [
+            {
+              id: 10,
+              name: "Fireball",
+              school: "Evocation",
+              level: 3,
+              classList: "Mage",
+              components: "V, S, M",
+              isQuestSpell: 0,
+              isCantrip: 0,
+            },
+          ];
+        case "search_semantic":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("spell-row-fireball")).toBeTruthy();
+    });
+
+    expectFocusVisibleRing(screen.getByTestId("library-search-input"));
+    expectFocusVisibleRing(screen.getByTestId("library-mode-select"));
+    expectFocusVisibleRing(screen.getByTestId("filter-school-select"));
+    expectFocusVisibleRing(screen.getByTestId("filter-source-select"));
+    expectFocusVisibleRing(screen.getByTestId("filter-class-select"));
+    expectFocusVisibleRing(screen.getByTestId("filter-component-select"));
+    expectFocusVisibleRing(screen.getByTestId("filter-tag-select"));
+    expectFocusVisibleRing(screen.getByTestId("filter-quest-checkbox"));
+    expectFocusVisibleRing(screen.getByTestId("filter-cantrip-checkbox"));
+    expectFocusVisibleRing(screen.getByTestId("saved-searches-select"));
+    expectFocusVisibleRing(screen.getByTestId("btn-save-search-trigger"));
+    expectFocusVisibleRing(screen.getByTestId("btn-delete-saved-search"));
+    expectFocusVisibleRing(screen.getByTestId("link-to-characters"));
+    expectFocusVisibleRing(screen.getByTestId("link-add-spell"));
+    expectFocusVisibleRing(screen.getByTestId("spell-link-fireball"));
+    const addToCharSelect = screen.getByTestId("add-to-char-select-fireball");
+    expectFocusVisibleRing(addToCharSelect);
+    expectNoLegacyFocusOverrides(addToCharSelect);
+
+    fireEvent.click(screen.getByTestId("btn-save-search-trigger"));
+    const saveNameInput = await screen.findByTestId("save-search-name-input");
+
+    expectFocusVisibleRing(saveNameInput);
+    expectFocusVisibleRing(screen.getByTestId("btn-save-search-confirm"));
+    expectFocusVisibleRing(screen.getByTestId("btn-save-search-cancel"));
+    expect(screen.getByLabelText("Cancel saving search")).toBe(
+      screen.getByTestId("btn-save-search-cancel"),
+    );
+  });
+
+  it("adds visible focus rings to the empty-state CTA buttons", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+        case "search_semantic":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+
+    const createButton = await screen.findByTestId("empty-library-create-button");
+    expectFocusVisibleRing(createButton);
+    expectFocusVisibleRing(screen.getByTestId("empty-library-import-button"));
+
+    fireEvent.change(screen.getByTestId("library-search-input"), {
+      target: { value: "fireball" },
+    });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+
+    const resetButton = await screen.findByTestId("empty-search-reset-button");
+    expectFocusVisibleRing(resetButton);
+  });
+});
+
+describe("Library explicit search behavior", () => {
+  beforeEach(() => {
+    useNotifications.setState({ notifications: [] });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useNotifications.setState({ notifications: [] });
+    vi.restoreAllMocks();
+  });
+
+  it("does not rerun search when the query changes until submit is triggered", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        case "search_semantic":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(invoke).mock.calls.filter((call) => call[0] === "search_keyword").length,
+      ).toBeGreaterThan(0);
+    });
+
+    const initialSearchCount = vi
+      .mocked(invoke)
+      .mock.calls.filter((call) => call[0] === "search_keyword").length;
+
+    fireEvent.change(screen.getByTestId("library-search-input"), {
+      target: { value: "fireball" },
+    });
+
+    expect(
+      vi.mocked(invoke).mock.calls.filter((call) => call[0] === "search_keyword"),
+    ).toHaveLength(initialSearchCount);
+
+    fireEvent.click(screen.getByTestId("library-search-button"));
+
+    await waitFor(() => {
+      expect(
+        vi.mocked(invoke).mock.calls.filter((call) => call[0] === "search_keyword"),
+      ).toHaveLength(initialSearchCount + 1);
     });
   });
 });

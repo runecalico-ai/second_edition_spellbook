@@ -78,6 +78,8 @@ const spellInputSurface =
   "rounded border bg-white p-2 text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100";
 const spellInputBorderOk = "border-neutral-300 dark:border-neutral-700";
 const spellInputBorderInvalid = "border-red-400 dark:border-red-600";
+const spellFocusVisibleRing =
+  "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 const spellLabelClass = "block text-sm text-neutral-600 dark:text-neutral-400";
 const spellErrorText = "text-xs text-red-700 dark:text-red-400 mt-1";
 const spellSaveHintClass = "text-right text-xs text-red-700 dark:text-red-400";
@@ -755,7 +757,9 @@ export default function SpellEditor() {
 
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (unsavedRef.current) e.preventDefault();
+      if (!unsavedRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
@@ -2110,14 +2114,14 @@ export default function SpellEditor() {
           <div className="space-x-2">
             {!isNew && (
               <>
-                <select
-                  value={pageSize}
-                  data-testid="print-page-size-select"
-                  aria-label="Print page size"
-                  disabled={savePending}
-                  onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
-                  className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
-                >
+                  <select
+                    value={pageSize}
+                    data-testid="print-page-size-select"
+                    aria-label="Print page size"
+                    disabled={savePending}
+                    onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
+                    className={`bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700 ${spellFocusVisibleRing}`}
+                  >
                   <option value="letter">Letter</option>
                   <option value="a4">A4</option>
                 </select>
@@ -2127,7 +2131,7 @@ export default function SpellEditor() {
                   aria-label="Print compact version"
                   disabled={savePending}
                   onClick={() => printSpell("compact")}
-                  className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                  className={`px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
                 >
                   Print Compact
                 </button>
@@ -2137,7 +2141,7 @@ export default function SpellEditor() {
                   aria-label="Print stat-block version"
                   disabled={savePending}
                   onClick={() => printSpell("stat-block")}
-                  className="px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                  className={`px-3 py-2 text-xs bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
                 >
                   Print Stat-block
                 </button>
@@ -2150,7 +2154,7 @@ export default function SpellEditor() {
                 type="button"
                 disabled={parsersPending || savePending}
                 onClick={handleDelete}
-                className="px-3 py-2 text-red-400 hover:bg-neutral-800 rounded"
+                className={`px-3 py-2 text-red-400 hover:bg-neutral-800 rounded ${spellFocusVisibleRing}`}
               >
                 Delete
               </button>
@@ -2171,7 +2175,7 @@ export default function SpellEditor() {
                 }
                 navigate("/");
               }}
-              className="px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded"
+              className={`px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded ${spellFocusVisibleRing}`}
             >
               Cancel
             </button>
@@ -2182,7 +2186,7 @@ export default function SpellEditor() {
               onClick={save}
               disabled={parsersPending || savePending || (hasAttemptedSubmit && isInvalid)}
               aria-busy={savePending ? true : undefined}
-              className="rounded bg-blue-600 px-3 py-2 font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300 disabled:text-blue-950 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400"
+              className={`rounded bg-blue-600 px-3 py-2 font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300 disabled:text-blue-950 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellFocusVisibleRing}`}
             >
               {saveShowsDelayedLabel ? "Saving…" : "Save Spell"}
             </button>
@@ -2228,7 +2232,7 @@ export default function SpellEditor() {
                   pushNotification("error", "Failed to copy hash.");
                 }
               }}
-              className="px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              className={`px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${spellFocusVisibleRing}`}
             >
               Copy
             </button>
@@ -2238,7 +2242,7 @@ export default function SpellEditor() {
               data-testid="spell-detail-hash-expand"
               disabled={savePending}
               onClick={() => setHashExpanded((e) => !e)}
-              className="px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              className={`px-2 py-1 text-xs rounded border bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 ${spellFocusVisibleRing}`}
             >
               {hashExpanded ? "Collapse" : "Expand"}
             </button>
@@ -2258,12 +2262,20 @@ export default function SpellEditor() {
             <input
               id="spell-name"
               data-testid="spell-name-input"
-              className={`w-full border p-2 ${spellInputSurface} ${
+              className={`w-full border p-2 ${spellInputSurface} ${spellFocusVisibleRing} ${
                 isNameInvalid ? spellInputBorderInvalid : spellInputBorderOk
               }`}
               placeholder="Spell Name"
               value={form.name}
               onChange={(e) => handleChange("name", e.target.value)}
+              onKeyDown={(event) => {
+                const nativeEvent = event.nativeEvent as KeyboardEvent & {
+                  isComposing?: boolean;
+                };
+                if (event.key !== "Enter" || nativeEvent.isComposing) return;
+                event.preventDefault();
+                void save();
+              }}
               onBlur={() => revealFieldValidation("spell-name")}
               aria-invalid={ariaInvalidForField("spell-name")}
               aria-describedby={describedByByField.get("spell-name")}
@@ -2284,7 +2296,7 @@ export default function SpellEditor() {
             <input
               id="spell-level"
               data-testid="spell-level-input"
-              className={`w-full border p-2 ${spellInputSurface} ${
+              className={`w-full border p-2 ${spellInputSurface} ${spellFocusVisibleRing} ${
                 isLevelInvalid ||
                 hasFieldError("error-epic-quest-conflict") ||
                 hasFieldError("error-cantrip-level")
@@ -2323,7 +2335,7 @@ export default function SpellEditor() {
                     handleChange("isCantrip", e.target.checked ? 1 : 0);
                     revealFieldValidation("spell-level");
                   }}
-                  className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
+                  className={`w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 ${spellFocusVisibleRing}`}
                 />
                 <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
                   Cantrip
@@ -2341,7 +2353,7 @@ export default function SpellEditor() {
                     handleChange("isQuestSpell", e.target.checked ? 1 : 0);
                     revealFieldValidation("spell-level");
                   }}
-                  className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-neutral-900"
+                  className={`w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 ${spellFocusVisibleRing}`}
                 />
                 <span className="text-sm text-neutral-400 group-hover:text-neutral-300">
                   Quest Spell
@@ -2424,7 +2436,7 @@ export default function SpellEditor() {
                 }
                 revealFieldValidation("spell-tradition", "spell-school", "spell-sphere");
               }}
-              className={`w-full border p-2 ${spellInputSurface} ${
+              className={`w-full border p-2 ${spellInputSurface} ${spellFocusVisibleRing} ${
                 hasFieldError("error-tradition-conflict")
                   ? "border-amber-400 dark:border-amber-600"
                   : spellInputBorderOk
@@ -2459,7 +2471,7 @@ export default function SpellEditor() {
               <input
                 id="spell-school"
                 data-testid="spell-school-input"
-                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${
+                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${spellFocusVisibleRing} ${
                   hasFieldError("error-school-required-arcane") ||
                   hasFieldError("error-epic-level-arcane-only") ||
                   isArcaneMissingSchool
@@ -2508,7 +2520,7 @@ export default function SpellEditor() {
               <input
                 id="spell-sphere"
                 data-testid="spell-sphere-input"
-                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${
+                className={`w-full border p-2 disabled:bg-neutral-100 disabled:opacity-50 dark:disabled:bg-neutral-800 ${spellInputSurface} ${spellFocusVisibleRing} ${
                   hasFieldError("error-sphere-required-divine") ||
                   hasFieldError("error-quest-spell-divine-only") ||
                   isDivineMissingSphere
@@ -2552,7 +2564,7 @@ export default function SpellEditor() {
             <input
               id="spell-classes"
               data-testid="spell-classes-input"
-              className={`w-full border p-2 ${spellInputSurface} ${
+              className={`w-full border p-2 ${spellInputSurface} ${spellFocusVisibleRing} ${
                 hasFieldError("error-epic-arcane-class-restriction")
                   ? spellInputBorderInvalid
                   : spellInputBorderOk
@@ -2583,7 +2595,7 @@ export default function SpellEditor() {
             <input
               id="spell-source"
               data-testid="spell-source-input"
-              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded ${spellFocusVisibleRing}`}
               value={form.source || ""}
               onChange={(e) => handleChange("source", e.target.value)}
             />
@@ -2595,7 +2607,7 @@ export default function SpellEditor() {
             <input
               id="spell-edition"
               data-testid="spell-edition-input"
-              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded ${spellFocusVisibleRing}`}
               value={form.edition || ""}
               onChange={(e) => handleChange("edition", e.target.value)}
             />
@@ -2607,7 +2619,7 @@ export default function SpellEditor() {
             <input
               id="spell-author"
               data-testid="spell-author-input"
-              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded ${spellFocusVisibleRing}`}
               value={form.author || ""}
               onChange={(e) => handleChange("author", e.target.value)}
             />
@@ -2619,7 +2631,7 @@ export default function SpellEditor() {
             <input
               id="spell-license"
               data-testid="spell-license-input"
-              className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded"
+              className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded ${spellFocusVisibleRing}`}
               value={form.license || ""}
               onChange={(e) => handleChange("license", e.target.value)}
             />
@@ -2629,7 +2641,7 @@ export default function SpellEditor() {
               id="spell-reversible"
               data-testid="chk-reversible"
               type="checkbox"
-              className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+              className={`h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 ${spellFocusVisibleRing}`}
               checked={Boolean(form.reversible)}
               onChange={(e) => handleChange("reversible", e.target.checked ? 1 : 0)}
             />
@@ -2688,7 +2700,7 @@ export default function SpellEditor() {
                       data-testid={`detail-${kebabField}-input`}
                       type="text"
                       aria-label={label}
-                      className="w-full rounded border border-neutral-300 bg-white p-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                      className={`w-full rounded border border-neutral-300 bg-white p-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 ${spellFocusVisibleRing}`}
                       value={String(value)}
                       onChange={(e) => handleChange(field, e.target.value)}
                     />
@@ -2702,7 +2714,7 @@ export default function SpellEditor() {
                         onClick={() =>
                           isExpanded ? collapseExpandedField() : expandDetailField(field)
                         }
-                        className="rounded px-1 text-xs text-blue-700 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-300 dark:hover:text-blue-200"
+                        className={`rounded px-1 text-xs text-blue-700 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-200 ${spellFocusVisibleRing}`}
                       >
                         {isExpanded ? "Collapse" : "Expand"}
                       </button>
@@ -2919,7 +2931,7 @@ export default function SpellEditor() {
           <textarea
             id="spell-tags"
             data-testid="spell-tags-input"
-            className="w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px]"
+            className={`w-full bg-neutral-900 border border-neutral-700 p-2 rounded min-h-[80px] ${spellFocusVisibleRing}`}
             placeholder="Comma-separated tags"
             value={form.tags || ""}
             onChange={(e) => handleChange("tags", e.target.value)}
@@ -2933,7 +2945,7 @@ export default function SpellEditor() {
           <textarea
             id="spell-description"
             data-testid="spell-description-textarea"
-            className={`min-h-[200px] w-full flex-1 border p-2 font-mono ${spellInputSurface} ${
+            className={`min-h-[200px] w-full flex-1 border p-2 font-mono ${spellInputSurface} ${spellFocusVisibleRing} ${
               isDescriptionInvalid ? spellInputBorderInvalid : spellInputBorderOk
             }`}
             value={form.description}
@@ -2990,7 +3002,7 @@ export default function SpellEditor() {
                     setLoading(false);
                   }
                 }}
-                className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700"
+                className={`text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
               >
                 Reparse
               </button>

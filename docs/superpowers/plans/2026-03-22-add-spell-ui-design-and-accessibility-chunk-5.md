@@ -769,7 +769,7 @@ Keyboard submit: verify `<form>` elements have `<button type="submit">` or that 
 
 Escape dismissal: now handled natively by the modal migration (Task 1).
 
-- [ ] **Step 3.1: Read SpellEditor.tsx and apply focus indicator audit**
+- [x] **Step 3.1: Read SpellEditor.tsx and apply focus indicator audit**
 
   Read `apps/desktop/src/ui/SpellEditor.tsx`.
 
@@ -796,7 +796,7 @@ Escape dismissal: now handled natively by the modal migration (Task 1).
 
   **Manual focus indicator verification:** After applying the focus classes, run `pnpm tauri:dev`, navigate to the spell editor, and press Tab through all fields. Verify each field shows a clearly visible blue ring when focused. If a ring class conflicts with an existing Tailwind `focus:` style or a component library override, remove the conflicting old class first.
 
-- [ ] **Step 3.2: Read Library.tsx and apply focus indicator audit**
+- [x] **Step 3.2: Read Library.tsx and apply focus indicator audit**
 
   Read `apps/desktop/src/ui/Library.tsx`.
 
@@ -807,7 +807,7 @@ Escape dismissal: now handled natively by the modal migration (Task 1).
   - Pagination controls (if any)
   - Empty-state CTA buttons (`empty-library-create-button`, `empty-library-import-button`, `empty-search-reset-button`)
 
-- [ ] **Step 3.3: Read SettingsPage.tsx and App.tsx and apply focus indicator audit**
+- [x] **Step 3.3: Read SettingsPage.tsx and App.tsx and apply focus indicator audit**
 
   Read `apps/desktop/src/ui/SettingsPage.tsx` and `apps/desktop/src/ui/App.tsx`.
 
@@ -815,13 +815,13 @@ Escape dismissal: now handled natively by the modal migration (Task 1).
 
   In `SettingsPage.tsx`: ensure the theme select and follow-system checkbox have visible focus rings.
 
-- [ ] **Step 3.4: Run unit tests to ensure no regressions**
+- [x] **Step 3.4: Run unit tests to ensure no regressions**
 
   Run: `cd apps/desktop && npx vitest run`
 
   Expected: All tests PASS.
 
-- [ ] **Step 3.5: Commit**
+- [x] **Step 3.5: Commit**
 
   ```bash
   git add apps/desktop/src/ui/SpellEditor.tsx \

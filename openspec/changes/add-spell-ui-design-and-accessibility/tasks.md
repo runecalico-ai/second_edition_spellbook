@@ -175,31 +175,31 @@ All three empty states share a common skeleton: heading, one-line description, C
 ### frontend-standards
 
 #### Window size handling
-- [ ] Treat **900px** as the minimum supported window width.
-- [ ] At widths approaching 900px, ensure structured field groups collapse, wrap, or stack to prevent overflow.
-- [ ] Ensure no horizontal scrollbars are introduced in core editing flows at minimum width.
+- [x] Treat **900px** as the minimum supported window width.
+- [x] At widths approaching 900px, ensure structured field groups collapse, wrap, or stack to prevent overflow.
+- [x] Ensure no horizontal scrollbars are introduced in core editing flows at minimum width.
 
 #### Keyboard navigation and labels
-- [ ] Ensure logical tab order: top-to-bottom, left-to-right where applicable.
-- [ ] Ensure a visible focus indicator exists for all interactive elements.
-- [ ] Ensure Escape closes modals or cancels supported dismissal flows.
-- [ ] Ensure keyboard submit behavior matches the visible submit action.
-- [ ] Audit touched pages and dialogs for proper semantic heading hierarchy.
-- [ ] Use visible `<label>` as the default accessible name for inputs.
-- [ ] Add `aria-label` only where no visible label exists or where visible text is insufficient.
-- [ ] Associate help text and error text via the appropriate descriptive relationship.
+- [x] Ensure logical tab order: top-to-bottom, left-to-right where applicable.
+- [x] Ensure a visible focus indicator exists for all interactive elements.
+- [x] Ensure Escape closes modals or cancels supported dismissal flows.
+- [x] Ensure keyboard submit behavior matches the visible submit action.
+- [x] Audit touched pages and dialogs for proper semantic heading hierarchy.
+- [x] Use visible `<label>` as the default accessible name for inputs.
+- [x] Add `aria-label` only where no visible label exists or where visible text is insufficient.
+- [x] Associate help text and error text via the appropriate descriptive relationship.
 
 #### Focus management and modal behavior
-- [ ] Migrate `Modal.tsx` from `<dialog open>` to `showModal()` / `close()` for native browser focus trapping.
-- [ ] Verify tests rely on resilient selectors rather than modal implementation details.
-- [ ] Return focus to the trigger after modal close, with a logical fallback if needed.
+- [x] Migrate `Modal.tsx` from `<dialog open>` to `showModal()` / `close()` for native browser focus trapping.
+- [x] Verify tests rely on resilient selectors rather than modal implementation details.
+- [x] Return focus to the trigger after modal close, with a logical fallback if needed.
 
 #### Color contrast
-- [ ] Ensure text meets minimum 4.5:1 contrast ratio.
-- [ ] Ensure text sizing remains readable on touched pages and components.
-- [ ] Ensure large text (>=18px) meets minimum 3:1 contrast ratio.
-- [ ] Ensure interactive elements meet minimum 3:1 contrast ratio.
-- [ ] Ensure error and warning text remain readable in all supported themes.
+- [x] Ensure text meets minimum 4.5:1 contrast ratio.
+- [x] Ensure text sizing remains readable on touched pages and components.
+- [x] Ensure large text (>=18px) meets minimum 3:1 contrast ratio.
+- [x] Ensure interactive elements meet minimum 3:1 contrast ratio.
+- [x] Ensure error and warning text remain readable in all supported themes.
 
 ---
 

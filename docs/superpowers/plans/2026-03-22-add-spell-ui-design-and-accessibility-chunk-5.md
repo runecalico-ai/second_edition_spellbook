@@ -1135,7 +1135,7 @@ These tests complete the `accessibility_and_resize.spec.ts` file started in Task
 
 The modal tests must rebuild the frontend first since Task 1 changed `Modal.tsx`.
 
-- [ ] **Step 7.0: Pre-check: verify Playwright version supports `toPass()`**
+- [x] **Step 7.0: Pre-check: verify Playwright version supports `toPass()`**
 
   Run: `npx playwright --version` in `apps/desktop`.
 
@@ -1153,7 +1153,7 @@ The modal tests must rebuild the frontend first since Task 1 changed `Modal.tsx`
   expect(focusedTestId).toBe("btn-vault-maintenance");
   ```
 
-- [ ] **Step 7.0b: Verify VaultMaintenanceDialog's close button testid**
+- [x] **Step 7.0b: Verify VaultMaintenanceDialog's close button testid**
 
   Run: `grep -n "testid\|data-testid\|close" apps/desktop/src/ui/components/VaultMaintenanceDialog.tsx | head -20`
 
@@ -1171,7 +1171,7 @@ The modal tests must rebuild the frontend first since Task 1 changed `Modal.tsx`
   - Escape-dismissal E2E test: OMIT from this spec. The `onCancel` handler is fully covered by the unit tests in Task 1 (cancel event simulation). E2E Escape behavior cannot be reliably tested without a controllable dismissible modal trigger.
   - Backdrop-click-dismiss E2E test: similarly omit — no dismissible modal is reachable from a deterministic flow
 
-- [ ] **Step 7.1: Add modal focus-trap and focus-return E2E tests**
+- [x] **Step 7.1: Add modal focus-trap and focus-return E2E tests**
 
   Append to `apps/desktop/tests/accessibility_and_resize.spec.ts`:
 
@@ -1302,7 +1302,7 @@ The modal tests must rebuild the frontend first since Task 1 changed `Modal.tsx`
   });
   ```
 
-- [ ] **Step 7.2: Build the frontend and run ALL accessibility tests**
+- [x] **Step 7.2: Build the frontend and run ALL accessibility tests**
 
   Run:
   ```bash
@@ -1319,7 +1319,7 @@ The modal tests must rebuild the frontend first since Task 1 changed `Modal.tsx`
   - **"btn-close-vault-maintenance not found"**: The actual testid may differ — re-run Step 7.0's grep to get the correct testid from VaultMaintenanceDialog.tsx.
   - **"focus not returned to btn-vault-maintenance"**: Verify the trigger capture runs BEFORE `showModal()` in the useEffect. The `triggerRef.current = document.activeElement` assignment happens before `dialog.showModal()` so this should work if the button was focused when clicked.
 
-- [ ] **Step 7.3: Run the full E2E suite to check for regressions**
+- [x] **Step 7.3: Run the full E2E suite to check for regressions**
 
   Run: `cd apps/desktop && npx playwright test --reporter=line`
 
@@ -1327,7 +1327,7 @@ The modal tests must rebuild the frontend first since Task 1 changed `Modal.tsx`
   - If existing tests used `page.getByRole("dialog")` they will still work (native `<dialog>` has role="dialog")
   - The existing unit test (`Modal.test.tsx`) that previously asserted `data-testid="modal-backdrop"` is fully replaced in Step 1.2. No E2E tests reference `modal-backdrop` — confirmed by grepping the test suite before writing this plan. The new inner content div uses `data-testid="modal-content"`.
 
-- [ ] **Step 7.4: Commit**
+- [x] **Step 7.4: Commit**
 
   ```bash
   git add apps/desktop/tests/accessibility_and_resize.spec.ts
@@ -1351,9 +1351,9 @@ The modal tests must rebuild the frontend first since Task 1 changed `Modal.tsx`
 
 ## Verification Checklist Before Declaring Done
 
-- [ ] `npx vitest run` — 0 failures
-- [ ] `npx playwright test accessibility_and_resize.spec.ts` — 0 failures
-- [ ] `npx playwright test` (full suite) — 0 new failures
+- [x] `npx vitest run` — 0 failures
+- [x] `npx playwright test accessibility_and_resize.spec.ts` — 0 failures
+- [x] `npx playwright test` (full suite) — 0 new failures
 - [ ] Manual check: open a modal, press Tab several times — focus stays inside modal
 - [ ] Manual check: press Escape — dismissible modal closes; focus returns to opener
 - [ ] Manual check: resize window to 900px — no horizontal scrollbar on Library or SpellEditor

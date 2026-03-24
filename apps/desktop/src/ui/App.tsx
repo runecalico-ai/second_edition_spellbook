@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "classnames";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import type { ShowModalOptions } from "../store/useModal";
 import { useModal } from "../store/useModal";
@@ -112,6 +112,8 @@ export default function App() {
     showModalIfIdle,
     hideModal,
   } = useModal();
+  const isModalOpen = useModal((state) => state.isOpen);
+  const modalInertShellRef = useRef<HTMLDivElement>(null);
   const [themeAnnouncement, setThemeAnnouncement] = useState(() => getThemeAnnouncement(themeMode));
   const previousResolvedTheme = useRef(resolvedTheme);
   const previousThemeMode = useRef(themeMode);
@@ -256,12 +258,20 @@ export default function App() {
     previousResolvedTheme.current = resolvedTheme;
   }, [resolvedTheme, themeMode]);
 
+  useLayoutEffect(() => {
+    const el = modalInertShellRef.current;
+    if (el) {
+      el.inert = isModalOpen;
+    }
+  }, [isModalOpen]);
+
   return (
     <div className="min-h-screen bg-stone-50 px-4 py-4 text-stone-950 dark:bg-neutral-950 dark:text-neutral-100">
       <div data-testid="theme-announcement-live-region" aria-live="polite" className="sr-only">
         {themeAnnouncement}
       </div>
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div ref={modalInertShellRef}>
+        <div className="mx-auto max-w-6xl space-y-4">
         {/*
           Layout shell borders use border-stone-200/80 on white (~1.3:1), below WCAG 3:1 for non-text UI.
           Accepted deviation for chunk-5 Task 6: interactive controls use stronger borders and focus-visible rings.
@@ -327,6 +337,7 @@ export default function App() {
         <main className="rounded-2xl border border-stone-200/80 bg-white/80 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
           <Outlet />
         </main>
+      </div>
       </div>
       <NotificationViewport />
       <Modal />

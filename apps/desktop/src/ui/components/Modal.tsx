@@ -1,5 +1,5 @@
 import clsx from "classnames";
-import { type ReactNode, useEffect, useId, useRef } from "react";
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef } from "react";
 import { useModal } from "../../store/useModal";
 import type { ModalButton, ModalType } from "../../store/useModal";
 
@@ -65,12 +65,65 @@ export function ModalShell({
     if (triggerRef.current.isConnected) {
       triggerRef.current.focus();
     } else {
-      if (!document.body.hasAttribute("tabindex")) {
+      const hadTabIndex = document.body.hasAttribute("tabindex");
+      if (!hadTabIndex) {
         document.body.tabIndex = -1;
       }
       document.body.focus();
+      queueMicrotask(() => {
+        if (!hadTabIndex) {
+          document.body.removeAttribute("tabindex");
+        }
+      });
     }
     triggerRef.current = null;
+  }, [isOpen]);
+
+  // WebView2 can move Tab focus outside showModal(); keep cycling inside this dialog.
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return;
+    }
+
+    const focusableSelector =
+      "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+    const listFocusables = (): HTMLElement[] =>
+      Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key !== "Tab" || !dialog.open) {
+        return;
+      }
+      const nodes = listFocusables();
+      if (nodes.length === 0) {
+        return;
+      }
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const active = document.activeElement;
+
+      if (!(active instanceof Node) || !dialog.contains(active)) {
+        ev.preventDefault();
+        (ev.shiftKey ? last : first).focus();
+        return;
+      }
+
+      if (!ev.shiftKey && active === last) {
+        ev.preventDefault();
+        first.focus();
+      } else if (ev.shiftKey && active === first) {
+        ev.preventDefault();
+        last.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [isOpen]);
 
   const typeStyles = {

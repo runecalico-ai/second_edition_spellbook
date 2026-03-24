@@ -324,7 +324,7 @@ export class SpellbookApp {
     console.log(`Opening spell: ${name}`);
     await this.navigate("Library");
     await this.waitForLibrary();
-    await this.page.getByPlaceholder(/Search spells/i).fill(name);
+    await this.page.getByTestId("library-search-input").fill(name);
     await this.page.getByRole("button", { name: "Search", exact: true }).click();
 
     // Wait for the specific spell link to appear in the table
@@ -351,7 +351,7 @@ export class SpellbookApp {
       await clearBtn.click();
     } else {
       // Manual clear fallback if button not found
-      const searchBox = this.page.getByPlaceholder(/Search spells/i);
+      const searchBox = this.page.getByTestId("library-search-input");
       await searchBox.clear();
       await this.page.getByRole("button", { name: "Search", exact: true }).click();
     }
@@ -511,7 +511,7 @@ export class SpellbookApp {
     await this.navigate("Library");
 
     if (filters.search !== undefined) {
-      const searchInput = this.page.getByPlaceholder(/Search spells/i);
+      const searchInput = this.page.getByTestId("library-search-input");
       await searchInput.fill(filters.search);
     }
 

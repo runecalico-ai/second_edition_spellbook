@@ -194,7 +194,7 @@ test.describe("Modal focus trap and focus return", () => {
           )
           .count();
       // Tab (count + 2) times to cycle through all + one wrap-around
-      const tabCount = Math.max(focusableCount + 2, 5);
+      const tabCount = Math.max(focusableCount + 2, 8);
       for (let i = 0; i < tabCount; i++) {
         await page.keyboard.press("Tab");
         const isInsideModal = await page.evaluate(() => {
@@ -239,7 +239,7 @@ test.describe("Modal focus trap and focus return", () => {
 // test at that time.
 
 test.describe("Keyboard navigation tab order", () => {
-  test("Library page has logical tab order through search and filters", async ({
+  test("Library page has forward tab navigation without focus loops", async ({
     appContext,
   }) => {
     const { page } = appContext;

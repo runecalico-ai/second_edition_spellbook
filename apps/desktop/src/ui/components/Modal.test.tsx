@@ -327,4 +327,60 @@ describe("Modal", () => {
 
     expect(document.activeElement).toBe(screen.getByTestId("modal-button-cancel"));
   });
+
+  it("cycles Tab forward from last focusable element to first", async () => {
+    render(
+      <ModalShell
+        isOpen={true}
+        type="info"
+        title="Test"
+        message="hello"
+        buttons={[
+          { label: "Cancel", variant: "secondary", testId: "modal-button-cancel" },
+          { label: "OK", variant: "primary", testId: "modal-button-ok" },
+        ]}
+        onRequestClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(showModalMock).toHaveBeenCalledTimes(1));
+
+    // Focus the last button
+    const lastButton = screen.getByTestId("modal-button-ok");
+    lastButton.focus();
+    expect(document.activeElement).toBe(lastButton);
+
+    // Tab forward from last → should wrap to first
+    fireEvent.keyDown(document, { key: "Tab", code: "Tab" });
+
+    expect(document.activeElement).toBe(screen.getByTestId("modal-button-cancel"));
+  });
+
+  it("cycles Shift+Tab backward from first focusable element to last", async () => {
+    render(
+      <ModalShell
+        isOpen={true}
+        type="info"
+        title="Test"
+        message="hello"
+        buttons={[
+          { label: "Cancel", variant: "secondary", testId: "modal-button-cancel" },
+          { label: "OK", variant: "primary", testId: "modal-button-ok" },
+        ]}
+        onRequestClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(showModalMock).toHaveBeenCalledTimes(1));
+
+    // Focus the first button
+    const firstButton = screen.getByTestId("modal-button-cancel");
+    firstButton.focus();
+    expect(document.activeElement).toBe(firstButton);
+
+    // Shift+Tab backward from first → should wrap to last
+    fireEvent.keyDown(document, { key: "Tab", code: "Tab", shiftKey: true });
+
+    expect(document.activeElement).toBe(screen.getByTestId("modal-button-ok"));
+  });
 });

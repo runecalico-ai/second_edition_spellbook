@@ -270,6 +270,9 @@ export default function App() {
       <div data-testid="theme-announcement-live-region" aria-live="polite" className="sr-only">
         {themeAnnouncement}
       </div>
+      {/* IMPORTANT: Modal and NotificationViewport must be rendered OUTSIDE this div.
+          When isOpen=true, el.inert=true disables all interaction on this div's content.
+          Rendering Modal inside this div would make the modal inaccessible when open. */}
       <div ref={modalInertShellRef}>
         <div className="mx-auto max-w-6xl space-y-4">
         {/*

@@ -123,6 +123,35 @@ describe("NotificationViewport", () => {
     cancelTimers();
   });
 
+  it("M-003 clamps past-due notifications to a zero-delay timeout and dismisses on the next turn", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-24T00:00:10.000Z"));
+    const dismissNotification = vi.fn();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    const cancelTimers = scheduleNotificationDismissals(
+      [
+        {
+          id: "toast-past-due",
+          kind: "error",
+          message: "Already expired.",
+          durationMs: 1200,
+          createdAtMs: Date.now() - 5000,
+        },
+      ],
+      dismissNotification,
+    );
+
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+    expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 0);
+    expect(dismissNotification).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(0);
+    expect(dismissNotification).toHaveBeenCalledWith("toast-past-due");
+
+    cancelTimers();
+  });
+
   it("preserves remaining time when the list changes", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-18T00:00:00.000Z"));

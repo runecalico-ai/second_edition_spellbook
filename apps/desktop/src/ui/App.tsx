@@ -114,7 +114,7 @@ export default function App() {
   } = useModal();
   const isModalOpen = useModal((state) => state.isOpen);
   const modalInertShellRef = useRef<HTMLDivElement>(null);
-  const [themeAnnouncement, setThemeAnnouncement] = useState(() => getThemeAnnouncement(themeMode));
+  const [themeAnnouncement, setThemeAnnouncement] = useState("");
   const previousResolvedTheme = useRef(resolvedTheme);
   const previousThemeMode = useRef(themeMode);
   const skipNextResolvedThemeAnnouncement = useRef(false);
@@ -233,6 +233,13 @@ export default function App() {
   useEffect(() => {
     const priorMode = previousThemeMode.current;
     previousThemeMode.current = themeMode;
+
+    // M-001: only announce real mode transitions so the live region stays
+    // empty during initial render, including React.StrictMode's extra mount pass.
+    if (priorMode === themeMode) {
+      return;
+    }
+
     if (priorMode !== "system" && themeMode === "system") {
       skipNextResolvedThemeAnnouncement.current = true;
     }

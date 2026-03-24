@@ -76,6 +76,34 @@ describe("useTheme", () => {
     expect(store.getState().resolvedTheme).toBe("dark");
   });
 
+  it("M-002 keeps in-memory theme state functional when localStorage.setItem throws during setTheme", () => {
+    const values = new Map<string, string>([[THEME_STORAGE_KEY, "light"]]);
+    const storage = {
+      getItem(key: string) {
+        return values.get(key) ?? null;
+      },
+      setItem() {
+        throw new Error("M-002 simulated localStorage write failure");
+      },
+      removeItem(key: string) {
+        values.delete(key);
+      },
+      clear() {
+        values.clear();
+      },
+    } satisfies Pick<Storage, "getItem" | "setItem" | "removeItem" | "clear">;
+
+    vi.stubGlobal("localStorage", storage);
+    const store = createThemeStore(false);
+
+    store.getState().syncResolvedTheme(true);
+    store.getState().setTheme("system");
+
+    expect(store.getState().mode).toBe("system");
+    expect(store.getState().resolvedTheme).toBe("dark");
+    expect(readStoredThemeMode()).toBe("light");
+  });
+
   it("resolves active theme from mode and system preference", () => {
     expect(resolveThemeMode("light", true)).toBe("light");
     expect(resolveThemeMode("dark", false)).toBe("dark");

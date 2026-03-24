@@ -92,6 +92,25 @@ describe("main", () => {
     detach();
   });
 
+  it("H-002 ignores OS change events after attachThemeRuntime cleanup detach is called", () => {
+    const store = createThemeStore(false);
+    const rootElement = createRootElementStub();
+    const mediaQueryList = createMediaQueryListStub(false);
+
+    const detach = attachThemeRuntime({ rootElement, mediaQueryList, store });
+
+    expect(store.getState().resolvedTheme).toBe("light");
+    expect(rootElement.classList.contains("dark")).toBe(false);
+    expect(rootElement.dataset.theme).toBe("light");
+
+    detach();
+    mediaQueryList.emit(true);
+
+    expect(store.getState().resolvedTheme).toBe("light");
+    expect(rootElement.classList.contains("dark")).toBe(false);
+    expect(rootElement.dataset.theme).toBe("light");
+  });
+
   it("keeps pre-hydration and runtime theme application consistent for explicit dark", () => {
     const rootElement = createRootElementStub();
     applyPreHydrationTheme(rootElement as unknown as HTMLElement, "dark", false);

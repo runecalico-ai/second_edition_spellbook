@@ -16,6 +16,32 @@ All 33 enumerated Chunk 1 plan requirements are implemented. No required file is
 
 ---
 
+## Resolution Update
+
+Update recorded: **2026-03-24**
+
+The following findings were fixed and verified in implementation commit `fcc8c9b` (`Fix chunk 1 theme feedback review findings`):
+
+- **[H-001] RESOLVED** — Added targeted coverage for the explicit light -> system transition after staging a dark OS preference so the hidden live region confirms **"System mode"** rather than being overwritten by the resolved dark theme.
+- **[H-002] RESOLVED** — Added cleanup coverage proving `attachThemeRuntime` ignores OS theme change events after `detach()` removes the listener/subscription.
+- **[M-001] RESOLVED** — Updated the hidden theme live region to initialize empty and announce only on real theme transitions, with additional StrictMode regression coverage.
+- **[M-002] RESOLVED** — Added store coverage for `localStorage.setItem` failure during `setTheme`, verifying in-memory theme state still updates while persisted storage remains unchanged.
+- **[M-003] RESOLVED** — Added notification timer coverage for the past-due `Math.max(0, ...)` clamp and verified zero-delay dismissal on the next timer turn.
+- **[M-004] RESOLVED** — Added a combined-render App-shell test proving the hidden theme live region and toast live region are separate DOM nodes outside the inert shell.
+
+Additional verification notes:
+
+- The implementation/verification loop also surfaced and resolved a follow-up test-quality gap while tightening **[H-001]** coverage.
+- Final targeted verification passed: `pnpm vitest run src/ui/App.test.tsx src/main.test.tsx src/store/useTheme.test.ts src/ui/components/NotificationViewport.test.tsx`.
+
+Remaining out of scope for this pass:
+
+- **[L-001]** Not fixed
+- **[L-002]** Not fixed
+- **[L-003]** Not fixed
+
+---
+
 ## Findings
 
 ### High

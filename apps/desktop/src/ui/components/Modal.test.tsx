@@ -296,4 +296,35 @@ describe("Modal", () => {
     await waitFor(() => expect(closeMock).toHaveBeenCalledTimes(1));
     expect(document.activeElement).toBe(document.body);
   });
+
+  it("clamps focus to first focusable when active element is inside dialog but not in focusable list", async () => {
+    render(
+      <ModalShell
+        isOpen={true}
+        type="info"
+        title="Test"
+        message="hello"
+        buttons={[
+          { label: "Cancel", variant: "secondary", testId: "modal-button-cancel" },
+          { label: "OK", variant: "primary", testId: "modal-button-ok" },
+        ]}
+        onRequestClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(showModalMock).toHaveBeenCalledTimes(1));
+
+    // Focus a div inside the dialog that is NOT in the focusable selector list.
+    // tabIndex=-1 allows JS .focus() but the selector excludes [tabindex='-1'] elements,
+    // so nodes.indexOf(active) returns -1 — exercising the defensive guard.
+    const content = screen.getByTestId("modal-content") as HTMLElement;
+    content.tabIndex = -1;
+    content.focus();
+    expect(document.activeElement).toBe(content);
+
+    // The capture-phase listener on document should clamp focus to the first button.
+    fireEvent.keyDown(document, { key: "Tab", code: "Tab" });
+
+    expect(document.activeElement).toBe(screen.getByTestId("modal-button-cancel"));
+  });
 });

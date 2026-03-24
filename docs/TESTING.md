@@ -541,6 +541,17 @@ describe('useSpells', () => {
 });
 ```
 
+### Modal Component Testing
+
+The `ModalShell` component in `src/ui/components/Modal.tsx` is tested in `Modal.test.tsx` using `@testing-library/react` (not `renderToStaticMarkup`). Key behaviors tested:
+
+- `showModal()` / `close()` calls are mocked via `HTMLDialogElement.prototype` in `beforeEach`
+- Focus trap (capture-phase Tab listener) is tested by firing `keydown` events on `document`
+- Focus return to trigger element is verified after `close()`
+- `onCancel` handler (Escape key) is verified via `fireEvent` cancel event
+
+Native `<dialog>` elements require jsdom >= 20 for `HTMLDialogElement` support.
+
 ---
 
 ## Python Testing (ML Services)

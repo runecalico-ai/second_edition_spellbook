@@ -143,3 +143,13 @@ To ensure hash stability, the following are excluded from **canonical** serialis
 >
 > For the complete metadata exclusion rules and field inventory, see the [Canonical Serialization Contract](./architecture/canonical-serialization.md).
 
+---
+
+## Modal Focus Trap
+
+`ModalShell` (`src/ui/components/Modal.tsx`) uses the native `<dialog>` element with `showModal()`/`close()` for first-class browser focus trapping. The Tauri WebView2 (Chromium) top-layer is used, with a supplemental capture-phase `keydown` listener on `document` to handle a known WebView2 quirk where Tab can escape `showModal()` context.
+
+Background content is disabled via the HTML `inert` attribute while a modal is open (applied in `App.tsx`). Focus returns to the trigger element after close.
+
+The `dialog::backdrop` pseudo-element is styled in `src/index.css`.
+

@@ -281,8 +281,9 @@ test.describe("Keyboard navigation tab order", () => {
       // No element should appear twice (no focus loops in first 5 tabs)
       const unique = new Set(focusedElements);
       expect(unique.size).toBe(focusedElements.length);
-      // At least one stop should be a Library filter control (forward progress into toolbar)
-      expect(focusedElements.some((id) => id.startsWith("library-"))).toBe(true);
+      // At least 2 of the 5 tab stops should be library filter controls (progress into toolbar)
+      const libraryStops = focusedElements.filter((id) => id.startsWith("library-"));
+      expect(libraryStops.length).toBeGreaterThanOrEqual(2);
     });
   });
 });

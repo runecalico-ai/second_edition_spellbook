@@ -113,6 +113,15 @@ export function ModalShell({
         return;
       }
 
+      // If focused element is inside dialog but not in the focusable list,
+      // clamp to first/last to prevent Tab from escaping via browser default.
+      const activeIndex = nodes.indexOf(active as HTMLElement);
+      if (activeIndex === -1) {
+        ev.preventDefault();
+        (ev.shiftKey ? last : first).focus();
+        return;
+      }
+
       if (!ev.shiftKey && active === last) {
         ev.preventDefault();
         first.focus();

@@ -991,3 +991,230 @@ Stories complement E2E tests:
 - **E2E Tests:** Test full user workflows, integration with backend, data persistence
 
 Use both approaches for comprehensive test coverage.
+
+---
+
+## Spell Editor Validation Architecture
+
+### Pure validation helper
+
+The spell editor's validation logic is extracted into a pure, side-effect-free module:
+
+**File:** `apps/desktop/src/ui/spellEditorValidation.ts`
+
+```typescript
+export interface SpellEditorFieldError {
+  field: string;       // Unique field key (e.g. "spell-name", "range-base-value")
+  testId: string;      // data-testid of the rendered error element
+  message: string;     // User-facing error copy
+  focusTarget: string; // DOM id or testid of the input to focus
+}
+```
+
+The module exports two functions:
+
+- **`validateSpellEditorForm(form, tradition, flags)`** — returns `SpellEditorFieldError[]` for all currently blocking errors. Pure: no DOM access, no React, no side effects. Safe to call in Node/Vitest unit tests.
+- **`firstInvalidFocusTarget(errors)`** — returns the `focusTarget` from the first error in deterministic declaration order so focus does not depend on DOM query order.
+
+**Covered validation rules:**
+
+| Rule | testId | Message |
+|------|--------|---------|
+| Name empty | `spell-name-error` | *Name is required.* |
+| Description empty | `error-description-required` | *Description is required.* |
+| Level out of range | `error-level-range` | *Level must be between 0 and 12.* |
+| Arcane tradition, no school | `error-school-required-arcane-tradition` | *School is required for Arcane spells.* |
+| Epic spell, no school | `error-school-required-arcane` | *Epic spells require a School (Arcane).* |
+| Epic spell, non-Wizard class | `error-epic-arcane-class-restriction` | *Epic spells are Arcane only and require Wizard/Mage class access.* |
+| Divine tradition, no sphere | `error-sphere-required-divine-tradition` | *Sphere is required for Divine spells.* |
+| Quest spell, no sphere | `error-sphere-required-divine` | *Quest spells require a Sphere (Divine).* |
+| School + Sphere conflict | `error-tradition-conflict` | *School and Sphere are mutually exclusive.* |
+| Epic + Quest conflict | `error-epic-quest-conflict` | *A spell cannot be both Epic and Quest.* |
+| Range base value negative | `error-range-base-value` | *Base value must be 0 or greater.* |
+| Duration base value negative | `error-duration-base-value` | *Base value must be 0 or greater.* |
+| Area radius negative | `error-area-form-radius-value` | *Radius must be 0 or greater.* |
+| Area length negative | `error-area-form-length-value` | *Length must be 0 or greater.* |
+
+Scalar error testids are generated predictably from the input key, e.g. `error-range-base-value`, `error-area-form-length-value`.
+
+**Unit test file:** `apps/desktop/src/ui/spellEditorValidation.test.ts`
+
+### Touched-versus-submit state model
+
+`SpellEditor.tsx` maintains two pieces of validation state:
+
+| State | Purpose |
+|-------|---------|
+| `touchedFields: Set<string>` | Fields that have been blurred (text inputs) or changed (selects). Errors are shown for touched fields even before submit. |
+| `hasAttemptedSubmit: boolean` | Set to `true` on the first failed save click. Once set, all blocking errors are shown regardless of touch state, and the save button is disabled until they are resolved. |
+
+Validation timing by control type:
+
+- **Text inputs**: validate on `blur` — error appears when the user leaves the field.
+- **Select controls**: validate on `change` — error appears immediately when the value changes (e.g. switching Tradition triggers instant revalidation of School/Sphere).
+- **Dependent fields**: revalidate immediately when their controlling value changes (e.g. changing Tradition clears stale errors for the hidden field and triggers inline validation of the newly visible field).
+- **First submit attempt**: validates all fields unconditionally, focuses the first invalid field, shows the save hint.
+
+### Tradition-conditional School/Sphere rendering
+
+Arcane and Divine are mutually exclusive in terms of which classification field is shown:
+
+- Arcane tradition → School field rendered; Sphere field unmounted.
+- Divine tradition → Sphere field rendered; School field unmounted.
+- The newly mounted field wrapper receives `animate-in fade-in` so it fades in smoothly.
+- The previously visible field is unmounted immediately without an exit-animation placeholder.
+- Switching tradition instantly revalidates the newly relevant field and clears stale errors from the hidden field.
+
+### ARIA wiring contract
+
+Each validated input must satisfy:
+
+```html
+<input
+  id="spell-name"
+  aria-invalid="true"
+  aria-describedby="spell-name-error"
+/>
+<span id="spell-name-error" data-testid="spell-name-error" class="animate-in fade-in …">
+  Name is required.
+</span>
+```
+
+- `aria-invalid="true"` is set only when the field currently has an error; the attribute is removed (or set to `false`) when the error is cleared.
+- `aria-describedby` points to the matching inline error element id.
+- Visible `<label>` elements remain the primary accessible name source; `aria-label` is not used to override them.
+- Inline errors appear in the same field container as their input (not in a detached summary block).
+- Newly shown inline errors receive `animate-in fade-in`; removed errors leave no detached spacing.
+
+This contract applies to all in-scope scalar surfaces:
+
+- `ScalarInput.tsx` (range and duration base-value / per-level inputs)
+- `StructuredFieldInput.tsx` (`casting-time-base-value`, `casting-time-per-level`)
+- `AreaForm.tsx` (radius, length, width, height, thickness, edge, surface area, volume, tile count, count)
+
+### Save-progress state model
+
+`SpellEditor.tsx` tracks save progress independently from parser/loading state:
+
+| Phase | Button label | Button disabled | Editor inputs |
+|-------|-------------|-----------------|---------------|
+| Idle, valid | `Save Spell` | No | Editable |
+| Idle, post-failed-submit | `Save Spell` | Yes (errors remain) | Editable |
+| Save in flight < 300 ms | `Save Spell` | Yes (re-entry guard) | Frozen |
+| Save in flight ≥ 300 ms | `Saving…` | Yes | Frozen |
+| Save complete | navigates away | — | — |
+
+- The re-entry guard activates immediately on save start so double-submit cannot occur during fast saves, even before the 300 ms visual threshold.
+- A 300 ms timer is started when the save begins; if still pending at threshold, the label changes to `Saving…`.
+- The timer is cleared on success or failure.
+- On success: `pushNotification("success", "Spell saved.")` is called before `navigate("/")`.
+
+### Notification-versus-modal boundary contract
+
+| Scenario | Feedback |
+|----------|----------|
+| Routine save success | Toast: *Spell saved.* |
+| Add spell to character success | Toast: *Spell added to character!* |
+| Add spell to character failure | Toast (error) |
+| Save search failure | Toast (error) |
+| Delete saved search failure | Toast (error) |
+| Backend persistence failure (`Save Error`) | Modal dialog |
+| Unsaved-changes navigation guard | Modal confirm |
+| Delete confirmation | Modal confirm |
+| Parser reparse failure | Modal dialog |
+
+The toast is delivered through the shared Zustand notification store and rendered by the global `NotificationViewport` (live region `aria-live="polite"`). It survives route navigation because the viewport is mounted in the app shell above the router outlet.
+
+### Developer test coverage
+
+| File | Scope |
+|------|-------|
+| `src/ui/spellEditorValidation.test.ts` | Pure validation helper — all rule combinations, exact copy assertions, Node-safe |
+| `src/ui/SpellEditor.test.tsx` | Editor validation state, ARIA wiring, save-progress thresholds, toast routing (jsdom, `// @vitest-environment jsdom`) |
+| `src/ui/Library.test.tsx` | Library notification replacements — toast vs alert, live-region targeting (jsdom) |
+| `tests/spell_editor_save_workflow.spec.ts` | Full Playwright save/validation/modal-boundary E2E spec |
+
+---
+
+## Grouped Layout Contract (Chunk 4 Visual Polish)
+
+Chunk 4 introduced explicit visual grouping to `StructuredFieldInput` and `ComponentCheckboxes`. This section documents the surface vocabulary, DOM structure, and the intended relationship between `SpellEditor` labels and their child group containers.
+
+### Surface class constants (`StructuredFieldInput.tsx`)
+
+Six named class constants form the visual grammar used consistently across range, duration, and casting-time modes:
+
+| Constant | Tailwind classes | Purpose |
+|----------|-----------------|---------|
+| `structuredGroupSurfaceClass` | `space-y-3 rounded-xl border border-neutral-500 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-100` | Root bordered subpanel, light and dark surface pair |
+| `structuredPrimaryControlRowClass` | `flex min-w-0 flex-wrap items-center gap-2` | Main control row — flex-wrap for 900 px Chunk 5 compatibility |
+| `structuredSupportingRowClass` | `rounded-lg border border-neutral-200 bg-neutral-50/70 p-2 dark:border-neutral-800 dark:bg-neutral-950/40` | Notes / secondary inputs, subordinate surface |
+| `structuredPreviewRowClass` | `rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-950/50` | Preview output row, intentionally lighter than the surface |
+| `structuredInlineScalarClusterClass` | `flex min-w-0 flex-wrap items-center gap-2` | Nested wrapping cluster for scalar + unit pairs |
+| `structuredPreviewOutputClass` | `text-sm italic text-neutral-700 dark:text-neutral-300` | Preview text style, applied to `<output>` elements |
+
+All classes are local constants in `StructuredFieldInput.tsx`. They are not exported; do not import them from outside the component file.
+
+### `StructuredFieldInput` DOM structure
+
+Each field type (`range`, `duration`, `casting_time`) renders the same three-row layout inside a single root group (`data-testid="structured-field-input"`):
+
+```
+[structured-field-input]          ← structuredGroupSurfaceClass (root)
+  [structured-field-primary-row]  ← structuredPrimaryControlRowClass
+    kind select                   ← range-kind-select / duration-kind-select / casting-time-unit
+    scalar cluster                ← structuredInlineScalarClusterClass (range/duration)
+    unit select                   ← range-unit / casting-time more selects
+    raw-legacy input              ← range-raw-legacy / duration-raw-legacy (special kind only)
+  [structured-field-supporting-row]  ← structuredSupportingRowClass
+    notes field                   ← range-notes / duration-notes / (casting-time has no notes)
+  [structured-field-preview-row]  ← structuredPreviewRowClass
+    <output>                      ← range-text-preview / duration-text-preview / casting-time-text-preview
+```
+
+Key rules:
+
+- The notes row and preview row are always rendered (not conditionally mounted) so their test IDs are stable regardless of kind.
+- The `<output>` element carries `aria-label="Computed {field} text"` and has no `aria-live`; preview updates are not announced by screen readers.
+- Raw-legacy inputs appear inside the primary row, not below it, so the single grouped surface remains intact for special/legacy kinds.
+- Casting-time mode renders base / per-level / divisor / unit all inside the primary row with `+`, `/`, `/level` separators rendered as `<span>` support text rather than labels.
+
+### `ComponentCheckboxes` DOM structure
+
+```
+[component-checkboxes]          ← root surface (same palette as structuredGroupSurfaceClass)
+  [component-checkbox-strip]    ← flex-wrap container for checkbox labels
+    (Verbal) (Somatic) (Material) [(Focus) (Divine Focus) (XP) — all variant only]
+  <output component-text-preview>  ← preview row (structuredPreviewRowClass palette)
+  [material-subform]            ← subordinate nested panel (only when material === true)
+    header + Add button
+    [material-component-row]    ← one per material entry
+```
+
+Key rules:
+
+- The root container uses the same `rounded-xl border border-neutral-500 bg-white dark:border-neutral-700 dark:bg-neutral-950/60` palette as `StructuredFieldInput`.
+- `component-text-preview` renders as an `<output>` element and uses `structuredPreviewRowClass` palette for visual consistency.
+- `material-subform` uses the same bordered subpanel palette (`border-neutral-500 bg-white dark:border-neutral-700 dark:bg-neutral-950/60`) to read as a nested surface rather than a peer.
+- Material rows use `bg-neutral-50 dark:bg-neutral-800` with a `border-neutral-200 dark:border-neutral-700` border — slightly de-emphasised relative to the subform surface.
+- No classes assume a dark background; every surface states both a light value and a `dark:` variant.
+
+### Relationship between `SpellEditor` labels and structured child containers
+
+Labels for Range, Duration, Casting Time, and Components remain owned by `SpellEditor.tsx`. The child components do **not** render field labels internally. The intended visual relationship is:
+
+```
+SpellEditor detail panel
+  label ("Range")                          ← owned by SpellEditor
+  single-line text input (detail-range-input)  ← owned by SpellEditor
+  expand/collapse control (detail-range-expand) ← owned by SpellEditor
+  [expanded panel]
+    StructuredFieldInput (range)           ← child component; the root group provides
+                                             the subpanel surface below the label
+```
+
+When expanded, the `StructuredFieldInput` or `ComponentCheckboxes` root group appears directly inside the expanded panel surface from `SpellEditor`. The grouping classes provide a rounded bordered inset that sits below the `SpellEditor` label row without double-bordering the outer panel. `SpellEditor` does not add its own inner border around the child group.
+
+### 900 px layout compatibility
+
+The primary control row uses `flex-wrap` and `min-w-0` so scalar controls and selects wrap to a second line when the panel is approximately 900 px wide. This is the direct foundation for Chunk 5 resize hardening. Do not remove these properties without updating the Chunk 5 plan and re-running the 900 px wrap checks in `tests/spell_editor_structured_data.spec.ts`.

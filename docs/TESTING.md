@@ -552,6 +552,156 @@ The `ModalShell` component in `src/ui/components/Modal.tsx` is tested in `Modal.
 
 Native `<dialog>` elements require jsdom >= 20 for `HTMLDialogElement` support.
 
+### Spell Editor Unit Tests
+
+Three dedicated unit suites cover the spell editor validation and save workflow. All three use the `jsdom` environment declared with `// @vitest-environment jsdom` at the top of each file.
+
+**`src/ui/spellEditorValidation.test.ts`** — pure Node-safe tests for the validation helper. No DOM or React rendering. Covers:
+- All blocking rule combinations (name, description, level, school, sphere, tradition conflict, epic/quest, epic arcane-class, etc.)
+- Exact user-facing copy for every non-generic error message
+- Exact copy for one scalar field from each in-scope surface (`ScalarInput`, `StructuredFieldInput`, `AreaForm`)
+
+**`src/ui/SpellEditor.test.tsx`** — jsdom component tests for the editor. Uses `createMemoryRouter` + `RouterProvider`, stubs `invoke`, mocks Tauri, resets notification state between tests. Covers:
+- Pristine fields: no errors before blur or failed submit
+- Clicking Save with invalid form shows inline errors and the hint *Fix the errors above to save*
+- Fixing a field immediately clears its error
+- Tradition change revalidates school/sphere on change (not only on blur/submit)
+- `aria-invalid` and `aria-describedby` wiring for all validated surfaces
+- First failed submit focuses the first invalid field
+- `spell-name-error` testid is rendered in place of the old name error identifier
+- Save-progress threshold: label stays `Save Spell` before 300 ms; changes to `Saving…` at threshold
+- Re-entry guard: second save click ignored while first is in flight
+- Success: `pushNotification("success", "Spell saved.")` called before navigation
+- Light and dark theme styles applied correctly to invalid borders, save hint, and disabled button
+- Expanded structured detail panels render the field label, expand/collapse control, and structured group in coherent DOM order
+- Expanded panel surface wraps `StructuredFieldInput` / `ComponentCheckboxes` groups without double-border or spacing regression
+- Preview outputs remain inside the expanded panel and below the primary control surface
+- Special-hint text appears below the structured group when the expanded kind is `special` or `dm_adjudicated`
+
+**`src/ui/Library.test.tsx`** — jsdom component tests for Library notification replacements. Mounts `NotificationViewport` alongside `Library` so live-region assertions target the real notification surface. Covers:
+- add-to-character success → toast, not `alert()`
+- add-to-character failure → toast, not `alert()`
+- save-search failure → toast, not `alert()`
+- delete-saved-search failure → toast, not `alert()`
+- Toast delivered through `notification-viewport` live region
+- Toast does not steal focus from the triggering control
+
+### Structured Editor Component Render Tests (Chunk 4)
+
+Two dedicated DOM-render test files lock the visual group contract for the structured field components. Both use `// @vitest-environment jsdom` at the top of the file.
+
+**`src/ui/components/structured/StructuredFieldInput.test.tsx`** — Verifies grouped DOM structure for all three field types. Key assertions:
+
+- `data-testid="structured-field-input"` root exists and carries the expected surface class tokens (`rounded-xl`, `border-neutral-500`, `dark:bg-neutral-950/60`).
+- `data-testid="structured-field-primary-row"` exists inside the root and carries `flex`, `flex-wrap`, `min-w-0` — confirming 900 px wrap compatibility.
+- `data-testid="structured-field-supporting-row"` exists inside the root for notes with subordinate surface classes.
+- `data-testid="structured-field-preview-row"` exists inside the root with preview surface classes.
+- For **range distance** mode: kind select, scalar, unit select all live inside the primary row; notes in the supporting row; preview in the preview row.
+- For **range special** mode: kind select and raw-legacy input both live in the primary row.
+- Preview elements render as `<output>` tags, carry `aria-label="Computed {field} text"`, and have no `aria-live` attribute.
+- Primary row has `flex-wrap` and `min-w-0` for every field type — the targeted 900 px assertion.
+
+**`src/ui/components/structured/ComponentCheckboxes.test.tsx`** — Verifies the `ComponentCheckboxes` grouped structure. Key assertions:
+
+- `data-testid="component-checkboxes"` root exists.
+- `data-testid="component-checkbox-strip"` is a descendant of the root and contains all checkbox inputs.
+- `data-testid="component-text-preview"` is a descendant of the root and renders as an `<output>` element.
+- With Material enabled and material rows present, `data-testid="material-subform"` appears as a descendant of the root.
+- Material rows (`data-testid="material-component-row"`) render inside the subform.
+- Preview does not disappear when Material is enabled.
+- `vsm` and `all` variants both preserve the root / strip / preview grouping.
+- Material subform container uses theme-aware surface classes (`bg-white dark:bg-neutral-950/60`) instead of dark-only classes.
+
+**Running the structured editor component tests:**
+
+```powershell
+pnpm --dir apps/desktop test:unit -- src/ui/components/structured/StructuredFieldInput.test.tsx src/ui/components/structured/ComponentCheckboxes.test.tsx
+```
+
+### 900 px Wrap Verification
+
+The `tests/spell_editor_structured_data.spec.ts` Playwright spec includes targeted 900 px layout checks after each structured field edit. These assertions verify that the new grouping wrappers do not introduce horizontal overflow at a narrower viewport, and are the primary automated guard for Chunk 5 resize hardening:
+
+```typescript
+// Inside each structured-field scenario:
+await page.setViewportSize({ width: 900, height: 768 });
+const overflowingGroups = await page.locator('[data-testid="structured-field-input"]').evaluateAll(
+  (nodes) => nodes.filter((n) => n.scrollWidth > n.clientWidth).length,
+);
+expect(overflowingGroups).toBe(0);
+```
+
+These checks are structural (no pixel comparisons) and remain green across all supported OS rendering configurations. If a new control grows unexpectedly wide, the test will catch the overflow before it becomes a Chunk 5 regression.
+
+---
+
+## Screenshot Testing (Structured Editor Visual Spec)
+
+`tests/spell_editor_visual.spec.ts` provides `toHaveScreenshot()` coverage for the structured editor surfaces introduced in Chunk 4. This section documents the spec's structure and the important distinction between screenshot-isolation theme toggling and real-theme-flow verification.
+
+### When to use direct `<html>` class toggling versus real theme switching
+
+| Use case | Approach |
+|----------|----------|
+| Screenshot isolation (pixel-stable baselines) | Toggle `dark` class directly on `<html>` via `page.evaluate()` |
+| Theme-flow integration test (settings roundtrip) | Use the real settings flow / existing helper in `theme_and_feedback.spec.ts` |
+
+Direct class toggling gives identical rendering on every run regardless of OS theme or user preference state. This makes screenshot diffs stable and reproducible. Never use it to replace the real-theme-flow check — that check verifies the settings storage and persistence contract, not just the CSS.
+
+### `setHtmlTheme` helper
+
+`spell_editor_visual.spec.ts` exposes a local helper:
+
+```typescript
+async function setHtmlTheme(page: Page, theme: "light" | "dark"): Promise<void> {
+  await page.evaluate((nextTheme) => {
+    const root = document.documentElement;
+    root.dataset.theme = nextTheme;
+    root.classList.toggle("dark", nextTheme === "dark");
+  }, theme);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+}
+```
+
+Use this helper inside visual specs only. Do not copy it into functional E2E specs; those should use the real theme helper from `theme_and_feedback.spec.ts`.
+
+### What is screenshot-tested
+
+| Test name | Coverage |
+|-----------|----------|
+| `structured field inputs – light mode` | Range, duration, and casting-time structured groups with controls populated — light baseline |
+| `structured field inputs – dark mode` | Same surfaces with `dark` class toggled on `<html>` |
+| `spell editor components expanded – light mode` | Full editor scroll-captured with components field expanded |
+| `spell editor components expanded – dark mode` | Same with `dark` class toggled |
+
+Screenshots are stored in `tests/spell_editor_visual.spec.ts-snapshots/` and committed to the repository. Update them when intentional visual changes are made:
+
+```powershell
+cd apps/desktop
+npx playwright test tests/spell_editor_visual.spec.ts --update-snapshots
+```
+
+### Shared test fixtures
+
+`spell_editor_visual.spec.ts` reuses the same fixture infrastructure as the structured-data spec:
+- `test` and `expect` from `./fixtures/test-fixtures` (app lifecycle management, file tracking)
+- `SpellbookApp` page object from `./page-objects/SpellbookApp`
+- `TIMEOUTS` from `./fixtures/constants`
+
+The spec calls a `seedVisualSpell` helper that creates a canonical test spell via `SpellbookApp.createSpell()` before opening the editor. Prefer reusing this helper over duplicating spell-creation logic in new screenshot tests.
+
+### Before running screenshot tests
+
+Always rebuild the debug binary before running Playwright screenshot tests:
+
+```powershell
+pnpm --dir apps/desktop tauri:build --debug
+cd apps/desktop
+npx playwright test tests/spell_editor_visual.spec.ts
+```
+
+A stale binary will produce stale screenshots and false-negative diffs.
+
 ---
 
 ## Python Testing (ML Services)
@@ -646,7 +796,9 @@ pnpm e2e -- tests/search.spec.ts
 
 **Test ID convention:** All `data-testid` values in the application use **kebab-case** (e.g. `detail-range-input`, `detail-range-expand`, `save-button`, `spell-name-input`). Use kebab-case when adding new test IDs so E2E and Storybook locators stay consistent. See `apps/desktop/src/AGENTS.md` (Naming Conventions for `data-testid`) and [Spell Editor Components Guide](dev/spell_editor_components.md#e2e-and-test-ids) for the full list.
 
-**Spell Editor E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand–edit–collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. Both use the same fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and target canon inputs/expand controls via `data-testid` (e.g. `detail-range-input`, `detail-range-expand`). Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
+**Spell Editor E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand–edit–collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. `spell_editor_save_workflow.spec.ts` covers the full save/validation/modal-boundary workflow: inline validation errors, first-failed-submit focus, blur/change validation, tradition-conditional field rendering, save-progress labeling, success toast routing, and modal-versus-toast boundaries. All three use the same fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and target canon inputs/expand controls via `data-testid` (e.g. `detail-range-input`, `detail-range-expand`). Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
+
+**Build before Playwright:** Always run `pnpm --dir apps/desktop tauri:build --debug` before executing any Playwright suite. The Playwright fixture starts the Tauri debug binary; stale or absent binaries will silently fail or produce outdated behaviour. This requirement applies in CI and on a clean local workspace.
 
 ### Test Structure
 
@@ -885,5 +1037,47 @@ cargo test --lib -- --skip integration
 - [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - Common issues and solutions
 
 ---
+
+## Accessibility Testing (Manual — NVDA + Chromium)
+
+The spell editor inline validation surfaces require a manual screen-reader check that cannot be automated as part of the test suite. The procedure below must be run by a human when the validation or ARIA wiring changes.
+
+### Setup
+
+- **Browser:** Chromium (the same engine used by the Tauri WebView2 runtime; ensure WebView2 is also tested if platform-specific quirks are suspected)
+- **Screen reader:** NVDA (Windows). Record the NVDA version during the run.
+- **Build:** Start the app with `pnpm tauri:dev` or run the debug binary from `pnpm --dir apps/desktop tauri:build --debug`
+
+### Acceptance paths
+
+Run each path with NVDA active and Chromium focused on the spell editor:
+
+1. **Text-input blur validation** — focus the Name field, leave it empty, tab away. Confirm NVDA announces the field label *and* the error text *Name is required.*
+2. **Select-change / dependent-field revalidation** — set Tradition to **Arcane**, then change to **Divine** (or vice versa). Confirm NVDA announces the newly visible Sphere (or School) field and its required-field error when triggered.
+3. **Structured-scalar validation** — if a blur-reachable invalid state exists for a `ScalarInput` or `AreaForm` field, exercise it. If clamp-on-change semantics prevent the UI from reaching an invalid state at runtime, verify ARIA wiring through the jsdom unit tests instead and document that limitation here.
+4. **First failed submit focus** — click **Save Spell** with an invalid form. Confirm focus moves to the first invalid field and NVDA announces its label together with the associated error text.
+5. **Error correction** — fix the invalid field. Confirm NVDA no longer announces the stale error text because `aria-invalid` and `aria-describedby` are removed or updated.
+
+### Evidence record
+
+When the run is performed, append a block to this section with:
+
+| Field | Value |
+|-------|-------|
+| Date | |
+| Browser | Chromium (version) |
+| NVDA version | |
+| Path 1 — announced label | |
+| Path 1 — announced error text | |
+| Path 2 — announced label | |
+| Path 2 — announced error text | |
+| Path 3 — announced label or n/a | |
+| Path 3 — announced error text or n/a | |
+| Path 4 — announced label after focus | |
+| Path 4 — announced error text after focus | |
+| Path 5 — confirmation error cleared | |
+| Notes | |
+
+**Status (2026-03-20):** Pending human execution. The automated agent environment cannot drive NVDA or capture spoken announcements. The checklist and evidence table above must be completed manually before this gate is considered closed.
 
 **Last Updated**: 2026-02-05

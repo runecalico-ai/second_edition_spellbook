@@ -77,9 +77,46 @@ If you uncheck Material while material components are present, a confirmation di
 - **Display**: By default the first 8 characters and "..." are shown. Use **Expand** to see the full hash; **Copy** to copy it to the clipboard.
 - The hash is computed by the backend from the structured spell data and is used for consistency checks and deduplication.
 
-## Validation
+## Validation and Saving
 
-- **Numeric fields**: Values are clamped (e.g. base value and per-level ≥ 0). Very large values (e.g. &gt; 999999) may show a warning but are allowed.
-- **Epic spells (level 10–12)**: Must have **School** set (Arcane).
-- **Quest spells (level 8, Quest checked)**: Must have **Sphere** set (Divine).
-- Validation errors are shown inline and block saving until fixed.
+### Inline validation
+
+Validation errors are shown **inline** next to the relevant field rather than in a popup dialog. Behaviour by field type:
+
+- **Text inputs** (e.g. spell name, description): errors appear on blur (when you leave the field).
+- **Select controls** (e.g. Tradition, School, Sphere): errors appear immediately on change.
+- **Pristine required fields**: stay quiet until you either blur them or attempt to save.
+
+On the **first failed save attempt**, all blocking errors are surfaced at once and focus jumps to the first invalid field. A hint reading **Fix the errors above to save** appears near the Save button. The Save button stays disabled until all blocking errors are resolved.
+
+### Tradition-conditional fields
+
+The **School** and **Sphere** fields are shown conditionally based on the selected **Tradition**:
+
+- **Arcane** tradition: the School field is displayed; the Sphere field is hidden.
+- **Divine** tradition: the Sphere field is displayed; the School field is hidden.
+
+Switching tradition immediately revalidates the newly relevant field and clears stale errors for the hidden field. The newly mounted field container appears with a fade-in animation.
+
+### Validation rules
+
+- **Name**: required.
+- **Description**: required.
+- **Level**: must be within the valid range.
+- **Arcane tradition without School**: blocked by `error-school-required-arcane-tradition`.
+- **Epic spell (level 10–12) without School**: blocked by `error-school-required-arcane`.
+- **Epic spell with non-Wizard classes**: blocked by `error-epic-arcane-class-restriction` — *Epic spells are Arcane only and require Wizard/Mage class access.*
+- **Divine tradition without Sphere**: blocked by `error-sphere-required-divine-tradition`.
+- **Quest spell (level 8, Quest checked) without Sphere**: blocked by `error-sphere-required-divine`.
+- **School + Sphere conflict**: blocked by `error-tradition-conflict`.
+- **Numeric fields**: values are clamped (e.g. base value and per-level ≥ 0). Very large values (e.g. > 999999) may show a warning but are allowed.
+
+### Save progress and success feedback
+
+- Clicking **Save Spell** with a valid form initiates the save immediately.
+- The save button label stays **Save Spell** for fast saves (< 300 ms).
+- If the save takes longer than 300 ms, the label changes to **Saving…** and the button remains disabled until the operation completes.
+- A second click while a save is in flight is ignored — double-submit cannot occur.
+- Editor inputs are frozen for the duration of the save so the submitted payload cannot change.
+- On success, a **Spell saved.** toast notification appears in the global notification bar and the editor navigates back to the Library. The toast does not steal keyboard focus.
+- Real persistence failures (e.g. disk errors) still surface as a **Save Error** modal dialog rather than an inline error.

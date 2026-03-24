@@ -137,6 +137,19 @@ The app generates printer-friendly layouts directly from the character editor:
 - **Character Sheet**: Generates a standard styled character sheet with stats and save tables.
 - **Spellbook Pack**: Generates a compact "Spellbook" PDF containing full descriptions of all Known/Prepared spells, organized by class and level. Ideal for printing physical spell cards or booklets.
 
+### Spell Editor UX and Accessibility
+
+The **Add Spell** and **Edit Spell** flows use inline accessible validation rather than popup summary dialogs:
+
+- **Inline errors**: each field shows its own error message in-place; pristine fields stay quiet until you blur them or attempt to save.
+- **Tradition-conditional fields**: selecting **Arcane** tradition shows only the School field; selecting **Divine** shows only the Sphere field. The newly mounted field fades in; the hidden field is unmounted immediately.
+- **First failed save**: validates all fields, focuses the first invalid field, and shows *Fix the errors above to save* near the Save button. The button stays disabled until all blocking errors are resolved.
+- **Delayed save label**: the button label stays **Save Spell** for fast saves. If the save takes longer than 300 ms, the label changes to **Saving…** until the save completes.
+- **Success feedback**: after a successful save, a **Spell saved.** toast appears in the global notification bar and the editor returns to the Library. The toast does not steal keyboard focus.
+- **Modal boundaries preserved**: unsaved-changes confirmation and delete confirmation still open blocking dialogs. Real backend save failures surface as a **Save Error** modal. Routine status feedback (save success, add-to-character, search operations) is toast-based rather than a dialog.
+
+For full validation rules see [docs/user/spell_editor.md](docs/user/spell_editor.md).
+
 ## Linting and formatting
 
 From `apps/desktop`, run:

@@ -153,3 +153,61 @@ Background content is disabled via the HTML `inert` attribute while a modal is o
 
 The `dialog::backdrop` pseudo-element is styled in `src/index.css`.
 
+---
+
+## Frontend Spell Editor State and Feedback Flow
+
+### Validation helper
+
+The editor's client-side validation logic lives in the pure helper `apps/desktop/src/ui/spellEditorValidation.ts`. The helper:
+
+- Accepts the current form state, selected tradition, and derived flags.
+- Returns a typed `SpellEditorFieldError[]` array (fields: `field`, `testId`, `message`, `focusTarget`).
+- Is side-effect-free and Node-safe — usable in Vitest unit tests without a DOM.
+- Exposes `firstInvalidFocusTarget(errors)` for deterministic first-error focus (independent of DOM query order).
+
+Full contract is documented in [docs/dev/spell_editor_components.md](dev/spell_editor_components.md#spell-editor-validation-architecture).
+
+### Touched-versus-submit state model
+
+`SpellEditor.tsx` tracks two pieces of validation state:
+
+- **`touchedFields: Set<string>`** — fields that have been blurred (text inputs) or changed (selects). Per-field errors render for touched fields.
+- **`hasAttemptedSubmit: boolean`** — set on first failed save click. Once set, all errors are visible and the save button is disabled until they are resolved.
+
+Timing rules:
+- Text inputs validate on blur.
+- Select controls (including Tradition) validate on change.
+- Dependent fields (School/Sphere) revalidate immediately when their controlling value (Tradition) changes.
+
+### Tradition-conditional School/Sphere rendering
+
+Arcane and Divine traditions each require a different classification field:
+
+- **Arcane** → School rendered, Sphere unmounted.
+- **Divine** → Sphere rendered, School unmounted.
+
+Switching tradition: the newly mounted field wrapper gets `animate-in fade-in`; the hidden field unmounts without an exit-animation placeholder; stale errors for the hidden field are cleared; the newly relevant field is revalidated immediately.
+
+### Save-progress and success feedback
+
+- A re-entry guard activates immediately on save start (prevents double-submit even before visual feedback appears).
+- A 300 ms timer runs concurrently; if the save is still pending at threshold, the button label changes from `Save Spell` to `Saving…`.
+- Editor inputs are frozen for the duration of the save so the submitted payload cannot change mid-flight.
+- On success: `pushNotification("success", "Spell saved.")` is called before `navigate("/")`. The success toast appears in the global notification viewport (mounted in the app shell above the router outlet) and survives the route change.
+- The toast does not steal keyboard focus (`aria-live="polite"`).
+
+### Notification-versus-modal boundary contract
+
+| Scenario | Mechanism |
+|----------|-----------|
+| Routine save success | Zustand notification store → `NotificationViewport` toast |
+| Add-to-character success / failure | Toast |
+| Search save/delete failure | Toast |
+| Backend persistence failure | `Save Error` modal (`modalAlert`) |
+| Unsaved-changes navigation guard | `modalConfirm` |
+| Delete confirmation | `modalConfirm` |
+| Parser reparse failure | `Reparse Error` modal |
+
+This boundary ensures that routine status feedback never interrupts the user's workflow while destructive and hard-error paths still require explicit acknowledgement.
+

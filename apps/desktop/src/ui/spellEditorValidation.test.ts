@@ -316,6 +316,156 @@ describe("deriveSpellEditorFieldErrors", () => {
     });
   });
 
+  // M-003: prove the remaining AREA_SCALAR_FIELDS mappings that were previously untested.
+
+  it("AreaForm path: negative rect width returns Width must be 0 or greater on area-form-width-value", () => {
+    const areaSpec: AreaSpec = {
+      kind: "rect",
+      shapeUnit: "ft",
+      width: { mode: "fixed", value: -1 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-width-value",
+      testId: "error-area-form-width-value",
+      message: "Width must be 0 or greater",
+      focusTarget: "area-form-width-value",
+    });
+  });
+
+  it("AreaForm path: wall kind does NOT emit width errors (no width input in wall UI)", () => {
+    // H-001 regression guard: wall areas must not produce width validation errors
+    // because the wall editor renders only length, height, and thickness inputs.
+    const areaSpec: AreaSpec = {
+      kind: "wall",
+      shapeUnit: "ft",
+      width: { mode: "fixed", value: -5 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors.some((e) => e.field === "area-form-width-value")).toBe(false);
+    expect(errors.some((e) => e.field === "area-form-width-per-level")).toBe(false);
+  });
+
+  it("AreaForm path: negative rect_prism height returns Height must be 0 or greater on area-form-height-value", () => {
+    const areaSpec: AreaSpec = {
+      kind: "rect_prism",
+      shapeUnit: "ft",
+      height: { mode: "fixed", value: -2 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-height-value",
+      testId: "error-area-form-height-value",
+      message: "Height must be 0 or greater",
+      focusTarget: "area-form-height-value",
+    });
+  });
+
+  it("AreaForm path: negative wall thickness returns Thickness must be 0 or greater on area-form-thickness-value", () => {
+    const areaSpec: AreaSpec = {
+      kind: "wall",
+      shapeUnit: "ft",
+      thickness: { mode: "fixed", value: -0.5 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-thickness-value",
+      testId: "error-area-form-thickness-value",
+      message: "Thickness must be 0 or greater",
+      focusTarget: "area-form-thickness-value",
+    });
+  });
+
+  it("AreaForm path: negative cube edge returns Edge length must be 0 or greater on area-form-edge-value", () => {
+    const areaSpec: AreaSpec = {
+      kind: "cube",
+      shapeUnit: "ft",
+      edge: { mode: "fixed", value: -3 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-edge-value",
+      testId: "error-area-form-edge-value",
+      message: "Edge length must be 0 or greater",
+      focusTarget: "area-form-edge-value",
+    });
+  });
+
+  it("AreaForm path: negative surface surfaceArea returns Surface area must be 0 or greater on area-form-surface-area-value", () => {
+    const areaSpec: AreaSpec = {
+      kind: "surface",
+      shapeUnit: "ft",
+      surfaceArea: { mode: "fixed", value: -10 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-surface-area-value",
+      testId: "error-area-form-surface-area-value",
+      message: "Surface area must be 0 or greater",
+      focusTarget: "area-form-surface-area-value",
+    });
+  });
+
+  it("AreaForm path: negative volume returns Volume must be 0 or greater on area-form-volume-value", () => {
+    const areaSpec: AreaSpec = {
+      kind: "volume",
+      shapeUnit: "ft",
+      volume: { mode: "fixed", value: -1 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-volume-value",
+      testId: "error-area-form-volume-value",
+      message: "Volume must be 0 or greater",
+      focusTarget: "area-form-volume-value",
+    });
+  });
+
+  it("AreaForm path: negative tiles tileCount returns Tile count must be 0 or greater on area-form-tile-count-value", () => {
+    const areaSpec: AreaSpec = {
+      kind: "tiles",
+      shapeUnit: "ft",
+      tileCount: { mode: "fixed", value: -4 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-tile-count-value",
+      testId: "error-area-form-tile-count-value",
+      message: "Tile count must be 0 or greater",
+      focusTarget: "area-form-tile-count-value",
+    });
+  });
+
+  it("AreaForm path: negative creatures count returns Count must be 0 or greater on area-form-count-value", () => {
+    const areaSpec: AreaSpec = {
+      kind: "creatures",
+      shapeUnit: "ft",
+      count: { mode: "fixed", value: -2 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-count-value",
+      testId: "error-area-form-count-value",
+      message: "Count must be 0 or greater",
+      focusTarget: "area-form-count-value",
+    });
+  });
+
+  it("AreaForm path: per_level width uses area-form-width-per-level for rect_prism kind", () => {
+    const areaSpec: AreaSpec = {
+      kind: "rect_prism",
+      shapeUnit: "ft",
+      width: { mode: "per_level", perLevel: -1 },
+    };
+    const errors = deriveSpellEditorFieldErrors(baseInput({ areaSpec }));
+    expect(errors).toContainEqual({
+      field: "area-form-width-per-level",
+      testId: "error-area-form-width-per-level",
+      message: "Per level must be 0 or greater",
+      focusTarget: "area-form-width-per-level",
+    });
+  });
+
   it("duration time kind: negative duration base value returns Base value message", () => {
     const durationSpec: DurationSpec = {
       kind: "time",

@@ -2339,6 +2339,10 @@ export default function SpellEditor() {
                 handleChange("level", clamped);
                 if (clamped !== 0) handleChange("isCantrip", 0);
                 if (clamped !== 8) handleChange("isQuestSpell", 0);
+                // H-002: immediately reveal dependent fields so errors like
+                // error-school-required-arcane and error-epic-arcane-class-restriction
+                // appear as soon as the controlling level value changes.
+                revealFieldValidation("spell-level", "spell-school", "spell-sphere", "spell-classes");
               }}
               onBlur={() => revealFieldValidation("spell-level")}
               aria-invalid={isLevelControlInvalid ? "true" : undefined}
@@ -2362,7 +2366,8 @@ export default function SpellEditor() {
                   checked={form.isCantrip === 1}
                   onChange={(e) => {
                     handleChange("isCantrip", e.target.checked ? 1 : 0);
-                    revealFieldValidation("spell-level");
+                    // H-002: cantrip change can gate school/sphere/class errors.
+                    revealFieldValidation("spell-level", "spell-school", "spell-sphere", "spell-classes");
                   }}
                   className={`h-4 w-4 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-900 ${spellFocusVisibleRing}`}
                 />
@@ -2386,7 +2391,8 @@ export default function SpellEditor() {
                   checked={form.isQuestSpell === 1}
                   onChange={(e) => {
                     handleChange("isQuestSpell", e.target.checked ? 1 : 0);
-                    revealFieldValidation("spell-level");
+                    // H-002: quest-spell toggles gating sphere and class dependent errors.
+                    revealFieldValidation("spell-level", "spell-sphere", "spell-classes");
                   }}
                   className={`h-4 w-4 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-900 ${spellFocusVisibleRing}`}
                 />
@@ -2606,7 +2612,12 @@ export default function SpellEditor() {
                   : spellInputBorderOk
               }`}
               value={form.classList || ""}
-              onChange={(e) => handleChange("classList", e.target.value)}
+              onChange={(e) => {
+                handleChange("classList", e.target.value);
+                // H-002: reveal classList's own field immediately on change so
+                // error-epic-arcane-class-restriction is not hidden until blur.
+                revealFieldValidation("spell-classes");
+              }}
               onBlur={() => revealFieldValidation("spell-classes")}
               aria-invalid={ariaInvalidForField("spell-classes")}
               aria-describedby={describedByByField.get("spell-classes")}

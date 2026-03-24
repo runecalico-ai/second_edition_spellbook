@@ -470,7 +470,7 @@ export function StructuredFieldInput({
               id="casting-time-base-value"
               data-testid="casting-time-base-value"
               aria-label="Casting time base value"
-              aria-invalid={ctBaseErr ? "true" : "false"}
+              aria-invalid={ctBaseErr ? "true" : undefined}
               aria-describedby={ctBaseErr ? ctBaseErr.testId : undefined}
               className={`w-16 rounded px-2 py-1 text-sm ${ctBaseErr ? structuredInputInvalidClass : structuredInputClass}`}
               value={baseValue}
@@ -500,7 +500,7 @@ export function StructuredFieldInput({
               id="casting-time-per-level"
               data-testid="casting-time-per-level"
               aria-label="Casting time per level"
-              aria-invalid={ctPerErr ? "true" : "false"}
+              aria-invalid={ctPerErr ? "true" : undefined}
               aria-describedby={ctPerErr ? ctPerErr.testId : undefined}
               className={`w-14 rounded px-2 py-1 text-sm ${ctPerErr ? structuredInputInvalidClass : structuredInputClass}`}
               value={perLevel}

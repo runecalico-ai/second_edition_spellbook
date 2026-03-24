@@ -324,7 +324,10 @@ const AREA_SCALAR_FIELDS: {
     fixedMsg: "Length must be 0 or greater",
   },
   {
-    kinds: ["rect", "rect_prism", "wall"],
+    // H-001: "wall" removed — the wall editor only renders length, height, and
+    // thickness inputs; including "wall" here would emit a blocking error with
+    // no focusable DOM target when a wall area carries a legacy width value.
+    kinds: ["rect", "rect_prism"],
     prop: "width",
     fixedKey: "area-form-width-value",
     perLevelKey: "area-form-width-per-level",

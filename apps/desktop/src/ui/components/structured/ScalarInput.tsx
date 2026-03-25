@@ -12,11 +12,11 @@ export interface ScalarFieldValidationError {
 }
 
 const selectSurfaceClass =
-  "bg-white dark:bg-neutral-900 border-neutral-500 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100";
+  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100";
 
 const inputSurfaceClass = "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100";
 
-const inputBorderNeutral = "border-neutral-500 dark:border-neutral-700";
+const inputBorderNeutral = "border-neutral-400 dark:border-neutral-700";
 const inputBorderInvalid = "border-red-600 dark:border-red-600";
 const inputBorderAdvisory = "border-amber-600 dark:border-amber-500";
 

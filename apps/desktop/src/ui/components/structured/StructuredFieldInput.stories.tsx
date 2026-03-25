@@ -1,12 +1,63 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { useEffect, type ComponentType, type ReactNode } from "react";
 import { StructuredFieldInput } from "./StructuredFieldInput";
 import { fn } from "./storybook-utils";
+
+type StoryTheme = "light" | "dark";
+
+function StoryThemeFrame({
+  theme,
+  children,
+}: {
+  theme: StoryTheme;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    const root = document.documentElement;
+    const previousHasDarkClass = root.classList.contains("dark");
+    const previousColorScheme = root.style.colorScheme;
+
+    root.classList.toggle("dark", theme === "dark");
+    root.style.colorScheme = theme;
+
+    return () => {
+      root.classList.toggle("dark", previousHasDarkClass);
+      root.style.colorScheme = previousColorScheme;
+    };
+  }, [theme]);
+
+  return (
+    <div className={theme === "dark" ? "dark rounded-2xl bg-neutral-950 p-4" : "rounded-2xl bg-white p-4"}>
+      <div className="max-w-4xl">{children}</div>
+    </div>
+  );
+}
+
+const withTheme =
+  (theme: StoryTheme) =>
+  (Story: ComponentType) => (
+    <StoryThemeFrame theme={theme}>
+      <Story />
+    </StoryThemeFrame>
+  );
+
+const darkStory = {
+  parameters: {
+    backgrounds: {
+      default: "dark",
+    },
+  },
+  decorators: [withTheme("dark")],
+} as const;
 
 const meta = {
   title: "SpellEditor/StructuredFieldInput",
   component: StructuredFieldInput,
   parameters: {
     layout: "padded",
+    backgrounds: {
+      default: "light",
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -89,6 +140,11 @@ export const RangeWithNotes: Story = {
   },
 };
 
+export const RangeWithNotesDark: Story = {
+  ...darkStory,
+  args: RangeWithNotes.args,
+};
+
 export const DurationEmpty: Story = {
   args: {
     fieldType: "duration",
@@ -132,6 +188,11 @@ export const DurationWithNotes: Story = {
     },
     onChange: fn(),
   },
+};
+
+export const DurationWithNotesDark: Story = {
+  ...darkStory,
+  args: DurationWithNotes.args,
 };
 
 export const DurationTimePerLevel: Story = {
@@ -239,6 +300,11 @@ export const CastingTimeComplex: Story = {
     },
     onChange: fn(),
   },
+};
+
+export const CastingTimeComplexDark: Story = {
+  ...darkStory,
+  args: CastingTimeComplex.args,
 };
 
 export const CastingTimeSpecial: Story = {

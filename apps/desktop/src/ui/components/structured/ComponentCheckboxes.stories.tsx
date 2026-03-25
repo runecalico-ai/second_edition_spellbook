@@ -1,12 +1,63 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { useEffect, type ComponentType, type ReactNode } from "react";
 import { ComponentCheckboxes } from "./ComponentCheckboxes";
 import { fn } from "./storybook-utils";
+
+type StoryTheme = "light" | "dark";
+
+function StoryThemeFrame({
+  theme,
+  children,
+}: {
+  theme: StoryTheme;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    const root = document.documentElement;
+    const previousHasDarkClass = root.classList.contains("dark");
+    const previousColorScheme = root.style.colorScheme;
+
+    root.classList.toggle("dark", theme === "dark");
+    root.style.colorScheme = theme;
+
+    return () => {
+      root.classList.toggle("dark", previousHasDarkClass);
+      root.style.colorScheme = previousColorScheme;
+    };
+  }, [theme]);
+
+  return (
+    <div className={theme === "dark" ? "dark rounded-2xl bg-neutral-950 p-4" : "rounded-2xl bg-white p-4"}>
+      <div className="max-w-4xl">{children}</div>
+    </div>
+  );
+}
+
+const withTheme =
+  (theme: StoryTheme) =>
+  (Story: ComponentType) => (
+    <StoryThemeFrame theme={theme}>
+      <Story />
+    </StoryThemeFrame>
+  );
+
+const darkStory = {
+  parameters: {
+    backgrounds: {
+      default: "dark",
+    },
+  },
+  decorators: [withTheme("dark")],
+} as const;
 
 const meta = {
   title: "SpellEditor/ComponentCheckboxes",
   component: ComponentCheckboxes,
   parameters: {
     layout: "padded",
+    backgrounds: {
+      default: "light",
+    },
   },
   tags: ["autodocs"],
 } satisfies Meta<typeof ComponentCheckboxes>;
@@ -82,6 +133,34 @@ export const AllComponents: Story = {
     materialComponents: [],
     onChange: fn(),
   },
+};
+
+export const AllVariant: Story = {
+  args: {
+    variant: "all",
+    components: {
+      verbal: true,
+      somatic: true,
+      material: true,
+      focus: true,
+      divineFocus: true,
+      experience: true,
+    },
+    materialComponents: [
+      {
+        name: "Diamond dust",
+        quantity: 1.0,
+        isConsumed: true,
+        gpValue: 100,
+      },
+    ],
+    onChange: fn(),
+  },
+};
+
+export const AllVariantDark: Story = {
+  ...darkStory,
+  args: AllVariant.args,
 };
 
 export const WithSingleMaterial: Story = {

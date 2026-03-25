@@ -39,24 +39,24 @@ function pickScalarErr(
 export type StructuredFieldValue = RangeSpec | DurationSpec | SpellCastingTime;
 
 const structuredSelectClass =
-  "bg-white dark:bg-neutral-900 border-neutral-500 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
+  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
 
 const structuredInputClass =
-  "bg-white dark:bg-neutral-900 border-neutral-500 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
+  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
 
 const structuredInputInvalidClass =
   "bg-white dark:bg-neutral-900 border-red-600 dark:border-red-600 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
 
 const structuredGroupSurfaceClass =
-  "space-y-3 rounded-xl border border-neutral-500 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-100";
+  "space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100";
 
 const structuredPrimaryControlRowClass = "flex min-w-0 flex-wrap items-center gap-2";
 
 const structuredSupportingRowClass =
-  "rounded-lg border border-neutral-200 bg-neutral-50/70 p-2 dark:border-neutral-800 dark:bg-neutral-950/40";
+  "rounded-lg border border-neutral-200 bg-neutral-50/70 p-2 dark:border-neutral-800 dark:bg-neutral-700";
 
 const structuredPreviewRowClass =
-  "rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-950/50";
+  "rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-700";
 
 const structuredInlineScalarClusterClass = "flex min-w-0 flex-wrap items-center gap-2";
 
@@ -74,6 +74,12 @@ interface StructuredFieldInputProps {
   /** Spell editor inline validation (Task 3). */
   visibleFieldErrors?: SpellEditorFieldError[];
 }
+
+const STRUCTURED_FIELD_GROUP_LABELS: Record<StructuredFieldType, string> = {
+  range: "Range",
+  duration: "Duration",
+  casting_time: "Casting Time",
+};
 
 const ALL_DURATION_KINDS: { value: DurationKind; label: string }[] = [
   ...DURATION_KIND_ONLY.map((k) => ({
@@ -132,7 +138,8 @@ export function StructuredFieldInput({
     ];
 
     return (
-      <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+      <fieldset className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+        <legend className="sr-only">{STRUCTURED_FIELD_GROUP_LABELS[fieldType]}</legend>
         <div
           className={structuredPrimaryControlRowClass}
           data-testid="structured-field-primary-row"
@@ -250,7 +257,7 @@ export function StructuredFieldInput({
             {rangeTextPreview || "—"}
           </output>
         </div>
-      </div>
+      </fieldset>
     );
   }
 
@@ -264,7 +271,8 @@ export function StructuredFieldInput({
     const isSpecial = spec.kind === "special";
 
     return (
-      <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+      <fieldset className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+        <legend className="sr-only">{STRUCTURED_FIELD_GROUP_LABELS[fieldType]}</legend>
         <div
           className={structuredPrimaryControlRowClass}
           data-testid="structured-field-primary-row"
@@ -437,7 +445,7 @@ export function StructuredFieldInput({
             {durationTextPreview || "—"}
           </output>
         </div>
-      </div>
+      </fieldset>
     );
   }
 
@@ -457,7 +465,8 @@ export function StructuredFieldInput({
   };
 
   return (
-    <div className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+    <fieldset className={structuredGroupSurfaceClass} data-testid="structured-field-input">
+      <legend className="sr-only">{STRUCTURED_FIELD_GROUP_LABELS[fieldType]}</legend>
       <div
         className={structuredPrimaryControlRowClass}
         data-testid="structured-field-primary-row"
@@ -585,6 +594,6 @@ export function StructuredFieldInput({
           {castingTimeTextPreview || "—"}
         </output>
       </div>
-    </div>
+    </fieldset>
   );
 }

@@ -9,13 +9,30 @@ afterEach(() => {
   cleanup();
 });
 
-const ROOT_SURFACE_CLASSES = ["rounded-xl", "border-neutral-500", "dark:bg-neutral-950/60"];
+const ROOT_SURFACE_CLASSES = [
+  "rounded-xl",
+  "border-neutral-300",
+  "bg-white",
+  "dark:bg-neutral-800",
+];
+
+const DIRECT_INPUT_BORDER_CLASS = "border-neutral-400";
 
 const PRIMARY_ROW_CLASSES = ["flex", "min-w-0", "flex-wrap", "items-center", "gap-2"];
 
-const SUPPORTING_ROW_CLASSES = ["rounded-lg", "bg-neutral-50/70", "dark:bg-neutral-950/40"];
+const SUPPORTING_ROW_CLASSES = [
+  "rounded-lg",
+  "border-neutral-200",
+  "bg-neutral-50/70",
+  "dark:bg-neutral-700",
+];
 
-const PREVIEW_ROW_CLASSES = ["rounded-lg", "bg-neutral-50", "dark:bg-neutral-950/50"];
+const PREVIEW_ROW_CLASSES = [
+  "rounded-lg",
+  "border-neutral-200",
+  "bg-neutral-50",
+  "dark:bg-neutral-700",
+];
 
 function expectClasses(node: HTMLElement, classes: string[]) {
   const tokens = new Set(node.className.split(/\s+/).filter(Boolean));
@@ -26,6 +43,14 @@ function expectClasses(node: HTMLElement, classes: string[]) {
 
 function getRoot() {
   return screen.getByTestId("structured-field-input");
+}
+
+function expectGroupLegend(root: HTMLElement, expectedLabel: string) {
+  expect(root.tagName).toBe("FIELDSET");
+  const legend = root.querySelector("legend");
+  expect(legend).not.toBeNull();
+  expect(legend?.className.split(/\s+/)).toContain("sr-only");
+  expect(legend?.textContent).toBe(expectedLabel);
 }
 
 function getPrimaryRow() {
@@ -86,6 +111,7 @@ describe("StructuredFieldInput", () => {
     );
 
     const root = getRoot();
+    expectGroupLegend(root, "Range");
     expectClasses(root, ROOT_SURFACE_CLASSES);
   const primary = getPrimaryRow();
   const supporting = getSupportingRow();
@@ -96,6 +122,15 @@ describe("StructuredFieldInput", () => {
     expect(primary.contains(screen.getByTestId("range-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("range-scalar"))).toBe(true);
     expect(primary.contains(screen.getByTestId("range-unit"))).toBe(true);
+    expect(screen.getByTestId("range-kind-select").className.split(/\s+/)).toContain(
+      DIRECT_INPUT_BORDER_CLASS,
+    );
+    expect(screen.getByTestId("range-unit").className.split(/\s+/)).toContain(
+      DIRECT_INPUT_BORDER_CLASS,
+    );
+    expect(screen.getByTestId("range-notes").className.split(/\s+/)).toContain(
+      DIRECT_INPUT_BORDER_CLASS,
+    );
     expect(screen.queryByTestId("range-raw-legacy")).toBeNull();
     expect(supporting.contains(screen.getByTestId("range-notes"))).toBe(true);
     expect(preview.contains(expectPreviewRow("range-text-preview", "30 ft"))).toBe(true);
@@ -158,6 +193,7 @@ describe("StructuredFieldInput", () => {
     );
 
     const root = getRoot();
+    expectGroupLegend(root, "Duration");
     expectClasses(root, ROOT_SURFACE_CLASSES);
   const primary = getPrimaryRow();
   const supporting = getSupportingRow();
@@ -287,6 +323,7 @@ describe("StructuredFieldInput", () => {
     );
 
     const root = getRoot();
+    expectGroupLegend(root, "Casting Time");
     expectClasses(root, ROOT_SURFACE_CLASSES);
   const primary = getPrimaryRow();
   const preview = getPreviewRow();

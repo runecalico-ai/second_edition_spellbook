@@ -101,6 +101,38 @@ interface DamageFormProps {
   onChange: (v: SpellDamageSpec) => void;
 }
 
+const rootSurfaceClass =
+  "space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100";
+
+const controlClass =
+  "rounded border border-neutral-400 bg-white px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+
+const nestedSurfaceClass =
+  "flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50/70 p-2 dark:border-neutral-800 dark:bg-neutral-700";
+
+const subPanelClass =
+  "grid grid-cols-1 gap-3 rounded border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800/50 dark:bg-neutral-800/40 md:grid-cols-2";
+
+const scalingSectionClass =
+  "space-y-2 rounded border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800/50 dark:bg-neutral-800/40";
+
+const scalingRuleClass =
+  "flex flex-wrap items-center gap-2 rounded border border-neutral-200 bg-white p-1.5 text-xs dark:border-neutral-700/60 dark:bg-neutral-900/70";
+
+const annotationClass =
+  "flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] italic text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-400";
+
+const mutedTextClass = "text-neutral-600 dark:text-neutral-400";
+
+const secondaryButtonClass =
+  "rounded border border-neutral-300 bg-neutral-100 px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600";
+
+const destructiveButtonClass =
+  "ml-auto rounded px-2 py-1 text-xs text-red-600 hover:bg-neutral-100 dark:text-red-400 dark:hover:bg-neutral-800";
+
+const ghostDestructiveButtonClass =
+  "ml-auto text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300";
+
 /** Format dice pool for display (e.g. "2d6+3"). */
 function formatDicePool(pool: DicePool): string {
   if (!pool.terms || pool.terms.length === 0) return `${pool.flatModifier ?? 0}`;
@@ -181,7 +213,8 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
   );
 
   return (
-    <div className="space-y-3" data-testid="damage-form" aria-label="Spell damage editor">
+    <fieldset className={rootSurfaceClass} data-testid="damage-form">
+      <legend className="sr-only">Damage</legend>
       <div className="flex flex-wrap items-center gap-2">
         <select
           data-testid="damage-form-kind"
@@ -214,7 +247,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               });
             }
           }}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={controlClass}
         >
           {(Object.entries(DAMAGE_KIND_LABELS) as [SpellDamageSpec["kind"], string][]).map(
             ([k, label]) => (
@@ -232,7 +265,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               aria-label="Combine mode"
               value={spec.combineMode ?? "sum"}
               onChange={(e) => updateSpec({ combineMode: e.target.value as CombineMode })}
-              className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+              className={controlClass}
             >
               {(Object.entries(COMBINE_MODE_LABELS) as [CombineMode, string][]).map(
                 ([k, label]) => (
@@ -246,7 +279,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               type="button"
               data-testid="damage-form-add-part"
               onClick={addPart}
-              className="px-2 py-1 text-xs bg-neutral-700 hover:bg-neutral-600 rounded"
+              className={secondaryButtonClass}
             >
               Add part
             </button>
@@ -257,7 +290,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
       {spec.sourceText && (
         <div
           data-testid="damage-source-text-annotation"
-          className="flex items-center gap-2 px-2 py-1 bg-amber-900/10 border border-amber-900/30 rounded text-[10px] text-amber-200/70 italic"
+          className={annotationClass}
         >
           <span className="font-bold uppercase not-italic">Original source text:</span>
           <span>{spec.sourceText}</span>
@@ -271,7 +304,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
           placeholder="Describe damage for DM adjudication..."
           value={spec.dmGuidance ?? ""}
           onChange={(e) => updateSpec({ dmGuidance: e.target.value || undefined })}
-          className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={`w-full min-h-[60px] ${controlClass}`}
         />
       )}
 
@@ -279,7 +312,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
         spec.parts?.map((part, idx) => (
           <div
             key={part.id}
-            className="flex flex-col gap-2 p-2 bg-neutral-900/50 rounded border border-neutral-800"
+            className={nestedSurfaceClass}
             data-testid="damage-form-part"
           >
             <div className="flex flex-wrap items-center gap-2">
@@ -288,7 +321,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 aria-label={`Damage part ${idx + 1} type`}
                 value={part.damageType}
                 onChange={(e) => updatePart(idx, { damageType: e.target.value as DamageType })}
-                className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+                className={controlClass}
               >
                 {(Object.entries(DAMAGE_TYPE_LABELS) as [DamageType, string][]).map(
                   ([k, label]) => (
@@ -314,17 +347,17 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     },
                   });
                 }}
-                className="w-20 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm font-mono text-neutral-100"
+                className={`w-20 font-mono ${controlClass}`}
               />
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-neutral-500 uppercase">Per Die:</span>
+                <span className={`text-[10px] uppercase ${mutedTextClass}`}>Per Die:</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   data-testid="damage-form-part-per-die-modifier"
                   aria-label={`Damage part ${idx + 1} per die modifier`}
                   placeholder="+0"
-                  className="w-12 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-1 text-sm text-neutral-100 font-mono"
+                  className={`w-12 px-1.5 font-mono ${controlClass}`}
                   value={part.base.terms?.[0]?.perDieModifier ?? ""}
                   onChange={(e) => {
                     const v = parseNumericInput(e.target.value);
@@ -343,7 +376,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 placeholder="Label (optional)"
                 value={part.label ?? ""}
                 onChange={(e) => updatePart(idx, { label: e.target.value || undefined })}
-                className="w-32 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+                className={`w-32 ${controlClass}`}
               />
               <select
                 data-testid="damage-form-part-mr-interaction"
@@ -352,7 +385,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 onChange={(e) =>
                   updatePart(idx, { mrInteraction: e.target.value as DamagePart["mrInteraction"] })
                 }
-                className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+                className={controlClass}
               >
                 {(
                   Object.entries(MR_INTERACTION_LABELS) as [DamagePart["mrInteraction"], string][]
@@ -366,17 +399,17 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                 type="button"
                 data-testid="damage-form-remove-part"
                 onClick={() => removePart(idx)}
-                className="ml-auto px-2 py-1 text-xs text-red-400 hover:bg-neutral-800 rounded"
+                className={destructiveButtonClass}
               >
                 Remove
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2 bg-neutral-800/30 rounded border border-neutral-800/50">
+            <div className={subPanelClass}>
               {/* Application Column */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-20">
+                  <span className={`w-20 text-[10px] uppercase font-bold ${mutedTextClass}`}>
                     Application:
                   </span>
                   <select
@@ -391,7 +424,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                         },
                       })
                     }
-                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
+                    className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
                   >
                     {(Object.entries(APPLICATION_SCOPE_LABELS) as [ApplicationScope, string][]).map(
                       ([k, label]) => (
@@ -418,7 +451,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                         },
                       });
                     }}
-                    className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
+                    className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
                   />
                   <input
                     type="text"
@@ -434,7 +467,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                         },
                       })
                     }
-                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
+                    className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
                   />
                 </div>
               </div>
@@ -442,7 +475,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               {/* Save/Clamping Column */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-12">
+                  <span className={`w-12 text-[10px] uppercase font-bold ${mutedTextClass}`}>
                     Save:
                   </span>
                   <select
@@ -457,7 +490,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                         },
                       })
                     }
-                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
+                    className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
                   >
                     {(Object.entries(SAVE_KIND_LABELS) as [SaveKind, string][]).map(
                       ([k, label]) => (
@@ -469,7 +502,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] uppercase font-bold text-neutral-500 w-12">
+                  <span className={`w-12 text-[10px] uppercase font-bold ${mutedTextClass}`}>
                     Clamp:
                   </span>
                   <input
@@ -487,7 +520,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                         },
                       });
                     }}
-                    className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
+                    className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
                   />
                   <input
                     type="number"
@@ -504,16 +537,16 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                         },
                       });
                     }}
-                    className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-0.5 text-xs text-neutral-100 outline-none"
+                    className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
                   />
                 </div>
               </div>
             </div>
 
             {/* Scaling Rules Section */}
-            <div className="p-2 bg-neutral-800/20 rounded border border-neutral-800/50 space-y-2">
+            <div className={scalingSectionClass}>
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-neutral-500">
+                <span className={`text-[10px] uppercase font-bold ${mutedTextClass}`}>
                   Scaling Rules
                 </span>
                 <button
@@ -526,7 +559,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     ];
                     updatePart(idx, { scaling: scaling as ScalingRule[] });
                   }}
-                  className="px-2 py-0.5 text-[10px] bg-neutral-700 hover:bg-neutral-600 rounded text-neutral-300"
+                  className="rounded border border-neutral-300 bg-neutral-100 px-2 py-0.5 text-[10px] text-neutral-700 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600"
                 >
                   + Add Rule
                 </button>
@@ -534,7 +567,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               {part.scaling?.map((rule, sIdx) => (
                 <div
                   key={`${idx}-${sIdx}-${rule.kind}-${rule.driver}-${rule.step}`}
-                  className="flex flex-wrap items-center gap-2 p-1.5 bg-neutral-900/50 rounded border border-neutral-700/30 text-xs"
+                  className={scalingRuleClass}
                   data-testid="damage-form-part-scaling-rule"
                 >
                   <select
@@ -546,7 +579,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                       scaling[sIdx] = { ...rule, kind: e.target.value as ScalingKind };
                       updatePart(idx, { scaling });
                     }}
-                    className="bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
+                    className={`px-1 py-0.5 text-xs ${controlClass}`}
                   >
                     {Object.entries(SCALING_KIND_LABELS).map(([k, label]) => (
                       <option key={k} value={k}>
@@ -563,7 +596,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                       scaling[sIdx] = { ...rule, driver: e.target.value as ScalingDriver };
                       updatePart(idx, { scaling });
                     }}
-                    className="bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
+                    className={`px-1 py-0.5 text-xs ${controlClass}`}
                   >
                     {Object.entries(SCALING_DRIVER_LABELS).map(([k, label]) => (
                       <option key={k} value={k}>
@@ -572,13 +605,13 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                     ))}
                   </select>
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-neutral-500">Every</span>
+                    <span className={`text-[10px] ${mutedTextClass}`}>Every</span>
                     <input
                       type="number"
                       data-testid="damage-form-part-scaling-step"
                       aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} step`}
                       placeholder="Step"
-                      className="w-10 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
+                      className={`w-10 px-1 py-0.5 text-xs ${controlClass}`}
                       value={rule.step}
                       onChange={(e) => {
                         const v = parseNumericInput(e.target.value);
@@ -594,7 +627,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                       data-testid="damage-form-part-scaling-dice-increment"
                       aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} dice increment`}
                       placeholder="e.g. 1d6"
-                      className="w-16 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 font-mono"
+                      className={`w-16 px-1 py-0.5 text-xs font-mono ${controlClass}`}
                       value={
                         rule.diceIncrement
                           ? `${rule.diceIncrement.count}d${rule.diceIncrement.sides}`
@@ -624,7 +657,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                       data-testid="damage-form-part-scaling-flat-increment"
                       aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} flat increment`}
                       placeholder="+1"
-                      className="w-12 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5"
+                      className={`w-12 px-1 py-0.5 text-xs ${controlClass}`}
                       value={rule.flatIncrement ?? rule.flat_increment ?? ""}
                       onChange={(e) => {
                         const v = parseNumericInput(e.target.value);
@@ -642,7 +675,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
                       const scaling = part.scaling?.filter((_, i) => i !== sIdx);
                       updatePart(idx, { scaling });
                     }}
-                    className="text-red-400 hover:text-red-300 ml-auto"
+                    className={ghostDestructiveButtonClass}
                   >
                     ×
                   </button>
@@ -656,7 +689,7 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
               placeholder="Part notes (optional)"
               value={part.notes ?? ""}
               onChange={(e) => updatePart(idx, { notes: e.target.value || undefined })}
-              className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100 outline-none"
+              className={`w-full min-h-[40px] text-xs outline-none ${controlClass}`}
             />
           </div>
         ))}
@@ -668,9 +701,9 @@ export function DamageForm({ value, onChange }: DamageFormProps) {
           placeholder="Overall damage notes (optional)..."
           value={spec.notes ?? ""}
           onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
-          className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={`w-full min-h-[60px] ${controlClass}`}
         />
       )}
-    </div>
+    </fieldset>
   );
 }

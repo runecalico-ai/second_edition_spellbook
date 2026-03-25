@@ -41,6 +41,37 @@ describe("ComponentCheckboxes – vsm variant", () => {
     expect(screen.getByTestId("component-checkboxes")).not.toBeNull();
   });
 
+  it("root container uses light and dark surface classes", () => {
+    render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={() => {}}
+      />,
+    );
+    const root = screen.getByTestId("component-checkboxes");
+    const tokens = new Set(root.className.split(/\s+/).filter(Boolean));
+    expect(tokens.has("bg-white")).toBe(true);
+    expect(tokens.has("dark:bg-neutral-800")).toBe(true);
+    expect(tokens.has("border-neutral-300")).toBe(true);
+  });
+
+  it("checkbox controls use the sanctioned interactive border token", () => {
+    render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={() => {}}
+      />,
+    );
+    const verbal = screen.getByTestId("component-checkbox-verbal");
+    const somatic = screen.getByTestId("component-checkbox-somatic");
+    const material = screen.getByTestId("component-checkbox-material");
+    expect(verbal.className.split(/\s+/)).toContain("border-neutral-400");
+    expect(somatic.className.split(/\s+/)).toContain("border-neutral-400");
+    expect(material.className.split(/\s+/)).toContain("border-neutral-400");
+  });
+
   it("renders component-checkbox-verbal inside root", () => {
     render(
       <ComponentCheckboxes
@@ -110,6 +141,19 @@ describe("ComponentCheckboxes – vsm variant", () => {
     expect(preview.tagName).toBe("OUTPUT");
   });
 
+  it("component-text-preview exposes a programmatic label", () => {
+    render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("component-text-preview").getAttribute("aria-label")).toBe(
+      "Computed component text",
+    );
+  });
+
   it("component-text-preview is a descendant of component-checkboxes", () => {
     render(
       <ComponentCheckboxes
@@ -121,6 +165,21 @@ describe("ComponentCheckboxes – vsm variant", () => {
     const root = screen.getByTestId("component-checkboxes");
     const preview = screen.getByTestId("component-text-preview");
     expect(root.contains(preview)).toBe(true);
+  });
+
+  it("component-text-preview uses light and dark preview surface classes", () => {
+    render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={() => {}}
+      />,
+    );
+    const preview = screen.getByTestId("component-text-preview");
+    const tokens = new Set(preview.className.split(/\s+/).filter(Boolean));
+    expect(tokens.has("bg-neutral-50")).toBe(true);
+    expect(tokens.has("border-neutral-200")).toBe(true);
+    expect(tokens.has("dark:bg-neutral-700")).toBe(true);
   });
 
   it("renders the checkbox strip in a dedicated grouped container", () => {
@@ -137,6 +196,20 @@ describe("ComponentCheckboxes – vsm variant", () => {
     expect(within(strip).getByTestId("component-checkbox-verbal")).toBeTruthy();
     expect(within(strip).getByTestId("component-checkbox-somatic")).toBeTruthy();
     expect(within(strip).getByTestId("component-checkbox-material")).toBeTruthy();
+  });
+
+  it("uses the structured primary row gap utility for the checkbox strip", () => {
+    render(
+      <ComponentCheckboxes
+        components={noMaterialComponents}
+        materialComponents={[]}
+        onChange={() => {}}
+      />,
+    );
+    const strip = screen.getByTestId("component-checkbox-strip");
+    const tokens = new Set(strip.className.split(/\s+/).filter(Boolean));
+    expect(tokens.has("gap-2")).toBe(true);
+    expect(tokens.has("gap-4")).toBe(false);
   });
 
   it("text preview shows dash when no components selected", () => {
@@ -178,6 +251,25 @@ describe("ComponentCheckboxes – all variant", () => {
     expect(screen.getByTestId("component-checkbox-focus")).not.toBeNull();
     expect(screen.getByTestId("component-checkbox-divine-focus")).not.toBeNull();
     expect(screen.getByTestId("component-checkbox-experience")).not.toBeNull();
+  });
+
+  it("all variant preview includes focus, divine focus, and experience abbreviations", () => {
+    render(
+      <ComponentCheckboxes
+        components={{
+          verbal: false,
+          somatic: false,
+          material: false,
+          focus: true,
+          divineFocus: true,
+          experience: true,
+        }}
+        materialComponents={[]}
+        onChange={() => {}}
+        variant="all"
+      />,
+    );
+    expect(screen.getByTestId("component-text-preview").textContent).toBe("F, DF, XP");
   });
 
   it("all variant preserves component-checkboxes root container", () => {
@@ -284,8 +376,28 @@ describe("ComponentCheckboxes – material subform", () => {
     );
     const subform = screen.getByTestId("material-subform");
     const tokens = new Set(subform.className.split(/\s+/).filter(Boolean));
-    expect(tokens.has("dark:bg-neutral-950/60")).toBe(true);
-    expect(tokens.has("border-neutral-500")).toBe(true);
+    expect(tokens.has("bg-white")).toBe(true);
+    expect(tokens.has("dark:bg-neutral-800")).toBe(true);
+    expect(tokens.has("border-neutral-300")).toBe(true);
+  });
+
+  it("material inputs use the sanctioned interactive border token", () => {
+    render(
+      <ComponentCheckboxes
+        components={withMaterial}
+        materialComponents={[{ name: "Bat fur", quantity: 1, isConsumed: false }]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("material-component-name").className.split(/\s+/)).toContain(
+      "border-neutral-400",
+    );
+    expect(screen.getByTestId("material-component-quantity").className.split(/\s+/)).toContain(
+      "border-neutral-400",
+    );
+    expect(screen.getByTestId("material-component-gp-value").className.split(/\s+/)).toContain(
+      "border-neutral-400",
+    );
   });
 
   it("material component rows use theme-aware row background class", () => {

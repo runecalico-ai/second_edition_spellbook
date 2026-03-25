@@ -160,17 +160,17 @@ This section is intentionally self-contained so plan reviewers can evaluate the 
 **Files:**
 - Read/verify: this plan file only
 
-- [ ] **Step 1.1: Confirm the no-redesign guardrails before touching tests**
+- [x] **Step 1.1: Confirm the no-redesign guardrails before touching tests**
 
 Run: read this plan header and `Frozen Requirements Snapshot`
 Expected: implementation worker understands that Chunk 6 is verification/documentation first and may only make minimal production fixes when tests reveal a direct support gap, including the smallest shared store or pre-hydration correction needed to restore a frozen requirement in the covered flows.
 
-- [ ] **Step 1.2: Install no new dependencies and keep the current fixture stack**
+- [x] **Step 1.2: Install no new dependencies and keep the current fixture stack**
 
 Run: no command
 Expected: all work remains inside the existing Playwright, Vitest, Storybook, and Markdown tooling.
 
-- [ ] **Step 1.3: Capture the current failing/passing baseline for the touched E2E files before edits**
+- [x] **Step 1.3: Capture the current failing/passing baseline for the touched E2E files before edits**
 
 Run:
 
@@ -182,17 +182,17 @@ npx playwright test tests/spell_editor_structured_data.spec.ts tests/epic_and_qu
 
 Expected: current failures identify existing red assertions and current runtime regressions across the full closed starting inventory plus the Task 4 theme/accessibility slice. This baseline run does not prove coverage completeness by itself.
 
-- [ ] **Step 1.4: Build a requirements-to-steps audit from the frozen requirements in this plan before fixing anything**
+- [x] **Step 1.4: Build a requirements-to-steps audit from the frozen requirements in this plan before fixing anything**
 
 Run: no command
 Expected: `Implementation Notes` contains a short checklist mapping each required Chunk 6 output in `Frozen Requirements Snapshot` to the task/step that will verify it, so missing planned coverage is identified from this document rather than inferred from the baseline run.
 
-- [ ] **Step 1.5: Record baseline results in the implementation notes section of this plan before fixing anything**
+- [x] **Step 1.5: Record baseline results in the implementation notes section of this plan before fixing anything**
 
 Run: no command
 Expected: each failing area is mapped to one of the tasks below so later review can confirm the fix was intentional. If the starting slice is fully green, record that explicitly so the later edits still have before/after evidence.
 
-- [ ] **Step 1.5a: Record the pre-task documentation baseline**
+- [x] **Step 1.5a: Record the pre-task documentation baseline**
 
 Run:
 
@@ -219,10 +219,49 @@ Expected: every file edited under the audit-expanded migration scope has a befor
 This plan document is also the execution log for baseline evidence and final verification. Use this section during implementation so review stays anchored to the source-of-truth plan file rather than chat summaries.
 
 - **Baseline results from Step 1.3:**
-   - to be filled during implementation
+   - Date: 2026-03-25; two runs performed to confirm baseline
+   - **Run 1** (~18:23–18:42, 3 workers): partial output only (terminal buffer exceeded); confirmed 2 failures before buffer overflow
+   - **Run 2** (~19:05–19:20, 1 worker; full output in `.tmp/chunk6-doc-baseline/test_baseline_out.txt` at workspace root — *move to `.tmp/chunk6-doc-baseline/` when `Remove-Item` policy allows*): 110 tests total, 1 worker
+   - Build: `pnpm build` SUCCESS — vite 7.3.0, 3.02s, output ~521KB JS bundle
+   - Spec files run: `spell_editor_structured_data.spec.ts`, `epic_and_quest_spells.spec.ts`, `spell_editor_canon_first.spec.ts`, `spell_editor_save_workflow.spec.ts`, `spell_notes_persistence.spec.ts`, `spell_editor_visual.spec.ts`, `e2e.spec.ts`, `milestone_3.spec.ts`, `repro_bugs.spec.ts`, `theme_and_feedback.spec.ts`, `accessibility_and_resize.spec.ts`
+   - Total tests in full run: **110** (1 worker, confirmed from `test_baseline_out.txt`)
+   - **Deterministic failures (2 — pre-existing, reproduce reliably):**
+     1. `tests/e2e.spec.ts:64:3` — "Milestone Verification Flow > Milestone 3: Library filters for components and tags > Apply filters and verify results" — TIMEOUT 360s (6.1 min). Root cause: `locator.selectOption` hang at `SpellbookApp.ts:519`, `waiting for getByLabel('Class filter')` when the Tauri app page closed mid-test. **Maps to Task 3 (workflow coverage), pre-existing before Chunk 6.**
+     2. `tests/milestone_3.spec.ts:19:1` — "Milestone 3: Robust Search & Saved Searches" — FAILED 43.6s. Pre-existing milestone test failure. **Maps to Task 3 (workflow coverage), pre-existing before Chunk 6.**
+   - **Intermittent infrastructure flake (1 — not an assertion regression):**
+     3. `tests/spell_editor_canon_first.spec.ts` — "...collapse then view-only expand/collapse leaves canon unchanged" — appears in Run 1 only, not Run 2. Tauri app abnormal exit (STATUS_CONTROL_C_EXIT) with "load timeout — continuing anyway". Port-cleanup artifact between tests, not deterministic. **Task 7's final matrix should expect 2 deterministic failures; a third appearance of this flake is not a regression.**
+   - **PASSING (Run 2):** 108 of 110 tests passing across all 11 spec files
+   - **Pre-existing dirty markdown files at baseline:** none (git diff showed no unstaged `.md` changes)
+   - **Raw artifact:** `.tmp/chunk6-doc-baseline/test_baseline_out.txt` (immutable pre-change reference; also present as `test_baseline_out.txt` at workspace root — will be deleted when `Remove-Item` policy allows)
 - **Requirement-to-step audit from Step 1.4:**
-   - to be filled during implementation
-- **Step 2.1a audit ledger:**
+   - FR-1 (5 docs files updated) → **Task 6** (all 5 docs: `docs/user/spell_editor.md`, `README.md`, `docs/dev/spell_editor_components.md`, `docs/TESTING.md`, `docs/ARCHITECTURE.md`)
+   - FR-2 (migration of validation-modal tests) → **Task 2** (Steps 2.1–2.11; targets `spell_editor_structured_data.spec.ts`, `epic_and_quest_spells.spec.ts`, `spell_editor_canon_first.spec.ts`)
+   - FR-3a (new user creates first spell) → **Task 3, Step 3.1**
+   - FR-3b (legacy spell edit basic fields) → **Task 3, Step 3.2**
+   - FR-3c (legacy structured-field upgrade) → **Task 3, Step 3.2–3.3**
+   - FR-3d (validation error handling) → **Task 2** (migration) + **Task 3** (workflow coverage)
+   - FR-3e (conditional field transitions collapsed/expanded) → **Task 2, Steps 2.4–2.5** (stale-state migration) + **Task 3** (expanded/collapsed end-state workflow coverage)
+   - FR-3f (keyboard-only navigation) → **Task 4** (accessibility spec)
+   - FR-3g (theme switching through /settings + persistence) → **Task 4** (theme_and_feedback.spec.ts)
+   - FR-3h (empty library state) → **Task 3** (empty-state coverage)
+   - FR-3i (empty search state) → **Task 3** (empty-state coverage)
+   - FR-3j (empty character spellbook state) → **Task 3** (empty-state coverage)
+   - FR-4a (screen reader validation announcements / field association) → **Task 4** (accessibility_and_resize.spec.ts extensions)
+   - FR-4b (modal focus trap and focus return) → **Task 4, Step 4.2**
+   - FR-5a (theme store persistence + first-load) → **Task 4** (theme_and_feedback.spec.ts)
+   - FR-5b (hidden live-region theme announcement) → **Task 4** (theme_and_feedback.spec.ts)
+   - FR-5c (editor in both themes) → **Task 4** (theme_and_feedback.spec.ts)
+   - FR-5d (non-modal notifications) → **Task 4** (theme_and_feedback.spec.ts)
+   - FR-5e (clipboard copy via toast/live-region) → **Task 4** (theme_and_feedback.spec.ts)
+   - FR-5f (modal reserved for destructive/blocking) → **Task 4, Step 4.2** via preserved-modal coverage
+   - FR-5g (preserved dialogs remain modal post Chunk 5) → **Task 4, Step 4.2**
+   - FR-6a (`StructuredFieldInput` visual regression baselines) → **Task 5** (spell_editor_visual.spec.ts)
+   - FR-6b (`SpellEditor` structured fields dark mode baseline) → **Task 5**
+   - FR-6c (`SpellEditor` structured fields light mode baseline) → **Task 5**
+   - FR-6d (empty library dark+light baselines) → **Task 5**
+   - FR-6e (hash display collapsed+expanded baselines) → **Task 5**
+   - **Coverage gap flagged:** FR-3 tasks e2e.spec.ts:64 Milestone 3 tag filter test is currently FAILING (pre-existing timeout). Task 3 must fix or stabilize this before final verification matrix (Task 7).
+- **Step 2.1a audit ledger:** *(filled in Task 2, Step 2.1a — deferred to that step)*
    - final spell/library inventory reviewed:
    - per-file classification:
 - **Selector or support gaps found during workflow/accessibility work:**

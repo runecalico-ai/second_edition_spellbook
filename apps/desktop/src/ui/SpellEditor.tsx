@@ -87,6 +87,11 @@ const spellErrorText = "text-xs text-red-700 dark:text-red-400 mt-1";
 const spellSaveHintClass = "text-right text-xs text-red-700 dark:text-red-400";
 const spellConflictBannerClass =
   "mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100";
+const spellHeaderSelectClass =
+  "rounded border border-neutral-500 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+const spellHeaderSecondaryActionClass =
+  "rounded border border-neutral-500 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700";
+const SPELL_DETAIL_LOADING_DELAY_MS = 150;
 
 function getSpellFocusVisibleRing(isInvalid: boolean): string {
   return isInvalid ? spellInvalidFocusVisibleRing : spellFocusVisibleRing;
@@ -647,10 +652,12 @@ function createEmptySpellForm(): SpellDetail {
 
 export default function SpellEditor() {
   const { id } = useParams();
+  const isNew = id === "new";
   const navigate = useNavigate();
   const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const pushNotification = useNotifications((state) => state.pushNotification);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => !isNew && Boolean(id));
+  const [showLoading, setShowLoading] = useState(false);
   const [form, setForm] = useState<SpellDetail>(() => createEmptySpellForm());
   const [printStatus, setPrintStatus] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
@@ -681,6 +688,7 @@ export default function SpellEditor() {
   const [saveShowsDelayedLabel, setSaveShowsDelayedLabel] = useState(false);
   const saveInFlightRef = useRef(false);
   const saveDelayedLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailLoadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearSaveDelayedLabelTimer = useCallback(() => {
     if (saveDelayedLabelTimerRef.current !== null) {
@@ -689,11 +697,19 @@ export default function SpellEditor() {
     }
   }, []);
 
+  const clearDetailLoadingTimer = useCallback(() => {
+    if (detailLoadingTimerRef.current !== null) {
+      clearTimeout(detailLoadingTimerRef.current);
+      detailLoadingTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       clearSaveDelayedLabelTimer();
+      clearDetailLoadingTimer();
     };
-  }, [clearSaveDelayedLabelTimer]);
+  }, [clearDetailLoadingTimer, clearSaveDelayedLabelTimer]);
 
   const revealFieldValidation = useCallback((...keys: SpellEditorValidatedFieldKey[]) => {
     setFieldValidationVisible((prev) => {
@@ -759,8 +775,6 @@ export default function SpellEditor() {
   const parserFallbackFieldsRef = useRef<Set<string>>(new Set());
   parserFallbackFieldsRef.current = parserFallbackFields;
 
-  const isNew = id === "new";
-
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!unsavedRef.current) return;
@@ -777,22 +791,8 @@ export default function SpellEditor() {
 
   /** Focus management: on expand focus first focusable in panel; on collapse focus the expand button. */
   const prevExpandedDetailRef = useRef<DetailFieldKey | null>(null);
-  const resetStructuredLoadState = useCallback(() => {
-    setForm(createEmptySpellForm());
-    setTradition("ARCANE");
+  const resetEditorUiState = useCallback(() => {
     setHashExpanded(false);
-    setStructuredRange(null);
-    setStructuredDuration(null);
-    setStructuredCastingTime(null);
-    setStructuredArea(null);
-    setStructuredDamage(null);
-    setStructuredSavingThrow(null);
-    setStructuredMagicResistance(null);
-    setStructuredComponents(null);
-    setStructuredMaterialComponents([]);
-    setHasLoadedMaterialComponentsSpec(false);
-    setHasLoadedSavingThrowSpec(false);
-    setHasLoadedMagicResistanceSpec(false);
     setHasExpandedComponentsEdit(false);
     setExpandedDetailField(null);
     setDetailLoading(null);
@@ -807,6 +807,24 @@ export default function SpellEditor() {
     expandedDetailRef.current = null;
     prevExpandedDetailRef.current = null;
   }, []);
+
+  const resetStructuredLoadState = useCallback(() => {
+    setForm(createEmptySpellForm());
+    setTradition("ARCANE");
+    setStructuredRange(null);
+    setStructuredDuration(null);
+    setStructuredCastingTime(null);
+    setStructuredArea(null);
+    setStructuredDamage(null);
+    setStructuredSavingThrow(null);
+    setStructuredMagicResistance(null);
+    setStructuredComponents(null);
+    setStructuredMaterialComponents([]);
+    setHasLoadedMaterialComponentsSpec(false);
+    setHasLoadedSavingThrowSpec(false);
+    setHasLoadedMagicResistanceSpec(false);
+    resetEditorUiState();
+  }, [resetEditorUiState]);
 
   const fieldToKebab = useCallback(
     (f: DetailFieldKey) => f.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase(),
@@ -870,84 +888,108 @@ export default function SpellEditor() {
   }, [blocker.state, modalConfirm]);
 
   useEffect(() => {
-    if (!isNew && id) {
-      let isActive = true;
+    clearDetailLoadingTimer();
+
+    if (isNew) {
+      setShowLoading(false);
+      setLoading(false);
       resetStructuredLoadState();
-      setLoading(true);
-      invoke<SpellDetail>("get_spell", { id: Number.parseInt(id) })
-        .then((data) => {
-          if (!isActive) return;
+      return;
+    }
 
-          // Reset all structured/canon-first expansion state before applying loaded spell.
-          resetStructuredLoadState();
+    if (!id) {
+      setShowLoading(false);
+      setLoading(false);
+      return;
+    }
 
-          if (data) {
-            setForm(data);
-            const hasSchool = !!data.school?.trim();
-            const hasSphere = !!data.sphere?.trim();
-            setTradition(hasSchool ? "ARCANE" : hasSphere ? "DIVINE" : "ARCANE");
-            if (data.canonicalData) {
-              try {
-                // canonical_data is always stored in snake_case (see docs/ARCHITECTURE.md).
-                const canonicalRaw = JSON.parse(data.canonicalData) as Record<string, unknown>;
-                const canonical = canonicalRaw as {
-                  range?: RangeSpec & {
+    let isActive = true;
+    setLoading(true);
+    setShowLoading(false);
+    resetEditorUiState();
+    detailLoadingTimerRef.current = setTimeout(() => {
+      if (!isActive) return;
+      resetStructuredLoadState();
+      setShowLoading(true);
+    }, SPELL_DETAIL_LOADING_DELAY_MS);
+
+    invoke<SpellDetail>("get_spell", { id: Number.parseInt(id) })
+      .then((data) => {
+        if (!isActive) return;
+
+        clearDetailLoadingTimer();
+
+        // Reset all structured/canon-first expansion state before applying loaded spell.
+        resetStructuredLoadState();
+
+        if (data) {
+          setForm(data);
+          const hasSchool = !!data.school?.trim();
+          const hasSphere = !!data.sphere?.trim();
+          setTradition(hasSchool ? "ARCANE" : hasSphere ? "DIVINE" : "ARCANE");
+          let shouldLoadLegacyFallbacks = true;
+          if (data.canonicalData) {
+            try {
+              // canonical_data is always stored in snake_case (see docs/ARCHITECTURE.md).
+              const canonicalRaw = JSON.parse(data.canonicalData) as Record<string, unknown>;
+              const canonical = canonicalRaw as {
+                range?: RangeSpec & {
+                  distance?: { per_level?: number };
+                  raw_legacy_value?: string;
+                };
+                duration?: DurationSpec & {
+                  duration?: { per_level?: number };
+                  raw_legacy_value?: string;
+                };
+                casting_time?: SpellCastingTime & { raw_legacy_value?: string };
+                area?: AreaSpec & { raw_legacy_value?: string };
+                damage?: SpellDamageSpec & { raw_legacy_value?: string; dm_guidance?: string };
+                saving_throw?: SavingThrowSpec & { dm_guidance?: string };
+                magic_resistance?: MagicResistanceSpec & { special_rule?: string };
+                components?: {
+                  verbal?: boolean;
+                  somatic?: boolean;
+                  material?: boolean;
+                  focus?: boolean;
+                  divine_focus?: boolean;
+                  experience?: boolean;
+                };
+                material_components?: MaterialComponentSpec[];
+              };
+              const canonicalHasMaterialComponentsSpec = canonicalRaw.material_components != null;
+              setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
+              const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
+
+              const rangeDecision = decideCanonicalField<RangeSpec>(
+                canonicalRaw,
+                "range",
+                (rawValue): RangeSpec => {
+                  const r = rawValue as unknown as RangeSpec & {
                     distance?: { per_level?: number };
                     raw_legacy_value?: string;
                   };
-                  duration?: DurationSpec & {
-                    duration?: { per_level?: number };
-                    raw_legacy_value?: string;
+                  return {
+                    kind: r.kind,
+                    text: r.text,
+                    unit: r.unit,
+                    distance: r.distance
+                      ? {
+                          mode: r.distance.mode ?? "fixed",
+                          value: r.distance.value,
+                          perLevel: r.distance.per_level ?? r.distance.perLevel,
+                        }
+                      : undefined,
+                    rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
                   };
-                  casting_time?: SpellCastingTime & { raw_legacy_value?: string };
-                  area?: AreaSpec & { raw_legacy_value?: string };
-                  damage?: SpellDamageSpec & { raw_legacy_value?: string; dm_guidance?: string };
-                  saving_throw?: SavingThrowSpec & { dm_guidance?: string };
-                  magic_resistance?: MagicResistanceSpec & { special_rule?: string };
-                  components?: {
-                    verbal?: boolean;
-                    somatic?: boolean;
-                    material?: boolean;
-                    focus?: boolean;
-                    divine_focus?: boolean;
-                    experience?: boolean;
-                  };
-                  material_components?: MaterialComponentSpec[];
-                };
-                const canonicalHasMaterialComponentsSpec = canonicalRaw.material_components != null;
-                setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
-                const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
-
-                const rangeDecision = decideCanonicalField<RangeSpec>(
-                  canonicalRaw,
-                  "range",
-                  (rawValue): RangeSpec => {
-                    const r = rawValue as unknown as RangeSpec & {
-                      distance?: { per_level?: number };
-                      raw_legacy_value?: string;
-                    };
-                    return {
-                      kind: r.kind,
-                      text: r.text,
-                      unit: r.unit,
-                      distance: r.distance
-                        ? {
-                            mode: r.distance.mode ?? "fixed",
-                            value: r.distance.value,
-                            perLevel: r.distance.per_level ?? r.distance.perLevel,
-                          }
-                        : undefined,
-                      rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
-                    };
-                  },
-                  validateRangeSpec,
-                );
-                if (rangeDecision.structuredValue) {
-                  setStructuredRange(rangeDecision.structuredValue);
-                }
-                if (rangeDecision.suppressExpandParse) {
-                  nextSuppressExpandParse.range = true;
-                }
+                },
+                validateRangeSpec,
+              );
+              if (rangeDecision.structuredValue) {
+                setStructuredRange(rangeDecision.structuredValue);
+              }
+              if (rangeDecision.suppressExpandParse) {
+                nextSuppressExpandParse.range = true;
+              }
 
                 const durationDecision = decideCanonicalField<DurationSpec>(
                   canonicalRaw,
@@ -1154,69 +1196,84 @@ export default function SpellEditor() {
                     if (isActive) setParsersPending(false);
                   });
                 }
-              } catch {
-                // ignore parse error, fall back to legacy
-              }
-            } else {
-              // No canonical_data: dispatch all parser-based fields in parallel on load.
-              const parserTasks = buildParserTasks(
-                data,
-                () => isActive,
-                {
-                  setStructuredRange,
-                  setStructuredDuration,
-                  setStructuredCastingTime,
-                  setStructuredArea,
-                  setStructuredDamage,
-                  setSuppressExpandParse,
-                  addParserFallback: (f) =>
-                    setParserFallbackFields((prev) => new Set([...prev, f])),
-                },
-                {},
+
+                shouldLoadLegacyFallbacks = false;
+            } catch {
+              // Ignore malformed canonicalData; legacy text remains editable.
+            }
+          }
+          if (shouldLoadLegacyFallbacks) {
+            const parserTasks: Promise<unknown>[] = [];
+            if (data.range?.trim()) {
+              const legacyRange = data.range;
+              parserTasks.push(
+                invoke<RangeSpec>("parse_range_to_spec", { input: legacyRange })
+                  .then((r) => {
+                    if (!r) {
+                      setStructuredRange(toSpecialRangeSpec(legacyRange));
+                      setParserFallbackFields((prev) => new Set([...prev, "Range"]));
+                      return;
+                    }
+
+                    const spec = applyPlaywrightRangeDistanceCorruption(r);
+                    setStructuredRange(spec);
+                    setSuppressExpandParse((prev) => ({ ...prev, range: true }));
+                    if (spec.kind === "special") {
+                      setParserFallbackFields((prev) => new Set([...prev, "Range"]));
+                    }
+                  })
+                  .catch(() => {
+                    setStructuredRange(toSpecialRangeSpec(legacyRange));
+                    setParserFallbackFields((prev) => new Set([...prev, "Range"]));
+                  }),
               );
+            }
 
-              // SavingThrow: client-side mapping (no invoke).
-              if (data.savingThrow?.trim()) {
-                const stResult = mapLegacySavingThrow(data.savingThrow);
-                setStructuredSavingThrow(stResult);
-                setHasLoadedSavingThrowSpec(true);
-                setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
-                if (stResult.kind === "dm_adjudicated") {
-                  setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
-                }
-              }
-
-              // MagicResistance: client-side mapping (no invoke).
-              if (data.magicResistance?.trim()) {
-                const mrResult = mapLegacyMagicResistance(data.magicResistance);
-                setStructuredMagicResistance(mrResult);
-                setHasLoadedMagicResistanceSpec(true);
-                setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
-                if (mrResult.kind === "special") {
-                  setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
-                }
-              }
-
-              if (parserTasks.length > 0) {
-                setParsersPending(true);
-                Promise.all(parserTasks).finally(() => {
-                  if (isActive) setParsersPending(false);
-                });
+            if (data.savingThrow?.trim()) {
+              const stResult = mapLegacySavingThrow(data.savingThrow);
+              setStructuredSavingThrow(stResult);
+              setHasLoadedSavingThrowSpec(true);
+              setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
+              if (stResult.kind === "dm_adjudicated") {
+                setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
               }
             }
-            unsavedRef.current = false;
-            setHasUnsavedState(false);
-          }
-        })
-        .finally(() => {
-          if (isActive) setLoading(false);
-        });
 
-      return () => {
-        isActive = false;
-      };
-    }
-  }, [id, isNew, resetStructuredLoadState]);
+            if (data.magicResistance?.trim()) {
+              const mrResult = mapLegacyMagicResistance(data.magicResistance);
+              setStructuredMagicResistance(mrResult);
+              setHasLoadedMagicResistanceSpec(true);
+              setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
+              if (mrResult.kind === "special") {
+                setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+              }
+            }
+
+            if (parserTasks.length > 0) {
+              setParsersPending(true);
+              Promise.all(parserTasks).finally(() => {
+                if (isActive) setParsersPending(false);
+              });
+            }
+
+          }
+
+          unsavedRef.current = false;
+          setHasUnsavedState(false);
+        }
+      })
+      .finally(() => {
+        if (!isActive) return;
+        clearDetailLoadingTimer();
+        setShowLoading(false);
+        setLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+      clearDetailLoadingTimer();
+    };
+  }, [clearDetailLoadingTimer, id, isNew, resetEditorUiState, resetStructuredLoadState]);
 
   const handleChange = (field: keyof SpellDetail, value: string | number) => {
     if (savePending) return;
@@ -2099,7 +2156,8 @@ export default function SpellEditor() {
     }
   };
 
-  if (loading && !form.name) return <div className="p-4">Loading...</div>;
+  if (showLoading) return <div className="p-4">Loading...</div>;
+  if (loading && !form.id) return null;
 
   return (
     <div className="p-4 max-w-2xl mx-auto space-y-4 overflow-auto h-full">
@@ -2147,7 +2205,7 @@ export default function SpellEditor() {
                   data-testid="print-page-size-select"
                   disabled={savePending}
                   onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
-                  className={`bg-neutral-800 text-neutral-100 text-xs rounded px-2 py-1 border border-neutral-700 ${spellFocusVisibleRing}`}
+                  className={`${spellHeaderSelectClass} ${spellFocusVisibleRing}`}
                 >
                   <option value="letter">Letter</option>
                   <option value="a4">A4</option>
@@ -2157,7 +2215,7 @@ export default function SpellEditor() {
                   data-testid="btn-print-compact"
                   disabled={savePending}
                   onClick={() => printSpell("compact")}
-                  className={`px-3 py-2 text-xs text-neutral-100 bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
+                  className={`px-3 py-2 text-xs ${spellHeaderSecondaryActionClass} ${spellFocusVisibleRing}`}
                 >
                   Print Compact
                 </button>
@@ -2166,7 +2224,7 @@ export default function SpellEditor() {
                   data-testid="btn-print-stat-block"
                   disabled={savePending}
                   onClick={() => printSpell("stat-block")}
-                  className={`px-3 py-2 text-xs text-neutral-100 bg-neutral-800 rounded hover:bg-neutral-700 ${spellFocusVisibleRing}`}
+                  className={`px-3 py-2 text-xs ${spellHeaderSecondaryActionClass} ${spellFocusVisibleRing}`}
                 >
                   Print Stat-block
                 </button>
@@ -2200,7 +2258,7 @@ export default function SpellEditor() {
                 }
                 navigate("/");
               }}
-              className={`px-3 py-2 text-neutral-100 bg-neutral-700 hover:bg-neutral-600 rounded ${spellFocusVisibleRing}`}
+              className={`px-3 py-2 ${spellHeaderSecondaryActionClass} ${spellFocusVisibleRing}`}
             >
               Cancel
             </button>
@@ -2254,6 +2312,7 @@ export default function SpellEditor() {
               type="button"
               data-testid="spell-detail-hash-copy"
               disabled={savePending}
+              aria-label="Copy canonical content hash"
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(form.contentHash ?? "");

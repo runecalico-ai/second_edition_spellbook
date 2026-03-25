@@ -60,11 +60,52 @@ describe("empty character spellbook state", () => {
     const emptyState = await screen.findByTestId("empty-character-spellbook-state");
     expect(within(emptyState).getByRole("heading", { name: "No Spells Added" })).not.toBeNull();
     expect(within(emptyState).getByText("This character's spellbook is empty.")).not.toBeNull();
-    expect(screen.getByRole("status").textContent).toBe("This character's spellbook is empty.");
+    expect(screen.getByTestId("empty-character-spellbook-state-live-region").textContent).toBe(
+      "No Spells Added. This character's spellbook is empty.",
+    );
+    expect(
+      screen.queryByText("This character's spellbook is empty.", { selector: "output" }),
+    ).toBeNull();
     expect(
       within(emptyState).getByRole("button", { name: "Add Spell from Library" }),
     ).not.toBeNull();
     expect(emptyState.closest("td")?.getAttribute("colspan")).toBe("7");
+  });
+
+  it("uses theme-aware classes for the header summary and print controls", async () => {
+    renderSpellbookBuilder(1);
+
+    const summary = await screen.findByTestId("character-summary-label");
+    const pageSizeSelect = screen.getByTestId("print-page-size-select");
+    const compactPrintButton = screen.getByTestId("btn-print-spellbook-compact");
+    const statBlockPrintButton = screen.getByTestId("btn-print-spellbook-stat-block");
+    const backLink = screen.getByTestId("link-back-to-characters");
+
+    expect(summary.className).toContain("text-neutral-600");
+    expect(summary.className).toContain("dark:text-neutral-400");
+
+    expect(pageSizeSelect.className).toContain("bg-white");
+    expect(pageSizeSelect.className).toContain("dark:bg-neutral-900");
+    expect(pageSizeSelect.className).toContain("border-neutral-500");
+    expect(pageSizeSelect.className).toContain("dark:border-neutral-700");
+    expect(pageSizeSelect.className).toContain("text-neutral-900");
+    expect(pageSizeSelect.className).toContain("dark:text-neutral-100");
+
+    for (const button of [compactPrintButton, statBlockPrintButton]) {
+      expect(button.className).toContain("border-neutral-500");
+      expect(button.className).toContain("bg-neutral-200");
+      expect(button.className).toContain("text-neutral-900");
+      expect(button.className).toContain("hover:bg-neutral-300");
+      expect(button.className).toContain("dark:border-neutral-700");
+      expect(button.className).toContain("dark:bg-neutral-800");
+      expect(button.className).toContain("dark:text-neutral-100");
+      expect(button.className).toContain("dark:hover:bg-neutral-700");
+    }
+
+    expect(backLink.className).toContain("text-neutral-600");
+    expect(backLink.className).toContain("dark:text-neutral-400");
+    expect(backLink.className).toContain("hover:text-neutral-900");
+    expect(backLink.className).toContain("dark:hover:text-white");
   });
 
   it("clicking Add Spell from Library opens the spell picker", async () => {
@@ -311,6 +352,65 @@ describe("empty character spellbook state", () => {
     fireEvent.click(addBtn);
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Add spells" })).not.toBeNull();
+    });
+  });
+
+  it("keeps the header spell count in a loading state until the spellbook finishes loading", async () => {
+    const spellbook = deferred<
+      Array<{
+        spellId: number;
+        spellName: string;
+        spellLevel: number;
+        spellSchool?: string;
+        prepared: number;
+        known: number;
+        notes?: string;
+      }>
+    >();
+
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_characters":
+          return [{ id: 1, name: "Raistlin", type: "PC" }];
+        case "get_character_spellbook":
+          return spellbook.promise;
+        case "list_facets":
+          return { schools: [], levels: [] };
+        default:
+          return undefined;
+      }
+    });
+
+    renderSpellbookBuilder(1);
+
+    expect(screen.getByTestId("spellbook-count-label").textContent).toBe("Loading spellbook…");
+    expect(screen.queryByText("0 spells in spellbook")).toBeNull();
+
+    spellbook.resolve([
+      {
+        spellId: 10,
+        spellName: "Fireball",
+        spellLevel: 3,
+        spellSchool: "Evocation",
+        prepared: 0,
+        known: 1,
+        notes: "",
+      },
+      {
+        spellId: 11,
+        spellName: "Magic Missile",
+        spellLevel: 1,
+        spellSchool: "Evocation",
+        prepared: 1,
+        known: 1,
+        notes: "",
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("spellbook-count-label").textContent).toBe(
+        "2 spells in spellbook",
+      );
     });
   });
 });

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useNotifications } from "../store/useNotifications";
-import { EmptyState } from "./components/EmptyState";
+import { EmptyState, EmptyStateLiveRegion } from "./components/EmptyState";
 
 type SpellSummary = {
   id: number;
@@ -56,6 +56,30 @@ type SavedSearch = {
   filterJson: string;
   createdAt: string;
 };
+
+const EMPTY_LIBRARY_STATE = {
+  heading: "No Spells Yet",
+  description: "Your spell library is empty. Create your first spell or import spells from a file.",
+};
+
+const EMPTY_SEARCH_STATE = {
+  heading: "No Results",
+  description: "No spells match your current search or filters.",
+};
+
+function createDefaultSearchFilters(): SearchFilters {
+  return {
+    schools: null,
+    levelMin: null,
+    levelMax: null,
+    source: null,
+    classList: null,
+    components: null,
+    tags: null,
+    isQuestSpell: null,
+    isCantrip: null,
+  };
+}
 
 export default function Library() {
   const [query, setQuery] = useState("");
@@ -205,47 +229,15 @@ export default function Library() {
     }
   };
 
-  const handleResetFilters = () => {
-    setQuery("");
-    setMode("keyword");
-    setSchoolFilters([]);
-    setLevelMin("");
-    setLevelMax("");
-    setSourceFilter("");
-    setClassListFilter("");
-    setComponentFilter("");
-    setTagFilter("");
-    setIsQuestFilter(false);
-    setIsCantripFilter(false);
-    setSelectedSavedSearchId(null); // NEW: also clear saved search selection
-  };
-
-  const search = useCallback(async () => {
+  const runSearch = useCallback(async (nextQuery: string, nextMode: "keyword" | "semantic", filters: SearchFilters) => {
     const requestId = ++searchRequestIdRef.current;
     setResultsSettledForCurrentSearch(false);
 
-    let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
-    let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
-    if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
-      [parsedMin, parsedMax] = [parsedMax, parsedMin];
-    }
-    const filters: SearchFilters = {
-      schools: schoolFilters.length > 0 ? schoolFilters : null,
-      levelMin: parsedMin,
-      levelMax: parsedMax,
-      source: sourceFilter || null,
-      classList: classListFilter || null,
-      components: componentFilter || null,
-      tags: tagFilter || null,
-      isQuestSpell: isQuestFilter || null,
-      isCantrip: isCantripFilter || null,
-    };
-
     try {
       const results =
-        mode === "semantic"
-          ? await invoke<SpellSummary[]>("search_semantic", { query })
-          : await invoke<SpellSummary[]>("search_keyword", { query, filters });
+        nextMode === "semantic"
+          ? await invoke<SpellSummary[]>("search_semantic", { query: nextQuery })
+          : await invoke<SpellSummary[]>("search_keyword", { query: nextQuery, filters });
 
       if (requestId !== searchRequestIdRef.current) {
         return;
@@ -264,6 +256,43 @@ export default function Library() {
         setResultsSettledForCurrentSearch(true);
       }
     }
+  }, []);
+
+  const handleResetFilters = () => {
+    setQuery("");
+    setMode("keyword");
+    setSchoolFilters([]);
+    setLevelMin("");
+    setLevelMax("");
+    setSourceFilter("");
+    setClassListFilter("");
+    setComponentFilter("");
+    setTagFilter("");
+    setIsQuestFilter(false);
+    setIsCantripFilter(false);
+    setSelectedSavedSearchId(null); // NEW: also clear saved search selection
+    void runSearch("", "keyword", createDefaultSearchFilters());
+  };
+
+  const search = useCallback(async () => {
+    let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
+    let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
+    if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
+      [parsedMin, parsedMax] = [parsedMax, parsedMin];
+    }
+    const filters: SearchFilters = {
+      schools: schoolFilters.length > 0 ? schoolFilters : null,
+      levelMin: parsedMin,
+      levelMax: parsedMax,
+      source: sourceFilter || null,
+      classList: classListFilter || null,
+      components: componentFilter || null,
+      tags: tagFilter || null,
+      isQuestSpell: isQuestFilter || null,
+      isCantrip: isCantripFilter || null,
+    };
+
+    await runSearch(query, mode, filters);
   }, [
     query,
     mode,
@@ -276,6 +305,7 @@ export default function Library() {
     tagFilter,
     isQuestFilter,
     isCantripFilter,
+    runSearch,
   ]);
 
   useEffect(() => {
@@ -302,6 +332,13 @@ export default function Library() {
       isCantripFilter ||
       selectedSavedSearchId !== null,
   );
+  const showEmptyLibrary = resultsSettledForCurrentSearch && spells.length === 0 && !hasActiveFilters;
+  const showEmptySearch = resultsSettledForCurrentSearch && spells.length === 0 && hasActiveFilters;
+  const activeEmptyStateAnnouncement = showEmptyLibrary
+    ? EMPTY_LIBRARY_STATE
+    : showEmptySearch
+      ? EMPTY_SEARCH_STATE
+      : null;
 
   const focusVisibleRingClassName =
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
@@ -330,6 +367,12 @@ export default function Library() {
 
   return (
     <div className="space-y-3 h-full flex flex-col">
+      <EmptyStateLiveRegion
+        heading={activeEmptyStateAnnouncement?.heading ?? ""}
+        description={activeEmptyStateAnnouncement?.description ?? ""}
+        testId="library-empty-state"
+        active={activeEmptyStateAnnouncement !== null}
+      />
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-bold">Library</h1>
         <div className="space-x-2 flex items-center">
@@ -771,12 +814,12 @@ export default function Library() {
                 <td className="p-2 text-center">{s.components}</td>
               </tr>
             ))}
-            {resultsSettledForCurrentSearch && spells.length === 0 && !hasActiveFilters && (
+            {showEmptyLibrary && (
               <tr>
                 <td colSpan={5}>
                   <EmptyState
-                    heading="No Spells Yet"
-                    description="Your spell library is empty. Create your first spell or import spells from a file."
+                    heading={EMPTY_LIBRARY_STATE.heading}
+                    description={EMPTY_LIBRARY_STATE.description}
                     testId="empty-library-state"
                   >
                     <Link
@@ -797,12 +840,12 @@ export default function Library() {
                 </td>
               </tr>
             )}
-            {resultsSettledForCurrentSearch && spells.length === 0 && hasActiveFilters && (
+            {showEmptySearch && (
               <tr>
                 <td colSpan={5}>
                   <EmptyState
-                    heading="No Results"
-                    description="No spells match your current search or filters."
+                    heading={EMPTY_SEARCH_STATE.heading}
+                    description={EMPTY_SEARCH_STATE.description}
                     testId="empty-search-state"
                   >
                     <button

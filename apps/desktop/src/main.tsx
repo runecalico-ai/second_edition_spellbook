@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider, createBrowserRouter, type RouteObject } from "react-router-dom";
 import "./index.css";
 import { useEffect } from "react";
-import { useParams } from "react-router-dom";
 import type { ThemeState } from "./store/useTheme";
 import { useTheme } from "./store/useTheme";
 import App from "./ui/App";
@@ -17,11 +16,8 @@ import SpellEditor from "./ui/SpellEditor";
 import SpellbookBuilder from "./ui/SpellbookBuilder";
 import SettingsPage from "./ui/SettingsPage";
 
-// Uses key={id} to force a full remount of SpellEditor when the spell ID changes,
-// resetting all local state and ensuring a clean render for each spell.
 function SpellEditorWrapper() {
-  const { id } = useParams();
-  return <SpellEditor key={id} />;
+  return <SpellEditor />;
 }
 
 type ThemeStore = {

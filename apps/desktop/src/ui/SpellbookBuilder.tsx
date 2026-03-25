@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { EmptyState } from "./components/EmptyState";
+import { EmptyState, EmptyStateLiveRegion } from "./components/EmptyState";
 
 const PRINT_LAYOUTS = [
   { id: "compact", label: "Print Compact" },
@@ -46,6 +46,14 @@ type SearchFilters = {
   isCantrip?: boolean | null;
 };
 
+const builderMutedTextClass = "text-neutral-600 dark:text-neutral-400";
+const builderHeaderSelectClass =
+  "rounded border border-neutral-500 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+const builderHeaderSecondaryActionClass =
+  "rounded border border-neutral-500 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700";
+const builderBackLinkClass =
+  "text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white";
+
 export default function SpellbookBuilder() {
   const { id } = useParams();
   const characterId = Number.parseInt(id || "", 10);
@@ -72,6 +80,8 @@ export default function SpellbookBuilder() {
   const wasPickerOpenRef = useRef(false);
 
   const spellIds = useMemo(() => new Set(spellbook.map((entry) => entry.spellId)), [spellbook]);
+  const spellbookIsPendingInitialLoad = !spellbookLoaded && spellbook.length === 0;
+  const showEmptySpellbook = spellbookLoaded && spellbook.length === 0;
 
   const loadCharacter = useCallback(async () => {
     if (!Number.isFinite(characterId)) return;
@@ -286,11 +296,11 @@ export default function SpellbookBuilder() {
     return (
       <div className="p-4 space-y-2">
         <h2 className="text-xl font-bold">Spellbook Builder</h2>
-        <p className="text-neutral-500">Invalid character selection.</p>
+        <p className={builderMutedTextClass}>Invalid character selection.</p>
         <Link
           ref={backLinkRef}
           to="/character"
-          className="text-sm text-neutral-400 hover:text-white"
+          className={builderBackLinkClass}
         >
           ← Back to Characters
         </Link>
@@ -302,11 +312,11 @@ export default function SpellbookBuilder() {
     return (
       <div className="p-4 space-y-2">
         <h2 className="text-xl font-bold">Spellbook Builder</h2>
-        <p className="text-neutral-500">Character not found.</p>
+        <p className={builderMutedTextClass}>Character not found.</p>
         <Link
           ref={backLinkRef}
           to="/character"
-          className="text-sm text-neutral-400 hover:text-white"
+          className={builderBackLinkClass}
         >
           ← Back to Characters
         </Link>
@@ -316,15 +326,21 @@ export default function SpellbookBuilder() {
 
   return (
     <div className="p-4 space-y-4 h-full overflow-auto">
+      <EmptyStateLiveRegion
+        heading="No Spells Added"
+        description="This character's spellbook is empty."
+        testId="empty-character-spellbook-state"
+        active={showEmptySpellbook}
+      />
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Spellbook Builder</h1>
           {character ? (
-            <p className="text-sm text-neutral-400" data-testid="character-summary-label">
+            <p className={`text-sm ${builderMutedTextClass}`} data-testid="character-summary-label">
               {character.name} · {character.type} spellbook
             </p>
           ) : (
-            <p className="text-sm text-neutral-500">Loading character…</p>
+            <p className={`text-sm ${builderMutedTextClass}`}>Loading character…</p>
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -343,7 +359,7 @@ export default function SpellbookBuilder() {
               data-testid="print-page-size-select"
               aria-label="Print page size"
               onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
-              className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
+              className={builderHeaderSelectClass}
             >
               <option value="letter">Letter</option>
               <option value="a4">A4</option>
@@ -354,7 +370,7 @@ export default function SpellbookBuilder() {
                 type="button"
                 data-testid={`btn-print-spellbook-${layout.id}`}
                 onClick={() => printSpellbook(layout.id)}
-                className="px-2 py-1 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                className={`px-2 py-1 text-xs ${builderHeaderSecondaryActionClass}`}
               >
                 {layout.label}
               </button>
@@ -364,7 +380,7 @@ export default function SpellbookBuilder() {
             ref={backLinkRef}
             to="/character"
             data-testid="link-back-to-characters"
-            className="text-sm text-neutral-400 hover:text-white"
+            className={builderBackLinkClass}
           >
             ← Characters
           </Link>
@@ -373,10 +389,9 @@ export default function SpellbookBuilder() {
 
       {statusMessage && <div className="text-xs text-neutral-400">{statusMessage}</div>}
 
-      <div className="text-sm text-neutral-500">{spellbook.length} spells in spellbook</div>
-      {spellbookLoaded && spellbook.length === 0 && (
-        <output className="sr-only">This character's spellbook is empty.</output>
-      )}
+      <div data-testid="spellbook-count-label" aria-live="polite" className="text-sm text-neutral-500">
+        {spellbookIsPendingInitialLoad ? "Loading spellbook…" : `${spellbook.length} spells in spellbook`}
+      </div>
 
       <table className="w-full text-left text-sm border-collapse">
         <thead className="text-neutral-400 border-b border-neutral-800">
@@ -472,14 +487,13 @@ export default function SpellbookBuilder() {
               </td>
             </tr>
           ))}
-          {spellbookLoaded && spellbook.length === 0 && (
+          {showEmptySpellbook && (
             <tr>
               <td colSpan={7}>
                 <EmptyState
                   heading="No Spells Added"
                   description="This character's spellbook is empty."
                   testId="empty-character-spellbook-state"
-                  announce={false}
                 >
                   <button
                     type="button"
@@ -493,7 +507,7 @@ export default function SpellbookBuilder() {
               </td>
             </tr>
           )}
-          {!spellbookLoaded && (
+          {spellbookIsPendingInitialLoad && (
             <tr>
               <td colSpan={7} className="p-8 text-center text-neutral-500">
                 Loading spellbook…

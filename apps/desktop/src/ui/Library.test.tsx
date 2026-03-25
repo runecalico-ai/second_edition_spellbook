@@ -370,8 +370,12 @@ describe("Library empty states", () => {
 
     it("renders the empty-library heading when no filters are active", async () => {
       renderLibraryWithViewport();
-      expect(await screen.findByText("No Spells Yet")).toBeTruthy();
-      expect(screen.getByText(/Your spell library is empty/i)).toBeTruthy();
+      const emptyState = await screen.findByTestId("empty-library-state");
+      expect(within(emptyState).getByRole("heading", { name: "No Spells Yet" })).toBeTruthy();
+      expect(within(emptyState).getByText(/Your spell library is empty/i)).toBeTruthy();
+      expect(screen.getByTestId("library-empty-state-live-region").textContent).toBe(
+        "No Spells Yet. Your spell library is empty. Create your first spell or import spells from a file.",
+      );
       expect(screen.getByTestId("empty-library-create-button")).toBeTruthy();
       expect(screen.getByTestId("empty-library-import-button")).toBeTruthy();
     });
@@ -480,8 +484,12 @@ describe("Library empty states", () => {
 
       semanticDeferred.resolve([]);
 
-      expect(await screen.findByText("No Results")).toBeTruthy();
-      expect(screen.getByText(/No spells match your current search/i)).toBeTruthy();
+      const emptyState = await screen.findByTestId("empty-search-state");
+      expect(within(emptyState).getByRole("heading", { name: "No Results" })).toBeTruthy();
+      expect(within(emptyState).getByText(/No spells match your current search/i)).toBeTruthy();
+      expect(screen.getByTestId("library-empty-state-live-region").textContent).toBe(
+        "No Results. No spells match your current search or filters.",
+      );
       expect(screen.queryByText("No Spells Yet")).toBeNull();
     });
 
@@ -497,8 +505,9 @@ describe("Library empty states", () => {
       fireEvent.click(screen.getByTestId("library-search-button"));
 
       // Now with an active query, the empty-search state should appear
-      expect(await screen.findByText("No Results")).toBeTruthy();
-      expect(screen.getByText(/No spells match your current search/i)).toBeTruthy();
+      const emptyState = await screen.findByTestId("empty-search-state");
+      expect(within(emptyState).getByRole("heading", { name: "No Results" })).toBeTruthy();
+      expect(within(emptyState).getByText(/No spells match your current search/i)).toBeTruthy();
       expect(screen.getByTestId("empty-search-reset-button")).toBeTruthy();
       expect(screen.queryByText("No Spells Yet")).toBeNull();
     });
@@ -520,6 +529,146 @@ describe("Library empty states", () => {
       expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
       // Verify the empty-search state is no longer in the DOM
       expect(screen.queryByTestId("empty-search-reset-button")).toBeNull();
+    });
+
+    it("M-005 keeps the live-region announcement stable across repeated identical empty-search settles", async () => {
+      const initialSearchDeferred = createDeferred<unknown[]>();
+      const firstEmptySearchDeferred = createDeferred<unknown[]>();
+      const secondEmptySearchDeferred = createDeferred<unknown[]>();
+      let keywordSearchCalls = 0;
+
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        switch (cmd) {
+          case "list_facets":
+            return Promise.resolve(emptyFacets);
+          case "list_characters":
+            return Promise.resolve([]);
+          case "list_saved_searches":
+            return Promise.resolve([]);
+          case "search_keyword":
+            keywordSearchCalls += 1;
+            if (keywordSearchCalls === 1) {
+              return initialSearchDeferred.promise;
+            }
+            if (keywordSearchCalls === 2) {
+              return firstEmptySearchDeferred.promise;
+            }
+            return secondEmptySearchDeferred.promise;
+          case "search_semantic":
+            return Promise.resolve([]);
+          default:
+            return Promise.resolve(undefined);
+        }
+      });
+
+      renderLibraryWithViewport();
+
+      initialSearchDeferred.resolve([]);
+      await screen.findByText("No Spells Yet");
+
+      fireEvent.change(screen.getByTestId("library-search-input"), {
+        target: { value: "fireball" },
+      });
+      fireEvent.click(screen.getByTestId("library-search-button"));
+
+      firstEmptySearchDeferred.resolve([]);
+
+      const liveRegion = screen.getByTestId("library-empty-state-live-region");
+      await waitFor(() => {
+        expect(screen.getByTestId("empty-search-state")).toBeTruthy();
+        expect(liveRegion.textContent).toBe("No Results. No spells match your current search or filters.");
+      });
+
+      fireEvent.click(screen.getByTestId("library-search-button"));
+
+      expect(liveRegion.textContent).toBe("No Results. No spells match your current search or filters.");
+
+      secondEmptySearchDeferred.resolve([]);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("empty-search-state")).toBeTruthy();
+        expect(liveRegion.textContent).toBe("No Results. No spells match your current search or filters.");
+      });
+    });
+
+    it("does not show the empty-library state while Reset Filters reloads a non-empty library", async () => {
+      const defaultLibraryDeferred = createDeferred<
+        Array<{
+          id: number;
+          name: string;
+          school: string;
+          level: number;
+          classList: string;
+          components: string;
+          isQuestSpell: number;
+          isCantrip: number;
+        }>
+      >();
+
+      vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+        switch (cmd) {
+          case "list_facets":
+            return Promise.resolve(emptyFacets);
+          case "list_characters":
+            return Promise.resolve([]);
+          case "list_saved_searches":
+            return Promise.resolve([]);
+          case "search_keyword": {
+            const searchArgs = args as { query?: string } | undefined;
+            if (searchArgs?.query === "fireball") {
+              return Promise.resolve([]);
+            }
+
+            return defaultLibraryDeferred.promise;
+          }
+          case "search_semantic":
+            return Promise.resolve([]);
+          default:
+            return Promise.resolve(undefined);
+        }
+      });
+
+      renderLibraryWithViewport();
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("search_keyword", {
+          query: "",
+          filters: expect.any(Object),
+        });
+      });
+
+      fireEvent.change(screen.getByTestId("library-search-input"), {
+        target: { value: "fireball" },
+      });
+      fireEvent.click(screen.getByTestId("library-search-button"));
+
+      expect(await screen.findByText("No Results")).toBeTruthy();
+      expect(screen.queryByText("No Spells Yet")).toBeNull();
+
+      fireEvent.click(screen.getByTestId("empty-search-reset-button"));
+
+      expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
+      expect(screen.queryByText("No Results")).toBeNull();
+      expect(screen.queryByText("No Spells Yet")).toBeNull();
+
+      defaultLibraryDeferred.resolve([
+        {
+          id: 10,
+          name: "Magic Missile",
+          school: "Evocation",
+          level: 1,
+          classList: "Mage",
+          components: "V, S",
+          isQuestSpell: 0,
+          isCantrip: 0,
+        },
+      ]);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("spell-row-magic-missile")).toBeTruthy();
+      });
+      expect(screen.queryByText("No Spells Yet")).toBeNull();
+      expect(screen.queryByText("No Results")).toBeNull();
     });
 
     it("resetting filters from a saved-search empty state clears the saved-search selection", async () => {

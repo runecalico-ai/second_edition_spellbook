@@ -142,6 +142,13 @@ function expectDangerFocusRing(testId: string) {
   expect(className).toContain("dark:focus-visible:ring-offset-neutral-900");
 }
 
+function expectClassTokens(testId: string, expectedTokens: string[]) {
+  const className = screen.getByTestId(testId).className;
+  expectedTokens.forEach((token) => {
+    expect(className).toContain(token);
+  });
+}
+
 describe("hash display", () => {
   beforeEach(async () => {
     useNotifications.setState({ notifications: [] });
@@ -171,13 +178,26 @@ describe("hash display", () => {
     expect(screen.getByTestId("spell-detail-hash-display").hasAttribute("title")).toBe(false);
   });
 
+  it("does not render the hash card for a loaded spell without a content hash", async () => {
+    cleanup();
+
+    await renderEditSpell(baseLoadedSpell());
+
+    expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe("Loaded Spell");
+    expect(screen.queryByTestId("spell-detail-hash-card")).toBeNull();
+  });
+
   it("uses visible button names for copy and expand controls and expands to the full hash", () => {
     const expandButton = screen.getByTestId("spell-detail-hash-expand");
-    expect(screen.getByTestId("spell-detail-hash-copy").getAttribute("aria-label")).toBeNull();
+      expect(screen.getByTestId("spell-detail-hash-copy").getAttribute("aria-label")).toBe(
+        "Copy canonical content hash",
+      );
     expect(expandButton.getAttribute("aria-label")).toBeNull();
     expect(expandButton.getAttribute("aria-expanded")).toBe("false");
     expect(expandButton.getAttribute("aria-controls")).toBe("spell-detail-hash-value");
-    expect(screen.getByRole("button", { name: "Copy" })).toBe(screen.getByTestId("spell-detail-hash-copy"));
+      expect(screen.getByRole("button", { name: "Copy canonical content hash" })).toBe(
+        screen.getByTestId("spell-detail-hash-copy"),
+      );
     expect(screen.getByRole("button", { name: "Expand" })).toBe(expandButton);
 
     fireEvent.click(expandButton);
@@ -832,6 +852,30 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
       const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
       expectStandardFocusRing(`detail-${kebabField}-input`);
       expectStandardFocusRing(`detail-${kebabField}-expand`);
+    });
+  });
+
+  it("uses theme-aware classes for the header print controls and cancel action", async () => {
+    await renderEditSpell(baseLoadedSpell());
+
+    expectClassTokens("print-page-size-select", [
+      "bg-white",
+      "text-neutral-900",
+      "border-neutral-500",
+      "dark:bg-neutral-900",
+      "dark:text-neutral-100",
+      "dark:border-neutral-700",
+    ]);
+
+    ["btn-print-compact", "btn-print-stat-block", "btn-cancel-edit"].forEach((testId) => {
+      expectClassTokens(testId, [
+        "bg-neutral-200",
+        "text-neutral-900",
+        "hover:bg-neutral-300",
+        "dark:bg-neutral-800",
+        "dark:text-neutral-100",
+        "dark:hover:bg-neutral-700",
+      ]);
     });
   });
 
@@ -1526,78 +1570,128 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     expect(saveBtn.disabled).toBe(false);
   });
 
-  it("resets validation UI and hides stale editor content while a different spell loads into the same editor", async () => {
-    let resolveSecondSpell: ((spell: SpellDetail) => void) | undefined;
-    const secondSpellPromise = new Promise<SpellDetail>((resolve) => {
-      resolveSecondSpell = resolve;
-    });
-    const firstHash = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
-    const secondHash = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+  it("does not flash a loading-only state for fast spell-detail route loads", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveSpell: ((spell: SpellDetail) => void) | undefined;
+      const spellPromise = new Promise<SpellDetail>((resolve) => {
+        resolveSpell = resolve;
+      });
 
-    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd !== "get_spell") return Promise.resolve(undefined);
-      const spellId = (args as { id?: number } | undefined)?.id;
-      if (spellId === 1) {
-        return Promise.resolve(
-          baseLoadedSpell({ id: 1, name: "First Spell", contentHash: firstHash }),
-        );
-      }
-      if (spellId === 2) {
-        return secondSpellPromise;
-      }
-      return Promise.resolve(undefined);
-    });
+      vi.mocked(invoke).mockImplementation((cmd: string) => {
+        if (cmd === "get_spell") {
+          return spellPromise;
+        }
+        return Promise.resolve(undefined);
+      });
 
-    const router = createMemoryRouter([{ path: "/edit/:id", element: <SpellEditor /> }], {
-      initialEntries: ["/edit/1"],
-    });
+      const router = createMemoryRouter([{ path: "/edit/:id", element: <SpellEditor /> }], {
+        initialEntries: ["/edit/1"],
+      });
 
-    render(<RouterProvider router={router} />);
+      render(<RouterProvider router={router} />);
 
-    await waitFor(() => {
       expect(screen.queryByText("Loading...")).toBeNull();
-    });
 
-    fireEvent.click(screen.getByTestId("spell-detail-hash-expand"));
-    expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(firstHash);
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+        resolveSpell?.(baseLoadedSpell({ id: 1, name: "Fast Spell" }));
+        await Promise.resolve();
+      });
 
-    fireEvent.change(screen.getByTestId("spell-description-textarea"), { target: { value: "" } });
-    fireEvent.click(screen.getByTestId("btn-save-spell"));
-    expect(screen.getByTestId("error-description-required")).toBeTruthy();
-    expect(screen.getByTestId("spell-save-validation-hint")).toBeTruthy();
+      expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe(
+        "Fast Spell",
+      );
+      expect(screen.queryByText("Loading...")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
-    await act(async () => {
-      await router.navigate("/edit/2");
-    });
+  it("resets validation UI and shows one stable loading state for perceptible spell-detail loads", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveSecondSpell: ((spell: SpellDetail) => void) | undefined;
+      const secondSpellPromise = new Promise<SpellDetail>((resolve) => {
+        resolveSecondSpell = resolve;
+      });
+      const firstHash = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
+      const secondHash = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
 
-    await waitFor(() => {
+      vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+        if (cmd !== "get_spell") return Promise.resolve(undefined);
+        const spellId = (args as { id?: number } | undefined)?.id;
+        if (spellId === 1) {
+          return Promise.resolve(
+            baseLoadedSpell({ id: 1, name: "First Spell", contentHash: firstHash }),
+          );
+        }
+        if (spellId === 2) {
+          return secondSpellPromise;
+        }
+        return Promise.resolve(undefined);
+      });
+
+      const router = createMemoryRouter([{ path: "/edit/:id", element: <SpellEditor /> }], {
+        initialEntries: ["/edit/1"],
+      });
+
+      render(<RouterProvider router={router} />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe(
+        "First Spell",
+      );
+
+      fireEvent.click(screen.getByTestId("spell-detail-hash-expand"));
+      expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(firstHash);
+
+      fireEvent.change(screen.getByTestId("spell-description-textarea"), { target: { value: "" } });
+      fireEvent.click(screen.getByTestId("btn-save-spell"));
+      expect(screen.getByTestId("error-description-required")).toBeTruthy();
+      expect(screen.getByTestId("spell-save-validation-hint")).toBeTruthy();
+
+      await act(async () => {
+        await router.navigate("/edit/2");
+      });
+
       expect(screen.queryByTestId("error-description-required")).toBeNull();
       expect(screen.queryByTestId("spell-save-validation-hint")).toBeNull();
-    });
-    expect(screen.getByText("Loading...")).toBeTruthy();
-    expect(screen.queryByTestId("btn-save-spell")).toBeNull();
+      expect(screen.queryByText("Loading...")).toBeNull();
 
-    await act(async () => {
-      resolveSecondSpell?.(
-        baseLoadedSpell({
-          id: 2,
-          name: "Second Spell",
-          contentHash: secondHash,
-        }),
-      );
-    });
+      await act(async () => {
+        vi.advanceTimersByTime(200);
+      });
 
-    await waitFor(() => {
+      expect(screen.getByText("Loading...")).toBeTruthy();
+      expect(screen.queryByTestId("btn-save-spell")).toBeNull();
+
+      await act(async () => {
+        resolveSecondSpell?.(
+          baseLoadedSpell({
+            id: 2,
+            name: "Second Spell",
+            contentHash: secondHash,
+          }),
+        );
+        await Promise.resolve();
+      });
+
       expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe(
         "Second Spell",
       );
-    });
-    expect(screen.getByTestId("btn-save-spell")).toBeTruthy();
-    expect(screen.queryByTestId("error-description-required")).toBeNull();
-    expect(screen.queryByTestId("spell-save-validation-hint")).toBeNull();
-    expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(
-      `${secondHash.slice(0, 16)}...`,
-    );
+      expect(screen.getByTestId("btn-save-spell")).toBeTruthy();
+      expect(screen.queryByTestId("error-description-required")).toBeNull();
+      expect(screen.queryByTestId("spell-save-validation-hint")).toBeNull();
+      expect(screen.getByTestId("spell-detail-hash-display").textContent).toBe(
+        `${secondHash.slice(0, 16)}...`,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the editor visible until save resolves, then navigates to Library", async () => {

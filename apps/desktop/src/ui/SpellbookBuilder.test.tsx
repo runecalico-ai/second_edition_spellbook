@@ -153,6 +153,33 @@ describe("empty character spellbook state", () => {
     });
   });
 
+  it("uses the upgraded light-mode border token across spell picker controls", async () => {
+    renderSpellbookBuilder(1);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add Spell from Library" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Add spells" });
+    const searchInput = within(dialog).getByTestId("spellbook-picker-search-input");
+    const schoolSelect = within(dialog).getByRole("listbox");
+    const levelSelects = within(dialog).getAllByRole("combobox");
+    const questToggle = within(dialog).getByLabelText("Quest").closest("label");
+    const cantripsToggle = within(dialog).getByLabelText("Cantrips Only").closest("label");
+
+    expect(dialog.className).toContain("border-neutral-500");
+    expect(dialog.className).not.toContain("border-neutral-300");
+
+    for (const element of [searchInput, schoolSelect, ...levelSelects]) {
+      expect(element.className).toContain("border-neutral-500");
+      expect(element.className).not.toContain("border-neutral-300");
+    }
+
+    for (const toggle of [questToggle, cantripsToggle]) {
+      expect(toggle).not.toBeNull();
+      expect(toggle?.className).toContain("border-neutral-500");
+      expect(toggle?.className).not.toContain("border-neutral-300");
+    }
+  });
+
   it("pressing Escape closes the picker and restores focus to the empty-state CTA", async () => {
     renderSpellbookBuilder(1);
     const addBtn = await screen.findByRole("button", { name: "Add Spell from Library" });

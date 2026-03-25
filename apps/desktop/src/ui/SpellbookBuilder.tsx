@@ -534,7 +534,7 @@ export default function SpellbookBuilder() {
             data-testid="spellbook-picker-dialog"
             ref={pickerDialogRef}
             onKeyDown={handlePickerKeyDown}
-            className="relative bg-white border border-neutral-300 dark:bg-neutral-800 dark:border-neutral-700 rounded-lg w-[80vw] max-w-4xl p-4 space-y-4"
+            className="relative bg-white border border-neutral-500 dark:bg-neutral-800 dark:border-neutral-700 rounded-lg w-[80vw] max-w-4xl p-4 space-y-4"
           >
             <div className="flex items-center justify-between">
               <h3 id="spellbook-picker-heading" className="text-lg font-semibold">
@@ -553,7 +553,7 @@ export default function SpellbookBuilder() {
               <input
                 data-testid="spellbook-picker-search-input"
                 ref={pickerSearchInputRef}
-                className="flex-1 bg-neutral-100 border border-neutral-300 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-2 text-neutral-900 dark:text-neutral-100"
+                className="flex-1 bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-2 text-neutral-900 dark:text-neutral-100"
                 placeholder="Search spells…"
                 value={pickerQuery}
                 onChange={(e) => setPickerQuery(e.target.value)}
@@ -579,7 +579,7 @@ export default function SpellbookBuilder() {
                 <span className="text-xs text-neutral-600 dark:text-neutral-400">Schools</span>
                 <select
                   multiple
-                  className="bg-neutral-100 border border-neutral-300 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 min-w-[160px] text-neutral-900 dark:text-neutral-100"
+                  className="bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 min-w-[160px] text-neutral-900 dark:text-neutral-100"
                   value={schoolFilters}
                   onChange={(e) =>
                     setSchoolFilters(Array.from(e.target.selectedOptions).map((opt) => opt.value))
@@ -596,7 +596,7 @@ export default function SpellbookBuilder() {
                 <span className="text-xs text-neutral-600 dark:text-neutral-400">Level range</span>
                 <div className="flex gap-2">
                   <select
-                    className="bg-neutral-100 border border-neutral-300 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 text-neutral-900 dark:text-neutral-100"
+                    className="bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 text-neutral-900 dark:text-neutral-100"
                     value={levelMin}
                     onChange={(e) => setLevelMin(e.target.value)}
                   >
@@ -608,7 +608,7 @@ export default function SpellbookBuilder() {
                     ))}
                   </select>
                   <select
-                    className="bg-neutral-100 border border-neutral-300 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 text-neutral-900 dark:text-neutral-100"
+                    className="bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 text-neutral-900 dark:text-neutral-100"
                     value={levelMax}
                     onChange={(e) => setLevelMax(e.target.value)}
                   >
@@ -623,21 +623,21 @@ export default function SpellbookBuilder() {
               </div>
               <div className="flex flex-col gap-1 justify-end">
                 <div className="flex gap-2 mb-1">
-                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-100 border border-neutral-300 dark:bg-neutral-700 dark:border-neutral-600 rounded-md cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors">
+                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors">
                     <input
                       type="checkbox"
                       checked={isQuestFilter}
                       onChange={(e) => setIsQuestFilter(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-blue-600"
+                      className="w-3.5 h-3.5 rounded border-neutral-500 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-blue-600"
                     />
                     <span className="text-xs text-neutral-700 dark:text-neutral-300">Quest</span>
                   </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-100 border border-neutral-300 dark:bg-neutral-700 dark:border-neutral-600 rounded-md cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors">
+                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors">
                     <input
                       type="checkbox"
                       checked={isCantripFilter}
                       onChange={(e) => setIsCantripFilter(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-blue-600"
+                      className="w-3.5 h-3.5 rounded border-neutral-500 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-blue-600"
                     />
                     <span className="text-xs text-neutral-700 dark:text-neutral-300">
                       Cantrips Only
@@ -647,20 +647,20 @@ export default function SpellbookBuilder() {
               </div>
             </div>
 
-            <div className="max-h-[50vh] overflow-auto border border-neutral-300 dark:border-neutral-700 rounded">
+            <div className="max-h-[50vh] overflow-auto border border-neutral-500 dark:border-neutral-700 rounded">
               <table className="w-full text-sm text-left border-collapse">
                 <thead className="text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-700 sticky top-0">
                   <tr>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600">
+                    <th className="p-2 border-b border-neutral-500 dark:border-neutral-600">
                       Name
                     </th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600">
+                    <th className="p-2 border-b border-neutral-500 dark:border-neutral-600">
                       School
                     </th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600 w-16 text-center">
+                    <th className="p-2 border-b border-neutral-500 dark:border-neutral-600 w-16 text-center">
                       Level
                     </th>
-                    <th className="p-2 border-b border-neutral-300 dark:border-neutral-600 w-24 text-right">
+                    <th className="p-2 border-b border-neutral-500 dark:border-neutral-600 w-24 text-right">
                       Action
                     </th>
                   </tr>

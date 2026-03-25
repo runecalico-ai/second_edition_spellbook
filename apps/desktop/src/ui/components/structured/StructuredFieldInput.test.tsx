@@ -34,11 +34,22 @@ const PREVIEW_ROW_CLASSES = [
   "dark:bg-neutral-700",
 ];
 
+const FOCUS_RING_CLASSES = [
+  "focus-visible:ring-2",
+  "focus-visible:ring-blue-500",
+  "focus-visible:ring-offset-1",
+  "dark:focus-visible:ring-offset-neutral-900",
+];
+
 function expectClasses(node: HTMLElement, classes: string[]) {
   const tokens = new Set(node.className.split(/\s+/).filter(Boolean));
   for (const className of classes) {
     expect(tokens.has(className)).toBe(true);
   }
+}
+
+function expectFocusRing(node: Element) {
+  expectClasses(node as HTMLElement, FOCUS_RING_CLASSES);
 }
 
 function getRoot() {
@@ -95,6 +106,59 @@ describe("StructuredFieldInput", () => {
     expect(tokens.has("flex-wrap")).toBe(true);
     expect(tokens.has("min-w-0")).toBe(true);
     expect(root.contains(primary)).toBe(true);
+  });
+
+  it("applies the standard focus-visible ring to structured controls across field types", () => {
+    const { rerender } = render(
+      <StructuredFieldInput
+        fieldType="range"
+        value={{
+          kind: "special",
+          rawLegacyValue: "legacy range",
+          notes: "range notes",
+        } as RangeSpec}
+        onChange={() => {}}
+      />,
+    );
+
+    for (const element of getRoot().querySelectorAll("select, input, textarea")) {
+      expectFocusRing(element);
+    }
+
+    rerender(
+      <StructuredFieldInput
+        fieldType="duration"
+        value={{
+          kind: "usage_limited",
+          uses: { mode: "fixed", value: 2 },
+          notes: "duration notes",
+        } as DurationSpec}
+        onChange={() => {}}
+      />,
+    );
+
+    for (const element of getRoot().querySelectorAll("select, input, textarea")) {
+      expectFocusRing(element);
+    }
+
+    rerender(
+      <StructuredFieldInput
+        fieldType="casting_time"
+        value={{
+          text: "1 round",
+          unit: "round",
+          baseValue: 1,
+          perLevel: 0,
+          levelDivisor: 1,
+          rawLegacyValue: "legacy ct",
+        } as SpellCastingTime}
+        onChange={() => {}}
+      />,
+    );
+
+    for (const element of getRoot().querySelectorAll("select, input")) {
+      expectFocusRing(element);
+    }
   });
 
   it("locks the range grouped DOM contract", () => {

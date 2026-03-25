@@ -579,7 +579,7 @@ test.describe("Spell Editor canon-first default", () => {
 
       await expect(page.getByRole("heading", { name: "Edit Spell" })).toBeVisible();
       await expect(page).toHaveURL(/\/edit\/\d+/, { timeout: TIMEOUTS.short });
-      await expect(page.getByRole("heading", { name: "Library" })).not.toBeVisible();
+      await expect(page.getByRole("heading", { name: "Spell Library" })).not.toBeVisible();
       await expect(page.getByTestId("detail-range-input")).toHaveValue("60 ft", {
         timeout: TIMEOUTS.medium,
       });

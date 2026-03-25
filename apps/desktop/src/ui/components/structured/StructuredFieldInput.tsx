@@ -39,13 +39,13 @@ function pickScalarErr(
 export type StructuredFieldValue = RangeSpec | DurationSpec | SpellCastingTime;
 
 const structuredSelectClass =
-  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
+  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 
 const structuredInputClass =
-  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
+  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 
 const structuredInputInvalidClass =
-  "bg-white dark:bg-neutral-900 border-red-600 dark:border-red-600 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border";
+  "bg-white dark:bg-neutral-900 border-red-600 dark:border-red-600 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 
 const structuredGroupSurfaceClass =
   "space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100";

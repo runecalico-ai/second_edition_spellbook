@@ -91,6 +91,10 @@ const spellHeaderSelectClass =
   "rounded border border-neutral-500 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
 const spellHeaderSecondaryActionClass =
   "rounded border border-neutral-500 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700";
+const spellSaveDisabledContrastClass =
+  "disabled:bg-blue-300 disabled:text-blue-950 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400";
+const spellSaveDisabledContrastGuard = "save-spell-reviewed-v1";
+const spellSectionHeadingClass = "block text-sm text-neutral-500 dark:text-neutral-400";
 const SPELL_DETAIL_LOADING_DELAY_MS = 150;
 
 function getSpellFocusVisibleRing(isInvalid: boolean): string {
@@ -2156,6 +2160,280 @@ export default function SpellEditor() {
     }
   };
 
+  const structuredDetailFields = DETAIL_FIELD_ORDER.filter(
+    (field) => field !== "components" && field !== "materialComponents",
+  );
+  const componentDetailFields: DetailFieldKey[] = ["components", "materialComponents"];
+  const renderDetailField = (field: DetailFieldKey) => {
+    const label =
+      field === "area"
+        ? "Area of Effect"
+        : field === "castingTime"
+          ? "Casting Time"
+          : field === "savingThrow"
+            ? "Saving Throw"
+            : field === "magicResistance"
+              ? "Magic Resistance"
+              : field === "materialComponents"
+                ? "Material Component"
+                : field.charAt(0).toUpperCase() + field.slice(1);
+    const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+    const panelId = `detail-${kebabField}-panel`;
+    const inputId = `detail-${field}-input`;
+    const expandId = `detail-${field}-expand`;
+    const value = form[field] ?? "";
+    const isExpanded = expandedDetailField === field;
+    const isLoading = detailLoading === field;
+    const isSpecial =
+      (field === "range" && structuredRange?.kind === "special") ||
+      (field === "duration" && structuredDuration?.kind === "special") ||
+      (field === "castingTime" &&
+        (structuredCastingTime?.unit === "special" ||
+          !!structuredCastingTime?.rawLegacyValue)) ||
+      (field === "area" && structuredArea?.kind === "special") ||
+      (field === "damage" && !!structuredDamage?.sourceText) ||
+      (field === "savingThrow" && structuredSavingThrow?.kind === "dm_adjudicated") ||
+      (field === "magicResistance" && structuredMagicResistance?.kind === "special") ||
+      (field === "materialComponents" && false);
+
+    return (
+      <div
+        key={field}
+        className="rounded-xl border border-neutral-200 bg-white/70 p-2 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/30 dark:text-neutral-100"
+      >
+        <label htmlFor={inputId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
+          {label}
+        </label>
+        <div className="flex flex-col gap-0.5">
+          <input
+            id={inputId}
+            data-testid={`detail-${kebabField}-input`}
+            type="text"
+            className={`w-full rounded border border-neutral-500 bg-white p-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 ${spellFocusVisibleRing}`}
+            value={String(value)}
+            onChange={(e) => handleChange(field, e.target.value)}
+          />
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              id={expandId}
+              data-testid={`detail-${kebabField}-expand`}
+              aria-label={`${isExpanded ? "Collapse" : "Expand"} ${label}`}
+              aria-expanded={isExpanded}
+              aria-controls={isExpanded ? panelId : undefined}
+              onClick={() =>
+                isExpanded ? collapseExpandedField() : expandDetailField(field)
+              }
+              className={`rounded px-1 text-xs text-blue-700 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-200 ${spellFocusVisibleRing}`}
+            >
+              {isExpanded ? "Collapse" : "Expand"}
+            </button>
+            {isSpecial && !isExpanded && (
+              <span
+                className="text-xs text-amber-800 dark:text-amber-400"
+                title="Stored as text; not fully structured for hashing"
+              >
+                (special)
+              </span>
+            )}
+          </div>
+        </div>
+        {isExpanded && (
+          <section
+            ref={expandedPanelRef}
+            id={panelId}
+            data-testid={`structured-panel-${kebabField}`}
+            aria-label={`Structured ${label}`}
+            tabIndex={-1}
+            className="mt-1 rounded-lg border border-neutral-200 bg-white/70 p-2 dark:border-neutral-700 dark:bg-neutral-950/40"
+          >
+            {/* Task 6: inner panel border-neutral-200 is grouping-only; primary inputs use border-neutral-500 */}
+            {isLoading ? (
+              <div
+                className="text-sm text-neutral-500 dark:text-neutral-400"
+                data-testid={`detail-${kebabField}-loading`}
+              >
+                Loading…
+              </div>
+            ) : (
+              <>
+                {field === "range" && (
+                  <StructuredFieldInput
+                    fieldType="range"
+                    visibleFieldErrors={visibleFieldErrors}
+                    onValidationBlur={revealRangeScalarValidation}
+                    value={structuredRange ?? undefined}
+                    onChange={(spec) => {
+                      const nextSpec = applyPlaywrightRangeDistanceCorruption(
+                        spec as RangeSpec,
+                      );
+                      setStructuredRange(nextSpec);
+                      setDetailDirtyFor("range");
+                      setForm((prev) => ({
+                        ...prev,
+                        range: rangeToText(nextSpec),
+                      }));
+                      if (nextSpec.kind !== "special") {
+                        setParserFallbackFields((prev) => {
+                          const next = new Set(prev);
+                          next.delete("Range");
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                )}
+                {(field === "components" || field === "materialComponents") && (
+                  <ComponentCheckboxes
+                    components={structuredComponents}
+                    materialComponents={structuredMaterialComponents}
+                    onChange={(comp, mats) => {
+                      setStructuredComponents(comp);
+                      setStructuredMaterialComponents(mats);
+                      setDetailDirtyFor("components");
+                      setDetailDirtyFor("materialComponents");
+                    }}
+                    onUncheckMaterialConfirm={() =>
+                      modalConfirm(
+                        "Clear all material component data?",
+                        "Uncheck Material",
+                      )
+                    }
+                    variant="vsm"
+                  />
+                )}
+                {field === "duration" && (
+                  <StructuredFieldInput
+                    fieldType="duration"
+                    visibleFieldErrors={visibleFieldErrors}
+                    onValidationBlur={revealDurationScalarValidation}
+                    value={structuredDuration ?? undefined}
+                    onChange={(spec) => {
+                      setStructuredDuration(spec as DurationSpec);
+                      setDetailDirtyFor("duration");
+                      setForm((prev) => ({
+                        ...prev,
+                        duration: durationToText(spec as DurationSpec),
+                      }));
+                      if ((spec as DurationSpec).kind !== "special") {
+                        setParserFallbackFields((prev) => {
+                          const next = new Set(prev);
+                          next.delete("Duration");
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                )}
+                {field === "castingTime" && (
+                  <StructuredFieldInput
+                    fieldType="casting_time"
+                    visibleFieldErrors={visibleFieldErrors}
+                    onValidationBlur={revealCastingTimeScalarValidation}
+                    value={structuredCastingTime ?? undefined}
+                    onChange={(spec) => {
+                      setStructuredCastingTime(spec as SpellCastingTime);
+                      setDetailDirtyFor("castingTime");
+                      setForm((prev) => ({
+                        ...prev,
+                        castingTime: castingTimeToText(spec as SpellCastingTime),
+                      }));
+                      if ((spec as SpellCastingTime).unit !== "special") {
+                        setParserFallbackFields((prev) => {
+                          const next = new Set(prev);
+                          next.delete("Casting time");
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                )}
+                {field === "area" && (
+                  <AreaForm
+                    visibleFieldErrors={visibleFieldErrors}
+                    onValidationBlur={revealAreaScalarValidation}
+                    value={structuredArea ?? defaultAreaSpec()}
+                    onChange={(spec) => {
+                      setStructuredArea(spec);
+                      setDetailDirtyFor("area");
+                      setForm((prev) => ({ ...prev, area: areaToText(spec) }));
+                      if (spec.kind !== "special") {
+                        setParserFallbackFields((prev) => {
+                          const next = new Set(prev);
+                          next.delete("Area");
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                )}
+                {field === "savingThrow" && (
+                  <SavingThrowInput
+                    value={structuredSavingThrow ?? undefined}
+                    onChange={(spec) => {
+                      setStructuredSavingThrow(spec);
+                      setDetailDirtyFor("savingThrow");
+                      setForm((prev) => ({
+                        ...prev,
+                        savingThrow: savingThrowToText(spec),
+                      }));
+                      if (spec.kind !== "dm_adjudicated") {
+                        setParserFallbackFields((prev) => {
+                          const next = new Set(prev);
+                          next.delete("Saving throw");
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                )}
+                {field === "damage" && (
+                  <DamageForm
+                    visibleFieldErrors={visibleFieldErrors}
+                    value={structuredDamage ?? undefined}
+                    onChange={(spec) => {
+                      setStructuredDamage(spec);
+                      setDetailDirtyFor("damage");
+                    }}
+                  />
+                )}
+                {field === "magicResistance" && (
+                  <MagicResistanceInput
+                    value={structuredMagicResistance ?? undefined}
+                    damageKind={structuredDamage?.kind}
+                    onChange={(spec) => {
+                      setStructuredMagicResistance(spec);
+                      setDetailDirtyFor("magicResistance");
+                      setForm((prev) => ({
+                        ...prev,
+                        magicResistance: magicResistanceToText(spec),
+                      }));
+                      if (spec.kind !== "special") {
+                        setParserFallbackFields((prev) => {
+                          const next = new Set(prev);
+                          next.delete("Magic resistance");
+                          return next;
+                        });
+                      }
+                    }}
+                  />
+                )}
+                {isSpecial && (
+                  <p
+                    className="mt-2 text-xs text-amber-700 dark:text-amber-400"
+                    data-testid={`detail-${kebabField}-special-hint`}
+                  >
+                    Could not be fully parsed; original text preserved.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+        )}
+      </div>
+    );
+  };
+
   if (showLoading) return <div className="p-4">Loading...</div>;
   if (loading && !form.id) return null;
 
@@ -2265,6 +2543,7 @@ export default function SpellEditor() {
             <button
               id="btn-save-spell"
               data-testid="btn-save-spell"
+              data-disabled-contrast-guard={spellSaveDisabledContrastGuard}
               type="button"
               onClick={save}
               disabled={parsersPending || savePending || (hasAttemptedSubmit && isInvalid)}
@@ -2272,7 +2551,7 @@ export default function SpellEditor() {
               aria-describedby={
                 hasAttemptedSubmit && isInvalid ? "spell-save-validation-hint" : undefined
               }
-              className={`rounded bg-blue-600 px-3 py-2 font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300 disabled:text-blue-950 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellFocusVisibleRing}`}
+              className={`rounded bg-blue-600 px-3 py-2 font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed ${spellSaveDisabledContrastClass} ${spellFocusVisibleRing}`}
             >
               {saveShowsDelayedLabel ? "Saving…" : "Save Spell"}
             </button>
@@ -2345,7 +2624,11 @@ export default function SpellEditor() {
         className="m-0 min-h-0 min-w-0 w-full border-0 p-0"
       >
         <legend className="sr-only">{isNew ? "New spell" : "Edit spell"}</legend>
-        <div className="grid grid-cols-2 gap-4">
+        <section aria-labelledby="spell-editor-basic-information-heading" className="space-y-3">
+          <h2 id="spell-editor-basic-information-heading" className={spellSectionHeadingClass}>
+            Basic Information
+          </h2>
+          <div className="grid grid-cols-2 gap-4">
           <div>
             <label htmlFor="spell-name" className={spellLabelClass}>
               Name
@@ -2755,281 +3038,22 @@ export default function SpellEditor() {
               Reversible
             </label>
           </div>
-        </div>
-
-        <div>
-          <span className="block text-sm text-neutral-500 dark:text-neutral-400">Details</span>
-          <div className="space-y-3 text-sm">
-            {DETAIL_FIELD_ORDER.map((field) => {
-              const label =
-                field === "area"
-                  ? "Area of Effect"
-                  : field === "castingTime"
-                    ? "Casting Time"
-                    : field === "savingThrow"
-                      ? "Saving Throw"
-                      : field === "magicResistance"
-                        ? "Magic Resistance"
-                        : field === "materialComponents"
-                          ? "Material Component"
-                          : field.charAt(0).toUpperCase() + field.slice(1);
-              const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
-              const panelId = `detail-${kebabField}-panel`;
-              const inputId = `detail-${field}-input`;
-              const expandId = `detail-${field}-expand`;
-              const value = form[field] ?? "";
-              const isExpanded = expandedDetailField === field;
-              const isLoading = detailLoading === field;
-              const isSpecial =
-                (field === "range" && structuredRange?.kind === "special") ||
-                (field === "duration" && structuredDuration?.kind === "special") ||
-                (field === "castingTime" &&
-                  (structuredCastingTime?.unit === "special" ||
-                    !!structuredCastingTime?.rawLegacyValue)) ||
-                (field === "area" && structuredArea?.kind === "special") ||
-                (field === "damage" && !!structuredDamage?.sourceText) ||
-                (field === "savingThrow" && structuredSavingThrow?.kind === "dm_adjudicated") ||
-                (field === "magicResistance" && structuredMagicResistance?.kind === "special") ||
-                (field === "materialComponents" && false); // Reserved: no "special" kind for material row today; shares component state
-
-              return (
-                <div
-                  key={field}
-                  className="rounded-xl border border-neutral-200 bg-white/70 p-2 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/30 dark:text-neutral-100"
-                >
-                  <label htmlFor={inputId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
-                    {label}
-                  </label>
-                  <div className="flex flex-col gap-0.5">
-                    <input
-                      id={inputId}
-                      data-testid={`detail-${kebabField}-input`}
-                      type="text"
-                      className={`w-full rounded border border-neutral-500 bg-white p-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 ${spellFocusVisibleRing}`}
-                      value={String(value)}
-                      onChange={(e) => handleChange(field, e.target.value)}
-                    />
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        id={expandId}
-                        data-testid={`detail-${kebabField}-expand`}
-                        aria-label={`${isExpanded ? "Collapse" : "Expand"} ${label}`}
-                        aria-expanded={isExpanded}
-                        aria-controls={isExpanded ? panelId : undefined}
-                        onClick={() =>
-                          isExpanded ? collapseExpandedField() : expandDetailField(field)
-                        }
-                        className={`rounded px-1 text-xs text-blue-700 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-200 ${spellFocusVisibleRing}`}
-                      >
-                        {isExpanded ? "Collapse" : "Expand"}
-                      </button>
-                      {isSpecial && !isExpanded && (
-                        <span
-                          className="text-xs text-amber-800 dark:text-amber-400"
-                          title="Stored as text; not fully structured for hashing"
-                        >
-                          (special)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <section
-                      ref={expandedPanelRef}
-                      id={panelId}
-                      data-testid={`structured-panel-${kebabField}`}
-                      aria-label={`Structured ${label}`}
-                      tabIndex={-1}
-                      className="mt-1 rounded-lg border border-neutral-200 bg-white/70 p-2 dark:border-neutral-700 dark:bg-neutral-950/40"
-                    >
-                      {/* Task 6: inner panel border-neutral-200 is grouping-only; primary inputs use border-neutral-500 */}
-                      {isLoading ? (
-                        <div
-                          className="text-sm text-neutral-500 dark:text-neutral-400"
-                          data-testid={`detail-${kebabField}-loading`}
-                        >
-                          Loading…
-                        </div>
-                      ) : (
-                        <>
-                          {field === "range" && (
-                            <StructuredFieldInput
-                              fieldType="range"
-                              visibleFieldErrors={visibleFieldErrors}
-                              onValidationBlur={revealRangeScalarValidation}
-                              value={structuredRange ?? undefined}
-                              onChange={(spec) => {
-                                const nextSpec = applyPlaywrightRangeDistanceCorruption(
-                                  spec as RangeSpec,
-                                );
-                                setStructuredRange(nextSpec);
-                                setDetailDirtyFor("range");
-                                setForm((prev) => ({
-                                  ...prev,
-                                  range: rangeToText(nextSpec),
-                                }));
-                                if (nextSpec.kind !== "special") {
-                                  setParserFallbackFields((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete("Range");
-                                    return next;
-                                  });
-                                }
-                              }}
-                            />
-                          )}
-                          {(field === "components" || field === "materialComponents") && (
-                            <ComponentCheckboxes
-                              components={structuredComponents}
-                              materialComponents={structuredMaterialComponents}
-                              onChange={(comp, mats) => {
-                                setStructuredComponents(comp);
-                                setStructuredMaterialComponents(mats);
-                                setDetailDirtyFor("components");
-                                setDetailDirtyFor("materialComponents");
-                              }}
-                              onUncheckMaterialConfirm={() =>
-                                modalConfirm(
-                                  "Clear all material component data?",
-                                  "Uncheck Material",
-                                )
-                              }
-                              variant="vsm"
-                            />
-                          )}
-                          {field === "duration" && (
-                            <StructuredFieldInput
-                              fieldType="duration"
-                              visibleFieldErrors={visibleFieldErrors}
-                              onValidationBlur={revealDurationScalarValidation}
-                              value={structuredDuration ?? undefined}
-                              onChange={(spec) => {
-                                setStructuredDuration(spec as DurationSpec);
-                                setDetailDirtyFor("duration");
-                                setForm((prev) => ({
-                                  ...prev,
-                                  duration: durationToText(spec as DurationSpec),
-                                }));
-                                if ((spec as DurationSpec).kind !== "special") {
-                                  setParserFallbackFields((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete("Duration");
-                                    return next;
-                                  });
-                                }
-                              }}
-                            />
-                          )}
-                          {field === "castingTime" && (
-                            <StructuredFieldInput
-                              fieldType="casting_time"
-                              visibleFieldErrors={visibleFieldErrors}
-                              onValidationBlur={revealCastingTimeScalarValidation}
-                              value={structuredCastingTime ?? undefined}
-                              onChange={(spec) => {
-                                setStructuredCastingTime(spec as SpellCastingTime);
-                                setDetailDirtyFor("castingTime");
-                                setForm((prev) => ({
-                                  ...prev,
-                                  castingTime: castingTimeToText(spec as SpellCastingTime),
-                                }));
-                                if ((spec as SpellCastingTime).unit !== "special") {
-                                  setParserFallbackFields((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete("Casting time");
-                                    return next;
-                                  });
-                                }
-                              }}
-                            />
-                          )}
-                          {field === "area" && (
-                            <AreaForm
-                              visibleFieldErrors={visibleFieldErrors}
-                              onValidationBlur={revealAreaScalarValidation}
-                              value={structuredArea ?? defaultAreaSpec()}
-                              onChange={(spec) => {
-                                setStructuredArea(spec);
-                                setDetailDirtyFor("area");
-                                setForm((prev) => ({ ...prev, area: areaToText(spec) }));
-                                if (spec.kind !== "special") {
-                                  setParserFallbackFields((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete("Area");
-                                    return next;
-                                  });
-                                }
-                              }}
-                            />
-                          )}
-                          {field === "savingThrow" && (
-                            <SavingThrowInput
-                              value={structuredSavingThrow ?? undefined}
-                              onChange={(spec) => {
-                                setStructuredSavingThrow(spec);
-                                setDetailDirtyFor("savingThrow");
-                                setForm((prev) => ({
-                                  ...prev,
-                                  savingThrow: savingThrowToText(spec),
-                                }));
-                                if (spec.kind !== "dm_adjudicated") {
-                                  setParserFallbackFields((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete("Saving throw");
-                                    return next;
-                                  });
-                                }
-                              }}
-                            />
-                          )}
-                          {field === "damage" && (
-                            <DamageForm
-                              value={structuredDamage ?? undefined}
-                              onChange={(spec) => {
-                                setStructuredDamage(spec);
-                                setDetailDirtyFor("damage");
-                              }}
-                            />
-                          )}
-                          {field === "magicResistance" && (
-                            <MagicResistanceInput
-                              value={structuredMagicResistance ?? undefined}
-                              damageKind={structuredDamage?.kind}
-                              onChange={(spec) => {
-                                setStructuredMagicResistance(spec);
-                                setDetailDirtyFor("magicResistance");
-                                setForm((prev) => ({
-                                  ...prev,
-                                  magicResistance: magicResistanceToText(spec),
-                                }));
-                                if (spec.kind !== "special") {
-                                  setParserFallbackFields((prev) => {
-                                    const next = new Set(prev);
-                                    next.delete("Magic resistance");
-                                    return next;
-                                  });
-                                }
-                              }}
-                            />
-                          )}
-                          {isSpecial && (
-                            <p
-                              className="mt-2 text-xs text-amber-700 dark:text-amber-400"
-                              data-testid={`detail-${kebabField}-special-hint`}
-                            >
-                              Could not be fully parsed; original text preserved.
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </section>
-                  )}
-                </div>
-              );
-            })}
           </div>
-        </div>
+        </section>
+
+        <section aria-labelledby="spell-editor-structured-fields-heading" className="space-y-3">
+          <h2 id="spell-editor-structured-fields-heading" className={spellSectionHeadingClass}>
+            Structured Fields
+          </h2>
+          <div className="space-y-3 text-sm">{structuredDetailFields.map(renderDetailField)}</div>
+        </section>
+
+        <section aria-labelledby="spell-editor-components-heading" className="space-y-3">
+          <h2 id="spell-editor-components-heading" className={spellSectionHeadingClass}>
+            Components
+          </h2>
+          <div className="space-y-3 text-sm">{componentDetailFields.map(renderDetailField)}</div>
+        </section>
 
         <div>
           <label htmlFor="spell-tags" className="block text-sm text-neutral-500 dark:text-neutral-400">

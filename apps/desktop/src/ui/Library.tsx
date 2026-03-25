@@ -374,7 +374,7 @@ export default function Library() {
         active={activeEmptyStateAnnouncement !== null}
       />
       <div className="flex justify-between items-center">
-        <h1 className="text-xl font-bold">Library</h1>
+        <h1 className="text-xl font-bold">Spell Library</h1>
         <div className="space-x-2 flex items-center">
           <Link
             to="/character"
@@ -406,7 +406,7 @@ export default function Library() {
             id="library-search-input"
             className={filterControlClassName}
             placeholder="Keywords or spell name…"
-            data-testid="library-search-input"
+            data-testid="search-input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && search()}

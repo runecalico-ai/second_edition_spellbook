@@ -15,6 +15,17 @@ function expectClasses(node: HTMLElement, classes: string[]) {
   }
 }
 
+const FOCUS_RING_CLASSES = [
+  "focus-visible:ring-2",
+  "focus-visible:ring-blue-500",
+  "focus-visible:ring-offset-1",
+  "dark:focus-visible:ring-offset-neutral-900",
+];
+
+function expectFocusRing(node: Element) {
+  expectClasses(node as HTMLElement, FOCUS_RING_CLASSES);
+}
+
 const ROOT_SURFACE_CLASSES = [
   "rounded-xl",
   "border",
@@ -103,6 +114,9 @@ describe("DamageForm", () => {
     expectClasses(guidance, ["w-full", ...INPUT_SURFACE_CLASSES]);
     expectClasses(notes, ["w-full", ...INPUT_SURFACE_CLASSES]);
     expectClasses(annotation, ANNOTATION_CLASSES);
+    expectFocusRing(kind);
+    expectFocusRing(guidance);
+    expectFocusRing(notes);
   });
 
   it("renders modeled damage parts inside the grouped damage editor surface", () => {
@@ -165,6 +179,13 @@ describe("DamageForm", () => {
     for (const panel of subPanels.slice(0, 2)) {
       expectClasses(panel as HTMLElement, DEEP_NESTED_SURFACE_CLASSES);
     }
+    const interactiveElements = part.querySelectorAll("select, input, textarea, button");
+    expect(interactiveElements.length).toBeGreaterThan(0);
+    for (const element of interactiveElements) {
+      expectFocusRing(element);
+    }
+    expectFocusRing(screen.getByTestId("damage-form-combine-mode"));
+    expectFocusRing(screen.getByTestId("damage-form-add-part"));
   });
 
   it("changing the damage kind to modeled seeds a default part and preserves top-level text fields", () => {
@@ -237,5 +258,41 @@ describe("DamageForm", () => {
         }),
       ],
     });
+  });
+
+  it("links modeled damage field errors to the matching control with aria attributes", () => {
+    render(
+      <DamageForm
+        value={{
+          kind: "modeled",
+          combineMode: "sum",
+          parts: [
+            {
+              id: "part_fire",
+              damageType: "fire",
+              base: { terms: [{ count: 1, sides: 6 }], flatModifier: 0 },
+              application: { scope: "per_target" },
+              save: { kind: "none" },
+            },
+          ],
+        }}
+        visibleFieldErrors={[
+          {
+            focusTarget: "damage-form-part-0-formula",
+            testId: "error-damage-form-part-0-formula",
+            message: "Damage formula must be valid",
+          },
+        ]}
+        onChange={() => {}}
+      />,
+    );
+
+    const formula = screen.getByTestId("damage-form-part-formula");
+    const error = screen.getByTestId("error-damage-form-part-0-formula");
+
+    expect(formula.getAttribute("id")).toBe("damage-form-part-0-formula");
+    expect(formula.getAttribute("aria-invalid")).toBe("true");
+    expect(formula.getAttribute("aria-describedby")).toBe("error-damage-form-part-0-formula");
+    expect(error.textContent).toBe("Damage formula must be valid");
   });
 });

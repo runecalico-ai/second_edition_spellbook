@@ -11,6 +11,10 @@
 
 **Total: 19 findings — 0 Critical, 4 High, 7 Medium, 8 Low**
 
+**Status update (2026-03-25):** All Critical, High, and Medium findings in this review have been fixed in the branch and re-verified. Low findings remain open and out of scope for this chunk follow-up.
+
+**Verification update (2026-03-25):** The fix loop completed with reviewer confirmation for `[H-001, H-002, H-003, H-004, M-001, M-002, M-003, M-004, M-005, M-006, M-007]`. During verification, two regressions were introduced and then fixed before exit: `[NEW-001]` (Library heading helper mismatch) and `[NEW-002]` (closed modal overlay intercepting clicks).
+
 ---
 
 ## Findings
@@ -20,6 +24,8 @@
 ---
 
 **[H-001] (67) — Structured spell-editing components missing `focus-visible:ring` classes entirely**
+
+Status update (2026-03-25): FIXED.
 
 Plan ref: Task 3 — "Add `focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900` to ALL interactive elements" including structured components
 
@@ -31,6 +37,8 @@ Detail: None of these four components have any `focus-visible:ring-*` Tailwind c
 
 **[H-002] (61) — Modal focus-return guard missing `instanceof HTMLElement` check**
 
+Status update (2026-03-25): FIXED.
+
 Plan ref: Task 1 — "Focus return: call `triggerRef.current.focus()` only if `instanceof HTMLElement` AND `isConnected`"
 
 Location: `apps/desktop/src/ui/components/Modal.tsx`, focus-return block (~line 65)
@@ -41,6 +49,8 @@ Detail: The implementation checks `triggerRef.current.isConnected` before callin
 
 **[H-003] (58) — Library `<h1>` text is "Library" not "Spell Library"**
 
+Status update (2026-03-25): FIXED.
+
 Plan ref: Task 4 — "Library: `<h1>Spell Library</h1>` — exact text"
 
 Location: `apps/desktop/src/ui/Library.tsx`, line 334 — `<h1 className="text-xl font-bold">Library</h1>`
@@ -50,6 +60,8 @@ Detail: The plan's heading hierarchy table explicitly specifies the exact headin
 ---
 
 **[H-004] (55) — SpellEditor heading level skip: `<h1>` → `<h3>` with no intervening `<h2>`**
+
+Status update (2026-03-25): FIXED.
 
 Plan ref: Task 4 — "Do NOT skip heading levels (e.g., go from h1 to h3 without h2)"; SpellEditor requires "`<h2>` for Basic Information, Structured Fields, Components sections"
 
@@ -65,6 +77,8 @@ Detail: SpellEditor has exactly one `<h1>` and one `<h3>` with zero `<h2>` eleme
 
 **[M-001] (44) — Modal `<dialog>` applies `flex` conditionally, not as a static class**
 
+Status update (2026-03-25): FIXED.
+
 Plan ref: Task 1 — `<dialog>` styled as `"fixed inset-0 m-0 flex h-full w-full max-h-none max-w-none items-center justify-center bg-transparent p-4 border-none"` (all static)
 
 Location: `apps/desktop/src/ui/components/Modal.tsx`, dialog element className (~line 158)
@@ -74,6 +88,8 @@ Detail: The plan specifies `flex items-center justify-center` as part of the sta
 ---
 
 **[M-002] (39) — E2E focus-trap tab loop minimum floor is 8, plan specifies 5**
+
+Status update (2026-03-25): FIXED.
 
 Plan ref: Task 7 — "Tab (count + 2) times... `const tabCount = Math.max(focusableCount + 2, 5)`"
 
@@ -85,6 +101,8 @@ Detail: The plan specifies a minimum tab loop count of `Math.max(focusableCount 
 
 **[M-003] (37) — Library tab-order E2E test uses `library-search-input` testid; plan specifies `search-input`**
 
+Status update (2026-03-25): FIXED.
+
 Plan ref: Task 7 — "Focus the search input first... `page.getByTestId('search-input').or(page.getByRole('searchbox'))`"
 
 Location: `apps/desktop/tests/accessibility_and_resize.spec.ts`, lines 255–258
@@ -94,6 +112,8 @@ Detail: The plan specifies `search-input` as the primary testid, with `getByRole
 ---
 
 **[M-004] (35) — `DamageForm` uses hardcoded dark-mode-only colors without light-mode variants**
+
+Status update (2026-03-25): FIXED.
 
 Plan ref: Task 6 — Color contrast audit for all structured component files; consistency with the project color palette
 
@@ -105,6 +125,8 @@ Detail: `DamageForm` controls use dark-mode colors as defaults with no light-mod
 
 **[M-005] (33) — `border-neutral-300` remains in `SpellbookBuilder.tsx` while touched components use `border-neutral-500`**
 
+Status update (2026-03-25): FIXED.
+
 Plan ref: Task 6, Step 6.4 — "Be consistent. Do not mix upgraded borders in some components and kept `border-neutral-300` in others."
 
 Location: `apps/desktop/src/ui/SpellbookBuilder.tsx`, 14+ occurrences of `border-neutral-300` on interactive controls
@@ -115,6 +137,8 @@ Detail: `SpellEditor.tsx`, `SettingsPage.tsx`, `App.tsx`, and structured sub-com
 
 **[M-006] (30) — Disabled Save button contrast gap: Task 6 audit not evidenced for disabled-state colors**
 
+Status update (2026-03-25): FIXED.
+
 Plan ref: Task 6, Step 6.3b — "Also audit disabled button text: disabled buttons that use `text-neutral-500` on `bg-neutral-100` light: check the combination."
 
 Location: `apps/desktop/src/ui/SpellEditor.tsx`, Save Spell button line ~2217 — `disabled:bg-blue-300 disabled:text-blue-950`
@@ -124,6 +148,8 @@ Detail: The disabled state uses `disabled:bg-blue-300 disabled:text-blue-950` in
 ---
 
 **[M-007] (28) — `DamageForm` missing `aria-invalid` and `aria-describedby` for error states**
+
+Status update (2026-03-25): FIXED.
 
 Plan ref: Task 5 — "`aria-invalid='true'` and `aria-describedby` pointing to error element id for invalid fields"; DamageForm listed as "touched file" for label/ARIA audit
 

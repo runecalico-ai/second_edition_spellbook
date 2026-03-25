@@ -12,9 +12,10 @@ export interface ScalarFieldValidationError {
 }
 
 const selectSurfaceClass =
-  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100";
+  "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 
-const inputSurfaceClass = "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100";
+const inputSurfaceClass =
+  "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 
 const inputBorderNeutral = "border-neutral-400 dark:border-neutral-700";
 const inputBorderInvalid = "border-red-600 dark:border-red-600";

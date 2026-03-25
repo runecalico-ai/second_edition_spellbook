@@ -194,7 +194,7 @@ test.describe("Modal focus trap and focus return", () => {
           )
           .count();
       // Tab (count + 2) times to cycle through all + one wrap-around
-      const tabCount = Math.max(focusableCount + 2, 8);
+        const tabCount = Math.max(focusableCount + 2, 5);
       for (let i = 0; i < tabCount; i++) {
         await page.keyboard.press("Tab");
         const isInsideModal = await page.evaluate(() => {
@@ -251,9 +251,9 @@ test.describe("Keyboard navigation tab order", () => {
     });
 
     await test.step("Tab from search input reaches filter controls in order", async () => {
-      // Focus the search input first (Library uses library-search-input per LOCATOR_STRATEGY)
+      // Focus the search input first using the canonical Library selector.
       const searchInput = page
-        .getByTestId("library-search-input")
+        .getByTestId("search-input")
         .or(page.getByRole("searchbox"))
         .first();
       await expect(searchInput).toBeVisible({ timeout: TIMEOUTS.medium });

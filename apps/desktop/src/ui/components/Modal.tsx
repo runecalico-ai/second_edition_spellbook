@@ -62,7 +62,7 @@ export function ModalShell({
       return;
     }
 
-    if (triggerRef.current.isConnected) {
+    if (triggerRef.current instanceof HTMLElement && triggerRef.current.isConnected) {
       triggerRef.current.focus();
     } else {
       const hadTabIndex = document.body.hasAttribute("tabindex");
@@ -155,7 +155,7 @@ export function ModalShell({
       aria-labelledby="modal-title"
       aria-describedby={descriptionId}
       data-testid="modal-dialog"
-      className="fixed inset-0 z-[100] m-0 h-full w-full max-h-none max-w-none items-center justify-center overflow-y-auto border-none bg-transparent p-4 [&[open]]:flex"
+      className="fixed inset-0 m-0 h-full w-full max-h-none max-w-none items-center justify-center border-none bg-transparent p-4 [&[open]]:flex"
       onClick={(e) => {
         if (e.target === e.currentTarget && dismissible) {
           onRequestClose();

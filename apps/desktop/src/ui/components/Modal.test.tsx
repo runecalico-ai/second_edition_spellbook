@@ -187,7 +187,7 @@ describe("Modal", () => {
     expect(dialog.open).toBe(false);
   });
 
-  it("does not force a closed native dialog to display as flex", () => {
+  it("keeps flex centering scoped to the open dialog state", () => {
     const { getByTestId } = render(
       <ModalShell
         isOpen={false}
@@ -295,6 +295,46 @@ describe("Modal", () => {
 
     await waitFor(() => expect(closeMock).toHaveBeenCalledTimes(1));
     expect(document.activeElement).toBe(document.body);
+  });
+
+  it("falls back to the document body when the saved opener is no longer an HTMLElement", async () => {
+    const opener = document.createElement("button");
+    opener.type = "button";
+    document.body.append(opener);
+    opener.focus();
+
+    const originalPrototype = Object.getPrototypeOf(opener);
+
+    const { rerender } = render(
+      <ModalShell
+        isOpen={true}
+        type="info"
+        title="Test"
+        message="hello"
+        buttons={[]}
+        onRequestClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(showModalMock).toHaveBeenCalledTimes(1));
+    Object.setPrototypeOf(opener, Element.prototype);
+
+    rerender(
+      <ModalShell
+        isOpen={false}
+        type="info"
+        title="Test"
+        message="hello"
+        buttons={[]}
+        onRequestClose={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(closeMock).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).toBe(document.body);
+
+    Object.setPrototypeOf(opener, originalPrototype);
+    opener.remove();
   });
 
   it("clamps focus to first focusable when active element is inside dialog but not in focusable list", async () => {

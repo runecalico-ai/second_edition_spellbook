@@ -855,6 +855,40 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     });
   });
 
+  it("renders semantic section headings without skipping levels in the editor", async () => {
+    await renderEditSpell(
+      baseLoadedSpell({
+        artifacts: [
+          {
+            id: 1,
+            spellId: 1,
+            type: "import",
+            path: "spell.txt",
+            hash: HASH_FIXTURE,
+            importedAt: "2024-01-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    const pageHeading = screen.getByRole("heading", { level: 1, name: "Edit Spell" });
+    const sectionHeadings = screen.getAllByRole("heading", { level: 2 });
+    const provenanceHeading = screen.getByRole("heading", {
+      level: 3,
+      name: "Provenance (Imports)",
+    });
+
+    expect(sectionHeadings.map((heading) => heading.textContent)).toEqual([
+      "Basic Information",
+      "Structured Fields",
+      "Components",
+    ]);
+    expect(isBefore(pageHeading, sectionHeadings[0])).toBe(true);
+    expect(isBefore(sectionHeadings[0], sectionHeadings[1])).toBe(true);
+    expect(isBefore(sectionHeadings[1], sectionHeadings[2])).toBe(true);
+    expect(isBefore(sectionHeadings[2], provenanceHeading)).toBe(true);
+  });
+
   it("uses theme-aware classes for the header print controls and cancel action", async () => {
     await renderEditSpell(baseLoadedSpell());
 
@@ -1568,6 +1602,20 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     fireEvent.change(screen.getByTestId("spell-description-textarea"), { target: { value: "Y" } });
     fireEvent.change(screen.getByTestId("spell-school-input"), { target: { value: "Evocation" } });
     expect(saveBtn.disabled).toBe(false);
+  });
+
+  it("keeps the reviewed disabled Save Spell contrast classes explicit", () => {
+    renderNewSpell();
+
+    fireEvent.click(screen.getByTestId("btn-save-spell"));
+
+    const saveBtn = screen.getByTestId("btn-save-spell") as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(true);
+    expect(saveBtn.dataset.disabledContrastGuard).toBe("save-spell-reviewed-v1");
+    expect(saveBtn.className).toContain("disabled:bg-blue-300");
+    expect(saveBtn.className).toContain("disabled:text-blue-950");
+    expect(saveBtn.className).toContain("dark:disabled:bg-neutral-800");
+    expect(saveBtn.className).toContain("dark:disabled:text-neutral-400");
   });
 
   it("does not flash a loading-only state for fast spell-detail route loads", async () => {

@@ -72,6 +72,39 @@ function expectNoLegacyFocusOverrides(element: HTMLElement) {
   expect(className).not.toContain("dark:focus:text-white");
 }
 
+describe("Library heading hierarchy", () => {
+  beforeEach(() => {
+    useNotifications.setState({ notifications: [] });
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+        case "search_semantic":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useNotifications.setState({ notifications: [] });
+    vi.restoreAllMocks();
+  });
+
+  it("renders a single page-level heading named Spell Library", async () => {
+    renderLibraryWithViewport();
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Spell Library" })).toBeTruthy();
+  });
+});
+
 describe("Library notifications (Task 5)", () => {
   let alertSpy: ReturnType<typeof vi.spyOn>;
 
@@ -422,7 +455,7 @@ describe("Library empty states", () => {
         });
       });
 
-      fireEvent.change(screen.getByTestId("library-search-input"), {
+      fireEvent.change(screen.getByTestId("search-input"), {
         target: { value: "fireball" },
       });
       fireEvent.click(screen.getByTestId("library-search-button"));
@@ -472,7 +505,7 @@ describe("Library empty states", () => {
       fireEvent.change(screen.getByTestId("library-mode-select"), {
         target: { value: "semantic" },
       });
-      fireEvent.change(screen.getByTestId("library-search-input"), {
+      fireEvent.change(screen.getByTestId("search-input"), {
         target: { value: "find hidden lore" },
       });
       fireEvent.click(screen.getByTestId("library-search-button"));
@@ -499,7 +532,7 @@ describe("Library empty states", () => {
       await screen.findByText("No Spells Yet");
 
       // Type a query
-      const searchInput = screen.getByTestId("library-search-input");
+      const searchInput = screen.getByTestId("search-input");
       fireEvent.change(searchInput, { target: { value: "fireball" } });
       // Trigger search explicitly (the component searches on button click or Enter)
       fireEvent.click(screen.getByTestId("library-search-button"));
@@ -516,7 +549,7 @@ describe("Library empty states", () => {
       renderLibraryWithViewport();
       await screen.findByText("No Spells Yet");
 
-      fireEvent.change(screen.getByTestId("library-search-input"), {
+      fireEvent.change(screen.getByTestId("search-input"), {
         target: { value: "fireball" },
       });
       fireEvent.click(screen.getByTestId("library-search-button"));
@@ -526,7 +559,7 @@ describe("Library empty states", () => {
 
       // After reset, query clears → back to empty-library state
       expect(await screen.findByText("No Spells Yet")).toBeTruthy();
-      expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
+      expect((screen.getByTestId("search-input") as HTMLInputElement).value).toBe("");
       // Verify the empty-search state is no longer in the DOM
       expect(screen.queryByTestId("empty-search-reset-button")).toBeNull();
     });
@@ -566,7 +599,7 @@ describe("Library empty states", () => {
       initialSearchDeferred.resolve([]);
       await screen.findByText("No Spells Yet");
 
-      fireEvent.change(screen.getByTestId("library-search-input"), {
+      fireEvent.change(screen.getByTestId("search-input"), {
         target: { value: "fireball" },
       });
       fireEvent.click(screen.getByTestId("library-search-button"));
@@ -637,7 +670,7 @@ describe("Library empty states", () => {
         });
       });
 
-      fireEvent.change(screen.getByTestId("library-search-input"), {
+      fireEvent.change(screen.getByTestId("search-input"), {
         target: { value: "fireball" },
       });
       fireEvent.click(screen.getByTestId("library-search-button"));
@@ -647,7 +680,7 @@ describe("Library empty states", () => {
 
       fireEvent.click(screen.getByTestId("empty-search-reset-button"));
 
-      expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
+      expect((screen.getByTestId("search-input") as HTMLInputElement).value).toBe("");
       expect(screen.queryByText("No Results")).toBeNull();
       expect(screen.queryByText("No Spells Yet")).toBeNull();
 
@@ -715,7 +748,7 @@ describe("Library empty states", () => {
 
       expect(await screen.findByText("No Spells Yet")).toBeTruthy();
       expect((screen.getByTestId("saved-searches-select") as HTMLSelectElement).value).toBe("");
-      expect((screen.getByTestId("library-search-input") as HTMLInputElement).value).toBe("");
+      expect((screen.getByTestId("search-input") as HTMLInputElement).value).toBe("");
     });
   });
 });
@@ -784,7 +817,7 @@ describe("Library focus indicators", () => {
       expect(screen.getByTestId("spell-row-fireball")).toBeTruthy();
     });
 
-    expectFocusVisibleRing(screen.getByTestId("library-search-input"));
+    expectFocusVisibleRing(screen.getByTestId("search-input"));
     expectFocusVisibleRing(screen.getByTestId("library-mode-select"));
     expectFocusVisibleRing(screen.getByTestId("filter-school-select"));
     expectFocusVisibleRing(screen.getByTestId("filter-source-select"));
@@ -837,7 +870,7 @@ describe("Library focus indicators", () => {
     expectFocusVisibleRing(createButton);
     expectFocusVisibleRing(screen.getByTestId("empty-library-import-button"));
 
-    fireEvent.change(screen.getByTestId("library-search-input"), {
+    fireEvent.change(screen.getByTestId("search-input"), {
       target: { value: "fireball" },
     });
     fireEvent.click(screen.getByTestId("library-search-button"));
@@ -888,7 +921,7 @@ describe("Library explicit search behavior", () => {
       .mocked(invoke)
       .mock.calls.filter((call) => call[0] === "search_keyword").length;
 
-    fireEvent.change(screen.getByTestId("library-search-input"), {
+    fireEvent.change(screen.getByTestId("search-input"), {
       target: { value: "fireball" },
     });
 

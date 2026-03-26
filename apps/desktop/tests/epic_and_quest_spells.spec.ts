@@ -2,7 +2,7 @@ import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
-import { handleCustomModal, setupDialogHandler } from "./utils/dialog-handler";
+import { handleCustomModal } from "./utils/dialog-handler";
 
 test.describe("Epic and Quest Spells", () => {
   test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
@@ -54,13 +54,16 @@ test.describe("Epic and Quest Spells", () => {
         .fill("This should fail client validation.");
       await page.getByTestId("btn-save-spell").click();
 
-      await app.expectFieldError("error-epic-arcane-class-restriction");
+      await expect(page.getByTestId("error-epic-arcane-class-restriction")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
       await app.expectNoBlockingDialog();
       await page.getByTestId("btn-cancel-edit").click();
       await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({
         timeout: TIMEOUTS.short,
       });
       await handleCustomModal(page, "Confirm");
+      await app.waitForLibrary();
     });
 
     await test.step("Create a Quest Spell (Divine only)", async () => {
@@ -100,9 +103,5 @@ test.describe("Epic and Quest Spells", () => {
         timeout: TIMEOUTS.medium,
       });
     });
-
-    // Cleanup native dialog handler if it was used (not strictly needed here as we didn't trigger any native deletes)
-    const cleanupDialog = setupDialogHandler(page, { acceptDelete: true });
-    cleanupDialog();
   });
 });

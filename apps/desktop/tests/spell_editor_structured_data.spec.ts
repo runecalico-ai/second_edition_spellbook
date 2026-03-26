@@ -465,7 +465,12 @@ test.describe("Spell Editor structured data and hash display", () => {
 
       await app.expectFieldError("error-school-required-arcane-tradition");
 
-      await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
+      await expect(page.getByTestId("error-tradition-conflict")).toHaveCount(0);
+
+      await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
+      await expect(page.getByTestId("spell-school-input")).toHaveCount(0);
+      await expect(page.getByTestId("btn-save-spell")).toBeDisabled();
+      await app.expectFieldError("error-sphere-required-divine-tradition");
 
       await app.expectNoBlockingDialog();
     });
@@ -501,7 +506,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
 
-      await page.getByPlaceholder(/Search spells/i).fill(spellName);
+      await page.getByTestId("search-input").fill(spellName);
       await page.getByRole("button", { name: "Search", exact: true }).click();
       await expect(app.getSpellRow(spellName)).toBeVisible({ timeout: TIMEOUTS.medium });
       await expect(page.getByTestId("error-tradition-conflict")).not.toBeVisible();
@@ -582,7 +587,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
 
-      await page.getByPlaceholder(/Search spells/i).fill(spellName);
+      await page.getByTestId("search-input").fill(spellName);
       await page.getByRole("button", { name: "Search", exact: true }).click();
       await expect(app.getSpellRow(spellName)).toBeVisible({ timeout: TIMEOUTS.medium });
     });
@@ -639,7 +644,8 @@ test.describe("Spell Editor structured data and hash display", () => {
 
       await test.step("Spell does not appear in library", async () => {
         await app.navigate("Library");
-        await page.getByPlaceholder(/Search spells/i).fill(spellName);
+        await app.waitForLibrary();
+        await page.getByTestId("search-input").fill(spellName);
         await page.getByRole("button", { name: "Search", exact: true }).click();
         await expect(app.getSpellRow(spellName)).not.toBeVisible({ timeout: TIMEOUTS.short });
       });

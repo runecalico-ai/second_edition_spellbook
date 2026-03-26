@@ -262,8 +262,33 @@ This plan document is also the execution log for baseline evidence and final ver
    - FR-6e (hash display collapsed+expanded baselines) → **Task 5**
    - **Coverage gap flagged:** FR-3 tasks e2e.spec.ts:64 Milestone 3 tag filter test is currently FAILING (pre-existing timeout). Task 3 must fix or stabilize this before final verification matrix (Task 7).
 - **Step 2.1a audit ledger:** *(filled in Task 2, Step 2.1a — deferred to that step)*
-   - final spell/library inventory reviewed:
-   - per-file classification:
+    - audit commands run:
+       - initial Windows-safe candidate scan: `Push-Location 'C:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop'; $spellLibrarySpecs = rg --files tests | rg '\.spec\.ts$' | rg -v '^tests[\\/](character_|vault|batch_import|import_)'; Write-Host 'CANDIDATE_INVENTORY'; $spellLibrarySpecs; Write-Host 'DIALOG_AUDIT'; rg -n '(handleCustomModal\(|Save Error|Validation Error|getByRole\(["''](?:dialog|alertdialog)["'']|locator\(["'']dialog["'']|modalAlert|modalConfirm|getByText\(["'']Save Error|getByText\(["'']Validation Error|toHaveCount\(0\).*dialog|not\.toBeVisible\(\).*dialog)' -- $spellLibrarySpecs; Pop-Location`
+       - note: the first attempt used a slash-only exclude pattern and over-included Windows `tests\character_*` paths; the corrected `^tests[\\/]...` pattern above is the authoritative Step 2.1 command/result.
+    - candidate inventory produced by Step 2.1: `tests/accessibility_and_resize.spec.ts`, `tests/milestone_3.spec.ts`, `tests/theme_and_feedback.spec.ts`, `tests/spell_notes_persistence.spec.ts`, `tests/spell_editor_visual.spec.ts`, `tests/spell_editor_structured_data.spec.ts`, `tests/spell_editor_save_workflow.spec.ts`, `tests/spell_editor_canon_first.spec.ts`, `tests/repro_bugs.spec.ts`, `tests/e2e.spec.ts`, `tests/epic_and_quest_spells.spec.ts`
+    - final authoritative spell/library inventory reviewed and saved to `.tmp/chunk6-spell-library-ledger.txt`:
+       - `apps/desktop/tests/spell_editor_structured_data.spec.ts`
+       - `apps/desktop/tests/epic_and_quest_spells.spec.ts`
+       - `apps/desktop/tests/spell_editor_canon_first.spec.ts`
+       - `apps/desktop/tests/spell_editor_save_workflow.spec.ts`
+       - `apps/desktop/tests/spell_notes_persistence.spec.ts`
+       - `apps/desktop/tests/spell_editor_visual.spec.ts`
+       - `apps/desktop/tests/e2e.spec.ts`
+       - `apps/desktop/tests/milestone_3.spec.ts`
+       - `apps/desktop/tests/repro_bugs.spec.ts`
+    - extra specs discovered beyond the starting inventory: none added. `tests/accessibility_and_resize.spec.ts` and `tests/theme_and_feedback.spec.ts` appeared in the broader candidate scan but were not spell/library migration-ledger files and had no Task 2 dialog assertions to classify.
+    - Step 1.6 status: not needed because no additional spell/library specs were added to the authoritative ledger.
+    - per-file classification summary:
+       - `apps/desktop/tests/spell_editor_structured_data.spec.ts` → (a) routine-validation inline migration/verification for `error-school-required-arcane`, `error-sphere-required-divine`, `error-school-required-arcane-tradition`, `error-sphere-required-divine-tradition`, `error-tradition-conflict`, and `spell-name-error`; (c) preserved blocking/destructive modal coverage kept for import failure and unparsed-fields navigation guard.
+      - `apps/desktop/tests/epic_and_quest_spells.spec.ts` → (a) routine-validation inline migration/verification for `error-epic-arcane-class-restriction`; (c) preserved `Unsaved changes` confirmation kept.
+       - `apps/desktop/tests/spell_editor_canon_first.spec.ts` → (b) explicit negative no-dialog assertion kept for inline epic class restriction path; (c) preserved backend `Save Error` modal and `Unsaved changes` modal coverage kept; no missing-name routine-validation modal path remained, so Step 2.8 required no code edit.
+       - `apps/desktop/tests/spell_editor_save_workflow.spec.ts` → (b) explicit no-dialog protection kept for routine validation flows; (c) preserved delete-confirmation modal coverage kept.
+       - `apps/desktop/tests/spell_notes_persistence.spec.ts` → (d) no dialog assertions found; not part of the Task 2 migration ledger beyond manual inventory review.
+       - `apps/desktop/tests/spell_editor_visual.spec.ts` → (d) no dialog assertions found; visual-only coverage.
+       - `apps/desktop/tests/e2e.spec.ts` → (d) no dialog assertions found in the reviewed spell/library milestone flow.
+       - `apps/desktop/tests/milestone_3.spec.ts` → (d) `setupAcceptAllDialogs` is legacy harness noise, not routine spell/library validation coverage.
+       - `apps/desktop/tests/repro_bugs.spec.ts` → (d) only `Validation Errors found` console text matched the audit; no dialog assertions to migrate.
+    - additional Task 2 spec modification note: no extra spec files needed modification beyond the named Task 2 targets, and `apps/desktop/tests/spell_editor_canon_first.spec.ts` did not require a code change because the targeted missing-name / routine-validation `Save Error` path no longer existed.
 - **Selector or support gaps found during workflow/accessibility work:**
    - to be filled during implementation
 - **Manual NVDA verification evidence from Task 4:**
@@ -290,7 +315,7 @@ This plan document is also the execution log for baseline evidence and final ver
 - Modify: `apps/desktop/tests/spell_editor_canon_first.spec.ts`
 - Modify: any additional `apps/desktop/tests/*.spec.ts` files revealed by Step 2.1 or Step 2.10 that still encode routine validation as dialog-driven feedback
 
-- [ ] **Step 2.1: Define the spell/library dialog-pattern audit that supports the routine-validation migration claim without overclaiming full repository proof**
+- [x] **Step 2.1: Define the spell/library dialog-pattern audit that supports the routine-validation migration claim without overclaiming full repository proof**
 
 Run:
 
@@ -304,7 +329,7 @@ Expected: the repo-wide discovery command produces the candidate non-out-of-scop
 
 For Chunk 6, the authoritative spell/library migration inventory is the final Step 2.1a audit ledger after the exhaustive non-out-of-scope scan in Step 2.1 plus the required manual inspection. The final no-dialog contract closes against that ledger after Task 4.10 and the Task 7 verification matrix.
 
-- [ ] **Step 2.1a: Manually inspect the spell/library spec set, not just the regex hits**
+- [x] **Step 2.1a: Manually inspect the spell/library spec set, not just the regex hits**
 
 Use this closed starting inventory for the manual inspection pass, then append only true audit discoveries beyond it:
 - `apps/desktop/tests/spell_editor_structured_data.spec.ts`
@@ -323,7 +348,7 @@ This manual classification is the backstop for dialog expectations that may not 
 
 Before leaving Step 2.1a, save the final authoritative spell/library ledger file list to `.tmp/chunk6-spell-library-ledger.txt` so Step 7.3a can rerun the final audit against the exact same inventory rather than recomputing it.
 
-- [ ] **Step 2.2: Replace the arcane school validation modal expectation with the inline error assertion**
+- [x] **Step 2.2: Replace the arcane school validation modal expectation with the inline error assertion**
 
 Target: `apps/desktop/tests/spell_editor_structured_data.spec.ts` validation case for missing arcane school.
 
@@ -335,7 +360,7 @@ await expect(page.getByTestId("error-school-required-arcane")).toBeVisible();
 
 Remove: `handleCustomModal(page, "OK")` for that path.
 
-- [ ] **Step 2.3: Replace the divine sphere validation modal expectation with the inline error assertion**
+- [x] **Step 2.3: Replace the divine sphere validation modal expectation with the inline error assertion**
 
 Target assertion:
 
@@ -343,7 +368,7 @@ Target assertion:
 await expect(page.getByTestId("error-sphere-required-divine")).toBeVisible();
 ```
 
-- [ ] **Step 2.4: Update the arcane tradition transition case to assert both positive and negative visibility**
+- [x] **Step 2.4: Update the arcane tradition transition case to assert both positive and negative visibility**
 
 Required assertions:
 
@@ -358,15 +383,15 @@ Use the zero-count assertion for the stale tradition-conflict error so the test 
 await expect(page.getByTestId("error-sphere-required-divine-tradition")).toBeVisible();
 ```
 
-- [ ] **Step 2.5: Update the tradition-conflict case to assert `error-tradition-conflict` inline**
+- [x] **Step 2.5: Update the tradition-conflict case to assert `error-tradition-conflict` inline**
 
 Remove the modal helper and assert the specific error testid instead.
 
-- [ ] **Step 2.6: Update the missing-name save case to assert `spell-name-error` inline**
+- [x] **Step 2.6: Update the missing-name save case to assert `spell-name-error` inline**
 
 Preserve the save attempt and focus behavior checks if they already exist.
 
-- [ ] **Step 2.7: Update the epic arcane class restriction test to assert the stable inline testid contract**
+- [x] **Step 2.7: Update the epic arcane class restriction test to assert the stable inline testid contract**
 
 Required assertion shape:
 
@@ -376,21 +401,21 @@ await expect(page.getByTestId("error-epic-arcane-class-restriction")).toBeVisibl
 
 Remove any fallback-to-visible-text assertion for this regression path.
 
-- [ ] **Step 2.8: Replace the `<dialog>` `Save Error` assertion in the targeted canon-first validation case with the exact inline error assertion**
+- [x] **Step 2.8: Audit the targeted canon-first validation path and confirm whether any routine-validation modal assertion still needs migration**
 
-Target the missing-name canon-first save path and use:
+If the targeted missing-name canon-first save path exists, it should use:
 
 ```typescript
 await expect(page.getByTestId("spell-name-error")).toBeVisible();
 ```
 
-This path must stop treating routine validation as a modal failure.
+Audit result for this repository state: the targeted missing-name canon-first routine-validation `Save Error` path no longer existed, so no code edit was required in `apps/desktop/tests/spell_editor_canon_first.spec.ts`. Step 2.8 is satisfied by the closed audit ledger and by preserving the remaining backend `Save Error` modal coverage as out of scope for routine-validation migration.
 
-- [ ] **Step 2.9: Keep preserved modal paths unchanged and hand off their formal modality verification to Task 4.2**
+- [x] **Step 2.9: Keep preserved modal paths unchanged and hand off their formal modality verification to Task 4.2**
 
 Do not edit the preserved `Unsaved changes` and blocking-cancel cases except to keep them passing if shared helper behavior changed elsewhere. Task 4.2 owns the formal preserved-dialog verification for focus trap, focus return, and true modality.
 
-- [ ] **Step 2.10: Run the legacy-marker audit again after the targeted migrations**
+- [x] **Step 2.10: Run the legacy-marker audit again after the targeted migrations**
 
 Run:
 
@@ -402,7 +427,7 @@ rg -n '(handleCustomModal\(|Save Error|Validation Error|getByRole\(["'"''](?:dia
 
 Expected: no reviewed spell/library routine-validation path under `apps/desktop/tests` still relies on dialog handling; any remaining spell/library matches are either preserved modal coverage or explicit no-dialog assertions and are listed in `Implementation Notes` with file-level classification. Before closing this step, confirm the Step 2.1a ledger includes every file returned by the repo-wide discovery command plus any manually discovered additions.
 
-- [ ] **Step 2.11: Run only the migrated specs to verify the red-to-green change**
+- [x] **Step 2.11: Run only the migrated specs to verify the red-to-green change**
 
 Build the rerun command from the three named specs plus any additional spec files uncovered by Steps 2.1 and 2.10. Record the exact rerun command in `Implementation Notes`.
 
@@ -416,6 +441,19 @@ npx playwright test $migrated_specs
 ```
 
 Expected: migrated validation tests pass in the three targeted specs, preserved modal tests remain intact, and no new modal regressions appear in the touched files. If the Step 2.1a ledger identifies an additional spec that was actually migrated, append only that migrated file path to `migrated_specs` before running and record the final command in `Implementation Notes`.
+
+Step 2.11 execution log:
+- build command run after code changes: `Push-Location 'C:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop'; pnpm build; exit $LASTEXITCODE` → success (`vite build`, 105 modules transformed, built in ~3.08s; only the existing chunk-size warning remained).
+- exact migrated-spec rerun command: `Push-Location 'C:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop'; npx playwright test tests/spell_editor_structured_data.spec.ts tests/epic_and_quest_spells.spec.ts tests/spell_editor_canon_first.spec.ts --max-failures=1 --reporter=list; Pop-Location`
+- Step 2.11 result: failed on the first test before the full slice completed. Failure was `tests/epic_and_quest_spells.spec.ts:11:3 › Epic and Quest Spells › Epic and Quest Spells E2E › Create a Quest Spell (Divine only)`.
+- failure summary: `SpellbookApp.waitForLibrary()` timed out waiting for `getByRole('heading', { name: 'Spell Library' })` after `app.createSpell(...)` in the quest-spell creation path (`tests/page-objects/SpellbookApp.ts:112`, invoked from `tests/epic_and_quest_spells.spec.ts:69`). This occurred after the inline restriction migration step had already passed and before any canon-first or structured-data failures were reported.
+- root-cause note: reproducing the exact migrated assertion subset showed the failure happens immediately after the preserved `Unsaved changes` confirmation in `tests/epic_and_quest_spells.spec.ts`, before the quest-spell form opens. The test moved into the next step before the Library route had visibly settled; adding `await app.waitForLibrary()` after `handleCustomModal(page, "Confirm")` fixed that race without changing the preserved modal coverage.
+- focused verification command after the race fix: `Push-Location 'C:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/apps/desktop'; npx playwright test tests/spell_editor_structured_data.spec.ts tests/epic_and_quest_spells.spec.ts tests/spell_editor_canon_first.spec.ts --grep "Epic and Quest Spells E2E|Tradition validation: Epic \(level 10\) requires School|Tradition validation: Quest requires Sphere|Tradition validation: new spell save shows school error, no BOTH errors|Seeded conflicted edit path shows inline tradition conflict until user resolves it|WarningBanner: persists after failed save|Failed save after structured range edit keeps canon text synchronized and stays on editor|Backend Save Error modal: Quest spell with Wizard-only classes still rejected by server" --reporter=line`
+- focused verification result after the race fix: the redirected run surfaced a second targeted failure in `tests/spell_editor_structured_data.spec.ts:447` because the test clicked `btn-save-spell` after the first invalid submit had already disabled the button (`hasAttemptedSubmit && isInvalid`). That earlier failing run was debugging evidence only and did not satisfy the Step 2.11 completion gate.
+- follow-up fix note: the tradition-transition case now asserts the reactive Divine inline error and disabled Save state instead of trying to click a disabled button. The latest targeted rerun artifact at `.tmp/task2-targeted-verification.txt` now ends with `8 passed (4.7m)`.
+- pre-existing failure discovery (initial full run, `63 passed / 3 failed`): three tests at `spell_editor_structured_data.spec.ts:479`, `:566`, and `:597` failed consistently in the full run AND in isolation, with `Test timeout of 360000ms exceeded / locator.fill: Target page, context or browser has been closed`. Root cause: all three used `page.getByPlaceholder(/Search spells/i)` but the Library search input's actual placeholder is `"Keywords or spell name…"` (`data-testid="search-input"`). The locator never matched; Playwright retried for the full 360s timeout, then teardown closed the browser. These bugs predated Task 2 (added in commit `78e5f55`); confirmed not regressions by running all three in isolation before the fix — all three failed even without any preceding test from Task 2.
+- pre-existing failure fix: replaced `page.getByPlaceholder(/Search spells/i)` with `page.getByTestId("search-input")` in the three tests; also added `await app.waitForLibrary()` after `app.navigate("Library")` in the test at `:597` (consistent with the `openSpell()` pattern). Fix verified: isolated run of the three tests shows `3 passed (1.6m)`.
+- **FINAL full-suite result: `66 passed (34.1m)` exit code 0.** Artifact: `.tmp/task2-full-rerun-final.txt`. Step 2.11 closed.
 
 ---
 

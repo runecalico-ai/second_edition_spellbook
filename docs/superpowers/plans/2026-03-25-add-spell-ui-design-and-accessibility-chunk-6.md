@@ -290,7 +290,9 @@ This plan document is also the execution log for baseline evidence and final ver
        - `apps/desktop/tests/repro_bugs.spec.ts` → (d) only `Validation Errors found` console text matched the audit; no dialog assertions to migrate.
     - additional Task 2 spec modification note: no extra spec files needed modification beyond the named Task 2 targets, and `apps/desktop/tests/spell_editor_canon_first.spec.ts` did not require a code change because the targeted missing-name / routine-validation `Save Error` path no longer existed.
 - **Selector or support gaps found during workflow/accessibility work:**
-   - to be filled during implementation
+   - Task 3 required one minimal production affordance to cover the empty character spellbook path end-to-end: `apps/desktop/src/ui/CharacterEditor.tsx` now exposes a visible `link-open-spellbook-builder` header link so E2E can open the builder through the same UI path users see.
+   - `apps/desktop/tests/page-objects/SpellbookApp.ts` gained reusable workflow helpers instead of repeating brittle spec-local setup: `seedConflictedSpell(name)`, `expectActiveTraditionField(tradition)`, and an `openSpellbookBuilder(name)` helper that opens the character editor and clicks `link-open-spellbook-builder`.
+   - `apps/desktop/tests/spell_editor_save_workflow.spec.ts` now verifies the delayed-save contract with a browser-side `MutationObserver` helper (`captureSaveButtonDelayTimeline`) anchored to the save click, rather than Playwright-side sleep checkpoints.
 - **Manual NVDA verification evidence from Task 4:**
    - date:
    - NVDA version:
@@ -301,7 +303,7 @@ This plan document is also the execution log for baseline evidence and final ver
 - **Visual regression artifact inventory from Task 5:**
    - to be filled during implementation
 - **Production code edits made to support verification:**
-   - to be filled during implementation
+   - `apps/desktop/src/ui/CharacterEditor.tsx` gained a visible `link-open-spellbook-builder` header link so the empty character spellbook workflow can reach `/character/:id/builder` through the user-facing UI instead of a route rewrite shortcut.
 - **Docs proof table for Step 6.6:**
    - behavior, user-visible string, or testid -> source file(s) checked -> docs updated
 
@@ -466,7 +468,7 @@ Step 2.11 execution log:
 - Modify: `apps/desktop/tests/utils/test-data.ts` if reusable legacy spell fixtures or seed helpers are needed
 - Modify only if required for stable selectors: `apps/desktop/src/ui/SpellEditor.tsx`, `apps/desktop/src/ui/Library.tsx`, `apps/desktop/src/ui/CharacterEditor.tsx`, `apps/desktop/src/ui/CharacterManager.tsx`
 
-- [ ] **Step 3.1: Add the new-user first-spell workflow**
+- [x] **Step 3.1: Add the new-user first-spell workflow**
 
 Required path:
 1. start from an empty library
@@ -477,7 +479,9 @@ Required path:
 
 Do not require hash-card visibility in this workflow; hash display coverage stays in the dedicated hash and visual-regression steps below.
 
-- [ ] **Step 3.2: Add the legacy basic-field edit workflow**
+Status: complete in `apps/desktop/tests/spell_editor_save_workflow.spec.ts` via `first-spell workflow starts from empty library, saves, and returns to the library list`, which requires the empty-library entry path, asserts the exact `Spell saved.` toast, and verifies the new Library row after save.
+
+- [x] **Step 3.2: Add the legacy basic-field edit workflow**
 
 Required path:
 1. start from an existing legacy/basic spell fixture or seeded record created before the workflow begins
@@ -491,7 +495,9 @@ This regression path must not create a brand-new spell as its setup shortcut; it
 
 Preferred seed source: reuse an existing deterministic fixture/helper in `apps/desktop/tests/utils/test-data.ts` or add one there so the same legacy record can support both the basic-field and structured-upgrade flows.
 
-- [ ] **Step 3.3: Add the legacy structured-field upgrade workflow**
+Status: complete in `apps/desktop/tests/spell_editor_save_workflow.spec.ts` via `legacy import: basic-field edit workflow saves, updates the library, and persists after reopen`, which starts from imported legacy data, edits only basic fields, asserts save feedback, and reopens the same spell to prove persistence.
+
+- [x] **Step 3.3: Add the legacy structured-field upgrade workflow**
 
 Required path:
 1. open a spell with legacy/raw structured values
@@ -502,11 +508,15 @@ Required path:
 
 Use the same fixture/seed helper approach as Step 3.2 so the legacy source data is reviewable and repeatable.
 
-- [ ] **Step 3.4: Add the validation error handling workflow**
+Status: complete in `apps/desktop/tests/spell_editor_save_workflow.spec.ts` via `legacy import: structured range upgrade updates observable state and persists after reopen`, which starts from legacy/raw range data, verifies the upgraded structured state before save, then reopens to confirm persistence.
+
+- [x] **Step 3.4: Add the validation error handling workflow**
 
 This scenario must cover the real timing contract: pristine required fields stay quiet until blur or failed submit, first failed submit focuses the first invalid field, and errors clear when the user fixes the relevant field.
 
-- [ ] **Step 3.5: Add an explicit delayed-save feedback verification step for the 300 ms `Saving…` contract**
+Status: complete in `apps/desktop/tests/spell_editor_save_workflow.spec.ts` through the paired validation tests covering quiet pristine fields, first-invalid focus on failed submit, and inline error clearance after correction while preserving the no-dialog contract.
+
+- [x] **Step 3.5: Add an explicit delayed-save feedback verification step for the 300 ms `Saving…` contract**
 
 Required assertions:
 1. reuse the delayed-save verification pattern already present in `apps/desktop/tests/spell_editor_save_workflow.spec.ts`, or extract that same deterministic hold-open helper into the same spec if reuse is awkward
@@ -520,11 +530,15 @@ Supportable timing method:
 
 Record the exact helper or hold-open mechanism used, plus the timestamps or clock advances used, in `Implementation Notes` so reviewers can see how the timing contract was verified.
 
-- [ ] **Step 3.6: Add the conditional field transition workflow**
+Status: complete in `apps/desktop/tests/spell_editor_save_workflow.spec.ts` via `delayed save feedback waits 300 ms before showing Saving…, then navigates to Library with a toast`. The test holds save completion open with `window.__SPELLBOOK_E2E_SAVE_INVOKE_DELAY_MS = 1200` and uses `captureSaveButtonDelayTimeline(page, "btn-save-spell")` to capture the immediate post-click state plus the first `Saving…` mutation. The asserted contract is: immediate post-click state remains non-`Saving…`, the first `Saving…` transition occurs only after 300 ms, and the post-save Library return plus `Spell saved.` toast still occur.
+
+- [x] **Step 3.6: Add the conditional field transition workflow**
 
 Explicitly verify the Arcane/Divine switch behavior using observable end-state assertions rather than timing-sensitive animation checks: newly relevant field appears, the previously relevant field count becomes `0`, the newly relevant field count becomes `1`, stale errors clear, and only one tradition-specific field wrapper remains in the classification area after the switch so no dead spacer/panel is left behind. This step verifies the user-visible collapsed/expanded result of the transition, not frame-by-frame animation behavior.
 
-- [ ] **Step 3.7: Add empty-state workflows for library, search, and character spellbook**
+Status: complete in `apps/desktop/tests/spell_editor_save_workflow.spec.ts`. The workflow now covers both validation-state cleanup and stale conflict cleanup across Arcane/Divine switches, with reusable end-state assertions centralized in `SpellbookApp.expectActiveTraditionField(tradition)`.
+
+- [x] **Step 3.7: Add empty-state workflows for library, search, and character spellbook**
 
 Place all three empty-state workflows in `apps/desktop/tests/spell_editor_save_workflow.spec.ts` so Step 3.8 reruns the entire empty-state slice, including the character case, in one command.
 
@@ -545,7 +559,9 @@ Required assertions:
 - empty search shows `empty-search-reset-button`
 - empty character spellbook shows `empty-character-add-spell-button`
 
-- [ ] **Step 3.8: Run the workflow-focused spec slice**
+Status: complete in `apps/desktop/tests/spell_editor_save_workflow.spec.ts` with three dedicated workflows covering the empty library CTA state, empty search reset flow, and empty character spellbook CTA opening the Add Spells dialog. The empty character path now clicks the visible `link-open-spellbook-builder` affordance in `apps/desktop/src/ui/CharacterEditor.tsx`.
+
+- [x] **Step 3.8: Run the workflow-focused spec slice**
 
 Run:
 
@@ -556,6 +572,30 @@ npx playwright test tests/spell_editor_save_workflow.spec.ts tests/spell_editor_
 ```
 
 Expected: all new workflow coverage passes without introducing character/vault/import-scope changes.
+
+Status: complete. Verified with:
+
+```bash
+cd apps/desktop
+pnpm build
+npx playwright test tests/spell_editor_save_workflow.spec.ts tests/spell_editor_structured_data.spec.ts
+```
+
+Initial result: `48 passed (21.7m)` with slow-file notices for `tests/spell_editor_structured_data.spec.ts` and `tests/spell_editor_save_workflow.spec.ts` only; no assertion failures.
+
+Post-fix helper verification rerun:
+
+```bash
+cd apps/desktop
+npx playwright test tests/spell_editor_save_workflow.spec.ts tests/spell_editor_structured_data.spec.ts tests/character_profiles_foundation_one.spec.ts --grep "Known spell requirement for Prepared list|."
+```
+
+Latest result: `50 passed (21.5m)` including the direct consumer of the updated picker/remove page-object helpers.
+
+Accepted low-severity follow-up debt after the mandatory review loop:
+
+- documentation precision: the recorded helper-rerun grep `"Known spell requirement for Prepared list|."` is broader than the narrative implies because the `|.` branch effectively matches every title; if this evidence block is revisited later, tighten the grep to the exact intended test title or describe the rerun as a broader regression slice.
+- helper adoption cleanup: two post-save library assertions in `apps/desktop/tests/spell_editor_structured_data.spec.ts` still drive the search box directly instead of reusing the newer Library settled-state helper contract; this was left out of the current cleanup because it is low severity and not required to keep the shared-helper gate green.
 
 ---
 

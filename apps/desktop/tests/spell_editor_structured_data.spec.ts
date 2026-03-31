@@ -103,7 +103,6 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Reopen spell and verify hash display", async () => {
       await app.openSpell(spellName);
-      await page.waitForTimeout(500);
 
       await expect(page.getByTestId("spell-detail-hash-display")).toBeVisible({
         timeout: TIMEOUTS.medium,
@@ -114,7 +113,6 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Expand shows full hash", async () => {
       await page.getByTestId("spell-detail-hash-expand").click();
-      await page.waitForTimeout(200);
       const display = page.getByTestId("spell-detail-hash-display");
       await expect(display).not.toContainText("...");
     });
@@ -126,7 +124,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Open new spell, set level 10, leave School empty", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Epic No School");
       await page.getByTestId("spell-level-input").fill("10");
       await page.getByTestId("spell-description-textarea").fill("Description.");
@@ -146,7 +144,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Open new spell, Divine + Quest, leave Sphere empty", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Quest No Sphere");
       await page.getByTestId("spell-level-input").fill("8");
       await page.getByTestId("chk-quest").check();
@@ -171,7 +169,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Open new spell and set range", async () => {
       await page.setViewportSize({ width: 900, height: 1100 });
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Range Test Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
@@ -221,7 +219,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Open new spell", async () => {
       await page.setViewportSize({ width: 900, height: 1100 });
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Duration Test Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
@@ -306,7 +304,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Open new spell", async () => {
       await page.setViewportSize({ width: 900, height: 1100 });
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Component Test Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
@@ -431,7 +429,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Open new spell and interact with tradition dropdown", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       const traditionSelect = page.getByTestId("spell-tradition-select");
 
       const optionValues = await traditionSelect
@@ -452,7 +450,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Open new spell, default ARCANE, try save", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Arcane Missing School");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -486,7 +484,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Switching Arcane to Divine clears School before Sphere is entered", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill(spellName);
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
@@ -523,17 +521,7 @@ test.describe("Spell Editor structured data and hash display", () => {
     const spellName = `Seeded Tradition Conflict ${runId}`;
 
     await test.step("Seed a legacy spell row with both School and Sphere populated", async () => {
-      await app.navigate("Library");
-      await page.evaluate(async (name: string) => {
-        const inv = (
-          window as Window & {
-            __TAURI_INTERNALS__?: { invoke: (c: string, a?: object) => Promise<unknown> };
-          }
-        ).__TAURI_INTERNALS__?.invoke;
-        if (!inv) throw new Error("Tauri invoke not available");
-        await inv("test_seed_conflicted_spell", { name });
-      }, spellName);
-      await page.reload();
+      await app.seedConflictedSpell(spellName);
     });
 
     await test.step("Opening the seeded spell shows the inline conflict and blocks save without a modal", async () => {
@@ -573,7 +561,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Open new spell with Arcane school only; sphere stays unset (no false conflict)", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill(spellName);
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description.");
@@ -639,7 +627,7 @@ test.describe("Spell Editor structured data and hash display", () => {
           modal.getByText(/mutually exclusive|School and sphere|Import failed/i),
         ).toBeVisible();
         await handleCustomModal(page, "OK");
-        await page.waitForTimeout(300);
+        await expect(modal).not.toBeVisible({ timeout: TIMEOUTS.medium });
       });
 
       await test.step("Spell does not appear in library", async () => {
@@ -666,9 +654,8 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell and expand Casting Time", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
       await page.getByTestId("detail-casting-time-expand").click();
-      await page.waitForTimeout(300);
+      await expect(page.getByTestId("casting-time-unit")).toBeVisible({ timeout: TIMEOUTS.short });
     });
 
     await test.step("Verify 5e unit options are absent and AD&D 2e units are present", async () => {
@@ -699,7 +686,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell and fill basic fields", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Banner Test Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description for banner test.");
@@ -712,7 +699,6 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Expand range to trigger parser", async () => {
       await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(300);
     });
 
     await test.step("Assert warning banner is visible with expected content", async () => {
@@ -729,7 +715,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-level-input").fill("1");
       await page
         .getByTestId("spell-description-textarea")
@@ -740,7 +726,6 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Fill range with unparseable value and expand to trigger parser", async () => {
       await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
       await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(300);
     });
 
     await test.step("Wait for banner to appear", async () => {
@@ -768,7 +753,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell and fill required fields", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill(spellName);
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -781,7 +766,6 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Fill range with unparseable value and expand to trigger parser", async () => {
       await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
       await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(300);
     });
 
     await test.step("Wait for banner to appear", async () => {
@@ -791,7 +775,9 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Collapse range section and save successfully", async () => {
       await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(200);
+      await expect(page.getByTestId("range-kind-select")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
       await page.getByTestId("btn-save-spell").click();
     });
 
@@ -811,7 +797,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell and make form dirty", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Nav Guard Banner Spell");
       await page.getByTestId("spell-level-input").fill("1");
       await page.getByTestId("spell-description-textarea").fill("Description for nav guard test.");
@@ -821,7 +807,6 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Fill range with unparseable value and expand to trigger parser and banner", async () => {
       await page.getByTestId("detail-range-input").fill("totally??unparseable_range_text_xyz");
       await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(300);
       const banner = page.getByTestId("spell-editor-special-fallback-banner");
       await expect(banner).toBeVisible({ timeout: TIMEOUTS.medium });
     });
@@ -851,7 +836,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Create and save a spell with a saving throw raw value", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill(spellName);
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -866,9 +851,10 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Reopen spell and expand saving throw", async () => {
       await app.openSpell(spellName);
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("detail-saving-throw-expand")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
       await page.getByTestId("detail-saving-throw-expand").click();
-      await page.waitForTimeout(300);
     });
 
     await test.step("Saving throw expanded form is visible", async () => {
@@ -890,7 +876,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Damage Annotation Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -901,7 +887,6 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Fill damage canon input with text to verify sourceText annotation", async () => {
       await page.getByTestId("detail-damage-input").fill("1d6 fire per level");
       await page.getByTestId("detail-damage-expand").click();
-      await page.waitForTimeout(300);
     });
 
     await test.step("Damage form is visible", async () => {
@@ -923,7 +908,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Magic Resistance Annotation Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -935,7 +920,6 @@ test.describe("Spell Editor structured data and hash display", () => {
     await test.step("Fill magic resistance canon input with a non-standard value", async () => {
       await page.getByTestId("detail-magic-resistance-input").fill("20% (limited cases only)");
       await page.getByTestId("detail-magic-resistance-expand").click();
-      await page.waitForTimeout(300);
     });
 
     await test.step("Magic resistance input form is visible", async () => {
@@ -959,7 +943,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Range Kind Transition Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -968,11 +952,8 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand range and set kind to distance", async () => {
-      await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await waitForStructuredField(page, "range");
       await page.getByTestId("range-kind-select").selectOption("distance");
-      await page.waitForTimeout(300);
     });
 
     await test.step("Distance value field is visible after selecting distance kind", async () => {
@@ -981,9 +962,12 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Switch to 'personal' and verify distance fields are hidden", async () => {
       await page.getByTestId("range-kind-select").selectOption("personal");
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("range-base-value")).not.toBeVisible();
-      await expect(page.getByTestId("range-raw-legacy")).not.toBeVisible();
+      await expect(page.getByTestId("range-base-value")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.getByTestId("range-raw-legacy")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
   });
 
@@ -995,7 +979,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Duration Instant Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -1004,19 +988,13 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand duration and set kind to time", async () => {
-      await page.getByTestId("detail-duration-expand").click();
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
+      await waitForStructuredField(page, "duration");
       await page.getByTestId("duration-kind-select").selectOption("time");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-unit")).toBeVisible({ timeout: TIMEOUTS.short });
     });
 
     await test.step("Switch to 'instant' and verify time fields hidden", async () => {
       await page.getByTestId("duration-kind-select").selectOption("instant");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-unit")).not.toBeVisible();
       await expect(page.getByTestId("duration-base-value")).not.toBeVisible();
     });
@@ -1034,7 +1012,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Duration Time Reinit Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -1043,15 +1021,9 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand duration and set kind to instant then time", async () => {
-      await page.getByTestId("detail-duration-expand").click();
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
+      await waitForStructuredField(page, "duration");
       await page.getByTestId("duration-kind-select").selectOption("instant");
-      await page.waitForTimeout(300);
       await page.getByTestId("duration-kind-select").selectOption("time");
-      await page.waitForTimeout(300);
     });
 
     await test.step("duration-unit and duration-base-value are visible after switching to time", async () => {
@@ -1070,7 +1042,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Duration Special Raw Legacy Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -1079,19 +1051,13 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand duration and set to time — raw legacy not visible", async () => {
-      await page.getByTestId("detail-duration-expand").click();
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
+      await waitForStructuredField(page, "duration");
       await page.getByTestId("duration-kind-select").selectOption("time");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-raw-legacy")).not.toBeVisible();
     });
 
     await test.step("Switch to special — raw legacy becomes visible", async () => {
       await page.getByTestId("duration-kind-select").selectOption("special");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-raw-legacy")).toBeVisible({
         timeout: TIMEOUTS.short,
       });
@@ -1099,7 +1065,6 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Switch back to time — raw legacy hidden again", async () => {
       await page.getByTestId("duration-kind-select").selectOption("time");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-raw-legacy")).not.toBeVisible();
     });
   });
@@ -1112,7 +1077,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("CastingTime Special Unit Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -1121,17 +1086,13 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand casting time and set unit to round — raw legacy not visible", async () => {
-      await page.getByTestId("detail-casting-time-expand").click();
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("casting-time-unit")).toBeVisible({ timeout: TIMEOUTS.short });
+      await waitForStructuredField(page, "casting-time");
       await page.getByTestId("casting-time-unit").selectOption("round");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("casting-time-raw-legacy")).not.toBeVisible();
     });
 
     await test.step("Switch casting time unit to special — raw legacy becomes visible", async () => {
       await page.getByTestId("casting-time-unit").selectOption("special");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("casting-time-raw-legacy")).toBeVisible({
         timeout: TIMEOUTS.short,
       });
@@ -1139,7 +1100,6 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Switch casting time unit back to round — raw legacy hidden again", async () => {
       await page.getByTestId("casting-time-unit").selectOption("round");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("casting-time-raw-legacy")).not.toBeVisible();
     });
   });
@@ -1152,7 +1112,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Range Special Text Preview Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -1161,11 +1121,8 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand range and set kind to special", async () => {
-      await page.getByTestId("detail-range-expand").click();
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.short });
+      await waitForStructuredField(page, "range");
       await page.getByTestId("range-kind-select").selectOption("special");
-      await page.waitForTimeout(300);
     });
 
     await test.step("range-raw-legacy is visible and editable (not readOnly) when kind is special", async () => {
@@ -1177,16 +1134,21 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Fill raw legacy value and verify text preview updates", async () => {
       await page.getByTestId("range-raw-legacy").fill("Varies by caster level");
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("range-text-preview")).toContainText("Varies by caster level");
+      await expect(page.getByTestId("range-text-preview")).toContainText(
+        "Varies by caster level",
+        {
+          timeout: TIMEOUTS.short,
+        },
+      );
     });
 
     await test.step("Clear raw legacy value and verify text preview falls back to 'Special' label", async () => {
       await page.getByTestId("range-raw-legacy").fill("");
-      await page.waitForTimeout(300);
       // When rawLegacyValue is cleared, rangeToText returns the "Special" fallback label (rawLegacyValue ?? "Special")
       // This confirms clearing the field resets the text preview rather than preserving the old value
-      await expect(page.getByTestId("range-text-preview")).toContainText("Special");
+      await expect(page.getByTestId("range-text-preview")).toContainText("Special", {
+        timeout: TIMEOUTS.short,
+      });
     });
   });
 
@@ -1198,7 +1160,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Parsers Pending Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -1247,7 +1209,7 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Navigate to Add Spell", async () => {
       await app.navigate("Add Spell");
-      await page.waitForTimeout(500);
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.medium });
       await page.getByTestId("spell-name-input").fill("Duration Usage Limited Test");
       await page.getByTestId("spell-level-input").fill("1");
       await page
@@ -1256,13 +1218,8 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Expand duration and set to usage_limited — uses input visible", async () => {
-      await page.getByTestId("detail-duration-expand").click();
-      await page.waitForTimeout(300);
-      await expect(page.getByTestId("duration-kind-select")).toBeVisible({
-        timeout: TIMEOUTS.short,
-      });
+      await waitForStructuredField(page, "duration");
       await page.getByTestId("duration-kind-select").selectOption("usage_limited");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-uses-value")).toBeVisible({
         timeout: TIMEOUTS.short,
       });
@@ -1270,13 +1227,11 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Switch to time — uses input hidden", async () => {
       await page.getByTestId("duration-kind-select").selectOption("time");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-uses-value")).not.toBeVisible();
     });
 
     await test.step("Switch back to usage_limited — uses input visible again", async () => {
       await page.getByTestId("duration-kind-select").selectOption("usage_limited");
-      await page.waitForTimeout(300);
       await expect(page.getByTestId("duration-uses-value")).toBeVisible({
         timeout: TIMEOUTS.short,
       });

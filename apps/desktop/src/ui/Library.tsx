@@ -107,6 +107,7 @@ export default function Library() {
   const [isSaving, setIsSaving] = useState(false);
   const [newSearchName, setNewSearchName] = useState("");
   const [selectedSavedSearchId, setSelectedSavedSearchId] = useState<number | null>(null);
+  const [activeSearchRequestId, setActiveSearchRequestId] = useState(0);
   const [resultsSettledForCurrentSearch, setResultsSettledForCurrentSearch] = useState(false);
   const saveInputRef = useRef<HTMLInputElement>(null);
   const searchRequestIdRef = useRef(0);
@@ -231,6 +232,7 @@ export default function Library() {
 
   const runSearch = useCallback(async (nextQuery: string, nextMode: "keyword" | "semantic", filters: SearchFilters) => {
     const requestId = ++searchRequestIdRef.current;
+    setActiveSearchRequestId(requestId);
     setResultsSettledForCurrentSearch(false);
 
     try {
@@ -732,7 +734,13 @@ export default function Library() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto rounded-md border border-neutral-500 bg-white/80 dark:border-neutral-800 dark:bg-neutral-900/30">
+      <div
+        className="flex-1 overflow-auto rounded-md border border-neutral-500 bg-white/80 dark:border-neutral-800 dark:bg-neutral-900/30"
+        data-testid="library-results-state"
+        data-search-request-id={activeSearchRequestId}
+        data-results-settled={resultsSettledForCurrentSearch ? "true" : "false"}
+        aria-busy={resultsSettledForCurrentSearch ? "false" : "true"}
+      >
         <table
           className="w-full text-sm text-left border-collapse"
           data-testid="spell-library-table"

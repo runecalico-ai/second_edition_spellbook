@@ -133,6 +133,9 @@ test.describe("theme and feedback foundations", () => {
     const followSystemCheckbox = page.getByTestId("settings-follow-system-checkbox");
     const themeLiveRegion = page.getByTestId("theme-announcement-live-region");
 
+    // Step 4.5: Verify the live region has the correct aria-live contract
+    await expect(themeLiveRegion).toHaveAttribute("aria-live", "polite");
+
     await expect(followSystemCheckbox).toBeChecked();
     await followSystemCheckbox.uncheck();
     await expect(followSystemCheckbox).not.toBeChecked();
@@ -291,9 +294,11 @@ test.describe("theme and feedback foundations", () => {
     await expect(followSystemCheckbox).toBeChecked();
     await expect(themeSelect).toBeDisabled();
     await expect(themeSelect).toHaveValue("dark");
-    // Note: sr-only elements have a 1×1 px layout box (not display:none/visibility:hidden),
-    // so Playwright's toBeHidden() is unreliable here. Visual hiding is verified in App.test.tsx.
-    await expect(themeLiveRegion).toHaveText("System mode");
+    // On a cold start in system mode the M-001 guard in App.tsx prevents an announcement
+    // because themeMode never transitioned — previousThemeMode.current is initialised to
+    // the current themeMode ("system"), so priorMode === themeMode → skip.
+    // No live-region text is produced until the user (or OS) triggers a real transition.
+    await expect(themeLiveRegion).toHaveText("");
 
     await page.emulateMedia({ colorScheme: "light" });
     await waitForResolvedTheme(page, "light");
@@ -339,5 +344,38 @@ test.describe("theme and feedback foundations", () => {
     await expect(successToast).toContainText("Hash copied to clipboard.");
     // Wait for the toast to auto-dismiss (default 3000ms + buffer)
     await expect(successToast).toBeHidden({ timeout: 6000 });
+
+    // Step 4.10: Hash copy success uses toast/live-region path — no dialog should open for this routine flow
+    await app.expectNoBlockingDialog();
+  });
+
+  test("explicit persisted theme preference is applied to the document root before first user interaction on a warm reload", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+
+    await test.step("Seed explicit dark preference and reload", async () => {
+      await page.evaluate(() => {
+        window.localStorage.setItem("spellbook-theme", "dark");
+      });
+      await page.reload();
+    });
+
+    await test.step("Dark preference is applied before any user interaction", async () => {
+      // preHydrationTheme.ts applies the theme class before React mounts,
+      // so document.documentElement.dataset.theme should equal "dark" immediately.
+      await waitForResolvedTheme(page, "dark");
+    });
+
+    await test.step("Seed explicit light preference and reload", async () => {
+      await page.evaluate(() => {
+        window.localStorage.setItem("spellbook-theme", "light");
+      });
+      await page.reload();
+    });
+
+    await test.step("Light preference is applied before any user interaction", async () => {
+      await waitForResolvedTheme(page, "light");
+    });
   });
 });

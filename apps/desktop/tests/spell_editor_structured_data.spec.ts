@@ -623,6 +623,9 @@ test.describe("Spell Editor structured data and hash display", () => {
 
         const modal = page.getByRole("dialog");
         await expect(modal).toBeVisible({ timeout: TIMEOUTS.medium });
+        // Step 4.2: Confirm preserved dialog uses native showModal() path (same Modal.tsx component as vault maintenance)
+        await expect(page.locator("dialog[open][data-testid='modal-dialog']")).toBeVisible({ timeout: TIMEOUTS.short });
+        await expect(page.locator("dialog[data-testid='modal-dialog']")).toHaveAttribute("aria-modal", "true");
         await expect(
           modal.getByText(/mutually exclusive|School and sphere|Import failed/i),
         ).toBeVisible();

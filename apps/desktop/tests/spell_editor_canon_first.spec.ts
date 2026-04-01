@@ -1077,6 +1077,9 @@ test.describe("Spell Editor canon-first default", () => {
       await page.getByTestId("btn-cancel-edit").click();
       await expect(page.getByRole("dialog")).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible();
+      // Step 4.2: Confirm preserved dialog uses native showModal() path
+      await expect(page.locator("dialog[open][data-testid='modal-dialog']")).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.locator("dialog[data-testid='modal-dialog']")).toHaveAttribute("aria-modal", "true");
     });
 
     await test.step("Cancel dialog keeps user on editor", async () => {
@@ -1085,6 +1088,13 @@ test.describe("Spell Editor canon-first default", () => {
       await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: TIMEOUTS.short });
       await expect(page.getByTestId("spell-name-input")).toBeVisible();
       await expect(page.getByTestId("detail-range-input")).toHaveValue("Touch");
+      // Step 4.2: Verify focus returned to btn-cancel-edit after modal dismissal
+      await expect(async () => {
+        const focusedTestId = await page.evaluate(() =>
+          document.activeElement?.getAttribute("data-testid"),
+        );
+        expect(focusedTestId).toBe("btn-cancel-edit");
+      }).toPass({ timeout: TIMEOUTS.short });
     });
   });
 

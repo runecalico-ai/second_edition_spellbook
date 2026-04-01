@@ -287,3 +287,226 @@ test.describe("Keyboard navigation tab order", () => {
     });
   });
 });
+
+test.describe("Keyboard navigation — settings controls", () => {
+  test("Settings theme controls are keyboard-navigable: follow-system toggle and theme select", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Settings", async () => {
+      await page.getByTestId("settings-gear-button").click();
+      await expect(page.getByRole("heading", { name: /settings/i })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+    });
+
+    await test.step("Reset theme to follow-system via localStorage and reload", async () => {
+      await page.emulateMedia({ colorScheme: "light" });
+      await page.evaluate(() => localStorage.removeItem("spellbook-theme"));
+      await page.reload();
+      await expect(page.getByRole("heading", { name: /settings/i })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+    });
+
+    await test.step("Navigate back to Settings after reload", async () => {
+      await page.getByTestId("settings-gear-button").click();
+      await expect(page.getByRole("heading", { name: /settings/i })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+    });
+
+    // Helper: tab repeatedly until a specific data-testid receives focus
+    const tabUntilFocused = async (testId: string, maxTabs = 25) => {
+      for (let i = 0; i < maxTabs; i++) {
+        await page.keyboard.press("Tab");
+        const isFocused = await page.evaluate(
+          (id) => document.activeElement?.getAttribute("data-testid") === id,
+          testId,
+        );
+        if (isFocused) return;
+      }
+      throw new Error(`tabUntilFocused: "${testId}" not reached after ${maxTabs} tabs`);
+    };
+
+    await test.step("Establish focus anchor near settings form", async () => {
+      await page.getByRole("heading", { name: /settings/i }).first().click();
+    });
+
+    await test.step("Tab to follow-system checkbox using keyboard only", async () => {
+      const followSystemCheckbox = page.getByTestId("settings-follow-system-checkbox");
+      await tabUntilFocused("settings-follow-system-checkbox");
+      await expect(followSystemCheckbox).toBeFocused();
+    });
+
+    await test.step("Press Space to uncheck follow-system", async () => {
+      await page.keyboard.press("Space");
+      const followSystemCheckbox = page.getByTestId("settings-follow-system-checkbox");
+      await expect(followSystemCheckbox).not.toBeChecked();
+    });
+
+    await test.step("Verify theme select is now enabled", async () => {
+      const themeSelect = page.getByTestId("settings-theme-select");
+      await expect(themeSelect).toBeEnabled();
+    });
+
+    await test.step("Tab to theme select and change value with keyboard", async () => {
+      const themeSelect = page.getByTestId("settings-theme-select");
+      const themeBefore = await page.evaluate(
+        () => document.documentElement.dataset.theme ?? "",
+      );
+      await tabUntilFocused("settings-theme-select");
+      await expect(themeSelect).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+      await expect(async () => {
+        const current = await page.evaluate(() => document.documentElement.dataset.theme ?? "");
+        expect(current).not.toBe(themeBefore);
+      }).toPass({ timeout: TIMEOUTS.short });
+    });
+  });
+});
+
+test.describe("Preserved modal modality", () => {
+  test("Unsaved changes preserved dialog uses native showModal() and traps focus", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell and fill fields", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await page.getByTestId("spell-name-input").fill("Unsaved Modal Focus Test");
+      await page.getByTestId("spell-description-textarea").fill("Focus test description.");
+      await page.getByTestId("detail-range-input").fill("Touch");
+    });
+
+    await test.step("Click cancel to trigger unsaved-changes dialog", async () => {
+      await page.getByTestId("btn-cancel-edit").click();
+      await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+    });
+
+    await test.step("Assert native <dialog> opened with showModal()", async () => {
+      await expect(
+        page.locator("dialog[open][data-testid='modal-dialog']"),
+      ).toBeVisible({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Assert aria-modal='true' on the dialog", async () => {
+      await expect(page.locator("dialog[data-testid='modal-dialog']")).toHaveAttribute(
+        "aria-modal",
+        "true",
+      );
+    });
+
+    await test.step("Assert focus is inside the modal", async () => {
+      await expect(async () => {
+        const isInsideModal = await page.evaluate(() => {
+          const dialog = document.querySelector("dialog[open][data-testid='modal-dialog']");
+          const active = document.activeElement;
+          return Boolean(dialog && active && dialog.contains(active));
+        });
+        expect(isInsideModal).toBe(true);
+      }).toPass({ timeout: TIMEOUTS.short });
+    });
+
+    await test.step("Tab 3 times and verify focus stays inside modal each time", async () => {
+      for (let i = 0; i < 3; i++) {
+        await page.keyboard.press("Tab");
+        const isInsideModal = await page.evaluate(() => {
+          const dialog = document.querySelector("dialog[open][data-testid='modal-dialog']");
+          return Boolean(
+            dialog && document.activeElement && dialog.contains(document.activeElement),
+          );
+        });
+        expect(isInsideModal).toBe(true);
+      }
+    });
+
+    await test.step("Dismiss via cancel/stay button inside dialog", async () => {
+      await page
+        .locator("dialog[data-testid='modal-dialog']")
+        .getByRole("button", { name: /cancel|no|stay/i })
+        .click();
+    });
+
+    await test.step("Assert dialog is dismissed", async () => {
+      await expect(page.locator("dialog[data-testid='modal-dialog']")).not.toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Assert editor is still visible (stayed on page)", async () => {
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+    });
+
+    await test.step("Verify focus returned to the cancel-edit button after modal dismiss", async () => {
+      await expect(async () => {
+        const focusedTestId = await page.evaluate(() =>
+          document.activeElement?.getAttribute("data-testid"),
+        );
+        expect(focusedTestId).toBe("btn-cancel-edit");
+      }).toPass({ timeout: TIMEOUTS.short });
+    });
+  });
+});
+
+test.describe("Accessibility — ARIA validation", () => {
+  test("invalid spell-name field exposes aria-invalid and aria-describedby pointing to a visible error element", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+    });
+
+    await test.step("Click Save without filling any fields", async () => {
+      await page.getByTestId("btn-save-spell").click();
+    });
+
+    await test.step("Wait for validation hint", async () => {
+      await app.expectSpellSaveValidationHint();
+    });
+
+    await test.step("Assert spell-name-error is visible", async () => {
+      await expect(page.getByTestId("spell-name-error")).toBeVisible();
+    });
+
+    await test.step("Assert aria-invalid='true' on spell-name-input", async () => {
+      await expect(page.getByTestId("spell-name-input")).toHaveAttribute("aria-invalid", "true");
+    });
+
+    await test.step("Assert aria-describedby contains 'spell-name-error'", async () => {
+      await expect(page.getByTestId("spell-name-input")).toHaveAttribute(
+        "aria-describedby",
+        /spell-name-error/,
+      );
+    });
+
+    await test.step("Assert the aria-describedby target element is visible", async () => {
+      await expect(page.locator("#spell-name-error")).toBeVisible();
+    });
+
+    await test.step("Assert focus is on spell-name-input (first-invalid-field focus)", async () => {
+      await expect(page.getByTestId("spell-name-input")).toBeFocused();
+    });
+
+    await test.step("Assert no blocking dialog appeared", async () => {
+      await app.expectNoBlockingDialog();
+    });
+  });
+});

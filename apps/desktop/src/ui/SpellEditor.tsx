@@ -659,6 +659,8 @@ export default function SpellEditor() {
   const isNew = id === "new";
   const navigate = useNavigate();
   const { alert: modalAlert, confirm: modalConfirm } = useModal();
+  const isVisualContractMode =
+    typeof window !== "undefined" && window.__SPELLBOOK_E2E_VISUAL_CONTRACT__ === "all-structured";
   const pushNotification = useNotifications((state) => state.pushNotification);
   const [loading, setLoading] = useState(() => !isNew && Boolean(id));
   const [showLoading, setShowLoading] = useState(false);
@@ -744,7 +746,7 @@ export default function SpellEditor() {
     revealFieldValidation(...SPELL_EDITOR_AREA_SCALAR_KEYS);
   }, [revealFieldValidation]);
 
-  /** Canon-first: which detail field is expanded (only one at a time). */
+  /** Canon-first: which detail field is expanded (only one at a time unless the visual contract hook is active). */
   const [expandedDetailField, setExpandedDetailField] = useState<DetailFieldKey | null>(null);
   /** Canon-first: per-field dirty since last canonical text edit. */
   const [detailDirty, setDetailDirty] = useState<Record<DetailFieldKey, boolean>>(() =>
@@ -2182,7 +2184,7 @@ export default function SpellEditor() {
     const inputId = `detail-${field}-input`;
     const expandId = `detail-${field}-expand`;
     const value = form[field] ?? "";
-    const isExpanded = expandedDetailField === field;
+    const isExpanded = isVisualContractMode || expandedDetailField === field;
     const isLoading = detailLoading === field;
     const isSpecial =
       (field === "range" && structuredRange?.kind === "special") ||
@@ -2221,9 +2223,14 @@ export default function SpellEditor() {
               aria-label={`${isExpanded ? "Collapse" : "Expand"} ${label}`}
               aria-expanded={isExpanded}
               aria-controls={isExpanded ? panelId : undefined}
-              onClick={() =>
-                isExpanded ? collapseExpandedField() : expandDetailField(field)
-              }
+              onClick={() => {
+                if (isVisualContractMode) return;
+                if (isExpanded) {
+                  collapseExpandedField();
+                } else {
+                  expandDetailField(field);
+                }
+              }}
               className={`rounded px-1 text-xs text-blue-700 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-200 ${spellFocusVisibleRing}`}
             >
               {isExpanded ? "Collapse" : "Expand"}
@@ -2621,6 +2628,7 @@ export default function SpellEditor() {
 
       <fieldset
         disabled={parsersPending || savePending}
+        data-testid="spell-editor-visual-contract"
         className="m-0 min-h-0 min-w-0 w-full border-0 p-0"
       >
         <legend className="sr-only">{isNew ? "New spell" : "Edit spell"}</legend>
@@ -3041,7 +3049,11 @@ export default function SpellEditor() {
           </div>
         </section>
 
-        <section aria-labelledby="spell-editor-structured-fields-heading" className="space-y-3">
+        <section
+          aria-labelledby="spell-editor-structured-fields-heading"
+          data-testid="spell-editor-structured-fields-section"
+          className="space-y-3"
+        >
           <h2 id="spell-editor-structured-fields-heading" className={spellSectionHeadingClass}>
             Structured Fields
           </h2>

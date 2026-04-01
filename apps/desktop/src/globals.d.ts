@@ -18,5 +18,7 @@ declare global {
      * so blur/submit can surface scalar copy ("Base value must be 0 or greater") despite clamp-on-change inputs.
      */
     __SPELLBOOK_E2E_CORRUPT_RANGE_BASE?: { value: number; consumed?: boolean };
+    /** Playwright E2E: visual-contract mode for screenshots that need all structured fields expanded. */
+    __SPELLBOOK_E2E_VISUAL_CONTRACT__?: "all-structured";
   }
 }

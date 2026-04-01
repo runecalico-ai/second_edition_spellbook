@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { useEffect, type ComponentType, type ReactNode } from "react";
+import { useLayoutEffect, type ComponentType, type ReactNode } from "react";
 import { StructuredFieldInput } from "./StructuredFieldInput";
 import { fn } from "./storybook-utils";
 
@@ -12,17 +12,24 @@ function StoryThemeFrame({
   theme: StoryTheme;
   children: ReactNode;
 }) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     const previousHasDarkClass = root.classList.contains("dark");
     const previousColorScheme = root.style.colorScheme;
+    const previousTheme = root.dataset.theme;
 
     root.classList.toggle("dark", theme === "dark");
     root.style.colorScheme = theme;
+    root.dataset.theme = theme;
 
     return () => {
       root.classList.toggle("dark", previousHasDarkClass);
       root.style.colorScheme = previousColorScheme;
+      if (previousTheme) {
+        root.dataset.theme = previousTheme;
+      } else {
+        delete root.dataset.theme;
+      }
     };
   }, [theme]);
 
@@ -48,6 +55,10 @@ const darkStory = {
     },
   },
   decorators: [withTheme("dark")],
+} as const;
+
+const lightStory = {
+  decorators: [withTheme("light")],
 } as const;
 
 const meta = {
@@ -320,4 +331,100 @@ export const CastingTimeSpecial: Story = {
     },
     onChange: fn(),
   },
+};
+
+export const VisualGallery: Story = {
+  ...lightStory,
+  render: () => (
+    <div data-testid="structured-field-input-visual-gallery" className="space-y-6">
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Range
+        </h3>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <StructuredFieldInput
+            fieldType="range"
+            value={{
+              kind: "distance",
+              distance: { mode: "fixed", value: 30 },
+              unit: "ft",
+              text: "30 ft",
+              notes: "Doubles outdoors in open terrain",
+            }}
+            onChange={fn()}
+          />
+          <StructuredFieldInput
+            fieldType="range"
+            value={{
+              kind: "touch",
+            }}
+            onChange={fn()}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Duration
+        </h3>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <StructuredFieldInput
+            fieldType="duration"
+            value={{
+              kind: "time",
+              unit: "round",
+              duration: { mode: "per_level", value: 1, perLevel: 1 },
+              text: "1 round/level",
+              notes: "Ends early if concentration is broken",
+            }}
+            onChange={fn()}
+          />
+          <StructuredFieldInput
+            fieldType="duration"
+            value={{
+              kind: "conditional",
+              condition: "Until dispelled or dismissed",
+            }}
+            onChange={fn()}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Casting Time
+        </h3>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <StructuredFieldInput
+            fieldType="casting_time"
+            value={{
+              text: "1 minute",
+              baseValue: 1,
+              perLevel: 2,
+              levelDivisor: 3,
+              unit: "minute",
+            }}
+            onChange={fn()}
+          />
+          <StructuredFieldInput
+            fieldType="casting_time"
+            value={{
+              text: "Special casting time",
+              baseValue: 1,
+              perLevel: 0,
+              levelDivisor: 1,
+              unit: "special",
+              rawLegacyValue: "Special casting time",
+            }}
+            onChange={fn()}
+          />
+        </div>
+      </section>
+    </div>
+  ),
+};
+
+export const VisualGalleryDark: Story = {
+  ...darkStory,
+  render: VisualGallery.render,
 };

@@ -318,9 +318,31 @@ This plan document is also the execution log for baseline evidence and final ver
    - exact error text announced: (pending)
    - setup notes: To reproduce: (1) Open spell editor with a saveable record; (2) clear spell name and click Save so `spell-name-error` appears and spell-name-input receives focus; (3) record NVDA-announced label ("Spell name" or similar) and error text ("Spell name is required" or similar); (4) switch tradition to ARCANE or DIVINE to expose a tradition-specific validation error and record the announced label/error pair; (5) compare with DOM wiring verified by Step 4.6 E2E test (`aria-describedby="spell-name-error"` + `aria-invalid="true"`). Record any mismatch as a blocking failure.
 - **Visual regression artifact inventory from Task 5:**
-   - to be filled during implementation
+   - Actual snapshot names captured for the Task 5 required inventory:
+     - `structured-field-input-states-light-win32.png`
+     - `structured-field-input-states-dark-win32.png`
+     - `spell-editor-structured-light-win32.png`
+     - `spell-editor-structured-dark-win32.png`
+     - `empty-library-light-win32.png`
+     - `empty-library-dark-win32.png`
+     - `hash-display-collapsed-win32.png`
+     - `hash-display-expanded-win32.png`
+   - `apps/desktop/tests/spell_editor_visual.spec.ts` was rewritten to cover exactly the required eight-shot inventory.
+   - Structured-field gallery note: `structured-field-input-states-*` comes from dedicated `VisualGallery` and `VisualGalleryDark` stories in `apps/desktop/src/ui/components/structured/StructuredFieldInput.stories.tsx`, served through Storybook and captured by the existing Playwright visual spec via Storybook `iframe.html` URLs. The gallery intentionally covers multiple stabilized variants per field family rather than a single representative example.
+   - Full-editor view note: the `spell-editor-structured-*` baselines now come from the real Tauri `SpellEditor` surface again. The Playwright visual spec seeds a fully populated spell, enables the Playwright-only `__SPELLBOOK_E2E_VISUAL_CONTRACT__ = "all-structured"` flag, and captures the production editor fieldset with every structured panel expanded so the screenshot actually contains the structured controls themselves.
+   - Story normalization: yes; `apps/desktop/src/ui/components/structured/StructuredFieldInput.stories.tsx` gained `VisualGallery` / `VisualGalleryDark`, a deterministic light-theme wrapper, and synchronous theme stamping for the Storybook screenshot flows. `apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx` no longer serves as the full-editor screenshot source.
+   - Storybook bootstrap hardening: the visual spec now reserves a free localhost port per run and verifies `iframe.html` responds on that exact port before opening screenshot pages, avoiding the old fixed-port false-green risk.
+   - Production hook note: `apps/desktop/src/ui/SpellEditor.tsx` and `apps/desktop/src/globals.d.ts` now include a narrow visual-contract hook that is inert outside Playwright and exists solely to expand all structured panels for the Task 5 baselines.
+   - Commands run:
+     - `cd apps/desktop && pnpm build` ✅
+     - `cd apps/desktop && npx playwright test tests/spell_editor_visual.spec.ts --update-snapshots` ✅ (`8 passed`)
+     - `cd apps/desktop && npx playwright test tests/spell_editor_visual.spec.ts` ✅ (`8 passed`)
+     - `cd apps/desktop && pnpm build` ✅ after the visual-contract hook fix
+     - `cd apps/desktop && pnpm test:storybook` ✅ (`14 files, 142 tests passed`) after the final Storybook visual-fixture adjustments
+     - `git diff --name-only -- apps/desktop/tests | rg '__snapshots__|\.png$'` returned no paths because `apps/desktop/tests/*.ts-snapshots/` is ignored by `.gitignore`; inventory was verified by direct directory listing of `apps/desktop/tests/spell_editor_visual.spec.ts-snapshots/` instead.
 - **Production code edits made to support verification:**
    - `apps/desktop/src/ui/CharacterEditor.tsx` gained a visible `link-open-spellbook-builder` header link so the empty character spellbook workflow can reach `/character/:id/builder` through the user-facing UI instead of a route rewrite shortcut.
+   - `apps/desktop/src/ui/SpellEditor.tsx` gained `spell-editor-visual-contract`, a stable fieldset locator used only to capture the real integrated editor baselines without depending on brittle structural selectors.
 - **Docs proof table for Step 6.6:**
    - behavior, user-visible string, or testid -> source file(s) checked -> docs updated
 
@@ -776,7 +798,7 @@ Expected: keyboard, modal, theme, and notification regressions are covered with 
 
 Hash-display ownership note: the hash display/copy/expand controls live in `apps/desktop/src/ui/SpellEditor.tsx`, so no separate hash-specific source file should be needed unless implementation reveals an unexpected wrapper.
 
-- [ ] **Step 5.1: Record the expected snapshot artifact inventory before updating baselines**
+- [x] **Step 5.1: Record the expected snapshot artifact inventory before updating baselines**
 
 Expected artifact inventory to capture in `Implementation Notes` and verify after the snapshot refresh:
 - `structured-field-input-states-light`
@@ -790,23 +812,23 @@ Expected artifact inventory to capture in `Implementation Notes` and verify afte
 
 If the existing visual spec uses a different but stable naming scheme, record the actual names in `Implementation Notes` and keep them consistent rather than forcing a rename-only churn.
 
-- [ ] **Step 5.2: Add or normalize screenshot coverage for structured-field states**
+- [x] **Step 5.2: Add or normalize screenshot coverage for structured-field states**
 
 Cover the relevant `StructuredFieldInput` variants already stabilized in Chunk 4. Use deterministic viewport sizing, disabled animations, and hidden scrollbars consistent with the existing visual spec.
 
-- [ ] **Step 5.3: Add or normalize screenshot coverage for full SpellEditor light/dark structured views**
+- [x] **Step 5.3: Add or normalize screenshot coverage for full SpellEditor light/dark structured views**
 
 Verify that the same content renders correctly in both themes with **all structured fields populated** in the captured SpellEditor state, matching the frozen requirement for full structured coverage rather than a partial subset.
 
-- [ ] **Step 5.4: Add or normalize screenshot coverage for empty library light/dark states**
+- [x] **Step 5.4: Add or normalize screenshot coverage for empty library light/dark states**
 
 If empty search or empty character spellbook naturally fit the same file and provide high-value baselines, include them without exploding the snapshot set. The required minimum remains empty library dark/light.
 
-- [ ] **Step 5.5: Add or normalize screenshot coverage for collapsed and expanded hash display**
+- [x] **Step 5.5: Add or normalize screenshot coverage for collapsed and expanded hash display**
 
 Use the stable hash testids and ensure the capture shows the truncation/expanded states clearly.
 
-- [ ] **Step 5.6: Refresh snapshots deliberately**
+- [x] **Step 5.6: Refresh snapshots deliberately**
 
 Run:
 
@@ -818,7 +840,7 @@ npx playwright test tests/spell_editor_visual.spec.ts --update-snapshots
 
 Expected: only the intended new or updated baselines change.
 
-- [ ] **Step 5.7: Re-run the visual spec without snapshot updates**
+- [x] **Step 5.7: Re-run the visual spec without snapshot updates**
 
 Run:
 
@@ -829,7 +851,7 @@ npx playwright test tests/spell_editor_visual.spec.ts
 
 Expected: clean green pass against the refreshed baselines.
 
-- [ ] **Step 5.8: Verify the changed snapshot artifact set matches the recorded inventory**
+- [x] **Step 5.8: Verify the changed snapshot artifact set matches the recorded inventory**
 
 Run:
 
@@ -838,7 +860,7 @@ cd apps/desktop
 git diff --name-only -- tests | rg '__snapshots__|\.png$'
 ```
 
-Expected: the changed snapshot artifacts line up with the Step 5.1 inventory recorded in `Implementation Notes`, with no required artifact missing and no unrelated baseline churn.
+Expected: this command identifies any changed snapshot artifacts that are visible to git. If it returns no paths because snapshot directories are ignored by `.gitignore`, fall back to a direct directory listing of `apps/desktop/tests/spell_editor_visual.spec.ts-snapshots/` and record that inventory in `Implementation Notes` instead. The recorded snapshot set must still line up with the Step 5.1 inventory, with no required artifact missing and no unrelated baseline churn.
 
 ---
 

@@ -11,6 +11,7 @@ By default the editor shows **canon text** for the Details block: one single-lin
 - **Expanding** a field reveals the full structured form. The editor fills it from saved structured data if present, otherwise it parses the current canon line. Parsing can take a moment (you may see “Loading…”).
 - **Collapsing** updates the canon line **only if you edited** the structured form; if you only expanded to view, the canon line is left unchanged.
 - **Saving** is always explicit (click **Save Spell**). If you have unsaved changes (edited canon lines and/or an expanded field you edited) and you navigate away or close the editor, a warning asks you to confirm; there is no auto-save or auto-serialize on leave.
+- The expanded detail area is a nested grouped surface below the canon line, so structured-field edits feel like a transition into the field rather than a replacement of the whole editor section.
 
 ### “Special” Indicator
 
@@ -74,7 +75,7 @@ If you uncheck Material while material components are present, a confirmation di
 ## Content Hash
 
 - For saved spells, the editor can show a **content hash**: a short fingerprint of the spell’s canonical data.
-- **Display**: By default the first **16** characters and `...` are shown in the hash value. Use **Expand** to show the full hash; **Collapse** to return to the truncated view. **Copy** copies the **full** hash string to the clipboard (not only the truncated preview).
+- **Display**: By default the first **16** characters and `...` are shown in the hash value. Use **Expand** to show the full hash; **Collapse** to return to the truncated view. The stable controls are `spell-detail-hash-display`, `spell-detail-hash-copy`, and `spell-detail-hash-expand`. **Copy** copies the **full** hash string to the clipboard (not only the truncated preview).
 - **Feedback**: A successful copy shows a toast *Hash copied to clipboard.* in the global notification bar. If the clipboard API fails, an error toast *Failed to copy hash.* appears instead. Neither path opens a modal.
 - **Stable selectors** (for support and automation): the card is `spell-detail-hash-card`; the monospace value element is `spell-detail-hash-display`; the **Copy** control is `spell-detail-hash-copy`; expand/collapse is `spell-detail-hash-expand`.
 - The hash is computed by the backend from the structured spell data and is used for consistency checks and deduplication.
@@ -131,9 +132,9 @@ Messages below match the live editor (`spellEditorValidation.ts`). Each bullet n
 
 ## Library, search, and character spellbook empty states
 
-When the spell **Library** has no spells and you are not filtering, you see **No Spells Yet** with short guidance and two actions: **Create Spell** (`empty-library-create-button`) and **Import Spells** (`empty-library-import-button`).
+When the spell **Library** has no spells and you are not filtering, you see **No Spells Yet** with short guidance and two actions: **Create Spell** (`empty-library-create-button`) and **Import Spells** (`empty-library-import-button`). **Create Spell** opens the new-spell flow; **Import Spells** opens the import flow.
 
-When filters or search yield no rows, you see **No Results** with **No spells match your current search or filters.** and **Reset Filters** (`empty-search-reset-button`).
+When filters or search yield no rows, you see **No Results** with **No spells match your current search or filters.** and **Reset Filters** (`empty-search-reset-button`), which clears the current search and filter state.
 
 On a character’s **Spellbook Builder**, if the spellbook has no entries, the table shows **No Spells Added** / **This character's spellbook is empty.** with **Add Spell from Library** (`empty-character-add-spell-button`), which opens the same add flow as the header **Add Spells** control. A polite status region announces the empty-state heading and description (`empty-character-spellbook-state-live-region`).
 

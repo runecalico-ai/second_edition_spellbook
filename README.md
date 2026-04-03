@@ -47,7 +47,7 @@ pnpm dev
 
 ### Appearance (Light, Dark, and System)
 
-Open **Settings** (`/settings`) to choose **Light**, **Dark**, or **System**. **System** follows your OS light/dark preference. The choice is remembered locally for the next launch (storage key `spellbook-theme` in the desktop app). When you change theme, the app announces the new mode through a **hidden screen-reader live region** (for example *Dark mode* or *System mode*) — it is not shown as a popup toast. Routine feedback such as save success or hash copy still uses the visible notification strip at the top of the window.
+Open **Settings** (`/settings`) to choose **Light**, **Dark**, or **System**. The controls use `settings-theme-select` and `settings-follow-system-checkbox`; **System** follows your OS light/dark preference when follow-system is enabled. The choice is remembered locally for the next launch (storage key `spellbook-theme` in the desktop app). Theme changes are announced through the hidden `theme-announcement-live-region`, not a visible toast. Routine feedback such as save success or hash copy still uses the visible notification strip, and empty Library/search states use inline CTAs instead of dialogs.
 
 ### Character Management
 
@@ -151,6 +151,7 @@ The **Add Spell** and **Edit Spell** flows use inline accessible validation rath
 - **Delayed save label**: the button label stays **Save Spell** for fast saves. If the save takes longer than 300 ms, the label changes to **Saving…** until the save completes.
 - **Success feedback**: after a successful save, a **Spell saved.** toast appears in the global notification bar and the editor returns to the Library. The toast does not steal keyboard focus.
 - **Modal boundaries preserved**: unsaved-changes confirmation and delete confirmation still open blocking dialogs. Real backend save failures surface as a **Save Error** modal. Routine status feedback (save success, add-to-character from the Library, search operations) is toast-based rather than a dialog. **Spellbook Builder** add/remove failures still use the browser’s `alert()` today (blocking, not the toast strip).
+- **Empty-state UX**: when the Library, search results, or a character spellbook is empty, the app shows inline empty states with CTAs such as **Create Spell**, **Import Spells**, **Reset Filters**, and **Add Spell from Library** rather than opening a modal.
 
 For full validation rules see [docs/user/spell_editor.md](docs/user/spell_editor.md).
 

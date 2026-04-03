@@ -14,6 +14,16 @@ The spell editor uses a set of controlled React components that emit **schema-na
 - `ScalarInput`
 - `DamageForm`, `AreaForm`, `SavingThrowInput`, `MagicResistanceInput`, `ComponentCheckboxes`
 
+## Validation Helper Contract
+
+Spell-editor validation lives in `apps/desktop/src/ui/spellEditorValidation.ts` and is treated as a shared contract, not an implementation detail.
+
+- `deriveSpellEditorFieldErrors(input)` is pure and side-effect free. It accepts the flat form, the current tradition, and the in-scope structured specs, then returns `SpellEditorFieldError[]`.
+- `SpellEditorFieldError` must preserve the exact `field`, `testId`, `message`, and `focusTarget` values used by the live editor.
+- `sortFieldErrorsByFocusOrder(errors)` and `getFirstInvalidFocusTarget(errors)` define the first-invalid focus path used after a failed save.
+- Stable error `data-testid` values include `spell-name-error`, `error-school-required-arcane`, `error-school-required-arcane-tradition`, `error-sphere-required-divine`, `error-sphere-required-divine-tradition`, `error-epic-arcane-class-restriction`, and `error-tradition-conflict`.
+- When a field can show an inline error, the field owns the `id`, `aria-invalid`, and `aria-describedby` wiring to the matching error element. Do not move these errors into a detached summary block or replace them with a toast.
+
 ---
 
 ## Component API
@@ -1029,20 +1039,20 @@ Scalar error testids are generated predictably from the input key, e.g. `error-r
 
 **Unit test file:** `apps/desktop/src/ui/spellEditorValidation.test.ts`
 
-### Touched-versus-submit state model
+### Validation-visibility and submit state model
 
 `SpellEditor.tsx` maintains two pieces of validation state:
 
 | State | Purpose |
 |-------|---------|
-| `touchedFields: Set<string>` | Fields that have been blurred (text inputs) or changed (selects). Errors are shown for touched fields even before submit. |
+| `fieldValidationVisible: Set<string>` | Fields whose inline validation is currently allowed to render before submit. `revealFieldValidation(...)` is called from blur and from controlling changes that should immediately reveal related errors. |
 | `hasAttemptedSubmit: boolean` | Set to `true` on the first failed save click. Once set, all blocking errors are shown regardless of touch state, and the save button is disabled until they are resolved. |
 
 Validation timing by control type:
 
 - **Text inputs**: validate on `blur` — error appears when the user leaves the field.
 - **Select controls**: validate on `change` — error appears immediately when the value changes (e.g. switching Tradition triggers instant revalidation of School/Sphere).
-- **Dependent fields**: revalidate immediately when their controlling value changes (e.g. changing Tradition clears stale errors for the hidden field and triggers inline validation of the newly visible field).
+- **Dependent fields**: `revealFieldValidation(...)` and revalidation run immediately when their controlling value changes (e.g. changing Tradition clears stale errors for the hidden field and triggers inline validation of the newly visible field).
 - **First submit attempt**: validates all fields unconditionally, sorts errors with `sortFieldErrorsByFocusOrder`, expands a detail panel if the first error’s `focusTarget` is not yet mounted, then focuses the first error with a real DOM `id`, and shows the save hint.
 
 ### Tradition-conditional School/Sphere rendering
@@ -1137,10 +1147,10 @@ Six named class constants form the visual grammar used consistently across range
 
 | Constant | Tailwind classes | Purpose |
 |----------|-----------------|---------|
-| `structuredGroupSurfaceClass` | `space-y-3 rounded-xl border border-neutral-500 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-100` | Root bordered subpanel, light and dark surface pair |
+| `structuredGroupSurfaceClass` | `space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100` | Root bordered subpanel, light and dark surface pair |
 | `structuredPrimaryControlRowClass` | `flex min-w-0 flex-wrap items-center gap-2` | Main control row — flex-wrap for 900 px Chunk 5 compatibility |
-| `structuredSupportingRowClass` | `rounded-lg border border-neutral-200 bg-neutral-50/70 p-2 dark:border-neutral-800 dark:bg-neutral-950/40` | Notes / secondary inputs, subordinate surface |
-| `structuredPreviewRowClass` | `rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-950/50` | Preview output row, intentionally lighter than the surface |
+| `structuredSupportingRowClass` | `rounded-lg border border-neutral-200 bg-neutral-50/70 p-2 dark:border-neutral-800 dark:bg-neutral-700` | Notes / secondary inputs, subordinate surface |
+| `structuredPreviewRowClass` | `rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-700` | Preview output row, intentionally lighter than the surface |
 | `structuredInlineScalarClusterClass` | `flex min-w-0 flex-wrap items-center gap-2` | Nested wrapping cluster for scalar + unit pairs |
 | `structuredPreviewOutputClass` | `text-sm italic text-neutral-700 dark:text-neutral-300` | Preview text style, applied to `<output>` elements |
 
@@ -1148,7 +1158,7 @@ All classes are local constants in `StructuredFieldInput.tsx`. They are not expo
 
 ### `StructuredFieldInput` DOM structure
 
-Each field type (`range`, `duration`, `casting_time`) renders the same three-row layout inside a single root group (`data-testid="structured-field-input"`):
+`range` and `duration` render a three-row layout inside a single root group (`data-testid="structured-field-input"`):
 
 ```
 [structured-field-input]          ← structuredGroupSurfaceClass (root)
@@ -1158,17 +1168,17 @@ Each field type (`range`, `duration`, `casting_time`) renders the same three-row
     unit select                   ← range-unit / casting-time more selects
     raw-legacy input              ← range-raw-legacy / duration-raw-legacy (special kind only)
   [structured-field-supporting-row]  ← structuredSupportingRowClass
-    notes field                   ← range-notes / duration-notes / (casting-time has no notes)
+    notes field                   ← range-notes / duration-notes
   [structured-field-preview-row]  ← structuredPreviewRowClass
-    <output>                      ← range-text-preview / duration-text-preview / casting-time-text-preview
+    <output>                      ← range-text-preview / duration-text-preview
 ```
 
 Key rules:
 
-- The notes row and preview row are always rendered (not conditionally mounted) so their test IDs are stable regardless of kind.
+- Range and duration always render both the notes row and preview row so those test IDs stay stable regardless of kind.
 - The `<output>` element carries `aria-label="Computed {field} text"` and has no `aria-live`; preview updates are not announced by screen readers.
 - Raw-legacy inputs appear inside the primary row, not below it, so the single grouped surface remains intact for special/legacy kinds.
-- Casting-time mode renders base / per-level / divisor / unit all inside the primary row with `+`, `/`, `/level` separators rendered as `<span>` support text rather than labels.
+- Casting-time mode uses the same root surface and preview row, but it does not render `structured-field-supporting-row`. Base / per-level / divisor / unit all stay inside the primary row with `+`, `/`, `/level` separators rendered as `<span>` support text rather than labels.
 
 ### `ComponentCheckboxes` DOM structure
 
@@ -1184,9 +1194,9 @@ Key rules:
 
 Key rules:
 
-- The root container uses the same `rounded-xl border border-neutral-500 bg-white dark:border-neutral-700 dark:bg-neutral-950/60` palette as `StructuredFieldInput`.
+- The root container uses the same `rounded-xl border border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-800` palette as `StructuredFieldInput`.
 - `component-text-preview` renders as an `<output>` element and uses `structuredPreviewRowClass` palette for visual consistency.
-- `material-subform` uses the same bordered subpanel palette (`border-neutral-500 bg-white dark:border-neutral-700 dark:bg-neutral-950/60`) to read as a nested surface rather than a peer.
+- `material-subform` uses the same bordered subpanel palette (`border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-800`) to read as a nested surface rather than a peer.
 - Material rows use `bg-neutral-50 dark:bg-neutral-800` with a `border-neutral-200 dark:border-neutral-700` border — slightly de-emphasised relative to the subform surface.
 - No classes assume a dark background; every surface states both a light value and a `dark:` variant.
 
@@ -1205,6 +1215,13 @@ SpellEditor detail panel
 ```
 
 When expanded, the `StructuredFieldInput` or `ComponentCheckboxes` root group appears directly inside the expanded panel surface from `SpellEditor`. The grouping classes provide a rounded bordered inset that sits below the `SpellEditor` label row without double-bordering the outer panel. `SpellEditor` does not add its own inner border around the child group.
+
+Shared UI conventions to preserve:
+
+- Keep the grouped child surface visually nested, not full-width and not detached from the owning label row.
+- Preserve the current stable `data-testid` values for the root group, the primary row, the preview row, and the component strip. Preserve `structured-field-supporting-row` for the field types that actually render a notes row (`range` and `duration`).
+- Keep validation messages inline with the control that owns them so `aria-describedby` can point at a visible element in the same field container.
+- Preserve the `animate-in fade-in` transition on newly mounted conditional fields and the immediate unmount of hidden fields so stale errors do not linger in the DOM.
 
 ### 900 px layout compatibility
 

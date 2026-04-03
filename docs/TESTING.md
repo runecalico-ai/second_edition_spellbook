@@ -583,9 +583,9 @@ Three dedicated unit suites cover the spell editor validation and save workflow.
 
 Two dedicated DOM-render test files lock the visual group contract for the structured field components. Both use `// @vitest-environment jsdom` at the top of the file.
 
-**`src/ui/components/structured/StructuredFieldInput.test.tsx`** — Verifies grouped DOM structure for all three field types. Key assertions:
+**`src/ui/components/structured/StructuredFieldInput.test.tsx`** — Verifies grouped DOM structure across the structured field variants. Key assertions:
 
-- `data-testid="structured-field-input"` root exists and carries the expected surface class tokens (`rounded-xl`, `border-neutral-500`, `dark:bg-neutral-950/60`).
+- `data-testid="structured-field-input"` root exists and carries the expected surface class tokens (`rounded-xl`, `border-neutral-300`, `dark:bg-neutral-800`).
 - `data-testid="structured-field-primary-row"` exists inside the root and carries `flex`, `flex-wrap`, `min-w-0` — confirming 900 px wrap compatibility.
 - `data-testid="structured-field-supporting-row"` exists inside the root for notes with subordinate surface classes.
 - `data-testid="structured-field-preview-row"` exists inside the root with preview surface classes.
@@ -593,6 +593,7 @@ Two dedicated DOM-render test files lock the visual group contract for the struc
 - For **range special** mode: kind select and raw-legacy input both live in the primary row.
 - Preview elements render as `<output>` tags, carry `aria-label="Computed {field} text"`, and have no `aria-live` attribute.
 - Primary row has `flex-wrap` and `min-w-0` for every field type — the targeted 900 px assertion.
+- For **casting-time** mode: the test currently checks the primary row and preview row contract, along with the casting-time controls inside the primary row.
 
 **`src/ui/components/structured/ComponentCheckboxes.test.tsx`** — Verifies the `ComponentCheckboxes` grouped structure. Key assertions:
 
@@ -603,7 +604,7 @@ Two dedicated DOM-render test files lock the visual group contract for the struc
 - Material rows (`data-testid="material-component-row"`) render inside the subform.
 - Preview does not disappear when Material is enabled.
 - `vsm` and `all` variants both preserve the root / strip / preview grouping.
-- Material subform container uses theme-aware surface classes (`bg-white dark:bg-neutral-950/60`) instead of dark-only classes.
+- Material subform container uses theme-aware surface classes (`bg-white dark:bg-neutral-800`) instead of dark-only classes.
 
 **Running the structured editor component tests:**
 
@@ -789,7 +790,15 @@ pnpm e2e -- tests/search.spec.ts
 
 **Test ID convention:** All `data-testid` values in the application use **kebab-case** (e.g. `detail-range-input`, `detail-range-expand`, `save-button`, `spell-name-input`). Use kebab-case when adding new test IDs so E2E and Storybook locators stay consistent. See `apps/desktop/src/AGENTS.md` (Naming Conventions for `data-testid`) and [Spell Editor Components Guide](dev/spell_editor_components.md#e2e-and-test-ids) for the full list.
 
-**Spell Editor and Chunk 6 E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand–edit–collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. `spell_editor_save_workflow.spec.ts` covers the full save/validation/modal-boundary workflow: inline validation errors, first-failed-submit focus, blur/change validation, tradition-conditional field rendering, save-progress labeling (`Save Spell` vs `Saving…`), success toast routing (`Spell saved.`), and modal-versus-toast boundaries. `theme_and_feedback.spec.ts` covers theme persistence, the hidden theme announcement live region (`theme-announcement-live-region`), and notification stacking. `accessibility_and_resize.spec.ts` covers keyboard navigation on Settings, ARIA validation wiring on the spell editor, preserved native `showModal()` modality, and related resize checks. `spell_editor_visual.spec.ts` holds `toHaveScreenshot()` baselines for structured surfaces, full editor light/dark, empty library, and hash collapsed/expanded states (snapshots under `tests/spell_editor_visual.spec.ts-snapshots/`). All of these use the shared fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and kebab-case `data-testid` locators. Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](../apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
+**Spell Editor and Chunk 6 E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand-edit-collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. `spell_editor_save_workflow.spec.ts` covers the full save/validation/modal-boundary workflow: inline validation errors, first-failed-submit focus, blur/change validation, tradition-conditional field rendering, save-progress labeling (`Save Spell` vs `Saving…`), success toast routing (`Spell saved.`), and modal-versus-toast boundaries. `theme_and_feedback.spec.ts` covers theme persistence, the hidden theme announcement live region (`theme-announcement-live-region`), and the hash-copy notification/live-region path. `accessibility_and_resize.spec.ts` covers keyboard navigation on Settings, ARIA validation wiring on the spell editor, preserved native `showModal()` modality, and related resize checks. `spell_editor_visual.spec.ts` holds `toHaveScreenshot()` baselines for structured surfaces, full editor light/dark, empty library, and hash collapsed/expanded states (snapshots under `tests/spell_editor_visual.spec.ts-snapshots/`). All of these use the shared fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and kebab-case `data-testid` locators. Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](../apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
+
+The current Playwright files to check first for this chunk are:
+
+- `tests/spell_editor_save_workflow.spec.ts`
+- `tests/theme_and_feedback.spec.ts`
+- `tests/accessibility_and_resize.spec.ts`
+- `tests/spell_editor_structured_data.spec.ts`
+- `tests/spell_editor_visual.spec.ts`
 
 **Build before Playwright:** Always run `pnpm --dir apps/desktop tauri:build --debug` before executing any Playwright suite. The Playwright fixture starts the Tauri debug binary; stale or absent binaries will silently fail or produce outdated behaviour. This requirement applies in CI and on a clean local workspace.
 
@@ -1039,7 +1048,8 @@ The spell editor inline validation surfaces require a manual screen-reader check
 
 - **Browser:** Chromium (the same engine used by the Tauri WebView2 runtime; ensure WebView2 is also tested if platform-specific quirks are suspected)
 - **Screen reader:** NVDA (Windows). Record the NVDA version during the run.
-- **Build:** Start the app with `pnpm tauri:dev` or run the debug binary from `pnpm --dir apps/desktop tauri:build --debug`
+- **Build:** Generate the debug binary with `pnpm --dir apps/desktop tauri:build --debug`.
+- **Launch:** Start the app with `pnpm tauri:dev`.
 
 ### Acceptance paths
 

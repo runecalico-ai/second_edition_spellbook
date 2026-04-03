@@ -159,7 +159,7 @@ The `dialog::backdrop` pseudo-element is styled in `src/index.css`.
 
 - **User-facing modes:** `light`, `dark`, and `system` (`ThemeMode` in `apps/desktop/src/store/useTheme.ts`). **System** resolves to light or dark from `matchMedia("(prefers-color-scheme: dark)")` via `resolveThemeMode`.
 - **Persistence:** The selected mode is stored under localStorage key **`spellbook-theme`** (`THEME_STORAGE_KEY`). `readStoredThemeMode()` returns `null` when the key is missing or invalid; **`createThemeStore`** then defaults the in-memory mode to **`system`** (`?? "system"`). `sanitizeThemeMode` maps other garbage to `system` at boundaries like pre-hydration. Writes use `setItem` inside `setTheme`; storage failures are swallowed so in-memory theme still updates (`M-002` contract in unit tests).
-- **First paint:** `apps/desktop/src/theme/preHydrationTheme.ts` runs before React hydration to set `document.documentElement` class `dark` and `data-theme` to the resolved effective theme so the first frame does not flash the wrong palette.
+- **First paint / first load:** `apps/desktop/src/theme/preHydrationTheme.ts` runs before React hydration to set `document.documentElement` class `dark` and `data-theme` to the resolved effective theme so the first frame does not flash the wrong palette. When no stored preference exists, the store resolves from the current system theme and then persists the user’s later selection under the same key.
 - **Settings UI:** `SettingsPage.tsx` exposes the theme select and optional “follow system” behaviour; E2E uses `/settings` for persistence and keyboard-navigation checks.
 - **Hidden live region (not a toast):** `App.tsx` renders `data-testid="theme-announcement-live-region"` with `aria-live="polite"` and `className="sr-only"`. On real mode transitions it speaks short phrases from `getThemeAnnouncement`: *Light mode*, *Dark mode*, or *System mode*. When the user is in **system** mode and the OS preference changes, the live region announces the **resolved** theme (*Light mode* / *Dark mode*) unless a guard suppresses duplicate announcements on the transition back to system (see coordinated `useEffect` comments in `App.tsx`). Initial mount leaves the region empty so StrictMode does not double-announce.
 - **Versus notifications:** Theme changes never use the stacked toast viewport; routine toasts (`NotificationViewport`) remain separate for save success, hash copy, Library add-to-character, etc. (Spellbook Builder errors remain `alert()` until migrated.)
@@ -176,20 +176,21 @@ The editor's client-side validation logic lives in the pure helper `apps/desktop
 - Returns a typed `SpellEditorFieldError[]` array (fields: `field`, `testId`, `message`, `focusTarget`).
 - Is side-effect-free and Node-safe — usable in Vitest unit tests without a DOM.
 - Exposes `deriveSpellEditorFieldErrors`, `sortFieldErrorsByFocusOrder`, and `getFirstInvalidFocusTarget` — `SpellEditor.tsx` sorts errors and focuses the first target with a mounted DOM `id` after expanding detail panels when needed.
+- First failed submit flow: after a failed save attempt, `SpellEditor.tsx` surfaces every blocking error, expands the first missing panel if required, and focuses the first invalid control with a mounted DOM `id` before showing the save hint.
 
 Full contract is documented in [docs/dev/spell_editor_components.md](dev/spell_editor_components.md#spell-editor-validation-architecture).
 
-### Touched-versus-submit state model
+### Validation-visibility and submit state model
 
 `SpellEditor.tsx` tracks two pieces of validation state:
 
-- **`touchedFields: Set<string>`** — fields that have been blurred (text inputs) or changed (selects). Per-field errors render for touched fields.
+- **`fieldValidationVisible: Set<string>`** — fields whose inline validation is currently allowed to render before submit. `revealFieldValidation(...)` is called from blur and from controlling changes that should immediately reveal related errors.
 - **`hasAttemptedSubmit: boolean`** — set on first failed save click. Once set, all errors are visible and the save button is disabled until they are resolved.
 
 Timing rules:
 - Text inputs validate on blur.
 - Select controls (including Tradition) validate on change.
-- Dependent fields (School/Sphere) revalidate immediately when their controlling value (Tradition) changes.
+- Dependent fields (School/Sphere) call `revealFieldValidation(...)` and revalidate immediately when their controlling value (Tradition) changes.
 
 ### Tradition-conditional School/Sphere rendering
 

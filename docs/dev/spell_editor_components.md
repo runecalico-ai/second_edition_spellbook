@@ -494,7 +494,7 @@ All application `data-testid` attributes use **kebab-case** (e.g. `detail-range-
 | Magic Resistance | `detail-magic-resistance-input` | `detail-magic-resistance-expand` |
 | Material Component | `detail-material-components-input` | `detail-material-components-expand` |
 
-When a field is expanded and parsing is in progress, a loading state is shown with test ID `detail-{field}-loading` (field in kebab-case, e.g. `detail-duration-loading`). When expanded (and panel mounted), expand buttons use `aria-controls="detail-{field}-panel"`; expanded sections use matching `id` values in kebab-case (e.g. `detail-casting-time-panel`, `detail-saving-throw-panel`). When the expanded spec is "special" (or another non-canonical kind such as `dm_adjudicated` for Saving Throw), a hint is shown with a **kebab-case** test ID: `detail-range-special-hint`, `detail-duration-special-hint`, `detail-casting-time-special-hint`, `detail-components-special-hint`, `detail-area-special-hint`, `detail-saving-throw-special-hint`, `detail-damage-special-hint`, `detail-magic-resistance-special-hint` (and `detail-material-components-special-hint` when the Material Component row is implemented).
+When a field is expanded and parsing is in progress, a loading state is shown with test ID `detail-{field}-loading` (field in kebab-case, e.g. `detail-duration-loading`). When expanded (and panel mounted), expand buttons use `aria-controls="detail-{field}-panel"`; expanded sections use matching `id` values in kebab-case (e.g. `detail-casting-time-panel`, `detail-saving-throw-panel`). **Note:** multi-word detail keys use **kebab-case** in `data-testid` but may use **camelCase** segments in paired DOM `id`s (e.g. `detail-castingTime-expand` alongside `detail-casting-time-expand`). When the expanded spec is "special" (or another non-canonical kind such as `dm_adjudicated` for Saving Throw), a hint is shown with a **kebab-case** test ID for most detail rows, including `detail-range-special-hint`, `detail-duration-special-hint`, `detail-casting-time-special-hint`, `detail-area-special-hint`, `detail-saving-throw-special-hint`, `detail-damage-special-hint`, and `detail-magic-resistance-special-hint`. The **Components** and **Material Component** rows do **not** render `detail-*-special-hint` test IDs in the current `SpellEditor.tsx` implementation (no collapsed **(special)** marker for those rows today).
 
 **Material Component row:** The Material Component row shares its structured state with the Components field (ComponentCheckboxes + material list). There is no dedicated Tauri parser for material-only; when expanded, the editor reuses the component parsing logic and initializes the material list from `form.materialComponents`. Serialization on collapse uses `componentsToText` to produce both `form.components` and `form.materialComponents`.
 
@@ -566,12 +566,12 @@ const [area, setArea] = useState<AreaSpec | null>(defaultAreaSpec());
 
 ### 3. Validation Timing
 
-**Problem:** Validation happens on every change, but save validation might need different rules.
+**Problem:** Structured sub-controls clamp and parse on change, but spell-level business rules must not be shown as blocking modals.
 
 **Solution:**
-- Components validate input constraints immediately (e.g., clamp negative numbers)
-- Parent validates business rules on save (e.g., tradition requirements)
-- Use `onChange` for immediate feedback, `onBlur` is not needed (parent persists on Save)
+- Components validate input constraints immediately (e.g., clamp negative numbers) via `onChange`.
+- `SpellEditor` runs `deriveSpellEditorFieldErrors` for tradition/school/sphere/required-field rules and structured scalars, then renders **inline** errors with stable `data-testid` values (see [Spell Editor Validation Architecture](#spell-editor-validation-architecture)).
+- Text-ish controls surface errors on **blur**; selects surface on **change**; the first failed **Save** attempt sets `hasAttemptedSubmit`, shows all blocking errors, focuses the first invalid target, and shows the save hint — never `modalAlert` for routine validation.
 
 **Example:**
 ```typescript
@@ -580,23 +580,11 @@ const [area, setArea] = useState<AreaSpec | null>(defaultAreaSpec());
   fieldType="range"
   value={range}
   onChange={(spec) => {
-    // Component already clamped negative values
     setStructuredRange(spec);
   }}
 />
 
-// Parent validates on save
-const save = async () => {
-  const errors = [];
-  if (school && sphere) {
-    errors.push("School and sphere are mutually exclusive.");
-  }
-  if (errors.length > 0) {
-    await modalAlert(errors, "Validation Errors", "error");
-    return;
-  }
-  // Save...
-};
+// Parent (SpellEditor) collects errors from deriveSpellEditorFieldErrors; maps them to inline nodes + ARIA; Save Error modal is reserved for backend persistence failures only
 ```
 
 ### 4. Legacy Data Parsing Priority
@@ -662,7 +650,7 @@ const newMaterial: MaterialComponentSpec = {
 
 **Solution:**
 - Component generates IDs automatically via `generateDamagePartId()`
-- Pattern: `part_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+- Implementation: `generateDamagePartId()` in `apps/desktop/src/types/spell.ts` builds `part_<timestamp>_<random>` and truncates to **32 characters** (`.slice(0, 32)`) for schema compatibility.
 - IDs are assigned immediately upon creation (not on save)
 - Parent should NOT generate IDs manually
 
@@ -753,7 +741,7 @@ This starts Storybook on `http://localhost:6006` where you can:
 
 Stories are located in `apps/desktop/src/ui/components/structured/*.stories.tsx`:
 
-#### `StructuredFieldInput` Stories (18 stories)
+#### `StructuredFieldInput` Stories (many variants; count changes over time)
 
 **Range variations:**
 - `RangeEmpty` - Empty state
@@ -779,7 +767,7 @@ Stories are located in `apps/desktop/src/ui/components/structured/*.stories.tsx`
 - `CastingTimeComplex` - Complex formula (e.g., "1 + 2/3/level action")
 - `CastingTimeSpecial` - Special/legacy casting time
 
-#### `AreaForm` Stories (18 stories)
+#### `AreaForm` Stories
 
 Covers all area kinds:
 - `Point` - Point area
@@ -801,15 +789,15 @@ Covers all area kinds:
 - `Scope` - Scope-based area
 - `Special` - Special/legacy area
 
-#### `DamageForm` Stories (7 stories)
+#### `DamageForm` Stories
 
 - `Empty` - Empty state
 - `None` - No damage
 - `DMAdjudicated` - DM-adjudicated damage with guidance text
 - `ModeledSinglePart` - Single damage part (e.g., "1d6 fire")
 - `ModeledMultipleParts` - Multiple damage parts with combine mode
-- `ModeledWithModifier` - Damage with flat modifier (e.g., "2d6+3")
-- `ModeledMaxCombine` - Multiple parts with "max" combine mode
+- `ComplexScalingAndClamping` - Scaling/clamping edge cases
+- `MultiLevelBands` - Multi-level band behaviour
 
 #### `SavingThrowInput` Stories (6 stories)
 
@@ -820,7 +808,7 @@ Covers all area kinds:
 - `Multiple` - Multiple save types
 - `DMAdjudicated` - DM-adjudicated with guidance text
 
-#### `MagicResistanceInput` Stories (7 stories)
+#### `MagicResistanceInput` Stories
 
 - `Empty` - Empty state
 - `Unknown` - Unknown MR (applies-to hidden)
@@ -830,7 +818,7 @@ Covers all area kinds:
 - `PartialWithPartIds` - Partial MR with specific part IDs
 - `Special` - Special MR with custom rule
 
-#### `ComponentCheckboxes` Stories (8 stories)
+#### `ComponentCheckboxes` Stories
 
 - `Empty` - Empty state
 - `VerbalOnly` - V only
@@ -851,7 +839,7 @@ Covers all area kinds:
 **Testing:**
 - Stories demonstrate expected component behavior
 - Use as reference for E2E test scenarios
-- Accessibility checks run automatically via `@storybook/addon-a11y`
+- Use `@storybook/addon-a11y` from the Storybook UI for accessibility review (see automated-test caveat below)
 
 **Documentation:**
 - Stories serve as living documentation
@@ -891,7 +879,7 @@ Each story file follows this pattern:
 
 ```typescript
 import type { Meta, StoryObj } from '@storybook/react';
-import { fn } from '@storybook/test';
+// Structured spell-editor stories often use local `./storybook-utils` instead of `@storybook/test` `fn` — follow nearby files in this folder.
 import { ComponentName } from './ComponentName';
 
 const meta = {
@@ -910,7 +898,7 @@ export const StoryName: Story = {
   args: {
     // Component props
     value: { /* ... */ },
-    onChange: fn(),
+    onChange: () => {},
   },
 };
 ```
@@ -927,7 +915,7 @@ When adding new components or variations:
 
 ### Automated Testing with Vitest
 
-All Storybook stories are automatically tested using Vitest and the Storybook Vitest addon. Tests run automatically to detect defects, rendering errors, and accessibility violations.
+All Storybook stories are automatically tested using Vitest and the Storybook Vitest addon. Tests run automatically to detect defects, rendering errors, and console noise; accessibility addon coverage is interactive-first (see below).
 
 #### Running Tests
 
@@ -961,10 +949,10 @@ Tests produce:
 #### Continuous Integration
 
 The tests are designed to run automatically in CI:
-- All 65+ story tests run automatically
-- Accessibility violations cause test failures
-- Rendering errors are caught immediately
-- No manual intervention required
+- All Storybook Vitest stories run automatically (exact count changes as stories are added).
+- **Automated runs** focus on render and console health; the **@storybook/addon-a11y** checks are primarily used from the interactive Storybook UI (the addon is not the source of truth for CI accessibility gating in the current pipeline).
+- Rendering errors and unexpected console output are caught immediately.
+- No manual intervention required for a green story suite.
 
 #### Fixing Test Failures
 
@@ -973,15 +961,14 @@ When tests fail:
 2. **Accessibility violations** - Fix ARIA labels, keyboard navigation, or semantic HTML
 3. **Console errors** - Address JavaScript errors, warnings, or missing dependencies
 
-Example test output:
+Example test output (illustrative — run `pnpm test:storybook` for current counts):
 ```
-✓ |storybook (chromium)| StructuredFieldInput.stories.tsx (18 tests) 1008ms
-✓ |storybook (chromium)| AreaForm.stories.tsx (19 tests) 1058ms
-✓ |storybook (chromium)| DamageForm.stories.tsx (7 tests) 629ms
-
-Test Files  6 passed (6)
-     Tests  65 passed (65)
+✓ |storybook (chromium)| StructuredFieldInput.stories.tsx (…)
+…
+Test Files  … passed (…)
+     Tests  … passed (…)
 ```
+As of 2026-04, a full local run reported on the order of **14** story files and **140+** story tests including structured components, canon-first editor stories, and other UI groups.
 
 ### Integration with Testing
 
@@ -1004,36 +991,39 @@ The spell editor's validation logic is extracted into a pure, side-effect-free m
 
 ```typescript
 export interface SpellEditorFieldError {
-  field: string;       // Unique field key (e.g. "spell-name", "range-base-value")
+  field: SpellEditorValidatedFieldKey; // Typed union (e.g. "spell-name", "range-base-value")
   testId: string;      // data-testid of the rendered error element
   message: string;     // User-facing error copy
-  focusTarget: string; // DOM id or testid of the input to focus
+  focusTarget: string; // DOM id of the input to focus
 }
 ```
 
-The module exports two functions:
+The module exports (among helpers):
 
-- **`validateSpellEditorForm(form, tradition, flags)`** — returns `SpellEditorFieldError[]` for all currently blocking errors. Pure: no DOM access, no React, no side effects. Safe to call in Node/Vitest unit tests.
-- **`firstInvalidFocusTarget(errors)`** — returns the `focusTarget` from the first error in deterministic declaration order so focus does not depend on DOM query order.
+- **`deriveSpellEditorFieldErrors(input: SpellEditorValidationInput)`** — returns `SpellEditorFieldError[]` for all currently blocking errors from the flat `form`, selected `tradition`, and in-scope structured specs (`rangeSpec`, `durationSpec`, `castingTimeSpec`, `areaSpec`). Pure: no DOM access, no React, no side effects. Safe to call in Node/Vitest unit tests.
+- **`sortFieldErrorsByFocusOrder(errors)`** — orders errors by `SPELL_EDITOR_FOCUS_ORDER` (the order `SpellEditor` uses when focusing after a failed save).
+- **`getFirstInvalidFocusTarget(errors)`** — returns the `focusTarget` of the first error after that sort (utility; the live editor also skips targets that are not yet in the DOM until panels expand).
 
-**Covered validation rules:**
+**Covered validation rules (exact message strings from `spellEditorValidation.ts`):**
 
 | Rule | testId | Message |
 |------|--------|---------|
 | Name empty | `spell-name-error` | *Name is required.* |
 | Description empty | `error-description-required` | *Description is required.* |
-| Level out of range | `error-level-range` | *Level must be between 0 and 12.* |
-| Arcane tradition, no school | `error-school-required-arcane-tradition` | *School is required for Arcane spells.* |
-| Epic spell, no school | `error-school-required-arcane` | *Epic spells require a School (Arcane).* |
-| Epic spell, non-Wizard class | `error-epic-arcane-class-restriction` | *Epic spells are Arcane only and require Wizard/Mage class access.* |
-| Divine tradition, no sphere | `error-sphere-required-divine-tradition` | *Sphere is required for Divine spells.* |
-| Quest spell, no sphere | `error-sphere-required-divine` | *Quest spells require a Sphere (Divine).* |
-| School + Sphere conflict | `error-tradition-conflict` | *School and Sphere are mutually exclusive.* |
-| Epic + Quest conflict | `error-epic-quest-conflict` | *A spell cannot be both Epic and Quest.* |
-| Range base value negative | `error-range-base-value` | *Base value must be 0 or greater.* |
-| Duration base value negative | `error-duration-base-value` | *Base value must be 0 or greater.* |
-| Area radius negative | `error-area-form-radius-value` | *Radius must be 0 or greater.* |
-| Area length negative | `error-area-form-length-value` | *Length must be 0 or greater.* |
+| Level out of range | `error-level-range` | *Level must be 0-12.* |
+| School + Sphere conflict | `error-tradition-conflict` | *This spell has both a School and a Sphere set — school and sphere are mutually exclusive. Remove one before saving.* |
+| Epic, disallowed classes | `error-epic-arcane-class-restriction` | *Epic spells are Arcane only and require Wizard/Mage class access.* |
+| Levels 10–12 without Arcane school data | `error-epic-level-arcane-only` | *Levels 10-12 are Arcane (has School) only* |
+| Quest checked but not Divine data | `error-quest-spell-divine-only` | *Quest spells are Divine (has Sphere) only* |
+| Epic + Quest | `error-epic-quest-conflict` | *Cannot be both Epic and Quest spell.* |
+| Cantrip + level ≠ 0 | `error-cantrip-level` | *Cantrips must be Level 0* |
+| Arcane tradition, no school (levels 0–9) | `error-school-required-arcane-tradition` | *School is required for Arcane tradition.* |
+| Epic, no school | `error-school-required-arcane` | *School is required for Epic (Arcane) spells.* |
+| Divine tradition, no sphere (not Quest) | `error-sphere-required-divine-tradition` | *Sphere is required for Divine tradition.* |
+| Quest checked, no sphere | `error-sphere-required-divine` | *Sphere is required for Quest (Divine) spells.* |
+| Casting time base / per-level negative | `error-casting-time-base-value`, `error-casting-time-per-level` | *Base value must be 0 or greater* / *Per level must be 0 or greater* (no trailing period) |
+| Range / duration scalars | `error-range-base-value`, etc. | *Base value must be 0 or greater* / *Per level must be 0 or greater* (no trailing period) |
+| Area dimension scalars | `error-area-form-radius-value`, … | *Radius must be 0 or greater*, *Length must be 0 or greater*, etc. (no trailing period; see `AREA_SCALAR_FIELDS` in source) |
 
 Scalar error testids are generated predictably from the input key, e.g. `error-range-base-value`, `error-area-form-length-value`.
 
@@ -1053,7 +1043,7 @@ Validation timing by control type:
 - **Text inputs**: validate on `blur` — error appears when the user leaves the field.
 - **Select controls**: validate on `change` — error appears immediately when the value changes (e.g. switching Tradition triggers instant revalidation of School/Sphere).
 - **Dependent fields**: revalidate immediately when their controlling value changes (e.g. changing Tradition clears stale errors for the hidden field and triggers inline validation of the newly visible field).
-- **First submit attempt**: validates all fields unconditionally, focuses the first invalid field, shows the save hint.
+- **First submit attempt**: validates all fields unconditionally, sorts errors with `sortFieldErrorsByFocusOrder`, expands a detail panel if the first error’s `focusTarget` is not yet mounted, then focuses the first error with a real DOM `id`, and shows the save hint.
 
 ### Tradition-conditional School/Sphere rendering
 
@@ -1114,8 +1104,9 @@ This contract applies to all in-scope scalar surfaces:
 | Scenario | Feedback |
 |----------|----------|
 | Routine save success | Toast: *Spell saved.* |
-| Add spell to character success | Toast: *Spell added to character!* |
-| Add spell to character failure | Toast (error) |
+| Add spell to character success (Library row) | Toast: *Spell added to character!* |
+| Add spell to character failure (Library row) | Toast (error) |
+| Spellbook Builder add/remove failure | `window.alert` (not migrated to toast) |
 | Save search failure | Toast (error) |
 | Delete saved search failure | Toast (error) |
 | Backend persistence failure (`Save Error`) | Modal dialog |

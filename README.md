@@ -45,6 +45,10 @@ pnpm dev
 
 ## Features
 
+### Appearance (Light, Dark, and System)
+
+Open **Settings** (`/settings`) to choose **Light**, **Dark**, or **System**. **System** follows your OS light/dark preference. The choice is remembered locally for the next launch (storage key `spellbook-theme` in the desktop app). When you change theme, the app announces the new mode through a **hidden screen-reader live region** (for example *Dark mode* or *System mode*) — it is not shown as a popup toast. Routine feedback such as save success or hash copy still uses the visible notification strip at the top of the window.
+
 ### Character Management
 
 The app supports rich character profiles for AD&D 2e PCs and NPCs with multi-class support and per-class spell management.
@@ -146,7 +150,7 @@ The **Add Spell** and **Edit Spell** flows use inline accessible validation rath
 - **First failed save**: validates all fields, focuses the first invalid field, and shows *Fix the errors above to save* near the Save button. The button stays disabled until all blocking errors are resolved.
 - **Delayed save label**: the button label stays **Save Spell** for fast saves. If the save takes longer than 300 ms, the label changes to **Saving…** until the save completes.
 - **Success feedback**: after a successful save, a **Spell saved.** toast appears in the global notification bar and the editor returns to the Library. The toast does not steal keyboard focus.
-- **Modal boundaries preserved**: unsaved-changes confirmation and delete confirmation still open blocking dialogs. Real backend save failures surface as a **Save Error** modal. Routine status feedback (save success, add-to-character, search operations) is toast-based rather than a dialog.
+- **Modal boundaries preserved**: unsaved-changes confirmation and delete confirmation still open blocking dialogs. Real backend save failures surface as a **Save Error** modal. Routine status feedback (save success, add-to-character from the Library, search operations) is toast-based rather than a dialog. **Spellbook Builder** add/remove failures still use the browser’s `alert()` today (blocking, not the toast strip).
 
 For full validation rules see [docs/user/spell_editor.md](docs/user/spell_editor.md).
 

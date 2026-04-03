@@ -483,7 +483,7 @@ describe('SpellCard', () => {
 Storybook provides visual component testing and documentation for all structured spell editor components. Stories complement unit tests by providing:
 
 - **Visual regression testing**: See components in different states
-- **Accessibility checks**: Automatic a11y validation via `@storybook/addon-a11y`
+- **Accessibility checks**: Interactive a11y review via `@storybook/addon-a11y` in the Storybook UI (automated `pnpm test:storybook` focuses on render/console health; see [Spell Editor Components Guide](dev/spell_editor_components.md#automated-testing-with-vitest))
 - **Interactive documentation**: Living examples of component usage
 - **Isolated development**: Test components without full app context
 
@@ -494,18 +494,11 @@ cd apps/desktop
 pnpm storybook
 ```
 
-Stories are located in `src/ui/components/structured/*.stories.tsx`:
-
-- **StructuredFieldInput**: 18 stories (range, duration, casting_time variations)
-- **AreaForm**: 18 stories (all area kinds)
-- **DamageForm**: 7 stories (none, modeled, dm_adjudicated)
-- **SavingThrowInput**: 6 stories (none, single, multiple, dm_adjudicated)
-- **MagicResistanceInput**: 7 stories (all MR kinds)
-- **ComponentCheckboxes**: 8 stories (V/S/M combinations with materials)
+Stories are located in `apps/desktop/src/ui/components/structured/*.stories.tsx` (plus other Storybook groups under `apps/desktop/src/ui/**`). Story counts change as files grow — use `pnpm test:storybook` for the current total.
 
 **Accessibility Testing:**
 
-The `@storybook/addon-a11y` addon automatically checks all stories for accessibility violations:
+The `@storybook/addon-a11y` addon checks stories from the Storybook UI for accessibility violations:
 - ARIA labels and roles
 - Keyboard navigation
 - Color contrast
@@ -521,7 +514,7 @@ pnpm build-storybook
 
 Creates a static build in `storybook-static/` for deployment or sharing.
 
-For detailed Storybook documentation, see [Spell Editor Components Guide](../dev/spell_editor_components.md#storybook-stories). Canon-first Details block stories live under **SpellEditor/CanonFirstDetails** (e.g. Default Collapsed, One Field Expanded, Collapsed With Special Indicator); they use the same `detail-*-input` and `detail-*-expand` test IDs as the app.
+For detailed Storybook documentation, see [Spell Editor Components Guide](dev/spell_editor_components.md#storybook-stories). Canon-first Details block stories live under **SpellEditor/CanonFirstDetails** (e.g. Default Collapsed, One Field Expanded, Collapsed With Special Indicator); they use the same `detail-*-input` and `detail-*-expand` test IDs as the app.
 
 ### Hook Testing Pattern
 
@@ -576,11 +569,11 @@ Three dedicated unit suites cover the spell editor validation and save workflow.
 - Expanded structured detail panels render the field label, expand/collapse control, and structured group in coherent DOM order
 - Expanded panel surface wraps `StructuredFieldInput` / `ComponentCheckboxes` groups without double-border or spacing regression
 - Preview outputs remain inside the expanded panel and below the primary control surface
-- Special-hint text appears below the structured group when the expanded kind is `special` or `dm_adjudicated`
+- Special-hint text appears below the structured group when the expanded kind is `special` or `dm_adjudicated` for detail rows that emit `detail-*-special-hint` (not the Components / Material Component rows in the current `SpellEditor.tsx`)
 
 **`src/ui/Library.test.tsx`** — jsdom component tests for Library notification replacements. Mounts `NotificationViewport` alongside `Library` so live-region assertions target the real notification surface. Covers:
-- add-to-character success → toast, not `alert()`
-- add-to-character failure → toast, not `alert()`
+- add-to-character success → toast, not `alert()` (Library row flow; Spellbook Builder still uses `alert()` for some errors)
+- add-to-character failure → toast, not `alert()` (same scope as above)
 - save-search failure → toast, not `alert()`
 - delete-saved-search failure → toast, not `alert()`
 - Toast delivered through `notification-viewport` live region
@@ -796,7 +789,7 @@ pnpm e2e -- tests/search.spec.ts
 
 **Test ID convention:** All `data-testid` values in the application use **kebab-case** (e.g. `detail-range-input`, `detail-range-expand`, `save-button`, `spell-name-input`). Use kebab-case when adding new test IDs so E2E and Storybook locators stay consistent. See `apps/desktop/src/AGENTS.md` (Naming Conventions for `data-testid`) and [Spell Editor Components Guide](dev/spell_editor_components.md#e2e-and-test-ids) for the full list.
 
-**Spell Editor E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand–edit–collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. `spell_editor_save_workflow.spec.ts` covers the full save/validation/modal-boundary workflow: inline validation errors, first-failed-submit focus, blur/change validation, tradition-conditional field rendering, save-progress labeling, success toast routing, and modal-versus-toast boundaries. All three use the same fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and target canon inputs/expand controls via `data-testid` (e.g. `detail-range-input`, `detail-range-expand`). Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
+**Spell Editor and Chunk 6 E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand–edit–collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. `spell_editor_save_workflow.spec.ts` covers the full save/validation/modal-boundary workflow: inline validation errors, first-failed-submit focus, blur/change validation, tradition-conditional field rendering, save-progress labeling (`Save Spell` vs `Saving…`), success toast routing (`Spell saved.`), and modal-versus-toast boundaries. `theme_and_feedback.spec.ts` covers theme persistence, the hidden theme announcement live region (`theme-announcement-live-region`), and notification stacking. `accessibility_and_resize.spec.ts` covers keyboard navigation on Settings, ARIA validation wiring on the spell editor, preserved native `showModal()` modality, and related resize checks. `spell_editor_visual.spec.ts` holds `toHaveScreenshot()` baselines for structured surfaces, full editor light/dark, empty library, and hash collapsed/expanded states (snapshots under `tests/spell_editor_visual.spec.ts-snapshots/`). All of these use the shared fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and kebab-case `data-testid` locators. Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](../apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
 
 **Build before Playwright:** Always run `pnpm --dir apps/desktop tauri:build --debug` before executing any Playwright suite. The Playwright fixture starts the Tauri debug binary; stale or absent binaries will silently fail or produce outdated behaviour. This requirement applies in CI and on a clean local workspace.
 
@@ -1052,7 +1045,7 @@ The spell editor inline validation surfaces require a manual screen-reader check
 
 Run each path with NVDA active and Chromium focused on the spell editor:
 
-1. **Text-input blur validation** — focus the Name field, leave it empty, tab away. Confirm NVDA announces the field label *and* the error text *Name is required.*
+1. **Text-input blur validation** — focus the Name field, leave it empty, tab away. Confirm NVDA announces the field label *and* the error text *Name is required.* (including the trailing period, matching `spellEditorValidation.ts` and `spell-name-error` in the DOM).
 2. **Select-change / dependent-field revalidation** — set Tradition to **Arcane**, then change to **Divine** (or vice versa). Confirm NVDA announces the newly visible Sphere (or School) field and its required-field error when triggered.
 3. **Structured-scalar validation** — if a blur-reachable invalid state exists for a `ScalarInput` or `AreaForm` field, exercise it. If clamp-on-change semantics prevent the UI from reaching an invalid state at runtime, verify ARIA wiring through the jsdom unit tests instead and document that limitation here.
 4. **First failed submit focus** — click **Save Spell** with an invalid form. Confirm focus moves to the first invalid field and NVDA announces its label together with the associated error text.
@@ -1080,4 +1073,4 @@ When the run is performed, append a block to this section with:
 
 **Status (2026-03-20):** Pending human execution. The automated agent environment cannot drive NVDA or capture spoken announcements. The checklist and evidence table above must be completed manually before this gate is considered closed.
 
-**Last Updated**: 2026-02-05
+**Last Updated**: 2026-04-03

@@ -343,8 +343,26 @@ This plan document is also the execution log for baseline evidence and final ver
 - **Production code edits made to support verification:**
    - `apps/desktop/src/ui/CharacterEditor.tsx` gained a visible `link-open-spellbook-builder` header link so the empty character spellbook workflow can reach `/character/:id/builder` through the user-facing UI instead of a route rewrite shortcut.
    - `apps/desktop/src/ui/SpellEditor.tsx` gained `spell-editor-visual-contract`, a stable fieldset locator used only to capture the real integrated editor baselines without depending on brittle structural selectors.
-- **Docs proof table for Step 6.6:**
-   - behavior, user-visible string, or testid -> source file(s) checked -> docs updated
+- **Docs proof table for Step 6.6 (Task 6):**
+
+| Item verified in code | Source of truth (file / symbol) | Doc location updated |
+|----------------------|-----------------------------------|----------------------|
+| Hash truncation 16 chars + `...` | `SpellEditor.tsx` (`slice(0, 16)`) | `docs/user/spell_editor.md` |
+| Hash testids: `spell-detail-hash-card`, `spell-detail-hash-display`, `spell-detail-hash-copy`, `spell-detail-hash-expand` | `SpellEditor.tsx` | `docs/user/spell_editor.md` |
+| Copy toasts: *Hash copied to clipboard.* / *Failed to copy hash.* | `SpellEditor.tsx` `pushNotification` | `docs/user/spell_editor.md` |
+| Save hint + testid `spell-save-validation-hint` | `SpellEditor.tsx` | `docs/user/spell_editor.md` |
+| *Spell saved.* success toast | `SpellEditor.tsx` | `docs/user/spell_editor.md`, `README.md`, `docs/TESTING.md` |
+| *Saving…* / *Save Spell* / 300 ms | `SpellEditor.tsx`, tests | existing docs; `docs/TESTING.md` cross-ref |
+| Empty library copy + CTAs + testids | `Library.tsx` `EMPTY_*`, buttons | `docs/user/spell_editor.md` |
+| Empty character spellbook + `empty-character-add-spell-button` | `SpellbookBuilder.tsx` | `docs/user/spell_editor.md` |
+| Library live region `library-empty-state` | `Library.tsx` `EmptyStateLiveRegion` | `docs/user/spell_editor.md` |
+| Theme key `spellbook-theme`, modes | `useTheme.ts` `THEME_STORAGE_KEY` | `README.md`, `docs/ARCHITECTURE.md` |
+| Theme announcement live region + strings | `App.tsx` `getThemeAnnouncement`, `theme-announcement-live-region` | `README.md`, `docs/ARCHITECTURE.md` |
+| Name validation message *Name is required.* | `spellEditorValidation.ts` | `docs/TESTING.md` (NVDA step) |
+| Routine validation not `modalAlert` | `SpellEditor.tsx` + `spellEditorValidation.ts` | `docs/dev/spell_editor_components.md` (pitfall #3) |
+| Chunk 6 Playwright file roles | `apps/desktop/tests/*.spec.ts` | `docs/TESTING.md` |
+
+- **Task 6 verification loop (subagent reviewers):** Iteration 1 collected findings (wrong validation API names, message drift, Storybook a11y contradiction, Spellbook Builder `alert` vs toast, live-region testid wording, broken `../dev/` link from `docs/TESTING.md`, stale DamageForm story names, etc.). Fixes were applied in the five target docs; iterations 2–4 re-ran sequential `code-reviewer` subagents until three consecutive passes returned **GATE_CLEAR** with **zero Critical / High / Medium** findings. **Low / pre-existing:** `docs/ARCHITECTURE.md` older sections still use shorthand `src/` paths for the Tauri tree (documented at plan time as repo-root-relative for the backend half); not introduced by Task 6.
 
 ---
 
@@ -873,7 +891,7 @@ Expected: this command identifies any changed snapshot artifacts that are visibl
 - Modify: `docs/TESTING.md`
 - Modify: `docs/ARCHITECTURE.md`
 
-- [ ] **Step 6.1: Update the user spell-editor guide**
+- [x] **Step 6.1: Update the user spell-editor guide**
 
 Document:
 - inline validation timing and messaging
@@ -884,14 +902,14 @@ Document:
 - hash card display/copy behavior
 - any structured-field transition behavior the user actually experiences
 
-- [ ] **Step 6.2: Update the top-level README overview**
+- [x] **Step 6.2: Update the top-level README overview**
 
 Document only user-visible overview changes appropriate for the README:
 - Light/Dark/System themes
 - routine non-modal feedback conventions
 - empty-state UX if the README describes application overview flows
 
-- [ ] **Step 6.3: Update the developer spell-editor component guide**
+- [x] **Step 6.3: Update the developer spell-editor component guide**
 
 Document:
 - validation helper contract
@@ -899,7 +917,7 @@ Document:
 - ARIA/error association expectations
 - shared UI conventions that future workers must preserve
 
-- [ ] **Step 6.4: Update the testing guide**
+- [x] **Step 6.4: Update the testing guide**
 
 Document:
 - current Playwright files covering this change
@@ -907,7 +925,7 @@ Document:
 - visual-regression workflow and snapshot-update command
 - manual NVDA verification procedure and what evidence to record
 
-- [ ] **Step 6.5: Update the architecture guide**
+- [x] **Step 6.5: Update the architecture guide**
 
 Document:
 - theme persistence and first-load behavior
@@ -916,7 +934,7 @@ Document:
 - spell-editor validation/state flow
 - modal focus-trap behavior now relied on by preserved dialogs
 
-- [ ] **Step 6.6: Proofread docs against the actual testids/copy used in code**
+- [x] **Step 6.6: Proofread docs against the actual testids/copy used in code**
 
 Do not let docs drift on user-visible strings such as `Spell saved.` or on stable testids called out as contracts. Record the proof in the `Implementation Notes` docs-proof table so reviewers can see which files/copy/testids were checked.
 

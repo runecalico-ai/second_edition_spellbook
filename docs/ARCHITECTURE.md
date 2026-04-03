@@ -155,16 +155,27 @@ The `dialog::backdrop` pseudo-element is styled in `src/index.css`.
 
 ---
 
+## Theme persistence and announcements
+
+- **User-facing modes:** `light`, `dark`, and `system` (`ThemeMode` in `apps/desktop/src/store/useTheme.ts`). **System** resolves to light or dark from `matchMedia("(prefers-color-scheme: dark)")` via `resolveThemeMode`.
+- **Persistence:** The selected mode is stored under localStorage key **`spellbook-theme`** (`THEME_STORAGE_KEY`). `readStoredThemeMode()` returns `null` when the key is missing or invalid; **`createThemeStore`** then defaults the in-memory mode to **`system`** (`?? "system"`). `sanitizeThemeMode` maps other garbage to `system` at boundaries like pre-hydration. Writes use `setItem` inside `setTheme`; storage failures are swallowed so in-memory theme still updates (`M-002` contract in unit tests).
+- **First paint:** `apps/desktop/src/theme/preHydrationTheme.ts` runs before React hydration to set `document.documentElement` class `dark` and `data-theme` to the resolved effective theme so the first frame does not flash the wrong palette.
+- **Settings UI:** `SettingsPage.tsx` exposes the theme select and optional “follow system” behaviour; E2E uses `/settings` for persistence and keyboard-navigation checks.
+- **Hidden live region (not a toast):** `App.tsx` renders `data-testid="theme-announcement-live-region"` with `aria-live="polite"` and `className="sr-only"`. On real mode transitions it speaks short phrases from `getThemeAnnouncement`: *Light mode*, *Dark mode*, or *System mode*. When the user is in **system** mode and the OS preference changes, the live region announces the **resolved** theme (*Light mode* / *Dark mode*) unless a guard suppresses duplicate announcements on the transition back to system (see coordinated `useEffect` comments in `App.tsx`). Initial mount leaves the region empty so StrictMode does not double-announce.
+- **Versus notifications:** Theme changes never use the stacked toast viewport; routine toasts (`NotificationViewport`) remain separate for save success, hash copy, Library add-to-character, etc. (Spellbook Builder errors remain `alert()` until migrated.)
+
+---
+
 ## Frontend Spell Editor State and Feedback Flow
 
 ### Validation helper
 
 The editor's client-side validation logic lives in the pure helper `apps/desktop/src/ui/spellEditorValidation.ts`. The helper:
 
-- Accepts the current form state, selected tradition, and derived flags.
+- Accepts `SpellEditorValidationInput`: flat `form`, `tradition`, and in-scope structured specs (`rangeSpec`, `durationSpec`, `castingTimeSpec`, `areaSpec`).
 - Returns a typed `SpellEditorFieldError[]` array (fields: `field`, `testId`, `message`, `focusTarget`).
 - Is side-effect-free and Node-safe — usable in Vitest unit tests without a DOM.
-- Exposes `firstInvalidFocusTarget(errors)` for deterministic first-error focus (independent of DOM query order).
+- Exposes `deriveSpellEditorFieldErrors`, `sortFieldErrorsByFocusOrder`, and `getFirstInvalidFocusTarget` — `SpellEditor.tsx` sorts errors and focuses the first target with a mounted DOM `id` after expanding detail panels when needed.
 
 Full contract is documented in [docs/dev/spell_editor_components.md](dev/spell_editor_components.md#spell-editor-validation-architecture).
 
@@ -202,7 +213,8 @@ Switching tradition: the newly mounted field wrapper gets `animate-in fade-in`; 
 | Scenario | Mechanism |
 |----------|-----------|
 | Routine save success | Zustand notification store → `NotificationViewport` toast |
-| Add-to-character success / failure | Toast |
+| Add-to-character from Library row (success / failure) | Toast (`Library.tsx`) |
+| Spellbook Builder add/remove failures | `window.alert` (still blocking; not the toast viewport) |
 | Search save/delete failure | Toast |
 | Backend persistence failure | `Save Error` modal (`modalAlert`) |
 | Unsaved-changes navigation guard | `modalConfirm` |

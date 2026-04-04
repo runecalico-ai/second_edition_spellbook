@@ -61,10 +61,7 @@ export function ScalarInput({
   const activeInputId = mode === "fixed" ? baseValueTestId : perLevelTestId;
   const advisory = isAboveAdvisoryCap(mode === "fixed" ? numValue : perLevel);
   const advisoryId = `${testId}-advisory-cap`;
-  const valueDescribedBy = [
-    activeError?.testId,
-    advisory ? advisoryId : undefined,
-  ]
+  const valueDescribedBy = [activeError?.testId, advisory ? advisoryId : undefined]
     .filter(Boolean)
     .join(" ");
 

@@ -28,7 +28,10 @@ async function getSpellPickerRowTestIds(picker: Locator) {
   );
 }
 
-async function installSpellPickerSearchRaceHarness(page: Page, delayByQuery: Record<string, number>) {
+async function installSpellPickerSearchRaceHarness(
+  page: Page,
+  delayByQuery: Record<string, number>,
+) {
   await page.evaluate((queryDelays) => {
     window.__SPELLBOOK_E2E_SPELL_PICKER_SEARCH_DELAYS__ = queryDelays;
     window.__SPELLBOOK_E2E_SPELL_PICKER_SEARCH_EVENTS__ = [];
@@ -115,7 +118,9 @@ test.describe("Character Search Filters (KNOWN vs PREPARED)", () => {
     expect(rowTestIds).toEqual(expectedRowTestIds);
   }
 
-  test("KNOWN picker ignores stale out-of-order search completions and keeps the latest query settled", async ({ appContext }) => {
+  test("KNOWN picker ignores stale out-of-order search completions and keeps the latest query settled", async ({
+    appContext,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
@@ -353,7 +358,9 @@ test.describe("Character Search Filters (KNOWN vs PREPARED)", () => {
     });
   });
 
-  test("reopening the spell picker resets filters, starts loading, and settles to pristine results for KNOWN and PREPARED", async ({ appContext }) => {
+  test("reopening the spell picker resets filters, starts loading, and settles to pristine results for KNOWN and PREPARED", async ({
+    appContext,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();

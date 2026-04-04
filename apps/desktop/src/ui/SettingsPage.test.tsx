@@ -30,9 +30,9 @@ describe("SettingsPage", () => {
       "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900",
     );
     expect((screen.getByTestId("settings-theme-select") as HTMLSelectElement).value).toBe("dark");
-    expect((screen.getByTestId("settings-follow-system-checkbox") as HTMLInputElement).checked).toBe(
-      true,
-    );
+    expect(
+      (screen.getByTestId("settings-follow-system-checkbox") as HTMLInputElement).checked,
+    ).toBe(true);
   });
 
   it("disables the select while follow system is enabled", () => {
@@ -44,9 +44,9 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     expect((screen.getByTestId("settings-theme-select") as HTMLSelectElement).disabled).toBe(true);
-    expect((screen.getByTestId("settings-follow-system-checkbox") as HTMLInputElement).checked).toBe(
-      true,
-    );
+    expect(
+      (screen.getByTestId("settings-follow-system-checkbox") as HTMLInputElement).checked,
+    ).toBe(true);
   });
 
   it("preserves the resolved theme when follow system is turned off", () => {

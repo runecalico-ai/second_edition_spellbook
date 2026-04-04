@@ -52,10 +52,7 @@ export function SettingsPage() {
           <h2 id="settings-appearance-heading" className="text-lg font-semibold">
             Appearance
           </h2>
-          <p
-            id="settings-appearance-hint"
-            className="text-sm text-stone-600 dark:text-neutral-300"
-          >
+          <p id="settings-appearance-hint" className="text-sm text-stone-600 dark:text-neutral-300">
             Choose a theme or follow your operating system preference.
           </p>
         </div>

@@ -297,11 +297,7 @@ export default function SpellbookBuilder() {
       <div className="p-4 space-y-2">
         <h2 className="text-xl font-bold">Spellbook Builder</h2>
         <p className={builderMutedTextClass}>Invalid character selection.</p>
-        <Link
-          ref={backLinkRef}
-          to="/character"
-          className={builderBackLinkClass}
-        >
+        <Link ref={backLinkRef} to="/character" className={builderBackLinkClass}>
           ← Back to Characters
         </Link>
       </div>
@@ -313,11 +309,7 @@ export default function SpellbookBuilder() {
       <div className="p-4 space-y-2">
         <h2 className="text-xl font-bold">Spellbook Builder</h2>
         <p className={builderMutedTextClass}>Character not found.</p>
-        <Link
-          ref={backLinkRef}
-          to="/character"
-          className={builderBackLinkClass}
-        >
+        <Link ref={backLinkRef} to="/character" className={builderBackLinkClass}>
           ← Back to Characters
         </Link>
       </div>
@@ -389,8 +381,14 @@ export default function SpellbookBuilder() {
 
       {statusMessage && <div className="text-xs text-neutral-400">{statusMessage}</div>}
 
-      <div data-testid="spellbook-count-label" aria-live="polite" className="text-sm text-neutral-500">
-        {spellbookIsPendingInitialLoad ? "Loading spellbook…" : `${spellbook.length} spells in spellbook`}
+      <div
+        data-testid="spellbook-count-label"
+        aria-live="polite"
+        className="text-sm text-neutral-500"
+      >
+        {spellbookIsPendingInitialLoad
+          ? "Loading spellbook…"
+          : `${spellbook.length} spells in spellbook`}
       </div>
 
       <table className="w-full text-left text-sm border-collapse">

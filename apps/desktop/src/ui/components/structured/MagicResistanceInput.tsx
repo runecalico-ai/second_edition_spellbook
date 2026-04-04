@@ -111,10 +111,7 @@ export function MagicResistanceInput({ value, onChange, damageKind }: MagicResis
         )}
       </div>
       {spec.sourceText && (
-        <div
-          data-testid="magic-resistance-source-text-annotation"
-          className={annotationClass}
-        >
+        <div data-testid="magic-resistance-source-text-annotation" className={annotationClass}>
           <span className="font-bold uppercase not-italic">Original source text:</span>
           <span>{spec.sourceText}</span>
         </div>

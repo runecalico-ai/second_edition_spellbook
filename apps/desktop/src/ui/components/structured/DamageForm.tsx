@@ -329,10 +329,7 @@ export function DamageForm({ value, onChange, visibleFieldErrors }: DamageFormPr
       </div>
 
       {spec.sourceText && (
-        <div
-          data-testid="damage-source-text-annotation"
-          className={annotationClass}
-        >
+        <div data-testid="damage-source-text-annotation" className={annotationClass}>
           <span className="font-bold uppercase not-italic">Original source text:</span>
           <span>{spec.sourceText}</span>
         </div>
@@ -367,7 +364,10 @@ export function DamageForm({ value, onChange, visibleFieldErrors }: DamageFormPr
           const notesFieldId = `damage-form-part-${idx}-notes`;
           const partTypeError = pickDamageFieldError(damageFieldErrors, partTypeFieldId);
           const formulaError = pickDamageFieldError(damageFieldErrors, formulaFieldId);
-          const perDieModifierError = pickDamageFieldError(damageFieldErrors, perDieModifierFieldId);
+          const perDieModifierError = pickDamageFieldError(
+            damageFieldErrors,
+            perDieModifierFieldId,
+          );
           const labelError = pickDamageFieldError(damageFieldErrors, labelFieldId);
           const mrInteractionError = pickDamageFieldError(damageFieldErrors, mrInteractionFieldId);
           const applicationScopeError = pickDamageFieldError(
@@ -388,446 +388,451 @@ export function DamageForm({ value, onChange, visibleFieldErrors }: DamageFormPr
           const partNotesError = pickDamageFieldError(damageFieldErrors, notesFieldId);
 
           return (
-            <div
-              key={part.id}
-              className={nestedSurfaceClass}
-              data-testid="damage-form-part"
-            >
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                id={partTypeFieldId}
-                data-testid="damage-form-part-type"
-                aria-label={`Damage part ${idx + 1} type`}
-                {...getFieldErrorA11yProps(partTypeError)}
-                value={part.damageType}
-                onChange={(e) => updatePart(idx, { damageType: e.target.value as DamageType })}
-                className={controlClass}
-              >
-                {(Object.entries(DAMAGE_TYPE_LABELS) as [DamageType, string][]).map(
-                  ([k, label]) => (
+            <div key={part.id} className={nestedSurfaceClass} data-testid="damage-form-part">
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  id={partTypeFieldId}
+                  data-testid="damage-form-part-type"
+                  aria-label={`Damage part ${idx + 1} type`}
+                  {...getFieldErrorA11yProps(partTypeError)}
+                  value={part.damageType}
+                  onChange={(e) => updatePart(idx, { damageType: e.target.value as DamageType })}
+                  className={controlClass}
+                >
+                  {(Object.entries(DAMAGE_TYPE_LABELS) as [DamageType, string][]).map(
+                    ([k, label]) => (
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
+                    ),
+                  )}
+                </select>
+                <input
+                  id={formulaFieldId}
+                  type="text"
+                  data-testid="damage-form-part-formula"
+                  aria-label={`Damage part ${idx + 1} dice formula`}
+                  {...getFieldErrorA11yProps(formulaError)}
+                  placeholder="e.g. 2d6+3"
+                  value={formatDicePool(part.base)}
+                  onChange={(e) => {
+                    const parsed = parseDiceFormula(e.target.value);
+                    updatePart(idx, {
+                      base: {
+                        ...part.base,
+                        terms: parsed.terms,
+                        flatModifier: parsed.flatModifier,
+                      },
+                    });
+                  }}
+                  className={`w-20 font-mono ${controlClass}`}
+                />
+                <div className="flex items-center gap-1">
+                  <span className={`text-[10px] uppercase ${mutedTextClass}`}>Per Die:</span>
+                  <input
+                    id={perDieModifierFieldId}
+                    type="text"
+                    inputMode="decimal"
+                    data-testid="damage-form-part-per-die-modifier"
+                    aria-label={`Damage part ${idx + 1} per die modifier`}
+                    {...getFieldErrorA11yProps(perDieModifierError)}
+                    placeholder="+0"
+                    className={`w-12 px-1.5 font-mono ${controlClass}`}
+                    value={part.base.terms?.[0]?.perDieModifier ?? ""}
+                    onChange={(e) => {
+                      const v = parseNumericInput(e.target.value);
+                      const terms = [...(part.base.terms ?? [])];
+                      if (terms.length > 0) {
+                        terms[0] = { ...terms[0], perDieModifier: Number.isNaN(v) ? undefined : v };
+                        updatePart(idx, { base: { ...part.base, terms } });
+                      }
+                    }}
+                  />
+                </div>
+                <input
+                  id={labelFieldId}
+                  type="text"
+                  data-testid="damage-form-part-label"
+                  aria-label={`Damage part ${idx + 1} label`}
+                  {...getFieldErrorA11yProps(labelError)}
+                  placeholder="Label (optional)"
+                  value={part.label ?? ""}
+                  onChange={(e) => updatePart(idx, { label: e.target.value || undefined })}
+                  className={`w-32 ${controlClass}`}
+                />
+                <select
+                  id={mrInteractionFieldId}
+                  data-testid="damage-form-part-mr-interaction"
+                  aria-label={`Damage part ${idx + 1} magic resistance interaction`}
+                  {...getFieldErrorA11yProps(mrInteractionError)}
+                  value={part.mrInteraction ?? "normal"}
+                  onChange={(e) =>
+                    updatePart(idx, {
+                      mrInteraction: e.target.value as DamagePart["mrInteraction"],
+                    })
+                  }
+                  className={controlClass}
+                >
+                  {(
+                    Object.entries(MR_INTERACTION_LABELS) as [DamagePart["mrInteraction"], string][]
+                  ).map(([k, label]) => (
                     <option key={k} value={k}>
                       {label}
                     </option>
-                  ),
-                )}
-              </select>
-              <input
-                id={formulaFieldId}
-                type="text"
-                data-testid="damage-form-part-formula"
-                aria-label={`Damage part ${idx + 1} dice formula`}
-                {...getFieldErrorA11yProps(formulaError)}
-                placeholder="e.g. 2d6+3"
-                value={formatDicePool(part.base)}
-                onChange={(e) => {
-                  const parsed = parseDiceFormula(e.target.value);
-                  updatePart(idx, {
-                    base: {
-                      ...part.base,
-                      terms: parsed.terms,
-                      flatModifier: parsed.flatModifier,
-                    },
-                  });
-                }}
-                className={`w-20 font-mono ${controlClass}`}
-              />
-              <div className="flex items-center gap-1">
-                <span className={`text-[10px] uppercase ${mutedTextClass}`}>Per Die:</span>
-                <input
-                  id={perDieModifierFieldId}
-                  type="text"
-                  inputMode="decimal"
-                  data-testid="damage-form-part-per-die-modifier"
-                  aria-label={`Damage part ${idx + 1} per die modifier`}
-                  {...getFieldErrorA11yProps(perDieModifierError)}
-                  placeholder="+0"
-                  className={`w-12 px-1.5 font-mono ${controlClass}`}
-                  value={part.base.terms?.[0]?.perDieModifier ?? ""}
-                  onChange={(e) => {
-                    const v = parseNumericInput(e.target.value);
-                    const terms = [...(part.base.terms ?? [])];
-                    if (terms.length > 0) {
-                      terms[0] = { ...terms[0], perDieModifier: Number.isNaN(v) ? undefined : v };
-                      updatePart(idx, { base: { ...part.base, terms } });
-                    }
-                  }}
-                />
-              </div>
-              <input
-                id={labelFieldId}
-                type="text"
-                data-testid="damage-form-part-label"
-                aria-label={`Damage part ${idx + 1} label`}
-                {...getFieldErrorA11yProps(labelError)}
-                placeholder="Label (optional)"
-                value={part.label ?? ""}
-                onChange={(e) => updatePart(idx, { label: e.target.value || undefined })}
-                className={`w-32 ${controlClass}`}
-              />
-              <select
-                id={mrInteractionFieldId}
-                data-testid="damage-form-part-mr-interaction"
-                aria-label={`Damage part ${idx + 1} magic resistance interaction`}
-                {...getFieldErrorA11yProps(mrInteractionError)}
-                value={part.mrInteraction ?? "normal"}
-                onChange={(e) =>
-                  updatePart(idx, { mrInteraction: e.target.value as DamagePart["mrInteraction"] })
-                }
-                className={controlClass}
-              >
-                {(
-                  Object.entries(MR_INTERACTION_LABELS) as [DamagePart["mrInteraction"], string][]
-                ).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                data-testid="damage-form-remove-part"
-                onClick={() => removePart(idx)}
-                className={destructiveButtonClass}
-              >
-                Remove
-              </button>
-            </div>
-
-            <div className={subPanelClass}>
-              {/* Application Column */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className={`w-20 text-[10px] uppercase font-bold ${mutedTextClass}`}>
-                    Application:
-                  </span>
-                  <select
-                    id={applicationScopeFieldId}
-                    data-testid="damage-form-part-application-scope"
-                    aria-label={`Damage part ${idx + 1} application scope`}
-                    {...getFieldErrorA11yProps(applicationScopeError)}
-                    value={part.application?.scope ?? "per_target"}
-                    onChange={(e) =>
-                      updatePart(idx, {
-                        application: {
-                          ...(part.application ?? { scope: "per_target" }),
-                          scope: e.target.value as ApplicationScope,
-                        },
-                      })
-                    }
-                    className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
-                  >
-                    {(Object.entries(APPLICATION_SCOPE_LABELS) as [ApplicationScope, string][]).map(
-                      ([k, label]) => (
-                        <option key={k} value={k}>
-                          {label}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 ml-20">
-                  <input
-                    id={applicationTicksFieldId}
-                    type="number"
-                    data-testid="damage-form-part-application-ticks"
-                    aria-label={`Damage part ${idx + 1} application ticks`}
-                    {...getFieldErrorA11yProps(applicationTicksError)}
-                    placeholder="Ticks"
-                    value={part.application?.ticks ?? ""}
-                    onChange={(e) => {
-                      const v = parseNumericInput(e.target.value);
-                      updatePart(idx, {
-                        application: {
-                          ...(part.application ?? { scope: "per_target" }),
-                          ticks: Number.isNaN(v) || v <= 0 ? undefined : v,
-                        },
-                      });
-                    }}
-                    className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
-                  />
-                  <input
-                    id={applicationTickDriverFieldId}
-                    type="text"
-                    data-testid="damage-form-part-application-tick-driver"
-                    aria-label={`Damage part ${idx + 1} tick driver`}
-                    {...getFieldErrorA11yProps(applicationTickDriverError)}
-                    placeholder="Tick driver (e.g. round)"
-                    value={part.application?.tickDriver ?? ""}
-                    onChange={(e) =>
-                      updatePart(idx, {
-                        application: {
-                          ...(part.application ?? { scope: "per_target" }),
-                          tickDriver: e.target.value || undefined,
-                        },
-                      })
-                    }
-                    className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
-                  />
-                </div>
-              </div>
-
-              {/* Save/Clamping Column */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className={`w-12 text-[10px] uppercase font-bold ${mutedTextClass}`}>
-                    Save:
-                  </span>
-                  <select
-                    id={saveKindFieldId}
-                    data-testid="damage-form-part-save-kind"
-                    aria-label={`Damage part ${idx + 1} save kind`}
-                    {...getFieldErrorA11yProps(saveKindError)}
-                    value={part.save?.kind ?? "none"}
-                    onChange={(e) =>
-                      updatePart(idx, {
-                        save: {
-                          ...(part.save ?? { kind: "none" }),
-                          kind: e.target.value as SaveKind,
-                        },
-                      })
-                    }
-                    className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
-                  >
-                    {(Object.entries(SAVE_KIND_LABELS) as [SaveKind, string][]).map(
-                      ([k, label]) => (
-                        <option key={k} value={k}>
-                          {label}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`w-12 text-[10px] uppercase font-bold ${mutedTextClass}`}>
-                    Clamp:
-                  </span>
-                  <input
-                    id={clampMinFieldId}
-                    type="number"
-                    data-testid="damage-form-part-clamp-min"
-                    aria-label={`Damage part ${idx + 1} minimum damage clamp`}
-                    {...getFieldErrorA11yProps(clampMinError)}
-                    placeholder="Min"
-                    value={part.clampTotal?.minTotal ?? part.clamp_total?.min_total ?? ""}
-                    onChange={(e) => {
-                      const v = parseNumericInput(e.target.value);
-                      updatePart(idx, {
-                        clampTotal: {
-                          ...part.clampTotal,
-                          minTotal: Number.isNaN(v) ? undefined : v,
-                        },
-                      });
-                    }}
-                    className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
-                  />
-                  <input
-                    id={clampMaxFieldId}
-                    type="number"
-                    data-testid="damage-form-part-clamp-max"
-                    aria-label={`Damage part ${idx + 1} maximum damage clamp`}
-                    {...getFieldErrorA11yProps(clampMaxError)}
-                    placeholder="Max"
-                    value={part.clampTotal?.maxTotal ?? part.clamp_total?.max_total ?? ""}
-                    onChange={(e) => {
-                      const v = parseNumericInput(e.target.value);
-                      updatePart(idx, {
-                        clampTotal: {
-                          ...part.clampTotal,
-                          maxTotal: Number.isNaN(v) ? undefined : v,
-                        },
-                      });
-                    }}
-                    className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Scaling Rules Section */}
-            <div className={scalingSectionClass}>
-              <div className="flex items-center justify-between">
-                <span className={`text-[10px] uppercase font-bold ${mutedTextClass}`}>
-                  Scaling Rules
-                </span>
+                  ))}
+                </select>
                 <button
                   type="button"
-                  data-testid="damage-form-part-add-scaling"
-                  onClick={() => {
-                    const scaling = [
-                      ...(part.scaling ?? []),
-                      { kind: "add_dice_per_step", driver: "caster_level", step: 1 },
-                    ];
-                    updatePart(idx, { scaling: scaling as ScalingRule[] });
-                  }}
-                  className="rounded border border-neutral-300 bg-neutral-100 px-2 py-0.5 text-[10px] text-neutral-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 dark:focus-visible:ring-offset-neutral-900"
+                  data-testid="damage-form-remove-part"
+                  onClick={() => removePart(idx)}
+                  className={destructiveButtonClass}
                 >
-                  + Add Rule
+                  Remove
                 </button>
               </div>
-              {part.scaling?.map((rule, sIdx) => {
-                const scalingKindFieldId = `damage-form-part-${idx}-scaling-${sIdx}-kind`;
-                const scalingDriverFieldId = `damage-form-part-${idx}-scaling-${sIdx}-driver`;
-                const scalingStepFieldId = `damage-form-part-${idx}-scaling-${sIdx}-step`;
-                const scalingDiceIncrementFieldId =
-                  `damage-form-part-${idx}-scaling-${sIdx}-dice-increment`;
-                const scalingFlatIncrementFieldId =
-                  `damage-form-part-${idx}-scaling-${sIdx}-flat-increment`;
-                const scalingKindError = pickDamageFieldError(damageFieldErrors, scalingKindFieldId);
-                const scalingDriverError = pickDamageFieldError(
-                  damageFieldErrors,
-                  scalingDriverFieldId,
-                );
-                const scalingStepError = pickDamageFieldError(damageFieldErrors, scalingStepFieldId);
-                const scalingDiceIncrementError = pickDamageFieldError(
-                  damageFieldErrors,
-                  scalingDiceIncrementFieldId,
-                );
-                const scalingFlatIncrementError = pickDamageFieldError(
-                  damageFieldErrors,
-                  scalingFlatIncrementFieldId,
-                );
 
-                return (
-                  <div
-                    key={`${idx}-${sIdx}-${rule.kind}-${rule.driver}-${rule.step}`}
-                    className={scalingRuleClass}
-                    data-testid="damage-form-part-scaling-rule"
-                  >
-                  <select
-                    id={scalingKindFieldId}
-                    data-testid="damage-form-part-scaling-kind"
-                    aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} kind`}
-                    {...getFieldErrorA11yProps(scalingKindError)}
-                    value={rule.kind}
-                    onChange={(e) => {
-                      const scaling = [...(part.scaling ?? [])];
-                      scaling[sIdx] = { ...rule, kind: e.target.value as ScalingKind };
-                      updatePart(idx, { scaling });
-                    }}
-                    className={`px-1 py-0.5 text-xs ${controlClass}`}
-                  >
-                    {Object.entries(SCALING_KIND_LABELS).map(([k, label]) => (
-                      <option key={k} value={k}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    id={scalingDriverFieldId}
-                    data-testid="damage-form-part-scaling-driver"
-                    aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} driver`}
-                    {...getFieldErrorA11yProps(scalingDriverError)}
-                    value={rule.driver}
-                    onChange={(e) => {
-                      const scaling = [...(part.scaling ?? [])];
-                      scaling[sIdx] = { ...rule, driver: e.target.value as ScalingDriver };
-                      updatePart(idx, { scaling });
-                    }}
-                    className={`px-1 py-0.5 text-xs ${controlClass}`}
-                  >
-                    {Object.entries(SCALING_DRIVER_LABELS).map(([k, label]) => (
-                      <option key={k} value={k}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex items-center gap-1">
-                    <span className={`text-[10px] ${mutedTextClass}`}>Every</span>
+              <div className={subPanelClass}>
+                {/* Application Column */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-20 text-[10px] uppercase font-bold ${mutedTextClass}`}>
+                      Application:
+                    </span>
+                    <select
+                      id={applicationScopeFieldId}
+                      data-testid="damage-form-part-application-scope"
+                      aria-label={`Damage part ${idx + 1} application scope`}
+                      {...getFieldErrorA11yProps(applicationScopeError)}
+                      value={part.application?.scope ?? "per_target"}
+                      onChange={(e) =>
+                        updatePart(idx, {
+                          application: {
+                            ...(part.application ?? { scope: "per_target" }),
+                            scope: e.target.value as ApplicationScope,
+                          },
+                        })
+                      }
+                      className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
+                    >
+                      {(
+                        Object.entries(APPLICATION_SCOPE_LABELS) as [ApplicationScope, string][]
+                      ).map(([k, label]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 ml-20">
                     <input
-                      id={scalingStepFieldId}
+                      id={applicationTicksFieldId}
                       type="number"
-                      data-testid="damage-form-part-scaling-step"
-                      aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} step`}
-                      {...getFieldErrorA11yProps(scalingStepError)}
-                      placeholder="Step"
-                      className={`w-10 px-1 py-0.5 text-xs ${controlClass}`}
-                      value={rule.step}
+                      data-testid="damage-form-part-application-ticks"
+                      aria-label={`Damage part ${idx + 1} application ticks`}
+                      {...getFieldErrorA11yProps(applicationTicksError)}
+                      placeholder="Ticks"
+                      value={part.application?.ticks ?? ""}
                       onChange={(e) => {
                         const v = parseNumericInput(e.target.value);
-                        const scaling = [...(part.scaling ?? [])];
-                        scaling[sIdx] = { ...rule, step: Number.isNaN(v) ? 1 : Math.max(1, v) };
-                        updatePart(idx, { scaling });
+                        updatePart(idx, {
+                          application: {
+                            ...(part.application ?? { scope: "per_target" }),
+                            ticks: Number.isNaN(v) || v <= 0 ? undefined : v,
+                          },
+                        });
                       }}
+                      className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
+                    />
+                    <input
+                      id={applicationTickDriverFieldId}
+                      type="text"
+                      data-testid="damage-form-part-application-tick-driver"
+                      aria-label={`Damage part ${idx + 1} tick driver`}
+                      {...getFieldErrorA11yProps(applicationTickDriverError)}
+                      placeholder="Tick driver (e.g. round)"
+                      value={part.application?.tickDriver ?? ""}
+                      onChange={(e) =>
+                        updatePart(idx, {
+                          application: {
+                            ...(part.application ?? { scope: "per_target" }),
+                            tickDriver: e.target.value || undefined,
+                          },
+                        })
+                      }
+                      className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
                     />
                   </div>
-                  {rule.kind === "add_dice_per_step" && (
-                    <input
-                      id={scalingDiceIncrementFieldId}
-                      type="text"
-                      data-testid="damage-form-part-scaling-dice-increment"
-                      aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} dice increment`}
-                      {...getFieldErrorA11yProps(scalingDiceIncrementError)}
-                      placeholder="e.g. 1d6"
-                      className={`w-16 px-1 py-0.5 text-xs font-mono ${controlClass}`}
-                      value={
-                        rule.diceIncrement
-                          ? `${rule.diceIncrement.count}d${rule.diceIncrement.sides}`
-                          : rule.dice_increment
-                            ? `${rule.dice_increment.count}d${rule.dice_increment.sides}`
-                            : ""
+                </div>
+
+                {/* Save/Clamping Column */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-12 text-[10px] uppercase font-bold ${mutedTextClass}`}>
+                      Save:
+                    </span>
+                    <select
+                      id={saveKindFieldId}
+                      data-testid="damage-form-part-save-kind"
+                      aria-label={`Damage part ${idx + 1} save kind`}
+                      {...getFieldErrorA11yProps(saveKindError)}
+                      value={part.save?.kind ?? "none"}
+                      onChange={(e) =>
+                        updatePart(idx, {
+                          save: {
+                            ...(part.save ?? { kind: "none" }),
+                            kind: e.target.value as SaveKind,
+                          },
+                        })
                       }
-                      onChange={(e) => {
-                        const m = e.target.value.match(/^(\d+)d(\d+)$/i);
-                        if (m) {
-                          const scaling = [...(part.scaling ?? [])];
-                          scaling[sIdx] = {
-                            ...rule,
-                            diceIncrement: {
-                              count: Number.parseInt(m[1], 10),
-                              sides: Number.parseInt(m[2], 10),
-                            },
-                          };
-                          updatePart(idx, { scaling });
-                        }
-                      }}
-                    />
-                  )}
-                  {rule.kind === "add_flat_per_step" && (
+                      className={`flex-1 py-0.5 text-xs outline-none ${controlClass}`}
+                    >
+                      {(Object.entries(SAVE_KIND_LABELS) as [SaveKind, string][]).map(
+                        ([k, label]) => (
+                          <option key={k} value={k}>
+                            {label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-12 text-[10px] uppercase font-bold ${mutedTextClass}`}>
+                      Clamp:
+                    </span>
                     <input
-                      id={scalingFlatIncrementFieldId}
+                      id={clampMinFieldId}
                       type="number"
-                      data-testid="damage-form-part-scaling-flat-increment"
-                      aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} flat increment`}
-                      {...getFieldErrorA11yProps(scalingFlatIncrementError)}
-                      placeholder="+1"
-                      className={`w-12 px-1 py-0.5 text-xs ${controlClass}`}
-                      value={rule.flatIncrement ?? rule.flat_increment ?? ""}
+                      data-testid="damage-form-part-clamp-min"
+                      aria-label={`Damage part ${idx + 1} minimum damage clamp`}
+                      {...getFieldErrorA11yProps(clampMinError)}
+                      placeholder="Min"
+                      value={part.clampTotal?.minTotal ?? part.clamp_total?.min_total ?? ""}
                       onChange={(e) => {
                         const v = parseNumericInput(e.target.value);
-                        const scaling = [...(part.scaling ?? [])];
-                        scaling[sIdx] = { ...rule, flatIncrement: Number.isNaN(v) ? undefined : v };
-                        updatePart(idx, { scaling });
+                        updatePart(idx, {
+                          clampTotal: {
+                            ...part.clampTotal,
+                            minTotal: Number.isNaN(v) ? undefined : v,
+                          },
+                        });
                       }}
+                      className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
                     />
-                  )}
+                    <input
+                      id={clampMaxFieldId}
+                      type="number"
+                      data-testid="damage-form-part-clamp-max"
+                      aria-label={`Damage part ${idx + 1} maximum damage clamp`}
+                      {...getFieldErrorA11yProps(clampMaxError)}
+                      placeholder="Max"
+                      value={part.clampTotal?.maxTotal ?? part.clamp_total?.max_total ?? ""}
+                      onChange={(e) => {
+                        const v = parseNumericInput(e.target.value);
+                        updatePart(idx, {
+                          clampTotal: {
+                            ...part.clampTotal,
+                            maxTotal: Number.isNaN(v) ? undefined : v,
+                          },
+                        });
+                      }}
+                      className={`w-16 py-0.5 text-xs outline-none ${controlClass}`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Scaling Rules Section */}
+              <div className={scalingSectionClass}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] uppercase font-bold ${mutedTextClass}`}>
+                    Scaling Rules
+                  </span>
                   <button
                     type="button"
-                    data-testid="damage-form-part-remove-scaling"
-                    aria-label={`Remove damage part ${idx + 1} scaling rule ${sIdx + 1}`}
+                    data-testid="damage-form-part-add-scaling"
                     onClick={() => {
-                      const scaling = part.scaling?.filter((_, i) => i !== sIdx);
-                      updatePart(idx, { scaling });
+                      const scaling = [
+                        ...(part.scaling ?? []),
+                        { kind: "add_dice_per_step", driver: "caster_level", step: 1 },
+                      ];
+                      updatePart(idx, { scaling: scaling as ScalingRule[] });
                     }}
-                    className={ghostDestructiveButtonClass}
+                    className="rounded border border-neutral-300 bg-neutral-100 px-2 py-0.5 text-[10px] text-neutral-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 dark:focus-visible:ring-offset-neutral-900"
                   >
-                    ×
+                    + Add Rule
                   </button>
-                  </div>
-                );
-              })}
-            </div>
+                </div>
+                {part.scaling?.map((rule, sIdx) => {
+                  const scalingKindFieldId = `damage-form-part-${idx}-scaling-${sIdx}-kind`;
+                  const scalingDriverFieldId = `damage-form-part-${idx}-scaling-${sIdx}-driver`;
+                  const scalingStepFieldId = `damage-form-part-${idx}-scaling-${sIdx}-step`;
+                  const scalingDiceIncrementFieldId = `damage-form-part-${idx}-scaling-${sIdx}-dice-increment`;
+                  const scalingFlatIncrementFieldId = `damage-form-part-${idx}-scaling-${sIdx}-flat-increment`;
+                  const scalingKindError = pickDamageFieldError(
+                    damageFieldErrors,
+                    scalingKindFieldId,
+                  );
+                  const scalingDriverError = pickDamageFieldError(
+                    damageFieldErrors,
+                    scalingDriverFieldId,
+                  );
+                  const scalingStepError = pickDamageFieldError(
+                    damageFieldErrors,
+                    scalingStepFieldId,
+                  );
+                  const scalingDiceIncrementError = pickDamageFieldError(
+                    damageFieldErrors,
+                    scalingDiceIncrementFieldId,
+                  );
+                  const scalingFlatIncrementError = pickDamageFieldError(
+                    damageFieldErrors,
+                    scalingFlatIncrementFieldId,
+                  );
 
-            <textarea
-              id={notesFieldId}
-              data-testid="damage-form-part-notes"
-              aria-label={`Damage part ${idx + 1} notes`}
-              {...getFieldErrorA11yProps(partNotesError)}
-              placeholder="Part notes (optional)"
-              value={part.notes ?? ""}
-              onChange={(e) => updatePart(idx, { notes: e.target.value || undefined })}
-              className={`w-full min-h-[40px] text-xs outline-none ${controlClass}`}
-            />
-          </div>
+                  return (
+                    <div
+                      key={`${idx}-${sIdx}-${rule.kind}-${rule.driver}-${rule.step}`}
+                      className={scalingRuleClass}
+                      data-testid="damage-form-part-scaling-rule"
+                    >
+                      <select
+                        id={scalingKindFieldId}
+                        data-testid="damage-form-part-scaling-kind"
+                        aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} kind`}
+                        {...getFieldErrorA11yProps(scalingKindError)}
+                        value={rule.kind}
+                        onChange={(e) => {
+                          const scaling = [...(part.scaling ?? [])];
+                          scaling[sIdx] = { ...rule, kind: e.target.value as ScalingKind };
+                          updatePart(idx, { scaling });
+                        }}
+                        className={`px-1 py-0.5 text-xs ${controlClass}`}
+                      >
+                        {Object.entries(SCALING_KIND_LABELS).map(([k, label]) => (
+                          <option key={k} value={k}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        id={scalingDriverFieldId}
+                        data-testid="damage-form-part-scaling-driver"
+                        aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} driver`}
+                        {...getFieldErrorA11yProps(scalingDriverError)}
+                        value={rule.driver}
+                        onChange={(e) => {
+                          const scaling = [...(part.scaling ?? [])];
+                          scaling[sIdx] = { ...rule, driver: e.target.value as ScalingDriver };
+                          updatePart(idx, { scaling });
+                        }}
+                        className={`px-1 py-0.5 text-xs ${controlClass}`}
+                      >
+                        {Object.entries(SCALING_DRIVER_LABELS).map(([k, label]) => (
+                          <option key={k} value={k}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex items-center gap-1">
+                        <span className={`text-[10px] ${mutedTextClass}`}>Every</span>
+                        <input
+                          id={scalingStepFieldId}
+                          type="number"
+                          data-testid="damage-form-part-scaling-step"
+                          aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} step`}
+                          {...getFieldErrorA11yProps(scalingStepError)}
+                          placeholder="Step"
+                          className={`w-10 px-1 py-0.5 text-xs ${controlClass}`}
+                          value={rule.step}
+                          onChange={(e) => {
+                            const v = parseNumericInput(e.target.value);
+                            const scaling = [...(part.scaling ?? [])];
+                            scaling[sIdx] = { ...rule, step: Number.isNaN(v) ? 1 : Math.max(1, v) };
+                            updatePart(idx, { scaling });
+                          }}
+                        />
+                      </div>
+                      {rule.kind === "add_dice_per_step" && (
+                        <input
+                          id={scalingDiceIncrementFieldId}
+                          type="text"
+                          data-testid="damage-form-part-scaling-dice-increment"
+                          aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} dice increment`}
+                          {...getFieldErrorA11yProps(scalingDiceIncrementError)}
+                          placeholder="e.g. 1d6"
+                          className={`w-16 px-1 py-0.5 text-xs font-mono ${controlClass}`}
+                          value={
+                            rule.diceIncrement
+                              ? `${rule.diceIncrement.count}d${rule.diceIncrement.sides}`
+                              : rule.dice_increment
+                                ? `${rule.dice_increment.count}d${rule.dice_increment.sides}`
+                                : ""
+                          }
+                          onChange={(e) => {
+                            const m = e.target.value.match(/^(\d+)d(\d+)$/i);
+                            if (m) {
+                              const scaling = [...(part.scaling ?? [])];
+                              scaling[sIdx] = {
+                                ...rule,
+                                diceIncrement: {
+                                  count: Number.parseInt(m[1], 10),
+                                  sides: Number.parseInt(m[2], 10),
+                                },
+                              };
+                              updatePart(idx, { scaling });
+                            }
+                          }}
+                        />
+                      )}
+                      {rule.kind === "add_flat_per_step" && (
+                        <input
+                          id={scalingFlatIncrementFieldId}
+                          type="number"
+                          data-testid="damage-form-part-scaling-flat-increment"
+                          aria-label={`Damage part ${idx + 1} scaling rule ${sIdx + 1} flat increment`}
+                          {...getFieldErrorA11yProps(scalingFlatIncrementError)}
+                          placeholder="+1"
+                          className={`w-12 px-1 py-0.5 text-xs ${controlClass}`}
+                          value={rule.flatIncrement ?? rule.flat_increment ?? ""}
+                          onChange={(e) => {
+                            const v = parseNumericInput(e.target.value);
+                            const scaling = [...(part.scaling ?? [])];
+                            scaling[sIdx] = {
+                              ...rule,
+                              flatIncrement: Number.isNaN(v) ? undefined : v,
+                            };
+                            updatePart(idx, { scaling });
+                          }}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        data-testid="damage-form-part-remove-scaling"
+                        aria-label={`Remove damage part ${idx + 1} scaling rule ${sIdx + 1}`}
+                        onClick={() => {
+                          const scaling = part.scaling?.filter((_, i) => i !== sIdx);
+                          updatePart(idx, { scaling });
+                        }}
+                        className={ghostDestructiveButtonClass}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <textarea
+                id={notesFieldId}
+                data-testid="damage-form-part-notes"
+                aria-label={`Damage part ${idx + 1} notes`}
+                {...getFieldErrorA11yProps(partNotesError)}
+                placeholder="Part notes (optional)"
+                value={part.notes ?? ""}
+                onChange={(e) => updatePart(idx, { notes: e.target.value || undefined })}
+                className={`w-full min-h-[40px] text-xs outline-none ${controlClass}`}
+              />
+            </div>
           );
         })}
 

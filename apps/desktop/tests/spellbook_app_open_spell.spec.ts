@@ -29,7 +29,9 @@ test("openSpell waits for the new library search to settle before using search r
     };
 
     const events: LibraryTimelineEvent[] = [];
-    const resultsState = document.querySelector<HTMLElement>('[data-testid="library-results-state"]');
+    const resultsState = document.querySelector<HTMLElement>(
+      '[data-testid="library-results-state"]',
+    );
 
     if (!resultsState) {
       throw new Error("library-results-state not found");
@@ -73,30 +75,36 @@ test("openSpell waits for the new library search to settle before using search r
       true,
     );
 
-    (window as Window & {
-      __SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__?: LibraryTimelineEvent[];
-      __SPELLBOOK_LIBRARY_OPEN_SPELL_OBSERVER__?: MutationObserver;
-    }).__SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__ = events;
-    (window as Window & {
-      __SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__?: LibraryTimelineEvent[];
-      __SPELLBOOK_LIBRARY_OPEN_SPELL_OBSERVER__?: MutationObserver;
-    }).__SPELLBOOK_LIBRARY_OPEN_SPELL_OBSERVER__ = observer;
+    (
+      window as Window & {
+        __SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__?: LibraryTimelineEvent[];
+        __SPELLBOOK_LIBRARY_OPEN_SPELL_OBSERVER__?: MutationObserver;
+      }
+    ).__SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__ = events;
+    (
+      window as Window & {
+        __SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__?: LibraryTimelineEvent[];
+        __SPELLBOOK_LIBRARY_OPEN_SPELL_OBSERVER__?: MutationObserver;
+      }
+    ).__SPELLBOOK_LIBRARY_OPEN_SPELL_OBSERVER__ = observer;
   }, spellName);
 
   await app.openSpell(spellName);
 
   const timeline = await page.evaluate(() => {
     return (
-      window as Window & {
-        __SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__?: Array<{
-          kind: "state" | "click";
-          requestId?: string | null;
-          settled?: string | null;
-          time: number;
-        }>;
-        __SPELLBOOK_LIBRARY_OPEN_SPELL_OBSERVER__?: MutationObserver;
-      }
-    ).__SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__ ?? [];
+      (
+        window as Window & {
+          __SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__?: Array<{
+            kind: "state" | "click";
+            requestId?: string | null;
+            settled?: string | null;
+            time: number;
+          }>;
+          __SPELLBOOK_LIBRARY_OPEN_SPELL_OBSERVER__?: MutationObserver;
+        }
+      ).__SPELLBOOK_LIBRARY_OPEN_SPELL_TIMELINE__ ?? []
+    );
   });
 
   const initialState = timeline.find((event) => event.kind === "state");
@@ -148,7 +156,9 @@ test("clearFilters waits for the reset search to settle before returning", async
       time: number;
     };
 
-    const resultsState = document.querySelector<HTMLElement>('[data-testid="library-results-state"]');
+    const resultsState = document.querySelector<HTMLElement>(
+      '[data-testid="library-results-state"]',
+    );
     if (!resultsState) {
       throw new Error("library-results-state not found");
     }
@@ -168,7 +178,10 @@ test("clearFilters waits for the reset search to settle before returning", async
       throw new Error("Tauri invoke not available");
     }
 
-    if (!(window as Window & { __SPELLBOOK_LIBRARY_DELAY_INSTALLED__?: boolean }).__SPELLBOOK_LIBRARY_DELAY_INSTALLED__) {
+    if (
+      !(window as Window & { __SPELLBOOK_LIBRARY_DELAY_INSTALLED__?: boolean })
+        .__SPELLBOOK_LIBRARY_DELAY_INSTALLED__
+    ) {
       const originalInvoke = internals.invoke.bind(internals);
       internals.invoke = async (command: string, args?: object) => {
         const shouldDelay =
@@ -181,15 +194,18 @@ test("clearFilters waits for the reset search to settle before returning", async
           (args as { query?: unknown }).query === "";
 
         if (shouldDelay) {
-          (window as Window & { __SPELLBOOK_DELAY_NEXT_EMPTY_LIBRARY_SEARCH__?: boolean })
-            .__SPELLBOOK_DELAY_NEXT_EMPTY_LIBRARY_SEARCH__ = false;
+          (
+            window as Window & { __SPELLBOOK_DELAY_NEXT_EMPTY_LIBRARY_SEARCH__?: boolean }
+          ).__SPELLBOOK_DELAY_NEXT_EMPTY_LIBRARY_SEARCH__ = false;
           await new Promise((resolve) => window.setTimeout(resolve, 1500));
         }
 
         return originalInvoke(command, args);
       };
 
-      (window as Window & { __SPELLBOOK_LIBRARY_DELAY_INSTALLED__?: boolean }).__SPELLBOOK_LIBRARY_DELAY_INSTALLED__ = true;
+      (
+        window as Window & { __SPELLBOOK_LIBRARY_DELAY_INSTALLED__?: boolean }
+      ).__SPELLBOOK_LIBRARY_DELAY_INSTALLED__ = true;
     }
 
     const events: LibraryTimelineEvent[] = [];
@@ -231,19 +247,25 @@ test("clearFilters waits for the reset search to settle before returning", async
       true,
     );
 
-    (window as Window & {
-      __SPELLBOOK_DELAY_NEXT_EMPTY_LIBRARY_SEARCH__?: boolean;
-      __SPELLBOOK_LIBRARY_CLEAR_FILTERS_TIMELINE__?: LibraryTimelineEvent[];
-      __SPELLBOOK_LIBRARY_CLEAR_FILTERS_OBSERVER__?: MutationObserver;
-    }).__SPELLBOOK_DELAY_NEXT_EMPTY_LIBRARY_SEARCH__ = true;
-    (window as Window & {
-      __SPELLBOOK_LIBRARY_CLEAR_FILTERS_TIMELINE__?: LibraryTimelineEvent[];
-      __SPELLBOOK_LIBRARY_CLEAR_FILTERS_OBSERVER__?: MutationObserver;
-    }).__SPELLBOOK_LIBRARY_CLEAR_FILTERS_TIMELINE__ = events;
-    (window as Window & {
-      __SPELLBOOK_LIBRARY_CLEAR_FILTERS_TIMELINE__?: LibraryTimelineEvent[];
-      __SPELLBOOK_LIBRARY_CLEAR_FILTERS_OBSERVER__?: MutationObserver;
-    }).__SPELLBOOK_LIBRARY_CLEAR_FILTERS_OBSERVER__ = observer;
+    (
+      window as Window & {
+        __SPELLBOOK_DELAY_NEXT_EMPTY_LIBRARY_SEARCH__?: boolean;
+        __SPELLBOOK_LIBRARY_CLEAR_FILTERS_TIMELINE__?: LibraryTimelineEvent[];
+        __SPELLBOOK_LIBRARY_CLEAR_FILTERS_OBSERVER__?: MutationObserver;
+      }
+    ).__SPELLBOOK_DELAY_NEXT_EMPTY_LIBRARY_SEARCH__ = true;
+    (
+      window as Window & {
+        __SPELLBOOK_LIBRARY_CLEAR_FILTERS_TIMELINE__?: LibraryTimelineEvent[];
+        __SPELLBOOK_LIBRARY_CLEAR_FILTERS_OBSERVER__?: MutationObserver;
+      }
+    ).__SPELLBOOK_LIBRARY_CLEAR_FILTERS_TIMELINE__ = events;
+    (
+      window as Window & {
+        __SPELLBOOK_LIBRARY_CLEAR_FILTERS_TIMELINE__?: LibraryTimelineEvent[];
+        __SPELLBOOK_LIBRARY_CLEAR_FILTERS_OBSERVER__?: MutationObserver;
+      }
+    ).__SPELLBOOK_LIBRARY_CLEAR_FILTERS_OBSERVER__ = observer;
   });
 
   await app.clearFilters();

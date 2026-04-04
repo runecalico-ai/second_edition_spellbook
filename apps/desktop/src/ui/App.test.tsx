@@ -199,7 +199,9 @@ describe("App shell", () => {
     expect(notificationViewport.parentElement).toBe(appRoot);
     expect(themeLiveRegion.parentElement).toBe(appRoot);
 
-    const inertShell = Array.from(appRoot?.children ?? []).find((child) => child.contains(navigationLink));
+    const inertShell = Array.from(appRoot?.children ?? []).find((child) =>
+      child.contains(navigationLink),
+    );
 
     expect(inertShell).toBeDefined();
     expect(inertShell?.contains(notificationViewport)).toBe(false);

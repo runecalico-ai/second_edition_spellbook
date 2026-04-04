@@ -383,17 +383,18 @@ describe("empty character spellbook state", () => {
   });
 
   it("keeps the header spell count in a loading state until the spellbook finishes loading", async () => {
-    const spellbook = deferred<
-      Array<{
-        spellId: number;
-        spellName: string;
-        spellLevel: number;
-        spellSchool?: string;
-        prepared: number;
-        known: number;
-        notes?: string;
-      }>
-    >();
+    const spellbook =
+      deferred<
+        Array<{
+          spellId: number;
+          spellName: string;
+          spellLevel: number;
+          spellSchool?: string;
+          prepared: number;
+          known: number;
+          notes?: string;
+        }>
+      >();
 
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       switch (cmd) {
@@ -435,9 +436,7 @@ describe("empty character spellbook state", () => {
     ]);
 
     await waitFor(() => {
-      expect(screen.getByTestId("spellbook-count-label").textContent).toBe(
-        "2 spells in spellbook",
-      );
+      expect(screen.getByTestId("spellbook-count-label").textContent).toBe("2 spells in spellbook");
     });
   });
 });

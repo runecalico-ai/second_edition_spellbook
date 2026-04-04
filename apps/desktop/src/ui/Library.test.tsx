@@ -609,34 +609,41 @@ describe("Library empty states", () => {
       const liveRegion = screen.getByTestId("library-empty-state-live-region");
       await waitFor(() => {
         expect(screen.getByTestId("empty-search-state")).toBeTruthy();
-        expect(liveRegion.textContent).toBe("No Results. No spells match your current search or filters.");
+        expect(liveRegion.textContent).toBe(
+          "No Results. No spells match your current search or filters.",
+        );
       });
 
       fireEvent.click(screen.getByTestId("library-search-button"));
 
-      expect(liveRegion.textContent).toBe("No Results. No spells match your current search or filters.");
+      expect(liveRegion.textContent).toBe(
+        "No Results. No spells match your current search or filters.",
+      );
 
       secondEmptySearchDeferred.resolve([]);
 
       await waitFor(() => {
         expect(screen.getByTestId("empty-search-state")).toBeTruthy();
-        expect(liveRegion.textContent).toBe("No Results. No spells match your current search or filters.");
+        expect(liveRegion.textContent).toBe(
+          "No Results. No spells match your current search or filters.",
+        );
       });
     });
 
     it("does not show the empty-library state while Reset Filters reloads a non-empty library", async () => {
-      const defaultLibraryDeferred = createDeferred<
-        Array<{
-          id: number;
-          name: string;
-          school: string;
-          level: number;
-          classList: string;
-          components: string;
-          isQuestSpell: number;
-          isCantrip: number;
-        }>
-      >();
+      const defaultLibraryDeferred =
+        createDeferred<
+          Array<{
+            id: number;
+            name: string;
+            school: string;
+            level: number;
+            classList: string;
+            components: string;
+            isQuestSpell: number;
+            isCantrip: number;
+          }>
+        >();
 
       vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
         switch (cmd) {

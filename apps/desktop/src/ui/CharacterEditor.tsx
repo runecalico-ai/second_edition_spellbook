@@ -1035,7 +1035,7 @@ function buildSpellPickerFilterKey(
     listType,
     query,
     filters,
-    preparedSourceKey: listType === "PREPARED" ? preparedSourceKey ?? "" : undefined,
+    preparedSourceKey: listType === "PREPARED" ? (preparedSourceKey ?? "") : undefined,
   });
 }
 
@@ -1152,107 +1152,110 @@ function SpellPicker({
     setOpenStateReady(true);
   }, [open, resetPickerSession]);
 
-  const search = useCallback(async (currentFilterKey: string) => {
-    const requestId = searchRequestIdRef.current + 1;
-    searchRequestIdRef.current = requestId;
-    setActiveSearchRequestId(requestId);
-    setResultsSettled(false);
+  const search = useCallback(
+    async (currentFilterKey: string) => {
+      const requestId = searchRequestIdRef.current + 1;
+      searchRequestIdRef.current = requestId;
+      setActiveSearchRequestId(requestId);
+      setResultsSettled(false);
 
-    const currentQuery = query;
-    pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "start");
-    await sleepPlaywrightSpellPickerSearchDelay(listType, currentQuery);
+      const currentQuery = query;
+      pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "start");
+      await sleepPlaywrightSpellPickerSearchDelay(listType, currentQuery);
 
-    if (listType === "PREPARED") {
-      const lowerQuery = currentQuery.toLowerCase();
-      const filtered = knownSpells
-        .filter((s) => {
-          const sName = s.spellName.toLowerCase();
-          if (currentQuery && !sName.includes(lowerQuery)) return false;
+      if (listType === "PREPARED") {
+        const lowerQuery = currentQuery.toLowerCase();
+        const filtered = knownSpells
+          .filter((s) => {
+            const sName = s.spellName.toLowerCase();
+            if (currentQuery && !sName.includes(lowerQuery)) return false;
 
-          const sSchool = s.spellSchool || "";
-          if (filters.school && !sSchool.includes(filters.school)) return false;
+            const sSchool = s.spellSchool || "";
+            if (filters.school && !sSchool.includes(filters.school)) return false;
 
-          const sSphere = s.spellSphere || "";
-          if (filters.sphere && !sSphere.includes(filters.sphere)) return false;
+            const sSphere = s.spellSphere || "";
+            if (filters.sphere && !sSphere.includes(filters.sphere)) return false;
 
-          const sLevel = s.spellLevel;
-          if (filters.levelMin !== undefined && sLevel < filters.levelMin) return false;
-          if (filters.levelMax !== undefined && sLevel > filters.levelMax) return false;
+            const sLevel = s.spellLevel;
+            if (filters.levelMin !== undefined && sLevel < filters.levelMin) return false;
+            if (filters.levelMax !== undefined && sLevel > filters.levelMax) return false;
 
-          const isQuest = s.isQuestSpell;
-          const isCantrip = s.isCantrip;
+            const isQuest = s.isQuestSpell;
+            const isCantrip = s.isCantrip;
 
-          if (filters.isQuestSpell && !isQuest) return false;
-          if (filters.isCantrip && !isCantrip) return false;
+            if (filters.isQuestSpell && !isQuest) return false;
+            if (filters.isCantrip && !isCantrip) return false;
 
-          const sTags = s.tags || "";
-          if (filters.tags && !sTags.toLowerCase().includes(filters.tags.toLowerCase()))
-            return false;
+            const sTags = s.tags || "";
+            if (filters.tags && !sTags.toLowerCase().includes(filters.tags.toLowerCase()))
+              return false;
 
-          return true;
-        })
-        .map((s): PickerSpell => {
-          return {
-            id: s.spellId,
-            name: s.spellName,
-            level: s.spellLevel,
-            school: s.spellSchool,
-            sphere: s.spellSphere,
-            isQuestSpell: s.isQuestSpell,
-            isCantrip: s.isCantrip,
-            tags: s.tags,
-          };
+            return true;
+          })
+          .map((s): PickerSpell => {
+            return {
+              id: s.spellId,
+              name: s.spellName,
+              level: s.spellLevel,
+              school: s.spellSchool,
+              sphere: s.spellSphere,
+              isQuestSpell: s.isQuestSpell,
+              isCantrip: s.isCantrip,
+              tags: s.tags,
+            };
+          });
+
+        pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
+
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        setResults(filtered);
+        setSettledFilterKey(currentFilterKey);
+        setResultsSettled(true);
+        return;
+      }
+
+      try {
+        const res = await invoke<PickerSpell[]>("search_keyword", {
+          query: currentQuery,
+          filters: {
+            isQuestSpell: filters.isQuestSpell || undefined,
+            isCantrip: filters.isCantrip || undefined,
+            schools: filters.school ? [filters.school] : undefined,
+            spheres: filters.sphere ? [filters.sphere] : undefined,
+            levelMin: filters.levelMin,
+            levelMax: filters.levelMax,
+            tags: filters.tags || undefined,
+          },
         });
 
-      pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
+        pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
 
-      if (requestId !== searchRequestIdRef.current) {
-        return;
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        setResults(res);
+        setSettledFilterKey(currentFilterKey);
+        setResultsSettled(true);
+      } catch (e) {
+        console.error(e);
+
+        pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
+
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        setResults([]);
+        setSettledFilterKey(currentFilterKey);
+        setResultsSettled(true);
       }
-
-      setResults(filtered);
-      setSettledFilterKey(currentFilterKey);
-      setResultsSettled(true);
-      return;
-    }
-
-    try {
-      const res = await invoke<PickerSpell[]>("search_keyword", {
-        query: currentQuery,
-        filters: {
-          isQuestSpell: filters.isQuestSpell || undefined,
-          isCantrip: filters.isCantrip || undefined,
-          schools: filters.school ? [filters.school] : undefined,
-          spheres: filters.sphere ? [filters.sphere] : undefined,
-          levelMin: filters.levelMin,
-          levelMax: filters.levelMax,
-          tags: filters.tags || undefined,
-        },
-      });
-
-      pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
-
-      if (requestId !== searchRequestIdRef.current) {
-        return;
-      }
-
-      setResults(res);
-      setSettledFilterKey(currentFilterKey);
-      setResultsSettled(true);
-    } catch (e) {
-      console.error(e);
-
-      pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
-
-      if (requestId !== searchRequestIdRef.current) {
-        return;
-      }
-
-      setResults([]);
-      setSettledFilterKey(currentFilterKey);
-      setResultsSettled(true);
-    }
-  }, [query, filters, listType, knownSpells]);
+    },
+    [query, filters, listType, knownSpells],
+  );
 
   useEffect(() => {
     if (open && openStateReady) {

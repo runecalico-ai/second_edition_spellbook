@@ -96,7 +96,9 @@ describe("StructuredFieldInput", () => {
     render(
       <StructuredFieldInput
         fieldType="range"
-        value={{ kind: "distance", unit: "ft", distance: { mode: "fixed", value: 10 } } as RangeSpec}
+        value={
+          { kind: "distance", unit: "ft", distance: { mode: "fixed", value: 10 } } as RangeSpec
+        }
         onChange={() => {}}
       />,
     );
@@ -112,11 +114,13 @@ describe("StructuredFieldInput", () => {
     const { rerender } = render(
       <StructuredFieldInput
         fieldType="range"
-        value={{
-          kind: "special",
-          rawLegacyValue: "legacy range",
-          notes: "range notes",
-        } as RangeSpec}
+        value={
+          {
+            kind: "special",
+            rawLegacyValue: "legacy range",
+            notes: "range notes",
+          } as RangeSpec
+        }
         onChange={() => {}}
       />,
     );
@@ -128,11 +132,13 @@ describe("StructuredFieldInput", () => {
     rerender(
       <StructuredFieldInput
         fieldType="duration"
-        value={{
-          kind: "usage_limited",
-          uses: { mode: "fixed", value: 2 },
-          notes: "duration notes",
-        } as DurationSpec}
+        value={
+          {
+            kind: "usage_limited",
+            uses: { mode: "fixed", value: 2 },
+            notes: "duration notes",
+          } as DurationSpec
+        }
         onChange={() => {}}
       />,
     );
@@ -144,14 +150,16 @@ describe("StructuredFieldInput", () => {
     rerender(
       <StructuredFieldInput
         fieldType="casting_time"
-        value={{
-          text: "1 round",
-          unit: "round",
-          baseValue: 1,
-          perLevel: 0,
-          levelDivisor: 1,
-          rawLegacyValue: "legacy ct",
-        } as SpellCastingTime}
+        value={
+          {
+            text: "1 round",
+            unit: "round",
+            baseValue: 1,
+            perLevel: 0,
+            levelDivisor: 1,
+            rawLegacyValue: "legacy ct",
+          } as SpellCastingTime
+        }
         onChange={() => {}}
       />,
     );
@@ -165,11 +173,13 @@ describe("StructuredFieldInput", () => {
     render(
       <StructuredFieldInput
         fieldType="range"
-        value={{
-          kind: "distance",
-          unit: "ft",
-          distance: { mode: "fixed", value: 30 },
-        } as RangeSpec}
+        value={
+          {
+            kind: "distance",
+            unit: "ft",
+            distance: { mode: "fixed", value: 30 },
+          } as RangeSpec
+        }
         onChange={() => {}}
       />,
     );
@@ -177,12 +187,12 @@ describe("StructuredFieldInput", () => {
     const root = getRoot();
     expectGroupLegend(root, "Range");
     expectClasses(root, ROOT_SURFACE_CLASSES);
-  const primary = getPrimaryRow();
-  const supporting = getSupportingRow();
-  const preview = getPreviewRow();
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
     expectClasses(supporting, SUPPORTING_ROW_CLASSES);
     expectClasses(preview, PREVIEW_ROW_CLASSES);
-  expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("range-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("range-scalar"))).toBe(true);
     expect(primary.contains(screen.getByTestId("range-unit"))).toBe(true);
@@ -259,12 +269,12 @@ describe("StructuredFieldInput", () => {
     const root = getRoot();
     expectGroupLegend(root, "Duration");
     expectClasses(root, ROOT_SURFACE_CLASSES);
-  const primary = getPrimaryRow();
-  const supporting = getSupportingRow();
-  const preview = getPreviewRow();
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
     expectClasses(supporting, SUPPORTING_ROW_CLASSES);
     expectClasses(preview, PREVIEW_ROW_CLASSES);
-  expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
     expect(primary.contains(screen.getByTestId("duration-scalar"))).toBe(true);
     expect(primary.contains(screen.getByTestId("duration-unit"))).toBe(true);
@@ -278,11 +288,13 @@ describe("StructuredFieldInput", () => {
     render(
       <StructuredFieldInput
         fieldType="duration"
-        value={{
-          kind: "special",
-          rawLegacyValue: "legacy duration",
-          notes: "notes",
-        } as DurationSpec}
+        value={
+          {
+            kind: "special",
+            rawLegacyValue: "legacy duration",
+            notes: "notes",
+          } as DurationSpec
+        }
         onChange={() => {}}
       />,
     );
@@ -301,10 +313,12 @@ describe("StructuredFieldInput", () => {
     render(
       <StructuredFieldInput
         fieldType="duration"
-        value={{
-          kind: "conditional",
-          condition: "When cast",
-        } as DurationSpec}
+        value={
+          {
+            kind: "conditional",
+            condition: "When cast",
+          } as DurationSpec
+        }
         onChange={() => {}}
       />,
     );
@@ -323,10 +337,12 @@ describe("StructuredFieldInput", () => {
     render(
       <StructuredFieldInput
         fieldType="duration"
-        value={{
-          kind: "usage_limited",
-          uses: { mode: "fixed", value: 2 },
-        } as DurationSpec}
+        value={
+          {
+            kind: "usage_limited",
+            uses: { mode: "fixed", value: 2 },
+          } as DurationSpec
+        }
         onChange={() => {}}
       />,
     );
@@ -374,14 +390,16 @@ describe("StructuredFieldInput", () => {
     render(
       <StructuredFieldInput
         fieldType="casting_time"
-        value={{
-          text: "1 segment",
-          unit: "segment",
-          baseValue: 1,
-          perLevel: 0,
-          levelDivisor: 1,
-          rawLegacyValue: "legacy ct",
-        } as SpellCastingTime}
+        value={
+          {
+            text: "1 segment",
+            unit: "segment",
+            baseValue: 1,
+            perLevel: 0,
+            levelDivisor: 1,
+            rawLegacyValue: "legacy ct",
+          } as SpellCastingTime
+        }
         onChange={() => {}}
       />,
     );
@@ -389,10 +407,10 @@ describe("StructuredFieldInput", () => {
     const root = getRoot();
     expectGroupLegend(root, "Casting Time");
     expectClasses(root, ROOT_SURFACE_CLASSES);
-  const primary = getPrimaryRow();
-  const preview = getPreviewRow();
+    const primary = getPrimaryRow();
+    const preview = getPreviewRow();
     expectClasses(preview, PREVIEW_ROW_CLASSES);
-  expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
     expect(primary.contains(screen.getByTestId("casting-time-base-value"))).toBe(true);
     expect(primary.contains(screen.getByTestId("casting-time-per-level"))).toBe(true);
     expect(primary.contains(screen.getByTestId("casting-time-level-divisor"))).toBe(true);
@@ -406,14 +424,16 @@ describe("StructuredFieldInput", () => {
     render(
       <StructuredFieldInput
         fieldType="casting_time"
-        value={{
-          text: "legacy ct",
-          unit: "special",
-          baseValue: 1,
-          perLevel: 0,
-          levelDivisor: 1,
-          rawLegacyValue: "legacy ct",
-        } as SpellCastingTime}
+        value={
+          {
+            text: "legacy ct",
+            unit: "special",
+            baseValue: 1,
+            perLevel: 0,
+            levelDivisor: 1,
+            rawLegacyValue: "legacy ct",
+          } as SpellCastingTime
+        }
         onChange={onChange}
       />,
     );
@@ -432,13 +452,15 @@ describe("StructuredFieldInput", () => {
     render(
       <StructuredFieldInput
         fieldType="casting_time"
-        value={{
-          text: "1 segment",
-          unit: "segment",
-          baseValue: 1,
-          perLevel: 0,
-          levelDivisor: 1,
-        } as SpellCastingTime}
+        value={
+          {
+            text: "1 segment",
+            unit: "segment",
+            baseValue: 1,
+            perLevel: 0,
+            levelDivisor: 1,
+          } as SpellCastingTime
+        }
         onChange={onChange}
       />,
     );

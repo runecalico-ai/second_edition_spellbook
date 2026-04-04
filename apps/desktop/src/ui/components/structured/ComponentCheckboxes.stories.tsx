@@ -27,19 +27,21 @@ function StoryThemeFrame({
   }, [theme]);
 
   return (
-    <div className={theme === "dark" ? "dark rounded-2xl bg-neutral-950 p-4" : "rounded-2xl bg-white p-4"}>
+    <div
+      className={
+        theme === "dark" ? "dark rounded-2xl bg-neutral-950 p-4" : "rounded-2xl bg-white p-4"
+      }
+    >
       <div className="max-w-4xl">{children}</div>
     </div>
   );
 }
 
-const withTheme =
-  (theme: StoryTheme) =>
-  (Story: ComponentType) => (
-    <StoryThemeFrame theme={theme}>
-      <Story />
-    </StoryThemeFrame>
-  );
+const withTheme = (theme: StoryTheme) => (Story: ComponentType) => (
+  <StoryThemeFrame theme={theme}>
+    <Story />
+  </StoryThemeFrame>
+);
 
 const darkStory = {
   parameters: {

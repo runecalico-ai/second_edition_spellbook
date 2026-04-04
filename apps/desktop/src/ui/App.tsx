@@ -282,72 +282,72 @@ export default function App() {
           Rendering Modal inside this div would make the modal inaccessible when open. */}
       <div ref={modalInertShellRef}>
         <div className="mx-auto max-w-6xl space-y-4">
-        {/*
+          {/*
           Layout shell borders use border-stone-200/80 on white (~1.3:1), below WCAG 3:1 for non-text UI.
           Accepted deviation for chunk-5 Task 6: interactive controls use stronger borders and focus-visible rings.
         */}
-        <header className="flex items-center justify-between rounded-2xl border border-stone-200/80 bg-white/90 px-4 py-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
-          <div className="text-xl font-semibold select-none">Spellbook</div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                data-testid="btn-backup"
-                onClick={handleBackup}
-                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+          <header className="flex items-center justify-between rounded-2xl border border-stone-200/80 bg-white/90 px-4 py-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
+            <div className="text-xl font-semibold select-none">Spellbook</div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="btn-backup"
+                  onClick={handleBackup}
+                  className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                >
+                  Backup
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-vault-maintenance"
+                  onClick={openVaultMaintenance}
+                  className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                >
+                  Vault
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-restore"
+                  onClick={handleRestore}
+                  className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+                >
+                  Restore
+                </button>
+              </div>
+              <nav className="space-x-2">
+                <Tab to="/" label="Library" />
+                <Tab to="/character" label="Characters" />
+                <Tab to="/import" label="Import" />
+                <Tab to="/chat" label="Chat" />
+                <Tab to="/export" label="Export" />
+              </nav>
+              <Link
+                to="/settings"
+                data-testid="settings-gear-button"
+                aria-label="Settings"
+                className="rounded-full border border-neutral-500 bg-stone-100 p-2 text-stone-900 transition-colors hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
               >
-                Backup
-              </button>
-              <button
-                type="button"
-                data-testid="btn-vault-maintenance"
-                onClick={openVaultMaintenance}
-                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
-              >
-                Vault
-              </button>
-              <button
-                type="button"
-                data-testid="btn-restore"
-                onClick={handleRestore}
-                className="rounded-md bg-stone-900 px-2 py-1 text-xs text-stone-50 transition-colors hover:bg-stone-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:bg-neutral-800 dark:hover:bg-neutral-700"
-              >
-                Restore
-              </button>
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .75 1.7 1.7 0 0 1-3 0 1.7 1.7 0 0 0-1-.75 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.75-1 1.7 1.7 0 0 1 0-3 1.7 1.7 0 0 0 .75-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.75 1.7 1.7 0 0 1 3 0 1.7 1.7 0 0 0 1 .75 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c0 .38.14.75.4 1.02a1.7 1.7 0 0 1 0 2.96c-.26.27-.4.64-.4 1.02Z" />
+                </svg>
+              </Link>
             </div>
-            <nav className="space-x-2">
-              <Tab to="/" label="Library" />
-              <Tab to="/character" label="Characters" />
-              <Tab to="/import" label="Import" />
-              <Tab to="/chat" label="Chat" />
-              <Tab to="/export" label="Export" />
-            </nav>
-            <Link
-              to="/settings"
-              data-testid="settings-gear-button"
-              aria-label="Settings"
-              className="rounded-full border border-neutral-500 bg-stone-100 p-2 text-stone-900 transition-colors hover:bg-stone-200 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .75 1.7 1.7 0 0 1-3 0 1.7 1.7 0 0 0-1-.75 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.75-1 1.7 1.7 0 0 1 0-3 1.7 1.7 0 0 0 .75-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.75 1.7 1.7 0 0 1 3 0 1.7 1.7 0 0 0 1 .75 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c0 .38.14.75.4 1.02a1.7 1.7 0 0 1 0 2.96c-.26.27-.4.64-.4 1.02Z" />
-              </svg>
-            </Link>
-          </div>
-        </header>
-        <main className="rounded-2xl border border-stone-200/80 bg-white/80 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
-          <Outlet />
-        </main>
-      </div>
+          </header>
+          <main className="rounded-2xl border border-stone-200/80 bg-white/80 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
+            <Outlet />
+          </main>
+        </div>
       </div>
       <NotificationViewport />
       <Modal />

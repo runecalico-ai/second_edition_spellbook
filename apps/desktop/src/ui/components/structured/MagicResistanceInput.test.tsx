@@ -121,7 +121,10 @@ describe("MagicResistanceInput", () => {
 
     expect(partialScope).not.toBeNull();
     expect(partIds.disabled).toBe(true);
-    expectClasses(partialScope.closest("div")?.parentElement as HTMLElement, NESTED_SURFACE_CLASSES);
+    expectClasses(
+      partialScope.closest("div")?.parentElement as HTMLElement,
+      NESTED_SURFACE_CLASSES,
+    );
     expectClasses(partialScope, INPUT_SURFACE_CLASSES);
     expectClasses(partIds, ["w-full", ...INPUT_SURFACE_CLASSES]);
     expectClasses(scopeLabel, MUTED_TEXT_CLASSES);

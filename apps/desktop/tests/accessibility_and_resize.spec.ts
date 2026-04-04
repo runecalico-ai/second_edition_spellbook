@@ -18,7 +18,8 @@ test.describe("Resize Hardening — 900px viewport", () => {
     await test.step("Navigate to spell editor (new spell)", async () => {
       await app.navigate("Library");
       await page.waitForTimeout(500);
-      await page.getByTestId("empty-library-create-button")
+      await page
+        .getByTestId("empty-library-create-button")
         .or(page.getByRole("button", { name: /create spell/i }))
         .first()
         .click();
@@ -39,7 +40,10 @@ test.describe("Resize Hardening — 900px viewport", () => {
     // the resize did not take effect and the overflow check below would test the wrong viewport.
     {
       const innerWidth = await page.evaluate(() => window.innerWidth);
-      test.skip(innerWidth !== 900, `setViewportSize did not resize the WebView2 window (got ${innerWidth}px). Verify this test manually at 900px.`);
+      test.skip(
+        innerWidth !== 900,
+        `setViewportSize did not resize the WebView2 window (got ${innerWidth}px). Verify this test manually at 900px.`,
+      );
     }
 
     await test.step("Verify no horizontal scrollbar on spell editor page", async () => {
@@ -56,9 +60,7 @@ test.describe("Resize Hardening — 900px viewport", () => {
     });
   });
 
-  test("library page does not overflow at 900px window width", async ({
-    appContext,
-  }) => {
+  test("library page does not overflow at 900px window width", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
@@ -75,7 +77,10 @@ test.describe("Resize Hardening — 900px viewport", () => {
     {
       const innerWidth = await page.evaluate(() => window.innerWidth);
       // Skip avoids asserting overflow when CDP viewport emulation did not apply (same pattern as spell-editor resize test).
-      test.skip(innerWidth !== 900, `setViewportSize did not resize the WebView2 window (got ${innerWidth}px). Verify this test manually at 900px.`);
+      test.skip(
+        innerWidth !== 900,
+        `setViewportSize did not resize the WebView2 window (got ${innerWidth}px). Verify this test manually at 900px.`,
+      );
     }
 
     await test.step("Verify no horizontal scrollbar", async () => {
@@ -130,7 +135,10 @@ test.describe("Resize Hardening — 900px viewport", () => {
     {
       const innerWidth = await page.evaluate(() => window.innerWidth);
       // Skip avoids asserting overflow when CDP viewport emulation did not apply.
-      test.skip(innerWidth !== 900, `setViewportSize did not resize the WebView2 window (got ${innerWidth}px). Verify this test manually at 900px.`);
+      test.skip(
+        innerWidth !== 900,
+        `setViewportSize did not resize the WebView2 window (got ${innerWidth}px). Verify this test manually at 900px.`,
+      );
     }
 
     await test.step("Verify no horizontal overflow with populated editor", async () => {
@@ -188,13 +196,13 @@ test.describe("Modal focus trap and focus return", () => {
       // Note: this test verifies focus STAYS inside the modal after N tabs, not that
       // wrap-around works specifically — wrap-around is browser-native behavior guaranteed
       // by showModal(). Even with 1 focusable element, after 5 tabs focus stays inside.
-        const focusableCount = await page
-          .locator(
-            "[data-testid='modal-dialog'] button, [data-testid='modal-dialog'] a[href], [data-testid='modal-dialog'] input, [data-testid='modal-dialog'] select, [data-testid='modal-dialog'] textarea, [data-testid='modal-dialog'] [tabindex]:not([tabindex='-1'])",
-          )
-          .count();
+      const focusableCount = await page
+        .locator(
+          "[data-testid='modal-dialog'] button, [data-testid='modal-dialog'] a[href], [data-testid='modal-dialog'] input, [data-testid='modal-dialog'] select, [data-testid='modal-dialog'] textarea, [data-testid='modal-dialog'] [tabindex]:not([tabindex='-1'])",
+        )
+        .count();
       // Tab (count + 2) times to cycle through all + one wrap-around
-        const tabCount = Math.max(focusableCount + 2, 5);
+      const tabCount = Math.max(focusableCount + 2, 5);
       for (let i = 0; i < tabCount; i++) {
         await page.keyboard.press("Tab");
         const isInsideModal = await page.evaluate(() => {
@@ -239,9 +247,7 @@ test.describe("Modal focus trap and focus return", () => {
 // test at that time.
 
 test.describe("Keyboard navigation tab order", () => {
-  test("Library page has forward tab navigation without focus loops", async ({
-    appContext,
-  }) => {
+  test("Library page has forward tab navigation without focus loops", async ({ appContext }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
@@ -252,10 +258,7 @@ test.describe("Keyboard navigation tab order", () => {
 
     await test.step("Tab from search input reaches filter controls in order", async () => {
       // Focus the search input first using the canonical Library selector.
-      const searchInput = page
-        .getByTestId("search-input")
-        .or(page.getByRole("searchbox"))
-        .first();
+      const searchInput = page.getByTestId("search-input").or(page.getByRole("searchbox")).first();
       await expect(searchInput).toBeVisible({ timeout: TIMEOUTS.medium });
       await searchInput.click();
 
@@ -263,18 +266,18 @@ test.describe("Keyboard navigation tab order", () => {
       // (not backward, not stuck)
       const focusedElements: string[] = [];
       for (let i = 0; i < 5; i++) {
-          await page.keyboard.press("Tab");
-          const fingerprint = await page.evaluate(() => {
-            const el = document.activeElement;
-            if (!el) {
-              return "";
-            }
-            const id = el.getAttribute("data-testid") ?? "";
-            const role = el.getAttribute("role") ?? "";
-            return `${id}#${el.tagName}#${role}`;
-          });
-          focusedElements.push(fingerprint);
-        }
+        await page.keyboard.press("Tab");
+        const fingerprint = await page.evaluate(() => {
+          const el = document.activeElement;
+          if (!el) {
+            return "";
+          }
+          const id = el.getAttribute("data-testid") ?? "";
+          const role = el.getAttribute("role") ?? "";
+          return `${id}#${el.tagName}#${role}`;
+        });
+        focusedElements.push(fingerprint);
+      }
 
       // All focused elements should be non-empty (focus must be moving)
       expect(focusedElements.every((id) => id.length > 0)).toBe(true);
@@ -332,7 +335,10 @@ test.describe("Keyboard navigation — settings controls", () => {
     };
 
     await test.step("Establish focus anchor near settings form", async () => {
-      await page.getByRole("heading", { name: /settings/i }).first().click();
+      await page
+        .getByRole("heading", { name: /settings/i })
+        .first()
+        .click();
     });
 
     await test.step("Tab to follow-system checkbox using keyboard only", async () => {
@@ -354,9 +360,7 @@ test.describe("Keyboard navigation — settings controls", () => {
 
     await test.step("Tab to theme select and change value with keyboard", async () => {
       const themeSelect = page.getByTestId("settings-theme-select");
-      const themeBefore = await page.evaluate(
-        () => document.documentElement.dataset.theme ?? "",
-      );
+      const themeBefore = await page.evaluate(() => document.documentElement.dataset.theme ?? "");
       await tabUntilFocused("settings-theme-select");
       await expect(themeSelect).toBeFocused();
       await page.keyboard.press("ArrowDown");
@@ -394,9 +398,9 @@ test.describe("Preserved modal modality", () => {
     });
 
     await test.step("Assert native <dialog> opened with showModal()", async () => {
-      await expect(
-        page.locator("dialog[open][data-testid='modal-dialog']"),
-      ).toBeVisible({ timeout: TIMEOUTS.short });
+      await expect(page.locator("dialog[open][data-testid='modal-dialog']")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Assert aria-modal='true' on the dialog", async () => {

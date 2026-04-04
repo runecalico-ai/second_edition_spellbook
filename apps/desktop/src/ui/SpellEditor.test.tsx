@@ -189,15 +189,15 @@ describe("hash display", () => {
 
   it("uses visible button names for copy and expand controls and expands to the full hash", () => {
     const expandButton = screen.getByTestId("spell-detail-hash-expand");
-      expect(screen.getByTestId("spell-detail-hash-copy").getAttribute("aria-label")).toBe(
-        "Copy canonical content hash",
-      );
+    expect(screen.getByTestId("spell-detail-hash-copy").getAttribute("aria-label")).toBe(
+      "Copy canonical content hash",
+    );
     expect(expandButton.getAttribute("aria-label")).toBeNull();
     expect(expandButton.getAttribute("aria-expanded")).toBe("false");
     expect(expandButton.getAttribute("aria-controls")).toBe("spell-detail-hash-value");
-      expect(screen.getByRole("button", { name: "Copy canonical content hash" })).toBe(
-        screen.getByTestId("spell-detail-hash-copy"),
-      );
+    expect(screen.getByRole("button", { name: "Copy canonical content hash" })).toBe(
+      screen.getByTestId("spell-detail-hash-copy"),
+    );
     expect(screen.getByRole("button", { name: "Expand" })).toBe(expandButton);
 
     fireEvent.click(expandButton);
@@ -432,9 +432,9 @@ describe("SpellEditor inline validation (Task 2)", () => {
       });
     });
 
-    expect(
-      vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell"),
-    ).toHaveLength(0);
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      0,
+    );
     expect(screen.queryByTestId("library-route")).toBeNull();
   });
 
@@ -454,9 +454,9 @@ describe("SpellEditor inline validation (Task 2)", () => {
       });
     });
 
-    expect(
-      vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell"),
-    ).toHaveLength(1);
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      1,
+    );
     await waitFor(() => {
       expect(screen.getByTestId("library-route")).toBeTruthy();
     });
@@ -558,7 +558,9 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     });
     const levelInput = screen.getByTestId("spell-level-input");
     expect(levelInput.getAttribute("aria-invalid")).toBe("true");
-    expect(levelInput.getAttribute("aria-describedby")).toBe("error-level-range spell-level-display");
+    expect(levelInput.getAttribute("aria-describedby")).toBe(
+      "error-level-range spell-level-display",
+    );
     expect(screen.getByTestId("error-level-range").id).toBe("error-level-range");
     invalidLevelSpell.unmount();
 
@@ -953,16 +955,12 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
       }),
     );
 
-    expect(screen.getByTestId("detail-range-expand").getAttribute("aria-expanded")).toBe(
-      "false",
-    );
+    expect(screen.getByTestId("detail-range-expand").getAttribute("aria-expanded")).toBe("false");
 
     fireEvent.click(screen.getByTestId("btn-save-spell"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("detail-range-expand").getAttribute("aria-expanded")).toBe(
-        "true",
-      );
+      expect(screen.getByTestId("detail-range-expand").getAttribute("aria-expanded")).toBe("true");
     });
 
     await act(async () => {
@@ -1080,8 +1078,9 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     const preview = within(panel).getByTestId("range-text-preview");
 
     expect(structured.contains(preview)).toBe(true);
-    expect((kindSelect.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
-      .toBe(true);
+    expect(
+      (kindSelect.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+    ).toBe(true);
   });
 
   it("keeps the components panel surface subtle and nests the material subform inside it", async () => {
@@ -1144,8 +1143,9 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
 
     expect(panel.contains(structured)).toBe(true);
     expect(panel.contains(hint)).toBe(true);
-    expect((structured.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
-      .toBe(true);
+    expect(
+      (structured.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+    ).toBe(true);
   });
 
   it("moves focus to the first focusable child when expanding a structured panel", async () => {
@@ -1647,9 +1647,7 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
         await Promise.resolve();
       });
 
-      expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe(
-        "Fast Spell",
-      );
+      expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe("Fast Spell");
       expect(screen.queryByText("Loading...")).toBeNull();
     } finally {
       vi.useRealTimers();

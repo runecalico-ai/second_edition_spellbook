@@ -237,9 +237,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await expect(preview).toHaveText(/1 round/i, { timeout: TIMEOUTS.medium });
     });
 
-    await test.step(
-      "Verify duration preview stays attached across expanded and collapsed editing flows",
-      async () => {
+    await test.step("Verify duration preview stays attached across expanded and collapsed editing flows", async () => {
       const structuredField = page.getByTestId("structured-field-input");
       const preview = structuredField.getByTestId("duration-text-preview");
 
@@ -260,9 +258,7 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("detail-duration-expand").click();
       await expect(page.getByTestId("detail-duration-input")).toHaveValue(/2 rounds?/i);
       await waitForStructuredField(page, "duration");
-      await expect(structuredField.getByTestId("duration-text-preview")).toHaveText(
-        /2 rounds?/i,
-      );
+      await expect(structuredField.getByTestId("duration-text-preview")).toHaveText(/2 rounds?/i);
     });
   });
 
@@ -318,7 +314,9 @@ test.describe("Spell Editor structured data and hash display", () => {
       await page.getByTestId("component-checkbox-verbal").check();
       await page.getByTestId("component-checkbox-somatic").check();
 
-      const preview = page.getByTestId("component-checkboxes").getByTestId("component-text-preview");
+      const preview = page
+        .getByTestId("component-checkboxes")
+        .getByTestId("component-text-preview");
       await expect(preview).toHaveText(/^V,\s*S$/);
     });
 
@@ -393,7 +391,9 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Set quantity and verify min 1", async () => {
-      const materialSubform = page.getByTestId("component-checkboxes").getByTestId("material-subform");
+      const materialSubform = page
+        .getByTestId("component-checkboxes")
+        .getByTestId("material-subform");
       const qtyInput = materialSubform.getByTestId("material-component-quantity").first();
       await qtyInput.fill("0.5");
       await qtyInput.blur();
@@ -403,7 +403,9 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Add second material component", async () => {
       await page.getByTestId("material-component-add").click();
-      const materialSubform = page.getByTestId("component-checkboxes").getByTestId("material-subform");
+      const materialSubform = page
+        .getByTestId("component-checkboxes")
+        .getByTestId("material-subform");
       const materialRows = materialSubform.getByTestId("material-component-row");
       await expect(materialRows).toHaveCount(2, { timeout: TIMEOUTS.medium });
       const secondNameInput = materialSubform.getByTestId("material-component-name").nth(1);
@@ -412,7 +414,9 @@ test.describe("Spell Editor structured data and hash display", () => {
     });
 
     await test.step("Remove first material component", async () => {
-      const materialSubform = page.getByTestId("component-checkboxes").getByTestId("material-subform");
+      const materialSubform = page
+        .getByTestId("component-checkboxes")
+        .getByTestId("material-subform");
       const removeButton = materialSubform.getByTestId("material-component-remove").first();
       await removeButton.click();
       const materialRows = materialSubform.getByTestId("material-component-row");
@@ -624,8 +628,13 @@ test.describe("Spell Editor structured data and hash display", () => {
         const modal = page.getByRole("dialog");
         await expect(modal).toBeVisible({ timeout: TIMEOUTS.medium });
         // Step 4.2: Confirm preserved dialog uses native showModal() path (same Modal.tsx component as vault maintenance)
-        await expect(page.locator("dialog[open][data-testid='modal-dialog']")).toBeVisible({ timeout: TIMEOUTS.short });
-        await expect(page.locator("dialog[data-testid='modal-dialog']")).toHaveAttribute("aria-modal", "true");
+        await expect(page.locator("dialog[open][data-testid='modal-dialog']")).toBeVisible({
+          timeout: TIMEOUTS.short,
+        });
+        await expect(page.locator("dialog[data-testid='modal-dialog']")).toHaveAttribute(
+          "aria-modal",
+          "true",
+        );
         await expect(
           modal.getByText(/mutually exclusive|School and sphere|Import failed/i),
         ).toBeVisible();
@@ -1137,12 +1146,9 @@ test.describe("Spell Editor structured data and hash display", () => {
 
     await test.step("Fill raw legacy value and verify text preview updates", async () => {
       await page.getByTestId("range-raw-legacy").fill("Varies by caster level");
-      await expect(page.getByTestId("range-text-preview")).toContainText(
-        "Varies by caster level",
-        {
-          timeout: TIMEOUTS.short,
-        },
-      );
+      await expect(page.getByTestId("range-text-preview")).toContainText("Varies by caster level", {
+        timeout: TIMEOUTS.short,
+      });
     });
 
     await test.step("Clear raw legacy value and verify text preview falls back to 'Special' label", async () => {

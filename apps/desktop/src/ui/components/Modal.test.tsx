@@ -23,7 +23,8 @@ beforeEach(() => {
       value: false,
     });
   });
-  HTMLDialogElement.prototype.showModal = showModalMock as unknown as HTMLDialogElement["showModal"];
+  HTMLDialogElement.prototype.showModal =
+    showModalMock as unknown as HTMLDialogElement["showModal"];
   HTMLDialogElement.prototype.close = closeMock as unknown as HTMLDialogElement["close"];
 });
 

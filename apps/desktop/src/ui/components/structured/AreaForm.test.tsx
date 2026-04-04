@@ -35,7 +35,9 @@ describe("AreaForm", () => {
       />,
     );
 
-    for (const element of screen.getByTestId("area-form").querySelectorAll("select, input, textarea")) {
+    for (const element of screen
+      .getByTestId("area-form")
+      .querySelectorAll("select, input, textarea")) {
       expectClasses(element as HTMLElement, FOCUS_RING_CLASSES);
     }
 
@@ -51,7 +53,9 @@ describe("AreaForm", () => {
       />,
     );
 
-    for (const element of screen.getByTestId("area-form").querySelectorAll("select, input, textarea")) {
+    for (const element of screen
+      .getByTestId("area-form")
+      .querySelectorAll("select, input, textarea")) {
       expectClasses(element as HTMLElement, FOCUS_RING_CLASSES);
     }
   });

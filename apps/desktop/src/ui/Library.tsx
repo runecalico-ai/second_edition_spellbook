@@ -230,35 +230,38 @@ export default function Library() {
     }
   };
 
-  const runSearch = useCallback(async (nextQuery: string, nextMode: "keyword" | "semantic", filters: SearchFilters) => {
-    const requestId = ++searchRequestIdRef.current;
-    setActiveSearchRequestId(requestId);
-    setResultsSettledForCurrentSearch(false);
+  const runSearch = useCallback(
+    async (nextQuery: string, nextMode: "keyword" | "semantic", filters: SearchFilters) => {
+      const requestId = ++searchRequestIdRef.current;
+      setActiveSearchRequestId(requestId);
+      setResultsSettledForCurrentSearch(false);
 
-    try {
-      const results =
-        nextMode === "semantic"
-          ? await invoke<SpellSummary[]>("search_semantic", { query: nextQuery })
-          : await invoke<SpellSummary[]>("search_keyword", { query: nextQuery, filters });
+      try {
+        const results =
+          nextMode === "semantic"
+            ? await invoke<SpellSummary[]>("search_semantic", { query: nextQuery })
+            : await invoke<SpellSummary[]>("search_keyword", { query: nextQuery, filters });
 
-      if (requestId !== searchRequestIdRef.current) {
-        return;
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        setSpells(results);
+      } catch (e) {
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        console.error("Failed to search library", e);
+        setSpells([]);
+      } finally {
+        if (requestId === searchRequestIdRef.current) {
+          setResultsSettledForCurrentSearch(true);
+        }
       }
-
-      setSpells(results);
-    } catch (e) {
-      if (requestId !== searchRequestIdRef.current) {
-        return;
-      }
-
-      console.error("Failed to search library", e);
-      setSpells([]);
-    } finally {
-      if (requestId === searchRequestIdRef.current) {
-        setResultsSettledForCurrentSearch(true);
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   const handleResetFilters = () => {
     setQuery("");
@@ -335,7 +338,8 @@ export default function Library() {
       isCantripFilter ||
       selectedSavedSearchId !== null,
   );
-  const showEmptyLibrary = resultsSettledForCurrentSearch && spells.length === 0 && !hasActiveFilters;
+  const showEmptyLibrary =
+    resultsSettledForCurrentSearch && spells.length === 0 && !hasActiveFilters;
   const showEmptySearch = resultsSettledForCurrentSearch && spells.length === 0 && hasActiveFilters;
   const activeEmptyStateAnnouncement = showEmptyLibrary
     ? EMPTY_LIBRARY_STATE
@@ -530,12 +534,12 @@ export default function Library() {
             value={sourceFilter}
             onChange={(e) => setSourceFilter(e.target.value)}
           >
-          <option value="">All sources</option>
-          {facets.sources.map((source) => (
-            <option key={source} value={source}>
-              {source}
-            </option>
-          ))}
+            <option value="">All sources</option>
+            {facets.sources.map((source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex flex-col gap-1">
@@ -552,12 +556,12 @@ export default function Library() {
             value={classListFilter}
             onChange={(e) => setClassListFilter(e.target.value)}
           >
-          <option value="">All classes</option>
-          {facets.classList.map((className) => (
-            <option key={className} value={className}>
-              {className}
-            </option>
-          ))}
+            <option value="">All classes</option>
+            {facets.classList.map((className) => (
+              <option key={className} value={className}>
+                {className}
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex flex-col gap-1">
@@ -574,12 +578,12 @@ export default function Library() {
             value={componentFilter}
             onChange={(e) => setComponentFilter(e.target.value)}
           >
-          <option value="">All components</option>
-          {facets.components.map((component) => (
-            <option key={component} value={component}>
-              {component}
-            </option>
-          ))}
+            <option value="">All components</option>
+            {facets.components.map((component) => (
+              <option key={component} value={component}>
+                {component}
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex flex-col gap-1">
@@ -596,12 +600,12 @@ export default function Library() {
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
           >
-          <option value="">All tags</option>
-          {facets.tags.map((tag) => (
-            <option key={tag} value={tag}>
-              {tag}
-            </option>
-          ))}
+            <option value="">All tags</option>
+            {facets.tags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
           </select>
         </div>
         <label className={`flex items-center gap-1.5 ${filterChipClassName}`}>
@@ -653,12 +657,12 @@ export default function Library() {
                 }}
                 value={selectedSavedSearchId !== null ? String(selectedSavedSearchId) : ""}
               >
-              <option value="">Saved Searches</option>
-              {savedSearches.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
+                <option value="">Saved Searches</option>
+                {savedSearches.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
               </select>
             </div>
           )}

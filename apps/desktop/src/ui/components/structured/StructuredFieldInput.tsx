@@ -62,8 +62,7 @@ const structuredInlineScalarClusterClass = "flex min-w-0 flex-wrap items-center 
 
 const structuredTextMuted = "text-neutral-600 dark:text-neutral-400";
 
-const structuredPreviewOutputClass =
-  "text-sm italic text-neutral-700 dark:text-neutral-300";
+const structuredPreviewOutputClass = "text-sm italic text-neutral-700 dark:text-neutral-300";
 
 interface StructuredFieldInputProps {
   fieldType: "range" | "duration" | "casting_time";
@@ -228,10 +227,7 @@ export function StructuredFieldInput({
             />
           )}
         </div>
-        <div
-          className={structuredSupportingRowClass}
-          data-testid="structured-field-supporting-row"
-        >
+        <div className={structuredSupportingRowClass} data-testid="structured-field-supporting-row">
           <textarea
             data-testid="range-notes"
             aria-label="Range notes"
@@ -245,10 +241,7 @@ export function StructuredFieldInput({
             className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-400 ${structuredInputClass}`}
           />
         </div>
-        <div
-          className={structuredPreviewRowClass}
-          data-testid="structured-field-preview-row"
-        >
+        <div className={structuredPreviewRowClass} data-testid="structured-field-preview-row">
           <output
             className={structuredPreviewOutputClass}
             data-testid="range-text-preview"
@@ -416,10 +409,7 @@ export function StructuredFieldInput({
             />
           )}
         </div>
-        <div
-          className={structuredSupportingRowClass}
-          data-testid="structured-field-supporting-row"
-        >
+        <div className={structuredSupportingRowClass} data-testid="structured-field-supporting-row">
           <textarea
             data-testid="duration-notes"
             aria-label="Duration notes"
@@ -433,10 +423,7 @@ export function StructuredFieldInput({
             className={`w-full min-h-[40px] rounded px-2 py-1 text-xs placeholder:text-neutral-500 dark:placeholder:text-neutral-400 ${structuredInputClass}`}
           />
         </div>
-        <div
-          className={structuredPreviewRowClass}
-          data-testid="structured-field-preview-row"
-        >
+        <div className={structuredPreviewRowClass} data-testid="structured-field-preview-row">
           <output
             className={structuredPreviewOutputClass}
             data-testid="duration-text-preview"
@@ -467,10 +454,7 @@ export function StructuredFieldInput({
   return (
     <fieldset className={structuredGroupSurfaceClass} data-testid="structured-field-input">
       <legend className="sr-only">{STRUCTURED_FIELD_GROUP_LABELS[fieldType]}</legend>
-      <div
-        className={structuredPrimaryControlRowClass}
-        data-testid="structured-field-primary-row"
-      >
+      <div className={structuredPrimaryControlRowClass} data-testid="structured-field-primary-row">
         <div className={structuredInlineScalarClusterClass}>
           <div className="flex flex-col gap-1">
             <input
@@ -546,9 +530,7 @@ export function StructuredFieldInput({
               }}
             />
           </div>
-          <span className={`${structuredTextMuted} text-xs font-medium leading-none`}>
-            /level
-          </span>
+          <span className={`${structuredTextMuted} text-xs font-medium leading-none`}>/level</span>
         </div>
         <select
           data-testid="casting-time-unit"
@@ -582,10 +564,7 @@ export function StructuredFieldInput({
           />
         )}
       </div>
-      <div
-        className={structuredPreviewRowClass}
-        data-testid="structured-field-preview-row"
-      >
+      <div className={structuredPreviewRowClass} data-testid="structured-field-preview-row">
         <output
           className={structuredPreviewOutputClass}
           data-testid="casting-time-text-preview"

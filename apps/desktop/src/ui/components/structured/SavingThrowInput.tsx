@@ -163,10 +163,7 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
       </div>
 
       {spec.rawLegacyValue && (
-        <div
-          data-testid="saving-throw-raw-legacy-annotation"
-          className={annotationClass}
-        >
+        <div data-testid="saving-throw-raw-legacy-annotation" className={annotationClass}>
           <span className="font-bold uppercase not-italic">Original source text:</span>
           <span>{spec.rawLegacyValue}</span>
         </div>
@@ -182,10 +179,7 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
 
       {spec.kind === "multiple" &&
         spec.multiple?.map((s, idx) => (
-          <div
-            key={`save-${idx}-${s.saveType}-${s.appliesTo}`}
-            className={nestedSurfaceClass}
-          >
+          <div key={`save-${idx}-${s.saveType}-${s.appliesTo}`} className={nestedSurfaceClass}>
             <div className="flex justify-between items-center">
               <span className={`text-xs ${mutedTextClass}`}>Save #{idx + 1}</span>
               <button

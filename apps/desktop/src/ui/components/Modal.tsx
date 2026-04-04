@@ -43,7 +43,8 @@ export function ModalShell({
     }
 
     if (isOpen) {
-      triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      triggerRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       if (!dialog.open) {
         if (typeof dialog.showModal === "function") {
           dialog.showModal();
@@ -162,11 +163,7 @@ export function ModalShell({
         }
       }}
       onKeyDown={(e) => {
-        if (
-          e.target === e.currentTarget &&
-          dismissible &&
-          (e.key === "Enter" || e.key === " ")
-        ) {
+        if (e.target === e.currentTarget && dismissible && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
           onRequestClose();
         }

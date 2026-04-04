@@ -275,7 +275,14 @@ describe("ComponentCheckboxes – all variant", () => {
   it("all variant preserves component-checkboxes root container", () => {
     render(
       <ComponentCheckboxes
-        components={{ verbal: true, somatic: true, material: false, focus: true, divineFocus: true, experience: false }}
+        components={{
+          verbal: true,
+          somatic: true,
+          material: false,
+          focus: true,
+          divineFocus: true,
+          experience: false,
+        }}
         materialComponents={[]}
         onChange={() => {}}
         variant="all"
@@ -287,7 +294,14 @@ describe("ComponentCheckboxes – all variant", () => {
   it("all variant preserves component-text-preview", () => {
     render(
       <ComponentCheckboxes
-        components={{ verbal: true, somatic: false, material: false, focus: false, divineFocus: false, experience: false }}
+        components={{
+          verbal: true,
+          somatic: false,
+          material: false,
+          focus: false,
+          divineFocus: false,
+          experience: false,
+        }}
         materialComponents={[]}
         onChange={() => {}}
         variant="all"
@@ -303,22 +317,14 @@ describe("ComponentCheckboxes – all variant", () => {
 describe("ComponentCheckboxes – material subform", () => {
   it("material-component-add button is present when material=true", () => {
     render(
-      <ComponentCheckboxes
-        components={withMaterial}
-        materialComponents={[]}
-        onChange={() => {}}
-      />,
+      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => {}} />,
     );
     expect(screen.getByTestId("material-component-add")).not.toBeNull();
   });
 
   it("material-component-add button is a descendant of component-checkboxes root", () => {
     render(
-      <ComponentCheckboxes
-        components={withMaterial}
-        materialComponents={[]}
-        onChange={() => {}}
-      />,
+      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => {}} />,
     );
     const root = screen.getByTestId("component-checkboxes");
     const addBtn = screen.getByTestId("material-component-add");
@@ -368,11 +374,7 @@ describe("ComponentCheckboxes – material subform", () => {
 
   it("material subform uses theme-aware surface classes", () => {
     render(
-      <ComponentCheckboxes
-        components={withMaterial}
-        materialComponents={[]}
-        onChange={() => {}}
-      />,
+      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => {}} />,
     );
     const subform = screen.getByTestId("material-subform");
     const tokens = new Set(subform.className.split(/\s+/).filter(Boolean));
@@ -417,7 +419,14 @@ describe("ComponentCheckboxes – material subform", () => {
   it("enabling Material reveals a visually nested material-subform container", () => {
     render(
       <ComponentCheckboxes
-        components={{ verbal: false, somatic: false, material: true, focus: false, divineFocus: false, experience: false }}
+        components={{
+          verbal: false,
+          somatic: false,
+          material: true,
+          focus: false,
+          divineFocus: false,
+          experience: false,
+        }}
         materialComponents={[]}
         onChange={() => {}}
       />,
@@ -428,7 +437,14 @@ describe("ComponentCheckboxes – material subform", () => {
   it("component-text-preview remains present when material rows are rendered", () => {
     render(
       <ComponentCheckboxes
-        components={{ verbal: true, somatic: false, material: true, focus: false, divineFocus: false, experience: false }}
+        components={{
+          verbal: true,
+          somatic: false,
+          material: true,
+          focus: false,
+          divineFocus: false,
+          experience: false,
+        }}
         materialComponents={[{ name: "Eye of newt", quantity: 1, isConsumed: false }]}
         onChange={() => {}}
       />,
@@ -439,7 +455,14 @@ describe("ComponentCheckboxes – material subform", () => {
   it("material-component-row renders inside root container when material enabled with rows", () => {
     render(
       <ComponentCheckboxes
-        components={{ verbal: true, somatic: false, material: true, focus: false, divineFocus: false, experience: false }}
+        components={{
+          verbal: true,
+          somatic: false,
+          material: true,
+          focus: false,
+          divineFocus: false,
+          experience: false,
+        }}
         materialComponents={[{ name: "Eye of newt", quantity: 1, isConsumed: false }]}
         onChange={() => {}}
       />,
@@ -527,7 +550,10 @@ describe("ComponentCheckboxes – destructive confirmation", () => {
     await Promise.resolve();
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledTimes(1);
-    const [resultComp, resultMaterials] = onChange.mock.calls[0] as unknown as [SpellComponents, MaterialComponentSpec[]];
+    const [resultComp, resultMaterials] = onChange.mock.calls[0] as unknown as [
+      SpellComponents,
+      MaterialComponentSpec[],
+    ];
     expect(resultComp.material).toBe(false);
     expect(resultMaterials).toHaveLength(0);
   });

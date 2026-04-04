@@ -84,7 +84,10 @@ export function EmptyState({
   testId = "empty-state",
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center gap-4" data-testid={testId}>
+    <div
+      className="flex flex-col items-center justify-center py-16 text-center gap-4"
+      data-testid={testId}
+    >
       <Heading className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
         {heading}
       </Heading>

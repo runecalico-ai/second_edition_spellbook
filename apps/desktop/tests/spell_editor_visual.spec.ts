@@ -1,10 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import * as net from "node:net";
-import {
-  expect as browserExpect,
-  test as browserTest,
-  type Page,
-} from "@playwright/test";
+import { expect as browserExpect, test as browserTest, type Page } from "@playwright/test";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect as appExpect, test as appTest } from "./fixtures/test-fixtures";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
@@ -73,8 +69,7 @@ async function waitForPort(port: number, timeoutMs: number): Promise<void> {
 
 async function waitForStorybookReady(port: number, timeoutMs: number): Promise<void> {
   const start = Date.now();
-  const storyUrl =
-    `http://127.0.0.1:${port}/iframe.html?id=${STORYBOOK_READY_STORY_ID}&viewMode=story`;
+  const storyUrl = `http://127.0.0.1:${port}/iframe.html?id=${STORYBOOK_READY_STORY_ID}&viewMode=story`;
 
   while (Date.now() - start < timeoutMs) {
     try {
@@ -103,12 +98,7 @@ async function ensureStorybookServer(): Promise<void> {
     process.platform === "win32"
       ? spawn(
           process.env.ComSpec ?? "cmd.exe",
-          [
-            "/d",
-            "/s",
-            "/c",
-            `pnpm storybook --ci --port ${storybookPort} --host 127.0.0.1`,
-          ],
+          ["/d", "/s", "/c", `pnpm storybook --ci --port ${storybookPort} --host 127.0.0.1`],
           {
             cwd: process.cwd(),
             stdio: "ignore",
@@ -136,15 +126,14 @@ async function stopStorybookServer(): Promise<void> {
   if (process.platform === "win32") {
     const pid = storybookProcess.pid;
     await new Promise<void>((resolve) => {
-      const killer = spawn(process.env.ComSpec ?? "cmd.exe", [
-        "/d",
-        "/s",
-        "/c",
-        `taskkill /pid ${pid} /t /f`,
-      ], {
-        stdio: "ignore",
-        windowsHide: true,
-      });
+      const killer = spawn(
+        process.env.ComSpec ?? "cmd.exe",
+        ["/d", "/s", "/c", `taskkill /pid ${pid} /t /f`],
+        {
+          stdio: "ignore",
+          windowsHide: true,
+        },
+      );
       killer.once("exit", () => resolve());
     });
     storybookProcess = null;
@@ -223,20 +212,22 @@ async function waitForStoryTheme(page: Page, theme: HtmlTheme): Promise<void> {
   await browserExpect(html).toHaveAttribute("data-theme", theme, {
     timeout: TIMEOUTS.long,
   });
-  await browserExpect.poll(async () => {
-    return await page.evaluate(() => {
-      const root = document.documentElement;
-      return JSON.stringify({
-        hasDarkClass: root.classList.contains("dark"),
-        colorScheme: root.style.colorScheme,
+  await browserExpect
+    .poll(async () => {
+      return await page.evaluate(() => {
+        const root = document.documentElement;
+        return JSON.stringify({
+          hasDarkClass: root.classList.contains("dark"),
+          colorScheme: root.style.colorScheme,
+        });
       });
-    });
-  }).toBe(
-    JSON.stringify({
-      hasDarkClass: theme === "dark",
-      colorScheme: theme,
-    }),
-  );
+    })
+    .toBe(
+      JSON.stringify({
+        hasDarkClass: theme === "dark",
+        colorScheme: theme,
+      }),
+    );
 }
 
 async function openStructuredFieldStory(page: Page, storyId: string, theme: HtmlTheme) {
@@ -321,7 +312,6 @@ browserTest.describe("StructuredFieldInput visual stories", () => {
       animations: "disabled",
     });
   });
-
 });
 
 appTest.describe("Spell editor visual contract", () => {

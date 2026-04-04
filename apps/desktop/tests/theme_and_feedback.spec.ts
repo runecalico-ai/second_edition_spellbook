@@ -42,9 +42,7 @@ function parseRgbColor(color: string): RgbColor {
 
 function toLinearRgb(channel: number): number {
   const normalized = channel / 255;
-  return normalized <= 0.03928
-    ? normalized / 12.92
-    : ((normalized + 0.055) / 1.055) ** 2.4;
+  return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
 }
 
 function contrastRatio(foreground: string, background: string): number {
@@ -346,6 +344,37 @@ test.describe("theme and feedback foundations", () => {
     await expect(successToast).toBeHidden({ timeout: 6000 });
 
     // Step 4.10: Hash copy success uses toast/live-region path — no dialog should open for this routine flow
+    await app.expectNoBlockingDialog();
+  });
+
+  test("notification viewport stacks multiple concurrent success toasts without opening a dialog", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const spellName = `Stack Toast Spell ${Date.now()}`;
+
+    await app.createSpell({
+      name: spellName,
+      level: "1",
+      description: "Stacking coverage.",
+      school: "Evocation",
+      classes: "Wizard",
+    });
+    await app.openSpell(spellName);
+
+    const viewport = page.getByTestId("notification-viewport");
+    const copyButton = page.getByTestId("spell-detail-hash-copy");
+
+    await copyButton.click();
+    await copyButton.click();
+
+    const stacked = viewport.getByTestId("toast-notification-success").filter({
+      hasText: "Hash copied to clipboard.",
+    });
+    await expect(stacked).toHaveCount(2);
+    await expect(page.getByTestId("notification-toast-stack")).toBeVisible();
+
     await app.expectNoBlockingDialog();
   });
 

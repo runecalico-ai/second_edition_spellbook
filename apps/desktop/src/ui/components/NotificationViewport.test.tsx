@@ -25,6 +25,7 @@ describe("NotificationViewport", () => {
 
     expect(html).toContain("<output");
     expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('data-testid="notification-toast-stack"');
     expect(html).toContain("flex-col-reverse");
   });
 

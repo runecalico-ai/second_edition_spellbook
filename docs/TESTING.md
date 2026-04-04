@@ -800,7 +800,7 @@ pnpm e2e -- tests/search.spec.ts
 
 **Test ID convention:** All `data-testid` values in the application use **kebab-case** (e.g. `detail-range-input`, `detail-range-expand`, `save-button`, `spell-name-input`). Use kebab-case when adding new test IDs so E2E and Storybook locators stay consistent. See `apps/desktop/src/AGENTS.md` (Naming Conventions for `data-testid`) and [Spell Editor Components Guide](dev/spell_editor_components.md#e2e-and-test-ids) for the full list.
 
-**Spell Editor and Chunk 6 E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand-edit-collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. `spell_editor_save_workflow.spec.ts` covers the full save/validation/modal-boundary workflow: inline validation errors, first-failed-submit focus, blur/change validation, tradition-conditional field rendering, save-progress labeling (`Save Spell` vs `Saving…`), success toast routing (`Spell saved.`), and modal-versus-toast boundaries. `theme_and_feedback.spec.ts` covers theme persistence, the hidden theme announcement live region (`theme-announcement-live-region`), and the hash-copy notification/live-region path. `accessibility_and_resize.spec.ts` covers keyboard navigation on Settings, ARIA validation wiring on the spell editor, preserved native `showModal()` modality, and related resize checks. `spell_editor_visual.spec.ts` holds `toHaveScreenshot()` baselines for structured surfaces, full editor light/dark, empty library, and hash collapsed/expanded states (snapshots under `tests/spell_editor_visual.spec.ts-snapshots/`). All of these use the shared fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and kebab-case `data-testid` locators. Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](../apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
+**Spell Editor and Chunk 6 E2E specs:** `spell_editor_structured_data.spec.ts` covers structured field editing (after expanding a detail field), validation, and hash display. `spell_editor_canon_first.spec.ts` covers canon-first behaviour: default view (single-line inputs + expand controls), edit-in-canon and save, expand-edit-collapse serialization, view-only collapse (canon line unchanged), new spell with expand/parse, and unsaved-changes warning on Cancel. `spell_editor_save_workflow.spec.ts` covers the full save/validation/modal-boundary workflow: inline validation errors, first-failed-submit focus, blur/change validation, tradition-conditional field rendering, save-progress labeling (`Save Spell` vs `Saving…`), success toast routing (`Spell saved.`), and modal-versus-toast boundaries. `theme_and_feedback.spec.ts` covers theme persistence, the hidden theme announcement live region (`theme-announcement-live-region`), the hash-copy notification/live-region path, and stacked success toasts (double hash-copy) inside `notification-viewport` / `notification-toast-stack` with `expectNoBlockingDialog()`. `accessibility_and_resize.spec.ts` covers keyboard navigation on Settings, ARIA validation wiring on the spell editor, preserved native `showModal()` modality, and related resize checks. `spell_editor_visual.spec.ts` holds `toHaveScreenshot()` baselines for structured surfaces, full editor light/dark, empty library, and hash collapsed/expanded states (snapshots under `tests/spell_editor_visual.spec.ts-snapshots/`). All of these use the shared fixtures (`test-fixtures`, `SpellbookApp`, `TIMEOUTS`) and kebab-case `data-testid` locators. Canon-first Details are also covered by Storybook under "SpellEditor/CanonFirstDetails" ([SpellEditorCanonFirst.stories.tsx](../apps/desktop/src/ui/components/structured/SpellEditorCanonFirst.stories.tsx)).
 
 The current Playwright files to check first for this chunk are:
 
@@ -810,7 +810,7 @@ The current Playwright files to check first for this chunk are:
 - `tests/spell_editor_structured_data.spec.ts`
 - `tests/spell_editor_visual.spec.ts`
 
-**Build before Playwright:** Always run `pnpm --dir apps/desktop tauri:build --debug` before executing any Playwright suite. The Playwright fixture starts the Tauri debug binary; stale or absent binaries will silently fail or produce outdated behaviour. This requirement applies in CI and on a clean local workspace.
+**Build before Playwright:** Always run `pnpm --dir apps/desktop tauri:build --debug` before executing any Playwright suite. The Playwright fixture starts the Tauri debug binary; stale or absent binaries will silently fail or produce outdated behaviour. Apply this whenever you run E2E (locally or in any automation job that executes Playwright); the default GitHub Actions workflow does not run Playwright today.
 
 ### Test Structure
 
@@ -982,11 +982,10 @@ Tests are automatically run on:
 
 - Pull request creation/update
 - Merge to `main` branch
-- Nightly scheduled builds
 
 ### CI Configuration
 
-See `.github/workflows/test.yml` for CI pipeline configuration.
+See [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). On pull requests and pushes to `main`, it runs desktop lint (Biome), Knip, format check, TypeScript `pnpm typecheck`, Rust `fmt` / `clippy` / `cargo test`, and Python Ruff + `pytest`. It does **not** currently run Vitest (`pnpm test:unit`), Storybook tests, or Playwright — run those locally (or extend the workflow) before merging UI or E2E-sensitive changes.
 
 ### Pre-commit Checklist
 
@@ -1052,7 +1051,16 @@ cargo test --lib -- --skip integration
 
 ## Accessibility Testing (Manual — NVDA + Chromium)
 
-The spell editor inline validation surfaces require a manual screen-reader check that cannot be automated as part of the test suite. The procedure below must be run by a human when the validation or ARIA wiring changes.
+### Automated DOM and error-association contract (Playwright + Vitest)
+
+Before relying on manual NVDA, **automated tests** (Playwright + Vitest — run locally or in an extended pipeline; see **CI Configuration**) verify the wiring NVDA depends on:
+
+- **Playwright:** `apps/desktop/tests/accessibility_and_resize.spec.ts` — test *invalid spell-name field exposes aria-invalid and aria-describedby pointing to a visible error element* (focus after first failed submit, `#spell-name-error` visible, `aria-describedby` includes that id). This matches the Chunk 6 Step 4.6 contract referenced by the spell UI plan.
+- **Vitest:** `apps/desktop/src/ui/SpellEditor.test.tsx` — *SpellEditor accessibility and structured validation (Task 3)* examples cover `aria-invalid`, `aria-describedby`, and first-invalid focus for multiple fields.
+
+These tests do not capture spoken output; they prove the DOM relationship manual NVDA should announce.
+
+The spell editor inline validation surfaces still benefit from a manual screen-reader check when validation or ARIA wiring changes. The procedure below records **spoken** confirmation; run it for release QA or after substantive editor a11y edits.
 
 ### Setup
 
@@ -1091,6 +1099,8 @@ When the run is performed, append a block to this section with:
 | Path 5 — confirmation error cleared | |
 | Notes | |
 
-**Status (2026-03-20):** Pending human execution. The automated agent environment cannot drive NVDA or capture spoken announcements. The checklist and evidence table above must be completed manually before this gate is considered closed.
+**Pre-merge (local / PR policy):** The DOM and focus contract above is asserted by Playwright and Vitest when you run the desktop test commands in this guide. GitHub Actions does not run those suites today (see **CI Configuration** above), so spell-editor merges should still execute `pnpm test:unit` and the relevant Playwright specs on a Windows worker before merge. A filled NVDA evidence table is not required for merge.
 
-**Last Updated**: 2026-04-03
+**Release / substantive a11y change:** Complete the evidence table when you need recorded spoken-output proof (for example before a major release or after changing validation copy or ARIA wiring). Until the table is filled, spoken announcements are not on file, but the automated suites above still guard the association contract when run.
+
+**Last Updated**: 2026-04-04

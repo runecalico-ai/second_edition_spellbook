@@ -44,7 +44,10 @@ export function NotificationViewportContent({
       aria-live="polite"
       className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-end p-4"
     >
-      <div className="flex max-w-sm flex-col-reverse items-stretch gap-3">
+      <div
+        data-testid="notification-toast-stack"
+        className="flex max-w-sm flex-col-reverse items-stretch gap-3"
+      >
         {notifications.map((notification) => (
           <div
             key={notification.id}

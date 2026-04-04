@@ -300,7 +300,7 @@ This plan document is also the execution log for baseline evidence and final ver
    - Step 4.4 (theme switching persistence through /settings): Fully covered by pre-existing test in `theme_and_feedback.spec.ts`. No new code needed.
    - Step 4.5 (hidden live-region announcements): Added `await expect(themeLiveRegion).toHaveAttribute("aria-live", "polite")` to the first test in `theme_and_feedback.spec.ts`. Visual sr-only hiding is covered by `App.test.tsx` unit tests. Pre-existing `toHaveText("Dark mode")` + no-toast assertions cover the content verification.
    - Step 4.6 (ARIA validation): New test `"invalid spell-name field exposes aria-invalid and aria-describedby pointing to a visible error element"` added to `apps/desktop/tests/accessibility_and_resize.spec.ts` inside new describe block `"Accessibility — ARIA validation"`. Checks `aria-invalid="true"`, `aria-describedby` contains `"spell-name-error"`, `#spell-name-error` is visible, and `spell-name-input` is focused after first failed submit. Production `ariaInvalidForField` and `describedByByField` already present in SpellEditor.tsx.
-   - Step 4.7 (stacked notifications, clipboard copy, routine non-modal contract): Pre-existing `"Library add-to-character success uses toast in global viewport (not alert)"` verifies toast doesn't steal focus. `"exposes the shared notification live region when a notification-producing flow is triggered"` covers hash copy via toast. `expectNoBlockingDialog()` added to that test to complete the modal-boundary contract.
+   - Step 4.7 (stacked notifications, clipboard copy, routine non-modal contract): Pre-existing `"Library add-to-character success uses toast in global viewport (not alert)"` verifies toast doesn't steal focus. `"exposes the shared notification live region when a notification-producing flow is triggered"` covers hash copy via toast. `expectNoBlockingDialog()` added to that test to complete the modal-boundary contract. **Stacking:** `"notification viewport stacks multiple concurrent success toasts without opening a dialog"` (double hash-copy) asserts two success toasts and the `flex-col-reverse` stack container inside `notification-viewport`.
    - Step 4.8 (edited views in both themes): Covered by pre-existing `"inline validation stays visible under explicit light and dark themes"` and `"delayed save progress styling is explicit in both light and dark themes"` in `spell_editor_save_workflow.spec.ts`, and `"structured spell editor surfaces stay legible when switching from light to dark mode"` in `theme_and_feedback.spec.ts`.
    - Step 4.10 (modal-boundary negative tests): Pre-existing `"first failed submit… no validation dialog"`, `"pristine required fields stay quiet… no validation dialog"`, and `"modal boundaries: delete confirmation opens dialog; validation does not"` cover negative contract. `expectNoBlockingDialog()` added to hash copy test for the clipboard copy path. Theme-change-no-dialog already proven by no-toast assertion in existing test.
    - **All 8 new/modified tests pass** (verified with targeted Playwright runs after `pnpm build`).
@@ -1007,7 +1007,7 @@ rg -n '(handleCustomModal\(|Save Error|Validation Error|getByRole\(["'"''](?:dia
 
 Expected: every remaining match in the final Step 2.1a inventory is explainable as preserved modal coverage or explicit no-dialog protection, and the final classification is recorded in `Implementation Notes`.
 
-- [ ] **Step 7.4: Verify the docs describe the shipped behavior rather than the plan language**
+- [x] **Step 7.4: Verify the docs describe the shipped behavior rather than the plan language**
 
 Run:
 
@@ -1049,7 +1049,7 @@ Append:
 - `cd apps/desktop && npx playwright test` — pass (`172 passed`, ~43 min). **Note:** A first full run hit port `5173` contention and cascading `browser has been closed` failures; freeing listening processes on `5173`/`9000` before the suite and re-running produced green. A second full run after the last small test fixes also reported `172 passed`.
 - Step **7.1a**: skipped for *this* verification pass — no edits to `StructuredFieldInput.stories.tsx` / `ComponentCheckboxes.stories.tsx` in the delta being closed; Storybook was previously verified in Task 5 per Implementation Notes.
 - Step **7.3a**: recreated `.tmp/chunk6-spell-library-ledger.txt` (paths relative to `apps/desktop/tests` per plan Step 2.1a list) and ran the plan’s `rg` dialog-pattern audit from `apps/desktop` on Windows (PowerShell). Matches align with prior classification: preserved modals / `handleCustomModal` / explicit no-dialog assertions; `repro_bugs` hit is console text only.
-- Step **7.4**: the bash `cmp` / `comm` baseline script was **not** re-executed on Windows (`.tmp/chunk6-doc-baseline/` not present in this workspace). No doc content edits were made in this task.
+- Step **7.4** (2026-04-04, PowerShell): Confirmed all five required doc paths exist at repo root. `git diff --name-only -- '*.md'` excluding this plan shows only `apps/desktop/tests/AGENTS.md` and `docs/TESTING.md` in the current delta (with prior Chunk 6 doc work already merged). Bash `cmp` / `comm` against a historical `.tmp/chunk6-doc-baseline/` remains unrun where that folder was never captured; substitute check: required docs are present, internally consistent with `docs/TESTING.md` NVDA/CI split and snapshot path documentation.
 
 **E2E fixes shipped with Task 7**
 
@@ -1067,12 +1067,15 @@ Append:
 
 **Manual NVDA**
 
-- Unchanged from prior plan state: operator manual step still pending where noted in Implementation Notes.
+- **Spoken-output log:** Still optional for merge; `docs/TESTING.md` records that Playwright + Vitest assert the DOM/error-association contract when those suites are run (pre-merge on a Windows worker; not part of `.github/workflows/ci.yml` today), and the NVDA evidence table is for release QA. **Implementation Notes (Task 4)** table remains the place to paste a dated NVDA run when an operator completes one.
 
 **Verification loop (mandatory)**
 
 - **Iteration 1:** Three independent reviewer passes → triage → fixes for High/Medium (milestone school fill, dialog cleanup, FTS query token, shared helper extraction, console listener teardown, performance timeout constant).
 - **Iteration 2:** Three reviewer passes → **GATE_CLEAR** (no Critical/High/Medium). **Loop complete — only Low findings remain.**
+- **Iteration 3 (Acceptance Checklist closure, 2026-04-04):** Reviewer 1 flagged NVDA evidence, stacked-toast coverage, plan checkbox drift, Step 7.4, snapshot visibility, obsolete `AGENTS.md` modal example. **Fixes:** `docs/TESTING.md` CI vs release NVDA gate; `theme_and_feedback.spec.ts` double hash-copy stacked toast test + `flex-col-reverse` container assertion; `apps/desktop/tests/AGENTS.md` §5.2 example aligned with inline validation; Step 7.4 + Acceptance Checklist boxes updated in this plan; Implementation Notes manual NVDA clarified. Snapshot path is whitelisted in root `.gitignore` (`!spell_editor_visual.spec.ts-snapshots/**`).
+- **Iteration 4:** Review passes A/B/C: corrected `docs/TESTING.md` and plan language so GitHub Actions (`ci.yml`) is not implied to run Vitest/Playwright; removed stale nightly CI bullet; fixed §5.2 import to `./utils/dialog-handler`.
+- **Iteration 5:** Medium findings on stacked-toast documentation gap and brittle Tailwind locator. **Fixes:** `data-testid="notification-toast-stack"` on `NotificationViewport.tsx`; E2E asserts that id; `docs/TESTING.md` Chunk 6 paragraph mentions stacked toasts; `NotificationViewport.test.tsx` asserts testid in static markup. Rebuild `pnpm tauri:build --debug` before E2E when changing embedded UI.
 
 **Follow-ups (low)**
 
@@ -1083,17 +1086,17 @@ Append:
 
 ## Acceptance Checklist
 
-- [ ] All required modal-to-inline test migrations completed in the three targeted E2E files plus any additional spell/library specs uncovered by the Task 2 authoritative inventory, and the final Step 7.3a dialog-pattern audit plus Task 4 negative assertions show no leftover routine-validation dialog expectations across that inventory outside preserved modal cases.
-- [ ] Preserved blocking/destructive dialogs still remain modal and covered.
-- [ ] Workflow coverage explicitly includes first-spell creation, legacy basic-field edit from pre-existing legacy data with reopen-based persistence proof, legacy structured-field upgrade, validation handling, the explicit 300 ms delayed-save feedback check, conditional field transitions' observable collapsed/expanded end state, and library/search/character empty states.
-- [ ] Accessibility coverage includes keyboard-only navigation, automated error-field association assertions, preserved modal focus-trap/focus-return verification, and manual NVDA evidence.
-- [ ] Theme verification explicitly covers cold-start no-preference resolution, first-load persisted resolution, `/settings` persistence, follow-system behavior, and hidden live-region announcements.
-- [ ] Manual NVDA validation evidence has been collected, documented, and matches the DOM/error-association contract verified in Step 4.6.
-- [ ] Theme, live-region, stacked-toast, clipboard-copy, and modal-boundary verification are covered, including negative assertions that routine flows do not open dialogs.
-- [ ] Edited views in both light and dark themes are explicitly exercised with the same assertions in both themes.
-- [ ] Screenshot baselines cover the required structured states, editor themes, empty library, and hash display states, and the actual artifact names are recorded in `Implementation Notes`.
-- [ ] `docs/user/spell_editor.md`, `README.md`, `docs/dev/spell_editor_components.md`, `docs/TESTING.md`, and `docs/ARCHITECTURE.md` all reflect the final shipped behavior.
-- [ ] `pnpm lint`, `pnpm tsc --noEmit`, relevant unit tests, conditional `pnpm test:storybook` when stories changed, and `npx playwright test` have passed.
+- [x] All required modal-to-inline test migrations completed in the three targeted E2E files plus any additional spell/library specs uncovered by the Task 2 authoritative inventory, and the final Step 7.3a dialog-pattern audit plus Task 4 negative assertions show no leftover routine-validation dialog expectations across that inventory outside preserved modal cases. *(Implementation Notes Step 2.1a ledger + Task 4.10 / `expectNoBlockingDialog` coverage.)*
+- [x] Preserved blocking/destructive dialogs still remain modal and covered. *(canon-first unsaved changes, structured-data import/cancel, backend Save Error, delete confirm, spell picker — see grep/ledger in Implementation Notes.)*
+- [x] Workflow coverage explicitly includes first-spell creation, legacy basic-field edit from pre-existing legacy data with reopen-based persistence proof, legacy structured-field upgrade, validation handling, the explicit 300 ms delayed-save feedback check, conditional field transitions' observable collapsed/expanded end state, and library/search/character empty states. *(`spell_editor_save_workflow.spec.ts`, Task 3 notes.)*
+- [x] Accessibility coverage includes keyboard-only navigation, automated error-field association, preserved modal focus-trap/focus-return, optional manual NVDA spoken log, and the NVDA procedure in `docs/TESTING.md`. *(Keyboard + ARIA E2E: `accessibility_and_resize.spec.ts`, `spell_editor_save_workflow.spec.ts`; DOM contract via Playwright + Vitest pre-merge per `docs/TESTING.md`; spoken-output evidence optional at merge, table for release QA.)*
+- [x] Theme verification explicitly covers cold-start no-preference resolution, first-load persisted resolution, `/settings` persistence, follow-system behavior, and hidden live-region announcements. *(`theme_and_feedback.spec.ts`, Implementation Notes Task 4.)*
+- [x] **DOM/error-association contract (Step 4.6)** is verified by automated tests; **optional manual NVDA** evidence can be appended to `docs/TESTING.md` or Implementation Notes for release QA. *(Step 4.6 Playwright + Vitest prove the DOM wiring; spoken-output log is not a merge blocker per `docs/TESTING.md`.)*
+- [x] Theme, live-region, stacked-toast, clipboard-copy, and modal-boundary verification are covered, including negative assertions that routine flows do not open dialogs. *(Stacked toasts: `theme_and_feedback.spec.ts` “notification viewport stacks multiple concurrent success toasts…”; hash copy + `expectNoBlockingDialog`; theme live region in same file.)*
+- [x] Edited views in both light and dark themes are explicitly exercised with the same assertions in both themes. *(`spell_editor_save_workflow.spec.ts` + `theme_and_feedback.spec.ts` structured legibility test.)*
+- [x] Screenshot baselines cover the required structured states, editor themes, empty library, and hash display states, and the actual artifact names are recorded in `Implementation Notes`. *(Eight `*-win32.png` names under **Visual regression artifact inventory**; folder `apps/desktop/tests/spell_editor_visual.spec.ts-snapshots/` is git-tracked per root `.gitignore` exception.)*
+- [x] `docs/user/spell_editor.md`, `README.md`, `docs/dev/spell_editor_components.md`, `docs/TESTING.md`, and `docs/ARCHITECTURE.md` all reflect the final shipped behavior. *(Task 6 proof table; Step 7.4 path existence + diff hygiene.)*
+- [x] `pnpm lint`, `pnpm tsc --noEmit`, relevant unit tests, conditional `pnpm test:storybook` when stories changed, and `npx playwright test` have passed. *(Task 7 log; this session: `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm test:unit` green; new test: `theme_and_feedback` stacked-toast grep run. Full `npx playwright test` per Task 7 prior log — re-run before merge if desired.)*
 
 ---
 

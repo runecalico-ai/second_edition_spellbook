@@ -345,14 +345,12 @@ cleanup(); // CRITICAL: Stop listening after the action
 These are React-based components (using `Modal.tsx`) and **cannot** be intercepted by `setupDialogHandler`. Use the `handleCustomModal` async helper.
 
 ```typescript
-import { handleCustomModal } from "../utils/dialog-handler";
+import { handleCustomModal } from "./utils/dialog-handler";
 
-// Example: Handling a validation error after saving
-await page.locator("#btn-save-spell").click();
-await handleCustomModal(page, "OK");
-await page.waitForTimeout(300); // Settlement wait for modal close
+// Example: Spell editor routine validation is inline — assert testids such as
+// `spell-name-error` instead of expecting a modal after Save.
 
-// Example: Confirming a complex action
+// Example: Blocking confirmation (destructive / unsaved changes / backend Save Error)
 await page.getByRole("button", { name: "Restore Vault" }).click();
 await handleCustomModal(page, "Confirm");
 await page.waitForTimeout(300); // Settlement wait for modal close

@@ -631,7 +631,7 @@ These checks are structural (no pixel comparisons) and remain green across all s
 
 ## Screenshot Testing (Structured Editor Visual Spec)
 
-`tests/spell_editor_visual.spec.ts` provides `toHaveScreenshot()` coverage for the structured editor surfaces introduced in Chunk 4. This section documents the spec's structure and the important distinction between screenshot-isolation theme toggling and real-theme-flow verification.
+[`apps/desktop/tests/spell_editor_visual.spec.ts`](apps/desktop/tests/spell_editor_visual.spec.ts) provides `toHaveScreenshot()` coverage for the structured editor surfaces introduced in Chunk 4. Playwright groups: **`StructuredFieldInput visual stories`** (Storybook, `browserTest`) and **`Spell editor visual contract`** (Tauri CDP, `appTest`, Windows-only). This section documents the spec's structure and the important distinction between screenshot-isolation theme toggling and real-theme-flow verification.
 
 ### When to use direct `<html>` class toggling versus real theme switching
 
@@ -647,13 +647,16 @@ Direct class toggling gives identical rendering on every run regardless of OS th
 `spell_editor_visual.spec.ts` exposes a local helper:
 
 ```typescript
+import type { Page } from "@playwright/test";
+import { expect as appExpect } from "./fixtures/test-fixtures";
+
 async function setHtmlTheme(page: Page, theme: "light" | "dark"): Promise<void> {
   await page.evaluate((nextTheme) => {
     const root = document.documentElement;
     root.dataset.theme = nextTheme;
     root.classList.toggle("dark", nextTheme === "dark");
   }, theme);
-  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+  await appExpect(page.locator("html")).toHaveAttribute("data-theme", theme);
 }
 ```
 
@@ -661,14 +664,22 @@ Use this helper inside visual specs only. Do not copy it into functional E2E spe
 
 ### What is screenshot-tested
 
-| Test name | Coverage |
-|-----------|----------|
-| `structured field inputs – light mode` | Range, duration, and casting-time structured groups with controls populated — light baseline |
-| `structured field inputs – dark mode` | Same surfaces with `dark` class toggled on `<html>` |
-| `spell editor components expanded – light mode` | Full editor scroll-captured with components field expanded |
-| `spell editor components expanded – dark mode` | Same with `dark` class toggled |
+All shots live in `apps/desktop/tests/spell_editor_visual.spec.ts-snapshots/`. On Windows, Playwright writes `*-win32.png` (default platform suffix). The folder is tracked in git (see root `.gitignore` exception); other `*.ts-snapshots/` trees stay ignored.
 
-Screenshots are stored in `tests/spell_editor_visual.spec.ts-snapshots/` and committed to the repository. Update them when intentional visual changes are made:
+| Playwright test title | Snapshot base name (on-disk: `<base>-win32.png` on Windows) | How it runs |
+|----------------------|-------------------|-------------|
+| StructuredFieldInput states match light-theme screenshot | `structured-field-input-states-light` | Chromium → local Storybook |
+| StructuredFieldInput states match dark-theme screenshot | `structured-field-input-states-dark` | Chromium → local Storybook |
+| Empty library matches light-theme screenshot | `empty-library-light` | Tauri CDP (Windows only; suite skips elsewhere) |
+| Empty library matches dark-theme screenshot | `empty-library-dark` | Tauri CDP (Windows only) |
+| Spell editor structured view matches light-theme screenshot | `spell-editor-structured-light` | Tauri CDP, `__SPELLBOOK_E2E_VISUAL_CONTRACT__ = "all-structured"` |
+| Spell editor structured view matches dark-theme screenshot | `spell-editor-structured-dark` | Tauri CDP, same contract flag |
+| Collapsed hash display matches screenshot | `hash-display-collapsed` | Tauri CDP (light theme in spec) |
+| Expanded hash display matches screenshot | `hash-display-expanded` | Tauri CDP (light theme in spec) |
+
+CI does not run Playwright today; refresh baselines on a Windows machine after intentional UI changes. The committed files are **`-win32.png`**. Running the **Storybook** tests locally on macOS or Linux will expect **`-darwin.png` / `-linux.png`** unless you add those files or adjust `snapshotPathTemplate`—same consideration for a future non-Windows CI job.
+
+Update committed baselines when intentional visual changes are made:
 
 ```powershell
 cd apps/desktop
@@ -677,16 +688,15 @@ npx playwright test tests/spell_editor_visual.spec.ts --update-snapshots
 
 ### Shared test fixtures
 
-`spell_editor_visual.spec.ts` reuses the same fixture infrastructure as the structured-data spec:
-- `test` and `expect` from `./fixtures/test-fixtures` (app lifecycle management, file tracking)
-- `SpellbookApp` page object from `./page-objects/SpellbookApp`
-- `TIMEOUTS` from `./fixtures/constants`
+`spell_editor_visual.spec.ts` mixes two harnesses:
+- **Storybook rows** (`StructuredFieldInput visual stories`): `browserTest` / `browserExpect` from `@playwright/test`, plus `TIMEOUTS` from `./fixtures/constants` for Storybook boot and visibility waits (no Tauri lifecycle, no `SpellbookApp`).
+- **Tauri rows** (`Spell editor visual contract`): `appTest` / `appExpect` from `./fixtures/test-fixtures`, `SpellbookApp` from `./page-objects/SpellbookApp`, and `TIMEOUTS` from `./fixtures/constants`.
 
 The spec calls a `seedVisualSpell` helper that creates a canonical test spell via `SpellbookApp.createSpell()` before opening the editor. Prefer reusing this helper over duplicating spell-creation logic in new screenshot tests.
 
 ### Before running screenshot tests
 
-Always rebuild the debug binary before running Playwright screenshot tests:
+Always rebuild the debug binary before running Playwright screenshot tests (Tauri-backed rows load the compiled app). From the **repository root**:
 
 ```powershell
 pnpm --dir apps/desktop tauri:build --debug
@@ -694,7 +704,7 @@ cd apps/desktop
 npx playwright test tests/spell_editor_visual.spec.ts
 ```
 
-A stale binary will produce stale screenshots and false-negative diffs.
+If you are **already** in `apps/desktop`, run `pnpm tauri:build --debug` instead of `pnpm --dir apps/desktop …`. A stale binary will produce stale screenshots and false-negative diffs.
 
 ---
 

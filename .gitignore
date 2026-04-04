@@ -38,6 +38,10 @@ venv/
 apps/desktop/tests/screenshots/
 apps/desktop/tests/snapshots/
 apps/desktop/tests/*.ts-snapshots/
+# Track spell editor / Storybook visual baselines (see docs/TESTING.md).
+# Other apps/desktop/tests/*.ts-snapshots/ dirs remain ignored unless listed here.
+!apps/desktop/tests/spell_editor_visual.spec.ts-snapshots/
+!apps/desktop/tests/spell_editor_visual.spec.ts-snapshots/**
 apps/desktop/tests/tmp/
 apps/desktop/playwright-report/
 

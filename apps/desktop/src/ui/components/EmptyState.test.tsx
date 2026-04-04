@@ -28,7 +28,7 @@ describe("EmptyState", () => {
     );
 
     const liveRegion = screen.getByTestId("empty-character-spellbook-state-live-region");
-    expect(liveRegion.getAttribute("role")).toBe("status");
+    expect(liveRegion.tagName).toBe("OUTPUT");
     expect(liveRegion.getAttribute("aria-live")).toBe("polite");
     expect(liveRegion.textContent).toBe("");
   });

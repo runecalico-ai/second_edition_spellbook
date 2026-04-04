@@ -65,15 +65,14 @@ export function EmptyStateLiveRegion({
   }, [active, nextAnnouncement]);
 
   return (
-    <div
-      role="status"
+    <output
       aria-live="polite"
       aria-atomic="true"
       className="sr-only"
       data-testid={`${testId}-live-region`}
     >
       {announcedText}
-    </div>
+    </output>
   );
 }
 

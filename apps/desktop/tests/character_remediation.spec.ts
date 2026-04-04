@@ -47,7 +47,7 @@ test.describe("Character Profile Remediation", () => {
 
     await test.step("Try to open PREPARED picker without known spells", async () => {
       // The UI prevents opening the picker if no spells are known for that class
-      await app.openSpellPicker("Ranger", "PREPARED");
+      await app.triggerPreparedPickerBlockedModal("Ranger");
 
       // Wait for the alert modal
       await handleCustomModal(page, "OK");

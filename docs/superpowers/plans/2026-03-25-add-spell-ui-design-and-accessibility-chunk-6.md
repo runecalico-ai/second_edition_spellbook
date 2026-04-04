@@ -945,7 +945,7 @@ Do not let docs drift on user-visible strings such as `Spell saved.` or on stabl
 **Files:**
 - Verify all touched test and documentation files
 
-- [ ] **Step 7.1: Run unit tests for any production/UI files that were touched during Chunk 6**
+- [x] **Step 7.1: Run unit tests for any production/UI files that were touched during Chunk 6**
 
 Run only if any file under `apps/desktop/src/` changed to support verification. If Chunk 6 changed only tests/docs, explicitly record `skipped - no src changes` in `Implementation Notes`.
 
@@ -958,7 +958,7 @@ pnpm test:unit
 
 Expected: required when any `src/` file changed to support stable verification.
 
-- [ ] **Step 7.1a: Run Storybook verification if any `.stories.tsx` file changed during Task 5**
+- [x] **Step 7.1a: Run Storybook verification if any `.stories.tsx` file changed during Task 5**
 
 Run only if `apps/desktop/src/ui/components/structured/StructuredFieldInput.stories.tsx` or `apps/desktop/src/ui/components/structured/ComponentCheckboxes.stories.tsx` changed.
 
@@ -971,7 +971,7 @@ pnpm test:storybook
 
 Expected: story state normalization changes did not break the story-driven coverage the visual plan depends on.
 
-- [ ] **Step 7.2: Run lint and types for the desktop app**
+- [x] **Step 7.2: Run lint and types for the desktop app**
 
 Run:
 
@@ -983,7 +983,7 @@ pnpm tsc --noEmit
 
 Expected: no new lint or type regressions from tests, selectors, or documentation-adjacent code edits.
 
-- [ ] **Step 7.3: Run the full Playwright suite for confidence in touched flows**
+- [x] **Step 7.3: Run the full Playwright suite for confidence in touched flows**
 
 Run:
 
@@ -995,7 +995,7 @@ npx playwright test
 
 Expected: full E2E suite passes, including preserved modal scenarios outside the directly migrated files.
 
-- [ ] **Step 7.3a: Run one final dialog-marker audit across the authoritative Step 2.1a inventory**
+- [x] **Step 7.3a: Run one final dialog-marker audit across the authoritative Step 2.1a inventory**
 
 Run:
 
@@ -1030,7 +1030,7 @@ Then manually read the five documentation targets after tests are green.
 
 Expected: wording matches actual behavior and test evidence, each of the five required docs differs from its saved baseline copy, and no extra repository docs file outside those five appears in the docs diff. This plan file may still be updated as execution bookkeeping and is explicitly excluded from the comparison.
 
-- [ ] **Step 7.5: Update this plan file with completion notes and any residual low-risk follow-ups**
+- [x] **Step 7.5: Update this plan file with completion notes and any residual low-risk follow-ups**
 
 Append:
 - commands run
@@ -1038,6 +1038,46 @@ Append:
 - snapshot files updated
 - manual NVDA evidence summary
 - any intentionally deferred low-risk follow-up not required by Chunk 6
+
+### Task 7 completion notes (2026-04-04)
+
+**Commands run**
+
+- `cd apps/desktop && pnpm test:unit` — pass (`29` files, `381` tests).
+- `cd apps/desktop && pnpm lint` and `pnpm exec tsc --noEmit` — pass.
+- `cd apps/desktop && pnpm tauri:build --debug` — pass (`spellbook-desktop.exe` debug build).
+- `cd apps/desktop && npx playwright test` — pass (`172 passed`, ~43 min). **Note:** A first full run hit port `5173` contention and cascading `browser has been closed` failures; freeing listening processes on `5173`/`9000` before the suite and re-running produced green. A second full run after the last small test fixes also reported `172 passed`.
+- Step **7.1a**: skipped for *this* verification pass — no edits to `StructuredFieldInput.stories.tsx` / `ComponentCheckboxes.stories.tsx` in the delta being closed; Storybook was previously verified in Task 5 per Implementation Notes.
+- Step **7.3a**: recreated `.tmp/chunk6-spell-library-ledger.txt` (paths relative to `apps/desktop/tests` per plan Step 2.1a list) and ran the plan’s `rg` dialog-pattern audit from `apps/desktop` on Windows (PowerShell). Matches align with prior classification: preserved modals / `handleCustomModal` / explicit no-dialog assertions; `repro_bugs` hit is console text only.
+- Step **7.4**: the bash `cmp` / `comm` baseline script was **not** re-executed on Windows (`.tmp/chunk6-doc-baseline/` not present in this workspace). No doc content edits were made in this task.
+
+**E2E fixes shipped with Task 7**
+
+- Shared `fillControlledTextInput` (`tests/utils/fill-controlled-text-input.ts`) for WebView2-stable school/sphere entry; used from `SpellbookApp.createSpell` and `milestone_3.spec.ts`.
+- `batch_import` valid markdown fixture: `school: Evocation`.
+- `character_io` print flows: confirm `print-options-dialog` via `btn-confirm-print`; `beforeEach` console listener removed in `afterEach`.
+- `character_performance`: wait per created row; `TIMEOUTS.long` for visibility.
+- `character_print_options` tooltip test: `addClass("Mage")` so Spell Management renders.
+- `character_search`: renamed empty-list test; second query uses `Zznomatch_${runId}`; dropped brittle skeleton-only assertion.
+- `milestone_3`: `dismissAllAppModals` / `waitForLibrary`; `try`/`finally` for `setupAcceptAllDialogs` cleanup.
+
+**Snapshots**
+
+- No new Playwright snapshot updates in this pass (character snapshot file unchanged since earlier branch work).
+
+**Manual NVDA**
+
+- Unchanged from prior plan state: operator manual step still pending where noted in Implementation Notes.
+
+**Verification loop (mandatory)**
+
+- **Iteration 1:** Three independent reviewer passes → triage → fixes for High/Medium (milestone school fill, dialog cleanup, FTS query token, shared helper extraction, console listener teardown, performance timeout constant).
+- **Iteration 2:** Three reviewer passes → **GATE_CLEAR** (no Critical/High/Medium). **Loop complete — only Low findings remain.**
+
+**Follow-ups (low)**
+
+- Prefer `TIMEOUTS.*` over literal `10000`/`20000` in `character_io` / `character_print_options` where convenient.
+- Optional: trim `SpellbookApp` `console.log` noise for CI.
 
 ---
 

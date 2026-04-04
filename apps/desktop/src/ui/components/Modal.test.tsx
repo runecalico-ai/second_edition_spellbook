@@ -23,8 +23,8 @@ beforeEach(() => {
       value: false,
     });
   });
-  HTMLDialogElement.prototype.showModal = showModalMock;
-  HTMLDialogElement.prototype.close = closeMock;
+  HTMLDialogElement.prototype.showModal = showModalMock as unknown as HTMLDialogElement["showModal"];
+  HTMLDialogElement.prototype.close = closeMock as unknown as HTMLDialogElement["close"];
 });
 
 afterEach(() => {
@@ -32,12 +32,12 @@ afterEach(() => {
   if (originalShowModal) {
     HTMLDialogElement.prototype.showModal = originalShowModal;
   } else {
-    delete HTMLDialogElement.prototype.showModal;
+    HTMLDialogElement.prototype.showModal = undefined as unknown as HTMLDialogElement["showModal"];
   }
   if (originalClose) {
     HTMLDialogElement.prototype.close = originalClose;
   } else {
-    delete HTMLDialogElement.prototype.close;
+    HTMLDialogElement.prototype.close = undefined as unknown as HTMLDialogElement["close"];
   }
   vi.restoreAllMocks();
 });

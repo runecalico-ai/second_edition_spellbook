@@ -161,6 +161,16 @@ export function ModalShell({
           onRequestClose();
         }
       }}
+      onKeyDown={(e) => {
+        if (
+          e.target === e.currentTarget &&
+          dismissible &&
+          (e.key === "Enter" || e.key === " ")
+        ) {
+          e.preventDefault();
+          onRequestClose();
+        }
+      }}
       onCancel={(e) => {
         e.preventDefault();
         if (dismissible) {
@@ -176,6 +186,9 @@ export function ModalShell({
           typeStyles[type],
         )}
         onClick={(e) => {
+          e.stopPropagation();
+        }}
+        onKeyDown={(e) => {
           e.stopPropagation();
         }}
       >

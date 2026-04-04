@@ -2,6 +2,8 @@ import path from "node:path";
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { TIMEOUTS } from "../fixtures/constants";
+import { dismissAllAppModals } from "../utils/dialog-handler";
+import { fillControlledTextInput } from "../utils/fill-controlled-text-input";
 
 /** Common selectors used throughout the app */
 export const SELECTORS = {
@@ -101,7 +103,9 @@ export class SpellbookApp {
     return this.page.getByLabel(`Class section for ${className}`);
   }
 
-  private async waitForLibraryResultsToSettle(previousSearchRequestId?: string | null): Promise<void> {
+  private async waitForLibraryResultsToSettle(
+    previousSearchRequestId?: string | null,
+  ): Promise<void> {
     const resultsState = this.page.getByTestId("library-results-state");
     await expect(resultsState).toBeVisible({ timeout: TIMEOUTS.short });
 
@@ -146,33 +150,39 @@ export class SpellbookApp {
     });
 
     await expect
-      .poll(async () => {
-        const [currentFilterKey, currentSettledFilterKey, resultsSettled] = await Promise.all([
-          resultsState.getAttribute("data-filter-key"),
-          resultsState.getAttribute("data-settled-filter-key"),
-          resultsState.getAttribute("data-results-settled"),
-        ]);
+      .poll(
+        async () => {
+          const [currentFilterKey, currentSettledFilterKey, resultsSettled] = await Promise.all([
+            resultsState.getAttribute("data-filter-key"),
+            resultsState.getAttribute("data-settled-filter-key"),
+            resultsState.getAttribute("data-results-settled"),
+          ]);
 
-        return (
-          resultsSettled === "true" &&
-          Boolean(currentFilterKey) &&
-          currentFilterKey === currentSettledFilterKey
-        );
-      }, {
-        timeout: TIMEOUTS.medium,
-        intervals: [100, 200, 300],
-      })
+          return (
+            resultsSettled === "true" &&
+            Boolean(currentFilterKey) &&
+            currentFilterKey === currentSettledFilterKey
+          );
+        },
+        {
+          timeout: TIMEOUTS.medium,
+          intervals: [100, 200, 300],
+        },
+      )
       .toBe(true);
 
     if (options.expectPristineFilters) {
       await expect
-        .poll(async () => {
-          const snapshot = await this.getSpellPickerFilterSnapshot();
-          return JSON.stringify(snapshot);
-        }, {
-          timeout: TIMEOUTS.medium,
-          intervals: [100, 200, 300],
-        })
+        .poll(
+          async () => {
+            const snapshot = await this.getSpellPickerFilterSnapshot();
+            return JSON.stringify(snapshot);
+          },
+          {
+            timeout: TIMEOUTS.medium,
+            intervals: [100, 200, 300],
+          },
+        )
         .toBe(JSON.stringify(this.getPristineSpellPickerFilterSnapshot()));
     }
   }
@@ -217,16 +227,19 @@ export class SpellbookApp {
     };
   }
 
-  private getNextSpellPickerFilterSnapshot(filters: {
-    search?: string;
-    minLevel?: string;
-    maxLevel?: string;
-    tags?: string;
-    school?: string;
-    sphere?: string;
-    questOnly?: boolean;
-    cantripsOnly?: boolean;
-  }, current: SpellPickerFilterSnapshot): SpellPickerFilterSnapshot {
+  private getNextSpellPickerFilterSnapshot(
+    filters: {
+      search?: string;
+      minLevel?: string;
+      maxLevel?: string;
+      tags?: string;
+      school?: string;
+      sphere?: string;
+      questOnly?: boolean;
+      cantripsOnly?: boolean;
+    },
+    current: SpellPickerFilterSnapshot,
+  ): SpellPickerFilterSnapshot {
     return {
       search: filters.search ?? current.search,
       minLevel: filters.minLevel ?? current.minLevel,
@@ -241,9 +254,11 @@ export class SpellbookApp {
 
   private async waitForCharacterSave(buttonTestId: string, idleLabel: string): Promise<void> {
     const saveButton = this.page.getByTestId(buttonTestId);
-    const savingState = expect(saveButton).toBeDisabled({ timeout: TIMEOUTS.short }).catch(() => {
-      return undefined;
-    });
+    const savingState = expect(saveButton)
+      .toBeDisabled({ timeout: TIMEOUTS.short })
+      .catch(() => {
+        return undefined;
+      });
 
     await saveButton.click();
     await savingState;
@@ -349,17 +364,13 @@ export class SpellbookApp {
     if (tradition === "ARCANE" && effectiveSchool) {
       const schoolLoc = this.page.getByTestId("spell-school-input");
       await expect(schoolLoc).toBeVisible({ timeout: TIMEOUTS.short });
-      await schoolLoc.fill("");
-      await schoolLoc.fill(effectiveSchool);
-      await expect(schoolLoc).toHaveValue(effectiveSchool);
+      await fillControlledTextInput(schoolLoc, effectiveSchool);
     }
 
     if (tradition === "DIVINE" && sphere) {
       const sphereLoc = this.page.getByTestId("spell-sphere-input");
       await expect(sphereLoc).toBeVisible({ timeout: TIMEOUTS.short });
-      await sphereLoc.fill("");
-      await sphereLoc.fill(sphere);
-      await expect(sphereLoc).toHaveValue(sphere);
+      await fillControlledTextInput(sphereLoc, sphere);
     }
 
     if (classes) {
@@ -438,6 +449,7 @@ export class SpellbookApp {
     // Land on Library first so /edit/* is unmounted (avoids strict-mode "Cancel" clashes with SpellEditor).
     await this.navigate("Library");
     await this.waitForLibrary();
+    await dismissAllAppModals(this.page);
     await this.navigate("Import");
     const importMoreBtn = this.page.getByRole("button", {
       name: "Import More Files",
@@ -629,6 +641,15 @@ export class SpellbookApp {
       });
     }
     await this.waitForCharacterSave("btn-save-identity", "Save Identity");
+  }
+
+  /**
+   * PREPARED with zero Known spells: + ADD shows useModal alert instead of opening spell-picker.
+   * Caller should dismiss with `handleCustomModal(page, "OK")`.
+   */
+  async triggerPreparedPickerBlockedModal(className: string): Promise<void> {
+    const classSection = await this.switchClassTab(className, "PREPARED");
+    await classSection.getByTestId("btn-open-spell-picker").click();
   }
 
   /** Open spell picker for a class */
@@ -836,7 +857,8 @@ export class SpellbookApp {
       resultsState.getAttribute("data-search-request-id"),
     ]);
     const requireNewRequestId =
-      JSON.stringify(currentFilters) !== JSON.stringify(this.getPristineSpellPickerFilterSnapshot());
+      JSON.stringify(currentFilters) !==
+      JSON.stringify(this.getPristineSpellPickerFilterSnapshot());
 
     await picker.getByTestId("spell-picker-search-input").clear();
     await picker.getByTestId("filter-level-min").clear();
@@ -962,13 +984,13 @@ export class SpellbookApp {
   /** Open the spellbook builder for a character */
   async openSpellbookBuilder(name: string): Promise<void> {
     console.log(`Opening spellbook builder for: ${name}`);
-      await this.openCharacterEditor(name);
-      const builderLink = this.page.getByTestId("link-open-spellbook-builder");
-      await expect(builderLink).toBeVisible({ timeout: TIMEOUTS.medium });
-      await builderLink.click();
-      await expect(this.page).toHaveURL(/\/character\/\d+\/builder/, {
-        timeout: TIMEOUTS.medium,
-      });
+    await this.openCharacterEditor(name);
+    const builderLink = this.page.getByTestId("link-open-spellbook-builder");
+    await expect(builderLink).toBeVisible({ timeout: TIMEOUTS.medium });
+    await builderLink.click();
+    await expect(this.page).toHaveURL(/\/character\/\d+\/builder/, {
+      timeout: TIMEOUTS.medium,
+    });
     await expect(this.page.getByRole("heading", { name: "Spellbook Builder" })).toBeVisible();
   }
 

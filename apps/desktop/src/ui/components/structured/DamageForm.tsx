@@ -155,7 +155,7 @@ function pickDamageFieldError(
 
 function getFieldErrorA11yProps(error: DamageFieldError | null) {
   return {
-    "aria-invalid": error ? "true" : undefined,
+    "aria-invalid": error ? true : undefined,
     "aria-describedby": error?.testId,
   };
 }

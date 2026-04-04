@@ -55,11 +55,11 @@ const darkStory = {
     },
   },
   decorators: [withTheme("dark")],
-} as const;
+};
 
 const lightStory = {
   decorators: [withTheme("light")],
-} as const;
+};
 
 const meta = {
   title: "SpellEditor/StructuredFieldInput",
@@ -333,8 +333,15 @@ export const CastingTimeSpecial: Story = {
   },
 };
 
+const visualGalleryPlaceholderArgs = {
+  fieldType: "range" as const,
+  value: { kind: "touch" as const },
+  onChange: fn(),
+};
+
 export const VisualGallery: Story = {
   ...lightStory,
+  args: visualGalleryPlaceholderArgs,
   render: () => (
     <div data-testid="structured-field-input-visual-gallery" className="space-y-6">
       <section className="space-y-3">
@@ -426,5 +433,6 @@ export const VisualGallery: Story = {
 
 export const VisualGalleryDark: Story = {
   ...darkStory,
+  args: visualGalleryPlaceholderArgs,
   render: VisualGallery.render,
 };

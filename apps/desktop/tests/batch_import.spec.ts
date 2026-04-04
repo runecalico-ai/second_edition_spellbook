@@ -49,7 +49,7 @@ test.describe("Batch Import Wizard", () => {
     const mdFile = fileTracker.track(path.join(testDir, "valid_spell.md"));
     fs.writeFileSync(
       mdFile,
-      "---\nname: Valid Markdown Spell\nlevel: 3\n---\nThis is a valid spell description.\n",
+      "---\nname: Valid Markdown Spell\nlevel: 3\nschool: Evocation\n---\nThis is a valid spell description.\n",
     );
 
     const txtFile = fileTracker.track(path.join(testDir, "unsupported.txt"));

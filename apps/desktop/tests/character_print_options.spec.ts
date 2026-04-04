@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { dismissAllAppModals } from "./utils/dialog-handler";
 
 test.describe("Character Print Options Dialog", () => {
   test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
@@ -215,7 +216,9 @@ test.describe("Character Print Options Dialog", () => {
     await app.createCharacter(charName);
     // Wait for manager to settle
     await expect(page.getByTestId("character-search-input")).toBeVisible();
+    await dismissAllAppModals(page);
     await app.openCharacterEditor(charName);
+    await app.addClass("Mage");
 
     // Verify COM tooltip
     const comLabel = page.getByText(/Enable Comeliness \(COM\)/);

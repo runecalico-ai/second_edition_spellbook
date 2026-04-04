@@ -316,8 +316,9 @@ export default function Library() {
     loadSavedSearches();
   }, [loadFacets, loadCharacters, loadSavedSearches]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initial load; further searches are explicit (Search / Enter)
   useEffect(() => {
-    search();
+    void search();
   }, []);
 
   const hasActiveFilters = Boolean(

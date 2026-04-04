@@ -1,5 +1,7 @@
+import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { dismissAllAppModals } from "./utils/dialog-handler";
 
 test.describe("Performance: Character Search", () => {
   test("should search quickly with multiple characters", async ({ appContext }) => {
@@ -9,26 +11,24 @@ test.describe("Performance: Character Search", () => {
     // Seed data via UI (100 chars)
     // Optimized loop: Avoid full page navigation checks for every creation
     await app.navigate("Characters");
+    await dismissAllAppModals(page);
     const nameInput = page.getByTestId("new-character-name-input");
     const createBtn = page.getByTestId("btn-create-character");
 
     const count = 100;
-    const batchSize = 10;
 
     await test.step(`Seed ${count} characters`, async () => {
+      const listLinks = page.getByTestId("character-list").locator("a");
       for (let i = 0; i < count; i++) {
         await nameInput.fill(`PerfChar_${i}_Mage`);
         await createBtn.click();
-        // Small wait to allow React state to settle/backend to start
-        // We don't strictly need to wait for list to update every time if we trust the queue,
-        // but to be safe and avoid flakes:
-        if (i % batchSize === 0) {
-          await page.waitForTimeout(200);
-        }
+        // createCharacter fires search_characters; wait until this row is visible so we do not
+        // outpace the backend or drop a click while the UI is busy.
+        await expect(page.getByTestId(`character-item-perfchar_${i}_mage`)).toBeVisible({
+          timeout: TIMEOUTS.long,
+        });
       }
-      // Final wait to ensure all are loaded
-      await page.waitForTimeout(1000);
-      await expect(page.getByTestId("character-list").locator("a")).toHaveCount(count);
+      await expect(listLinks).toHaveCount(count);
     });
 
     const searchInput = page.getByTestId("character-search-input");

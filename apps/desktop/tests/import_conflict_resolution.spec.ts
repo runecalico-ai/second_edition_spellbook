@@ -361,8 +361,8 @@ test.describe("JSON Import Conflict Resolution", () => {
 
       // Suffixed copy "(1)" should also exist
       await app.navigate("Library");
-      await page.getByPlaceholder(/Search spells/i).fill(spellName);
-      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.getByTestId("search-input").fill(spellName);
+      await page.getByTestId("library-search-button").click();
 
       // Both the original and "(1)" variant should appear in results
       await expect(page.getByRole("link", { name: spellName, exact: true })).toBeVisible({
@@ -567,8 +567,8 @@ test.describe("JSON Import Conflict Resolution", () => {
       await expect(page.getByText(originalDesc)).toBeVisible({ timeout: TIMEOUTS.medium });
 
       await app.navigate("Library");
-      await page.getByPlaceholder(/Search spells/i).fill(baseName);
-      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.getByTestId("search-input").fill(baseName);
+      await page.getByTestId("library-search-button").click();
 
       await expect(page.getByRole("link", { name: baseName, exact: true })).toBeVisible({
         timeout: TIMEOUTS.medium,

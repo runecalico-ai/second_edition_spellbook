@@ -144,9 +144,9 @@ function expectDangerFocusRing(testId: string) {
 
 function expectClassTokens(testId: string, expectedTokens: string[]) {
   const className = screen.getByTestId(testId).className;
-  expectedTokens.forEach((token) => {
+  for (const token of expectedTokens) {
     expect(className).toContain(token);
-  });
+  }
 }
 
 describe("hash display", () => {
@@ -477,7 +477,7 @@ describe("SpellEditor inline validation (Task 2)", () => {
     window.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect((event as Event & { returnValue: string }).returnValue).toBe("");
+    expect((event as unknown as { returnValue: string }).returnValue).toBe("");
   });
 });
 
@@ -848,11 +848,11 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
     });
     expectStandardFocusRing("spell-sphere-input");
 
-    DETAIL_FIELD_ORDER.forEach((field) => {
+    for (const field of DETAIL_FIELD_ORDER) {
       const kebabField = field.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
       expectStandardFocusRing(`detail-${kebabField}-input`);
       expectStandardFocusRing(`detail-${kebabField}-expand`);
-    });
+    }
   });
 
   it("renders semantic section headings without skipping levels in the editor", async () => {
@@ -901,7 +901,7 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
       "dark:border-neutral-700",
     ]);
 
-    ["btn-print-compact", "btn-print-stat-block", "btn-cancel-edit"].forEach((testId) => {
+    for (const testId of ["btn-print-compact", "btn-print-stat-block", "btn-cancel-edit"]) {
       expectClassTokens(testId, [
         "bg-neutral-200",
         "text-neutral-900",
@@ -910,7 +910,7 @@ describe("SpellEditor accessibility and structured validation (Task 3)", () => {
         "dark:text-neutral-100",
         "dark:hover:bg-neutral-700",
       ]);
-    });
+    }
   });
 
   it("shows range scalar validation with correct copy, ARIA, and same-container adjacency", async () => {

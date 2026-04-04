@@ -48,7 +48,7 @@ const darkStory = {
     },
   },
   decorators: [withTheme("dark")],
-} as const;
+};
 
 const meta = {
   title: "SpellEditor/ComponentCheckboxes",

@@ -4,6 +4,7 @@
  * and our custom React-based Modal component.
  */
 import type { Dialog, Page } from "@playwright/test";
+import { TIMEOUTS } from "../fixtures/constants";
 
 export interface DialogHandlerOptions {
   /** Accept dialogs containing "Delete" by default */
@@ -73,6 +74,29 @@ export async function handleCustomModal(page: Page, action: "OK" | "Cancel" | "C
   const button = modal.getByRole("button", { name: action, exact: true });
   await button.click();
   await modal.waitFor({ state: "hidden", timeout: 5000 });
+}
+
+/** Dismiss one open `modal-dialog` if present (OK alerts, Dismiss vault, etc.). */
+export async function dismissAppModalIfPresent(page: Page): Promise<void> {
+  const modal = page.getByTestId("modal-dialog");
+  if (!(await modal.isVisible().catch(() => false))) return;
+  for (const label of ["OK", "Dismiss", "Confirm"] as const) {
+    const btn = modal.getByRole("button", { name: label, exact: true });
+    if (await btn.isVisible().catch(() => false)) {
+      await btn.click();
+      await modal.waitFor({ state: "hidden", timeout: TIMEOUTS.medium }).catch(() => {});
+      return;
+    }
+  }
+}
+
+/** Close stacked or sequential app modals (e.g. vault + inline alert). */
+export async function dismissAllAppModals(page: Page, maxIterations = 5): Promise<void> {
+  for (let i = 0; i < maxIterations; i++) {
+    const modal = page.getByTestId("modal-dialog");
+    if (!(await modal.isVisible().catch(() => false))) return;
+    await dismissAppModalIfPresent(page);
+  }
 }
 
 /** Simple dialog handler that always dismisses */

@@ -228,6 +228,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
 
       {materials.map((m, idx) => (
         <div
+          // biome-ignore lint/suspicious/noArrayIndexKey: rows are keyed by list order; specs have no stable id
           key={`material-${idx}`}
           className="grid gap-2 p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-sm border border-neutral-200 dark:border-neutral-700"
           data-testid="material-component-row"

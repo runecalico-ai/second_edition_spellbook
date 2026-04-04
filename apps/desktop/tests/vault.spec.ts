@@ -1,20 +1,18 @@
 import fs from "node:fs";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
-import { createTmpFilePath, generateRunId, getTestDirname } from "./fixtures/test-utils";
+import { createTmpFilePath, generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 import { handleCustomModal, setupDialogHandler } from "./utils/dialog-handler";
 
-const __dirname = getTestDirname(import.meta.url);
-
 test.describe("Vault Backup and Restore", () => {
-  test("Backup and Restore Flow", async ({ appContext, fileTracker }) => {
+  test("Backup and Restore Flow", async ({ appContext, fileTracker, testTmpDir }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
 
     const backupSpellName = `Backup Test Spell ${runId}`;
-    const backupPath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
+    const backupPath = createTmpFilePath(testTmpDir, "backup.zip", fileTracker);
 
     // Setup dialog handler
     const cleanupDialogs = setupDialogHandler(page, {
@@ -77,9 +75,8 @@ test.describe("Vault Backup and Restore", () => {
         await handleCustomModal(page, "OK");
         await page.waitForTimeout(300); // Settlement wait for modal close
 
-        // Wait for reload
-        await page.waitForTimeout(2000);
-        await page.waitForURL(/\//);
+        await page.waitForLoadState("domcontentloaded", { timeout: TIMEOUTS.medium });
+        await page.waitForURL(/\//, { timeout: TIMEOUTS.medium });
       });
 
       await test.step("Verify spell is restored", async () => {
@@ -90,7 +87,7 @@ test.describe("Vault Backup and Restore", () => {
       });
     } finally {
       cleanupDialogs();
-      // Backup file cleanup handled by fileTracker in afterAll
+      // Backup file cleanup: fileTracker + testTmpDir fixtures (per-test teardown)
     }
   });
 });

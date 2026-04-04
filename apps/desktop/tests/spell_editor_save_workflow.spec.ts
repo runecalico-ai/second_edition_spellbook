@@ -3,10 +3,8 @@ import path from "node:path";
 import type { Page } from "@playwright/test";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
-import { generateRunId, getTestDirname } from "./fixtures/test-utils";
+import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
-
-const __dirname = getTestDirname(import.meta.url);
 
 type SaveButtonSnapshot = {
   elapsedMs: number;
@@ -207,7 +205,9 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     await test.step("Create the first spell and save it", async () => {
       await page.getByTestId("spell-name-input").fill(name);
       await page.getByTestId("spell-level-input").fill("1");
-      await page.getByTestId("spell-description-textarea").fill("This is the first spell in the library.");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("This is the first spell in the library.");
       await page.getByTestId("spell-classes-input").fill("Wizard");
       await page.getByTestId("spell-school-input").fill("Evocation");
 
@@ -266,7 +266,9 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
       await expect(emptySearchState.getByRole("heading", { name: "No Results" })).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
-      await expect(emptySearchState).toContainText("No spells match your current search or filters.");
+      await expect(emptySearchState).toContainText(
+        "No spells match your current search or filters.",
+      );
       await expect(page.getByTestId("empty-search-reset-button")).toBeVisible({
         timeout: TIMEOUTS.medium,
       });
@@ -350,13 +352,14 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
   test("legacy import: basic-field edit workflow saves, updates the library, and persists after reopen", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
     const importedName = `Legacy Basic ${runId}`;
     const renamed = `${importedName} Edited`;
-    const samplePath = fileTracker.track(path.resolve(__dirname, `tmp/legacy-basic-${runId}.md`));
+    const samplePath = fileTracker.track(path.join(testTmpDir, `legacy-basic-${runId}.md`));
     fs.writeFileSync(
       samplePath,
       [
@@ -416,12 +419,13 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
   test("legacy import: structured range upgrade updates observable state and persists after reopen", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
     const importedName = `Legacy Range ${runId}`;
-    const samplePath = fileTracker.track(path.resolve(__dirname, `tmp/legacy-range-${runId}.md`));
+    const samplePath = fileTracker.track(path.join(testTmpDir, `legacy-range-${runId}.md`));
     fs.writeFileSync(
       samplePath,
       [
@@ -555,7 +559,7 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     const app = new SpellbookApp(page);
 
     await app.navigate("Add Spell");
-  await waitForNewSpellEditor(page);
+    await waitForNewSpellEditor(page);
 
     await expect(page.getByTestId("spell-name-error")).toHaveCount(0);
     await expect(page.getByTestId("spell-save-validation-hint")).toHaveCount(0);
@@ -568,12 +572,14 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     await app.expectNoBlockingDialog();
   });
 
-  test("pristine required fields stay quiet until blur, then the relevant error clears when fixed; no validation dialog", async ({ appContext }) => {
+  test("pristine required fields stay quiet until blur, then the relevant error clears when fixed; no validation dialog", async ({
+    appContext,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
     await app.navigate("Add Spell");
-  await waitForNewSpellEditor(page);
+    await waitForNewSpellEditor(page);
 
     await expect(page.getByTestId("spell-name-error")).toHaveCount(0);
     await expect(page.getByTestId("spell-save-validation-hint")).toHaveCount(0);
@@ -599,7 +605,7 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     const app = new SpellbookApp(page);
 
     await app.navigate("Add Spell");
-  await waitForNewSpellEditor(page);
+    await waitForNewSpellEditor(page);
     await page.getByTestId("spell-name-input").fill("Tradition Reval");
     await page.getByTestId("spell-level-input").fill("1");
     await page.getByTestId("spell-description-textarea").fill("Desc.");
@@ -651,7 +657,7 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     });
 
     await app.navigate("Add Spell");
-  await waitForNewSpellEditor(page);
+    await waitForNewSpellEditor(page);
     await page.getByTestId("spell-name-input").fill("Scalar blur spell");
     await page.getByTestId("spell-level-input").fill("1");
     await page.getByTestId("spell-description-textarea").fill("Desc.");
@@ -659,9 +665,9 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     await page.getByTestId("spell-school-input").fill("Evocation");
 
     await page.getByTestId("detail-range-expand").click();
-  await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.medium });
+    await expect(page.getByTestId("range-kind-select")).toBeVisible({ timeout: TIMEOUTS.medium });
     await page.getByTestId("range-kind-select").selectOption("distance");
-  await expect(page.getByTestId("range-base-value")).toBeVisible({ timeout: TIMEOUTS.medium });
+    await expect(page.getByTestId("range-base-value")).toBeVisible({ timeout: TIMEOUTS.medium });
 
     await page.getByTestId("range-base-value").blur();
     await expect(page.getByTestId("error-range-base-value")).toBeVisible({
@@ -689,7 +695,7 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     });
 
     await app.navigate("Add Spell");
-  await waitForNewSpellEditor(page);
+    await waitForNewSpellEditor(page);
     await fillValidSpellForSave(page, name);
 
     const saveButton = page.getByTestId("btn-save-spell");
@@ -760,7 +766,7 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
     });
 
     await app.navigate("Library");
-  await app.waitForLibrary();
+    await app.waitForLibrary();
 
     const slug = spellName.replace(/\s+/g, "-").toLowerCase();
     await page.getByTestId(`add-to-char-select-${slug}`).selectOption({ label: charName });
@@ -791,7 +797,7 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
       });
 
       await app.navigate("Add Spell");
-  await waitForNewSpellEditor(page);
+      await waitForNewSpellEditor(page);
       await page.getByTestId("btn-save-spell").click();
       await expect(page.getByTestId("spell-name-error")).toBeVisible();
       await app.expectSpellSaveValidationHint();
@@ -830,7 +836,7 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
       });
 
       await app.navigate("Add Spell");
-  await waitForNewSpellEditor(page);
+      await waitForNewSpellEditor(page);
       await fillValidSpellForSave(page, spellName);
 
       const enabledState = await getButtonVisualState(page);

@@ -68,26 +68,27 @@ export function generateRunId(): number {
 }
 
 /**
- * Creates a unique test file path in the tmp directory.
- * Combines ensureTmpDir, generateRunId, and file tracking in one convenient function.
+ * Creates a unique test file path under a base directory (typically the `testTmpDir` fixture).
+ * Ensures the base directory exists, inserts a run id before the file extension, and optionally tracks the file.
  *
- * @param dirname - The directory name (typically __dirname from the test file)
- * @param filename - The base filename (will be prefixed with runId)
+ * @param baseDir - Destination directory (e.g. `testTmpDir` from `./fixtures/test-fixtures`, or `ensureTmpDir(__dirname)` for legacy `tests/tmp` layout)
+ * @param filename - The base filename (run id is inserted before the extension)
  * @param fileTracker - Optional file tracker to automatically track the file for cleanup
  * @returns The absolute path to the unique test file
  *
  * @example
  * ```typescript
- * const backupPath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
- * // Returns: /path/to/tests/tmp/backup-1234567890.zip (and tracks it)
+ * const backupPath = createTmpFilePath(testTmpDir, "backup.zip", fileTracker);
  * ```
  */
 export function createTmpFilePath(
-  dirname: string,
+  baseDir: string,
   filename: string,
   fileTracker?: { track: (path: string) => string },
 ): string {
-  const tmpDir = ensureTmpDir(dirname);
+  if (!fs.existsSync(baseDir)) {
+    fs.mkdirSync(baseDir, { recursive: true });
+  }
   const runId = generateRunId();
 
   // Insert runId before the file extension
@@ -95,7 +96,7 @@ export function createTmpFilePath(
   const base = path.basename(filename, ext);
   const uniqueFilename = `${base}-${runId}${ext}`;
 
-  const filePath = path.join(tmpDir, uniqueFilename);
+  const filePath = path.join(baseDir, uniqueFilename);
 
   // Track the file if a tracker was provided
   if (fileTracker) {

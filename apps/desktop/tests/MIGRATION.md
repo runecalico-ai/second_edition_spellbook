@@ -11,7 +11,7 @@ When updating an existing test file, follow this checklist:
 - [ ] Replace `fileURLToPath` pattern with `getTestDirname()` from `./fixtures/test-utils`
 - [ ] Convert manual library filters to `app.setLibraryFilters()`
 - [ ] Consider migrating to Playwright fixtures (optional, see below)
-- [ ] Consider using `createTmpFilePath()` for temporary files (optional)
+- [ ] Write files under the `testTmpDir` fixture (or pass it to `createTmpFilePath(testTmpDir, ...)`) instead of ad-hoc `path.join(__dirname, "tmp", ...)`
 
 ### Quick Wins (Low Effort, High Value)
 
@@ -237,7 +237,7 @@ When reviewing PRs that add or modify E2E tests, verify:
 ### File Management
 
 - [ ] Uses `fileTracker` fixture for temporary files
-- [ ] Uses `createTmpFilePath()` for temp file creation (when applicable)
+- [ ] Uses `testTmpDir` for paths under `tests/tmp` and `createTmpFilePath(testTmpDir, ...)` when a helper is needed (first argument is a **base directory**, not necessarily `__dirname`)
 - [ ] No manual file cleanup in `finally` blocks (handled by fixture)
 
 ### Dialog Handling
@@ -270,8 +270,10 @@ When using `createTmpFilePath()`, you may still need `fs` for file operations:
 import fs from "node:fs";
 import { createTmpFilePath } from "./fixtures/test-utils";
 
-const filePath = createTmpFilePath(__dirname, "data.json", fileTracker);
-fs.writeFileSync(filePath, data); // Still need fs here
+test("example", async ({ fileTracker, testTmpDir }) => {
+  const filePath = createTmpFilePath(testTmpDir, "data.json", fileTracker);
+  fs.writeFileSync(filePath, data);
+});
 ```
 
 ### Pitfall 2: Mixing Patterns

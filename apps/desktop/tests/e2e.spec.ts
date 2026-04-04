@@ -2,10 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
-import { generateRunId, getTestDirname } from "./fixtures/test-utils";
+import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
-
-const __dirname = getTestDirname(import.meta.url);
 
 test.describe("Milestone Verification Flow", () => {
   test.slow();
@@ -25,22 +23,25 @@ test.describe("Milestone Verification Flow", () => {
       await expect(page.getByText(spellName)).toBeVisible();
     });
 
-    await test.step("Verify duplicate name warning", async () => {
+    await test.step("Open Add Spell with same name as existing spell (smoke)", async () => {
       const spellName = `Fireball ${runId}`;
       await app.navigate("Add Spell");
       await page.getByTestId("spell-name-input").fill(spellName);
-      // Depending on UI, check for warning text - just ensuring navigation for now
       await app.navigate("Library");
     });
   });
 
-  test("Milestone 2: Import Wizard & Provenance", async ({ appContext, fileTracker }) => {
+  test("Milestone 2: Import Wizard & Provenance", async ({
+    appContext,
+    fileTracker,
+    testTmpDir,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
 
     const importedName = `Imported Spell ${runId}`;
-    const samplePath = fileTracker.track(path.resolve(__dirname, `tmp/sample-${runId}.md`));
+    const samplePath = fileTracker.track(path.join(testTmpDir, `sample-${runId}.md`));
     fs.writeFileSync(
       samplePath,
       `---\nname: ${importedName}\nlevel: 1\nsource: Test Manual\nschool: Evocation\n---\nImported description.`,
@@ -108,7 +109,7 @@ test.describe("Milestone Verification Flow", () => {
   });
 });
 
-test("Import conflict merge review flow", async ({ appContext, fileTracker }) => {
+test("Import conflict merge review flow", async ({ appContext, fileTracker, testTmpDir }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
   const runId = generateRunId();
@@ -130,7 +131,7 @@ test("Import conflict merge review flow", async ({ appContext, fileTracker }) =>
   });
 
   await test.step("Trigger conflict import and resolve", async () => {
-    const samplePath = fileTracker.track(path.resolve(__dirname, `tmp/conflict-${runId}.md`));
+    const samplePath = fileTracker.track(path.join(testTmpDir, `conflict-${runId}.md`));
     fs.writeFileSync(
       samplePath,
       `---\nname: ${conflictName}\nlevel: 1\nsource: ${conflictSource}\nschool: Evocation\n---\n${incomingDescription}`,
@@ -172,13 +173,13 @@ test("Import conflict merge review flow", async ({ appContext, fileTracker }) =>
   });
 });
 
-test("Spell editor persists extended fields", async ({ appContext, fileTracker }) => {
+test("Spell editor persists extended fields", async ({ appContext, fileTracker, testTmpDir }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
   const runId = generateRunId();
 
   const importedName = `Extended Imported ${runId}`;
-  const importedPath = fileTracker.track(path.resolve(__dirname, `tmp/extended-${runId}.md`));
+  const importedPath = fileTracker.track(path.join(testTmpDir, `extended-${runId}.md`));
   fs.writeFileSync(
     importedPath,
     [

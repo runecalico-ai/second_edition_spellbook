@@ -57,18 +57,18 @@ pnpm tauri:build --debug
 ## Quick Start Template
 
 ```typescript
+import path from "node:path";
 import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
-import { createTmpFilePath, generateRunId, getTestDirname } from "./fixtures/test-utils";
+import { createTmpFilePath, generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
-const __dirname = getTestDirname(import.meta.url);
-
 test.describe("My Feature", () => {
-  test("my test case", async ({ appContext, fileTracker }) => {
+  test("my test case", async ({ appContext, fileTracker, testTmpDir }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
+    const artifact = fileTracker.track(path.join(testTmpDir, `data-${runId}.json`));
 
     // Your test code here
   });
@@ -127,28 +127,29 @@ import { expect, test } from "./fixtures/test-fixtures";
 ```
 
 **Available fixtures:**
+- `testTmpDir`: Per-test directory under `tests/tmp/e2e/...` (removed after the test)
 - `appContext`: Tauri app with browser, page, and process handles (auto cleanup)
 - `fileTracker`: File tracker for temporary files (auto cleanup)
 
 **Benefits:**
 - No manual `beforeAll`/`afterAll` hooks
 - Automatic cleanup even on test failure
-- Type-safe fixture access
+- Type-safe fixture access; `testTmpDir` prevents leftover folders under `tests/tmp`
 
 ### Test Utilities
 
 ```typescript
 import { createTmpFilePath, generateRunId, getTestDirname } from "./fixtures/test-utils";
 
-// Get __dirname
+// Optional: spec directory (e.g. loading static fixtures from disk)
 const __dirname = getTestDirname(import.meta.url);
 
 // Generate unique IDs
 const runId = generateRunId();
 const name = `Test Item ${runId}`;
 
-// Create temp files with auto-tracking
-const filePath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
+// Inside test({ testTmpDir, fileTracker }): first argument is the destination directory
+// const filePath = createTmpFilePath(testTmpDir, "backup.zip", fileTracker);
 ```
 
 ### Standard Timeouts
@@ -293,19 +294,23 @@ console.log(`Element exists: ${exists > 0}`);
 ```typescript
 const runId = generateRunId();
 const spellName = `Test Spell ${runId}`;
-const tmpFile = createTmpFilePath(__dirname, "data.json", fileTracker);
+// Inside a test callback: use testTmpDir from fixtures
+// const tmpFile = createTmpFilePath(testTmpDir, "data.json", fileTracker);
 ```
 
 ### Working with Temporary Files
 
 ```typescript
-test("backup flow", async ({ fileTracker }) => {
-  const backupPath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
+import fs from "node:fs";
+import { createTmpFilePath } from "./fixtures/test-utils";
+
+test("backup flow", async ({ fileTracker, testTmpDir }) => {
+  const backupPath = createTmpFilePath(testTmpDir, "backup.zip", fileTracker);
 
   // Use the file
   fs.writeFileSync(backupPath, data);
 
-  // Cleanup is automatic!
+  // fileTracker + testTmpDir teardown handle cleanup
 });
 ```
 
@@ -369,7 +374,7 @@ The report provides:
 - Full execution traces with DOM snapshots
 - Network activity and console logs
 
-### 2. Analyze the Trace
+### 3. Analyze the Trace
 
 In the HTML report:
 1. Click on the failed test
@@ -380,7 +385,7 @@ In the HTML report:
    - **Console logs** (check for JavaScript errors)
    - **The exact line** where the test failed
 
-### 3. Capture Debug Screenshots
+### 4. Capture Debug Screenshots
 
 Add a screenshot immediately before the failing assertion:
 
@@ -394,7 +399,7 @@ await expect(element).toBeVisible();
 
 The screenshot will be saved to `apps/desktop/tests/screenshots/debug.png`.
 
-### 4. Extract Error Context
+### 5. Extract Error Context
 
 When reporting or analyzing failures, include:
 - **The assertion that failed** (exact line and message)
@@ -403,7 +408,7 @@ When reporting or analyzing failures, include:
 - **Network failures** (failed requests in trace)
 - **Recent code changes** that might have affected the test
 
-### 5. Common Failure Patterns
+### 6. Common Failure Patterns
 
 | Error Pattern | Likely Cause | Solution |
 |---------------|--------------|----------|
@@ -412,7 +417,7 @@ When reporting or analyzing failures, include:
 | `Navigation timeout` | App startup too slow or crashed | Check app logs, increase timeout, verify build |
 | `Database is locked` | Previous test didn't clean up | Kill orphaned processes, check data isolation |
 
-### 6. Use Playwright Inspector
+### 7. Use Playwright Inspector
 
 For interactive debugging:
 
@@ -426,7 +431,7 @@ This opens the Playwright Inspector where you can:
 - Try different locators interactively
 - See live screenshots
 
-### 7. Verify Element Exists
+### 8. Verify Element Exists
 
 Before writing assertions, verify the element can be found:
 
@@ -492,6 +497,8 @@ test("my test", async () => {
 - Sharing app state across multiple tests
 - Running large test suites (minimize app launches)
 - Need fine-grained control over lifecycle
+
+The extended `test` from `./fixtures/test-fixtures` is what provides `testTmpDir`. If you stay on manual `launchTauriApp`, create writable dirs with `fs.mkdtempSync` (or similar) under a stable base, or switch the suite to the extended fixtures for per-test cleanup.
 
 ## Key Constraints
 

@@ -119,17 +119,18 @@ The `launchTauriApp()` helper in `tauri-fixture.ts` handles isolation automatica
 The easiest way to write tests is using the custom Playwright fixtures that handle app lifecycle automatically:
 
 ```typescript
+import path from "node:path";
 import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 test.describe("My Test Suite", () => {
-  test("my test", async ({ appContext, fileTracker }) => {
+  test("my test", async ({ appContext, fileTracker, testTmpDir }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    // Track temporary files
-    const tmpFile = fileTracker.track(path.resolve(__dirname, "tmp/test.md"));
+    // Per-test workspace under tests/tmp/e2e (removed after the test)
+    const tmpFile = fileTracker.track(path.join(testTmpDir, "test.md"));
 
     // Your test code here...
   });
@@ -140,7 +141,8 @@ test.describe("My Test Suite", () => {
 - ✅ No `beforeAll`/`afterAll` boilerplate
 - ✅ Automatic cleanup even if tests fail
 - ✅ Each test gets fresh fixtures
-- ✅ Type-safe access to `appContext` and `fileTracker`
+- ✅ `testTmpDir` isolates file artifacts and is deleted after the test (alongside `fileTracker` for tracked paths)
+- ✅ Type-safe access to `appContext`, `fileTracker`, and `testTmpDir`
 
 #### Alternative: Manual Lifecycle (Advanced)
 
@@ -177,6 +179,8 @@ test("my test", async () => {
 - You need to share app state across multiple tests
 - You're running a large test suite and want to minimize app launches
 - You need fine-grained control over the lifecycle
+
+For writable artifacts under `tests/tmp`, prefer `fs.mkdtempSync` under a known base (or migrate to `./fixtures/test-fixtures` so you get `testTmpDir` automatically). The built-in `testTmpDir` fixture is not injected when you bypass the extended `test`.
 
 ### 2. Use SpellbookApp Page Object
 The `SpellbookApp` class in `tests/page-objects/SpellbookApp.ts` is the central hub for common UI interactions. **Always** prefer its methods over raw Playwright locators.
@@ -252,7 +256,7 @@ await expect(element).toBeVisible({ timeout: TIMEOUTS.medium });
 | `TIMEOUTS.short` | 5000ms | Quick UI updates |
 | `TIMEOUTS.medium` | 15000ms | Form submissions, navigation |
 | `TIMEOUTS.long` | 30000ms | App startup, complex operations |
-| `TIMEOUTS.batch` | 60000ms | Batch imports, file processing |
+| `TIMEOUTS.batch` | 120000ms | Batch imports, file processing |
 
 ### 4. Use Test Utilities
 
@@ -280,33 +284,36 @@ const __dirname = getTestDirname(import.meta.url);
 
 #### Create Temporary File Paths
 
-The easiest way to create unique temporary files with automatic tracking:
+Use a **base directory** (almost always the `testTmpDir` fixture) plus `createTmpFilePath` for a unique filename and optional `fileTracker` registration:
 
 ```typescript
+import path from "node:path";
 import { createTmpFilePath } from "./fixtures/test-utils";
 
-test("my test", async ({ fileTracker }) => {
-  // Creates tmp/backup-<timestamp>.zip and tracks it for cleanup
-  const backupPath = createTmpFilePath(__dirname, "backup.zip", fileTracker);
-
-  // Use the file...
+test("my test", async ({ fileTracker, testTmpDir }) => {
+  const backupPath = createTmpFilePath(testTmpDir, "backup.zip", fileTracker);
   fs.writeFileSync(backupPath, data);
-  // Cleanup is automatic!
+  // Tracked files are removed by fileTracker; the whole testTmpDir tree is removed after the test.
 });
 ```
 
+#### Per-test workspace (`testTmpDir`)
+
+Every test that uses `appContext` or `fileTracker` also gets `testTmpDir`: an absolute path to `tests/tmp/e2e/<worker>-<parallel>-<testId>/`. Write imports, bundles, and backups there instead of ad-hoc `path.join(__dirname, "tmp", ...)`, so empty folders are not left behind.
+
 #### Ensure Temporary Directory Exists
 
-For manual directory management:
+`ensureTmpDir(dirname, subdir)` resolves `path.resolve(dirname, subdir)` and creates it—useful when the base is the spec directory (legacy layout) or when nesting under `testTmpDir`:
 
 ```typescript
-import { ensureTmpDir } from "./fixtures/test-utils";
+import path from "node:path";
+import { ensureTmpDir, getTestDirname } from "./fixtures/test-utils";
 
-// Creates tests/tmp if it doesn't exist
-const tmpDir = ensureTmpDir(__dirname);
+const __dirname = getTestDirname(import.meta.url);
+const legacyTmp = ensureTmpDir(__dirname); // tests/tmp next to the spec file
 
-// Or create a subdirectory
-const backupDir = ensureTmpDir(__dirname, "tmp/backups");
+// Nested folder under the per-test workspace (testTmpDir from the fixture):
+// const nested = ensureTmpDir(testTmpDir, "sub");
 ```
 
 ### 5. Dialog and Modal Handlers
@@ -547,9 +554,12 @@ const levelInput = app.getClassLevelInput("Druid");
 
 ## File Cleanup
 
-Use the file tracker for temporary test files to ensure automatic cleanup:
+Prefer the **`testTmpDir` + `fileTracker` fixtures** from `./fixtures/test-fixtures`. Tracked files are deleted when the tracker runs; the entire `testTmpDir` directory is removed after the test, so stray artifacts and empty parent folders under `tests/tmp/e2e` do not accumulate.
+
+Manual lifecycle (advanced):
 
 ```typescript
+import path from "node:path";
 import { createFileTracker } from "./fixtures/tauri-fixture";
 
 const fileTracker = createFileTracker();
@@ -559,32 +569,25 @@ test.afterAll(() => {
 });
 
 test("test", async () => {
-  const testFile = fileTracker.track(path.resolve(__dirname, "temp.md"));
+  const testFile = fileTracker.track(path.join("/path/to/workspace", "temp.md"));
   fs.writeFileSync(testFile, content);
-  // File will be cleaned up automatically
 });
 ```
 
 ### Working with tmp Directory
 
-For tests that create multiple files or need a dedicated directory:
+Use **`testTmpDir`** as the root for any files the test writes under the repo’s `tests/tmp` tree (imports, JSON bundles, backups). Shared infrastructure keeps **`tests/tmp/bin`** (sqlite-vec) and **`tests/tmp/data-w*`** (app data dirs) separate; do not delete those from tests.
 
 ```typescript
-const runId = Date.now();
+import path from "node:path";
+import { generateRunId } from "./fixtures/test-utils";
 
-// Ensure tmp directory exists
-const tmpDir = path.resolve(__dirname, "tmp");
-if (!fs.existsSync(tmpDir)) {
-  fs.mkdirSync(tmpDir, { recursive: true });
-}
-
-// Track files for automatic cleanup
-const backupPath = fileTracker.track(path.resolve(tmpDir, `backup-${runId}.zip`));
-const testFile = fileTracker.track(path.resolve(tmpDir, `test-${runId}.md`));
-
-// Use the files in your test
-fs.writeFileSync(testFile, content);
-// Files will be cleaned up automatically in afterAll
+test("example", async ({ fileTracker, testTmpDir }) => {
+  const runId = generateRunId();
+  const backupPath = fileTracker.track(path.join(testTmpDir, `backup-${runId}.zip`));
+  const testFile = fileTracker.track(path.join(testTmpDir, `test-${runId}.md`));
+  fs.writeFileSync(testFile, content);
+});
 ```
 ## Common Gotchas & Troubleshooting
 

@@ -2,6 +2,7 @@ import * as Slider from "@radix-ui/react-slider";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useModal } from "../store/useModal";
 import { useNotifications } from "../store/useNotifications";
 import { EmptyState, EmptyStateLiveRegion } from "./components/EmptyState";
 
@@ -112,6 +113,7 @@ export default function Library() {
   const saveInputRef = useRef<HTMLInputElement>(null);
   const searchRequestIdRef = useRef(0);
   const pushNotification = useNotifications((state) => state.pushNotification);
+  const { confirm: modalConfirm } = useModal();
 
   useEffect(() => {
     if (isSaving && saveInputRef.current) {
@@ -220,7 +222,8 @@ export default function Library() {
   };
 
   const handleDeleteSavedSearch = async (id: number) => {
-    if (!confirm("Delete this saved search?")) return;
+    const confirmed = await modalConfirm("Delete this saved search?", "Delete Saved Search");
+    if (!confirmed) return;
     try {
       await invoke("delete_saved_search", { id });
       setSelectedSavedSearchId(null);

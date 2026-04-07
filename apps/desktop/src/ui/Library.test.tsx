@@ -13,7 +13,9 @@ beforeAll(() => {
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useNotifications } from "../store/useNotifications";
+import { useModal } from "../store/useModal";
 import { NotificationViewport } from "./components/NotificationViewport";
+import Modal from "./components/Modal";
 import Library from "./Library";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -47,6 +49,19 @@ function renderLibraryWithViewport() {
     <div>
       <RouterProvider router={router} />
       <NotificationViewport />
+    </div>,
+  );
+}
+
+function renderLibraryWithModal() {
+  const router = createMemoryRouter([{ path: "/", element: <Library /> }], {
+    initialEntries: ["/"],
+  });
+  return render(
+    <div>
+      <RouterProvider router={router} />
+      <NotificationViewport />
+      <Modal />
     </div>,
   );
 }
@@ -256,6 +271,28 @@ describe("Library notifications (Task 5)", () => {
   });
 
   it("delete-saved-search failure shows an error toast and does not call window.alert", async () => {
+    // Stub showModal/close so the shared modal works in jsdom
+    HTMLDialogElement.prototype.showModal = vi.fn().mockImplementation(function (
+      this: HTMLDialogElement,
+    ) {
+      this.setAttribute("open", "");
+    });
+    HTMLDialogElement.prototype.close = vi.fn().mockImplementation(function (
+      this: HTMLDialogElement,
+    ) {
+      this.removeAttribute("open");
+    });
+    useModal.setState({
+      isOpen: false,
+      type: "info",
+      title: "",
+      message: "",
+      buttons: [],
+      customContent: undefined,
+      dismissible: undefined,
+      onClose: undefined,
+    });
+
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "list_facets") return emptyFacets;
       if (cmd === "list_characters") return [];
@@ -278,7 +315,7 @@ describe("Library notifications (Task 5)", () => {
       return undefined;
     });
 
-    renderLibraryWithViewport();
+    renderLibraryWithModal();
     await waitFor(() => {
       expect(screen.getByTestId("saved-searches-select")).toBeTruthy();
     });
@@ -291,6 +328,12 @@ describe("Library notifications (Task 5)", () => {
     deleteBtn.focus();
     expect(document.activeElement).toBe(deleteBtn);
     fireEvent.click(deleteBtn);
+
+    // Wait for shared modal to open, then confirm
+    await waitFor(() => {
+      expect(screen.getByTestId("modal-dialog").hasAttribute("open")).toBe(true);
+    });
+    fireEvent.click(screen.getByTestId("modal-button-confirm"));
 
     await waitFor(() => {
       const viewport = notificationViewport();
@@ -943,5 +986,190 @@ describe("Library explicit search behavior", () => {
         vi.mocked(invoke).mock.calls.filter((call) => call[0] === "search_keyword"),
       ).toHaveLength(initialSearchCount + 1);
     });
+  });
+});
+
+describe("Library saved-search delete modal", () => {
+  let confirmSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // jsdom doesn't implement showModal/close — stub them so the <dialog> behaves
+    HTMLDialogElement.prototype.showModal = vi.fn().mockImplementation(function (
+      this: HTMLDialogElement,
+    ) {
+      this.setAttribute("open", "");
+    });
+    HTMLDialogElement.prototype.close = vi.fn().mockImplementation(function (
+      this: HTMLDialogElement,
+    ) {
+      this.removeAttribute("open");
+    });
+
+    // Enforce that native window.confirm is NOT used
+    confirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => {
+      throw new Error("window.confirm must not be called — use useModal().confirm() instead");
+    });
+
+    // Reset useModal to idle state
+    useModal.setState({
+      isOpen: false,
+      type: "info",
+      title: "",
+      message: "",
+      buttons: [],
+      customContent: undefined,
+      dismissible: undefined,
+      onClose: undefined,
+      queuedModal: undefined,
+    });
+    useNotifications.setState({ notifications: [] });
+    vi.clearAllMocks();
+
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+        case "search_semantic":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    confirmSpy.mockRestore();
+    vi.restoreAllMocks();
+    useNotifications.setState({ notifications: [] });
+    useModal.setState({
+      isOpen: false,
+      type: "info",
+      title: "",
+      message: "",
+      buttons: [],
+      customContent: undefined,
+      dismissible: undefined,
+      onClose: undefined,
+      queuedModal: undefined,
+    });
+  });
+
+  it("delete saved search opens the shared modal, cancels cleanly, and restores focus", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_facets") return emptyFacets;
+      if (cmd === "list_characters") return [];
+      if (cmd === "list_saved_searches") {
+        return [
+          {
+            id: 42,
+            name: "Saved",
+            filterJson: JSON.stringify({ query: "", mode: "keyword", filters: {} }),
+            createdAt: "2020-01-01",
+          },
+        ];
+      }
+      if (cmd === "search_keyword") return [];
+      return undefined;
+    });
+
+    renderLibraryWithModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("saved-searches-select")).toBeTruthy();
+    });
+
+    const savedSelect = screen.getByTestId("saved-searches-select") as HTMLSelectElement;
+    fireEvent.change(savedSelect, { target: { value: "42" } });
+
+    const deleteBtn = screen.getByTestId("btn-delete-saved-search");
+    deleteBtn.focus();
+    expect(document.activeElement).toBe(deleteBtn);
+
+    fireEvent.click(deleteBtn);
+
+    // Modal should open
+    await waitFor(() => {
+      expect(screen.getByTestId("modal-dialog").hasAttribute("open")).toBe(true);
+    });
+
+    // Heading should be "Delete Saved Search"
+    expect(screen.getByRole("heading", { name: "Delete Saved Search" })).toBeTruthy();
+
+    // Cancel button should be present
+    expect(screen.getByTestId("modal-button-cancel")).toBeTruthy();
+
+    // Click cancel
+    fireEvent.click(screen.getByTestId("modal-button-cancel"));
+
+    // Modal should close
+    await waitFor(() => {
+      expect(screen.getByTestId("modal-dialog").hasAttribute("open")).toBe(false);
+    });
+
+    // invoke should NOT have been called with delete_saved_search
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_saved_search", expect.anything());
+
+    // Focus should be restored to the delete button
+    expect(document.activeElement).toBe(deleteBtn);
+
+    // native confirm must never have been called
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it("delete-saved-search failure shows an error toast via shared modal confirm", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_facets") return emptyFacets;
+      if (cmd === "list_characters") return [];
+      if (cmd === "list_saved_searches") {
+        return [
+          {
+            id: 42,
+            name: "Saved",
+            filterJson: JSON.stringify({ query: "", mode: "keyword", filters: {} }),
+            createdAt: "2020-01-01",
+          },
+        ];
+      }
+      if (cmd === "search_keyword") return [];
+      if (cmd === "delete_saved_search") throw new Error("delete failed");
+      return undefined;
+    });
+
+    renderLibraryWithModal();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("saved-searches-select")).toBeTruthy();
+    });
+
+    const savedSelect = screen.getByTestId("saved-searches-select") as HTMLSelectElement;
+    fireEvent.change(savedSelect, { target: { value: "42" } });
+
+    const deleteBtn = screen.getByTestId("btn-delete-saved-search");
+    deleteBtn.focus();
+    expect(document.activeElement).toBe(deleteBtn);
+
+    fireEvent.click(deleteBtn);
+
+    // Wait for modal to open, then confirm
+    await waitFor(() => {
+      expect(screen.getByTestId("modal-dialog").hasAttribute("open")).toBe(true);
+    });
+
+    fireEvent.click(screen.getByTestId("modal-button-confirm"));
+
+    // Error toast should appear
+    await waitFor(() => {
+      const viewport = screen.getByTestId("notification-viewport");
+      expect(within(viewport).getByText(/Failed to delete saved search:/)).toBeTruthy();
+      expect(within(viewport).getByTestId("toast-notification-error")).toBeTruthy();
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 });

@@ -272,12 +272,18 @@ describe("Library notifications (Task 5)", () => {
 
   it("delete-saved-search failure shows an error toast and does not call window.alert", async () => {
     // Stub showModal/close so the shared modal works in jsdom
-    HTMLDialogElement.prototype.showModal = vi.fn().mockImplementation(function (
+    if (!HTMLDialogElement.prototype.showModal) {
+      HTMLDialogElement.prototype.showModal = function () {};
+    }
+    if (!HTMLDialogElement.prototype.close) {
+      HTMLDialogElement.prototype.close = function () {};
+    }
+    vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function (
       this: HTMLDialogElement,
     ) {
       this.setAttribute("open", "");
     });
-    HTMLDialogElement.prototype.close = vi.fn().mockImplementation(function (
+    vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function (
       this: HTMLDialogElement,
     ) {
       this.removeAttribute("open");
@@ -993,13 +999,21 @@ describe("Library saved-search delete modal", () => {
   let confirmSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    // jsdom doesn't implement showModal/close — stub them so the <dialog> behaves
-    HTMLDialogElement.prototype.showModal = vi.fn().mockImplementation(function (
+    vi.clearAllMocks();
+
+    // jsdom doesn't implement showModal/close — define stubs so vi.spyOn can wrap them
+    if (!HTMLDialogElement.prototype.showModal) {
+      HTMLDialogElement.prototype.showModal = function () {};
+    }
+    if (!HTMLDialogElement.prototype.close) {
+      HTMLDialogElement.prototype.close = function () {};
+    }
+    vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function (
       this: HTMLDialogElement,
     ) {
       this.setAttribute("open", "");
     });
-    HTMLDialogElement.prototype.close = vi.fn().mockImplementation(function (
+    vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function (
       this: HTMLDialogElement,
     ) {
       this.removeAttribute("open");
@@ -1023,7 +1037,6 @@ describe("Library saved-search delete modal", () => {
       queuedModal: undefined,
     });
     useNotifications.setState({ notifications: [] });
-    vi.clearAllMocks();
 
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       switch (cmd) {
@@ -1044,7 +1057,6 @@ describe("Library saved-search delete modal", () => {
 
   afterEach(() => {
     cleanup();
-    confirmSpy.mockRestore();
     vi.restoreAllMocks();
     useNotifications.setState({ notifications: [] });
     useModal.setState({
@@ -1116,7 +1128,7 @@ describe("Library saved-search delete modal", () => {
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("delete_saved_search", expect.anything());
 
     // Focus should be restored to the delete button
-    expect(document.activeElement).toBe(deleteBtn);
+    await waitFor(() => expect(document.activeElement).toBe(deleteBtn));
 
     // native confirm must never have been called
     expect(confirmSpy).not.toHaveBeenCalled();

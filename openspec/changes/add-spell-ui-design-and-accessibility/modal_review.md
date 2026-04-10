@@ -21,7 +21,7 @@
 
 | Line | Trigger | Content | Category |
 |------|---------|---------|----------|
-| 183 | Delete saved search | "Delete this saved search?" | DESTRUCTIVE CONFIRMATION (native window.confirm) |
+| 223 | Delete saved search | "Delete this saved search?" | DESTRUCTIVE CONFIRMATION (shared modalConfirm) |
 
 ## App.tsx (Application root)
 
@@ -121,12 +121,12 @@
 - **Reasoning:** Reparsing will overwrite all manual edits with parsed data from the original artifact. This is irreversible and user must explicitly consent.
 - **Status:** MUST STAY MODAL
 
-### Library.tsx Line 183 — Delete Saved Search
+### Library.tsx Line 223 — Delete Saved Search
 - **Content:** "Delete this saved search?"
 - **Classification:** Destructive confirmation
-- **Reasoning:** Deletes a saved search permanently
+- **Reasoning:** Deletes a saved search permanently.
 - **Status:** MUST STAY MODAL
-- **Issue:** Uses native `window.confirm()` instead of `modalConfirm()` — inconsistent with modal framework
+- **Implementation:** Uses `modalConfirm()` so the shared `showModal()` / focus-return path applies.
 
 ### App.tsx Line 127 — Restore Database
 - **Content:** "This will OVERWRITE your current database. All unsaved changes will be lost. Are you sure?"
@@ -365,7 +365,6 @@ The spec explicitly names these test locations as "safe" (modal should be preser
 
 ### Gap 1: Inconsistent Confirmation APIs
 **Issue:** Some destructive confirmations use native `window.confirm()` instead of `modalConfirm()`:
-- Library.tsx line 183: `window.confirm("Delete this saved search?")`
 - CharacterManager.tsx line 113: `window.confirm("Are you sure you want to delete...")`
 - ComponentCheckboxes.tsx line 64: Fallback `window.confirm()` when no `onUncheckMaterialConfirm` provided
 
@@ -414,7 +413,7 @@ The spec explicitly names these test locations as "safe" (modal should be preser
 | | 2611 | Reparse Spell | DESTRUCTIVE | MUST STAY | Overwrites manual edits |
 | | 2621 | Reparse Success | SUCCESS | SHOULD CONVERT | Toast sufficient |
 | | 2627 | Reparse Error | ERROR | SHOULD CONVERT | Toast sufficient |
-| **Library.tsx** | 183 | Delete Saved Search | DESTRUCTIVE | MUST STAY | Irreversible (but uses window.confirm) |
+| **Library.tsx** | 223 | Delete Saved Search | DESTRUCTIVE | MUST STAY | Irreversible (uses shared modalConfirm) |
 | **App.tsx** | 117 | Backup Success | SUCCESS | SHOULD CONVERT | Toast sufficient |
 | | 119 | Backup Error | ERROR | SHOULD CONVERT | Toast sufficient |
 | | 127 | Restore Confirm | DESTRUCTIVE | MUST STAY | Database overwrite requires confirmation |
@@ -447,7 +446,7 @@ The spec explicitly names these test locations as "safe" (modal should be preser
 6. ✓ App.tsx line 127: "Restore database" confirmation
 7. ✓ App.tsx lines 178-183: Vault integrity warning
 8. ✓ App.tsx lines 187-193: Vault check failure warning
-9. ✓ Library.tsx line 183: "Delete saved search" (consider standardizing from window.confirm to modalConfirm)
+9. ✓ Library.tsx line 223: "Delete saved search" (uses shared modalConfirm — DONE)
 10. ✓ ImportWizard.tsx line 510: "Large file warning" (blocking decision modal)
 11. ✓ ComponentCheckboxes.tsx line 64: Fallback material component confirmation
 
@@ -466,6 +465,6 @@ The spec explicitly names these test locations as "safe" (modal should be preser
 12. ImportWizard.tsx lines 498, 543, 569, 610, 654, 686, 728, 767: All errors → Toasts
 
 ### Phase 3: STANDARDIZE (Improve consistency)
-1. Convert Library.tsx line 183 from `window.confirm()` to `modalConfirm()`
+1. ✓ Library.tsx line 223: Migrated from `window.confirm()` to `modalConfirm()` — DONE
 2. Ensure all destructive confirmations use consistent modal API
 3. Review vault integrity modal dismissibility policy

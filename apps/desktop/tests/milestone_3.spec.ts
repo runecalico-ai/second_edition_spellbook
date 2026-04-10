@@ -107,7 +107,6 @@ test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
     page.getByRole("dialog").getByRole("heading", { name: "Delete Saved Search" })
   ).toBeVisible({ timeout: TIMEOUTS.medium });
   await handleCustomModal(page, "Confirm");
-  await page.waitForTimeout(300); // settlement wait for modal close + delete + state reload
 
   // After deleting the only saved search, the select is removed from the DOM
   await expect(page.getByTestId("saved-searches-select")).toHaveCount(0, {

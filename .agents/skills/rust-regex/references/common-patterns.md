@@ -13,8 +13,9 @@ Verified working patterns for the Rust `regex` crate. All patterns tested agains
 - [Date Formats](#date-formats)
 - [Log Line Parsing](#log-line-parsing)
 - [Key-Value Pairs](#key-value-pairs)
-- [Nested Capture Groups](#nested-capture-groups)
 - [Verbose Mode for Complex Patterns](#verbose-mode)
+- [Unicode Character Classes](#unicode-character-classes)
+- [Nested Capture Groups](#nested-capture-groups)
 
 ## Email Validation
 
@@ -65,6 +66,8 @@ let urls: Vec<&str> = re.find_iter(text).map(|m| m.as_str()).collect();
 assert_eq!(urls, vec!["https://example.com", "http://test.org"]);
 ```
 
+> **Note:** This simple pattern matches until whitespace, so it also captures trailing punctuation. If you need cleaner extraction, tighten the character class or validate the URL after matching.
+
 ## Semantic Versioning
 
 Matches SemVer 2.0.0 format with optional pre-release and build metadata:
@@ -100,14 +103,18 @@ assert!(!re.is_match("FF00aa"));   // missing #
 ## US Phone Number
 
 ```rust
-let re = Regex::new(r"^\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$").unwrap();
+let re = Regex::new(r"^\+?1?[-.\s]?(?:\(\d{3}\)[-.\s]?|\d{3}[-.\s]?)\d{3}[-.\s]?\d{4}$").unwrap();
 assert!(re.is_match("555-123-4567"));
 assert!(re.is_match("(555) 123-4567"));
 assert!(re.is_match("+1-555-123-4567"));
 assert!(re.is_match("5551234567"));
+assert!(!re.is_match("(555 123-4567"));
+assert!(!re.is_match("555) 123-4567"));
 ```
 
 ## Date Formats
+
+> **Note:** These patterns validate date structure only. They do not validate real calendar dates such as month/day ranges or leap years. For production validation, parse the captured components and validate them separately.
 
 ### ISO 8601 (YYYY-MM-DD)
 
@@ -286,6 +293,8 @@ assert_eq!(&caps["top"], "app");
 assert!(caps.name("sub").is_none());
 assert!(caps.name("detail").is_none());
 ```
+
+> **Note:** Captures inside repeated groups keep only the final match. For `net::http::client`, `sub` would contain only `"client"`.
 
 ### Iterating Nested Captures
 

@@ -92,6 +92,8 @@ fn is_valid_email_fast(email: &str) -> bool {
 }
 ```
 
+`std::sync::LazyLock` is stable in Rust 1.80+. On earlier toolchains, use `once_cell::sync::Lazy` instead.
+
 ### 5. Forgetting `(?m)` for Multiline
 
 By default, `^` and `$` match start/end of the **entire string**, not line boundaries.
@@ -222,7 +224,7 @@ for caps in re.captures_iter("the the cat sat sat") {
 1. **Compile once** — Use `LazyLock<Regex>` for patterns used more than once
 2. **Literal prefix** — Patterns starting with a literal string are faster (`hello\s+\w+` > `\w+\s+hello`)
 3. **Avoid `.*`** — Use specific character classes (`[^"]*` instead of `.*?`)
-4. **Use `RegexSet`** — When matching against multiple patterns, `RegexSet` is faster than testing each regex individually
+4. **Use `RegexSet`** — When matching against multiple patterns, `RegexSet` is faster than testing each regex individually, but it only tells you which patterns matched; use individual `Regex` values when you need positions, matched text, or capture groups
 5. **Check literal first** — For simple substring checks, `str::contains()` is faster than regex
 6. **Consider `regex-lite`** — If you don't need Unicode support, it has faster compile times
 
@@ -241,7 +243,7 @@ for caps in re.captures_iter("the the cat sat sat") {
 | Crate | When to Use |
 |-------|-------------|
 | `regex` | Default choice. Unicode support, pattern caching, full API |
-| `regex-lite` | Smaller binary, faster compilation. Same API, no `\p{...}` Unicode classes |
+| `regex-lite` | Smaller binary, faster compilation. No `\p{...}` Unicode classes, `RegexSet`, or `bytes::Regex` |
 | `fancy-regex` | Need lookahead, lookbehind, backreferences. Slower, allows backtracking |
 | `aho-corasick` | Searching for many fixed strings simultaneously |
 | `memchr` | Single/few byte search in byte slices |
@@ -253,13 +255,13 @@ for caps in re.captures_iter("the the cat sat sat") {
 use regex::Regex;
 let re = Regex::new(r"\p{Greek}+").unwrap(); // works
 
-// regex-lite — identical API, no Unicode classes
+// regex-lite — similar core text API, but no Unicode classes, RegexSet, or bytes matching
 use regex_lite::Regex as LiteRegex;
 let re = LiteRegex::new(r"\d+").unwrap();    // works
 // LiteRegex::new(r"\p{Greek}+") — would fail
 ```
 
-Both crates have the same API. You can swap `use regex::Regex` for `use regex_lite::Regex` and everything compiles (unless you use `\p{...}` classes or `RegexSet`).
+Both crates provide a similar core `Regex` API for text matching. `regex-lite` is a good drop-in choice for basic patterns, but it does not provide `RegexSet`, `regex::bytes::Regex`, or `\p{...}` Unicode classes.
 
 ## Dynamic Pattern Pitfalls
 

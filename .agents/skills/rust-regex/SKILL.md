@@ -1,6 +1,6 @@
 ---
 name: rust-regex
-description: Use when writing, testing, or troubleshooting Rust regular expressions using the regex crate. Use when regex patterns don't match expected text, when choosing between regex vs regex-lite, when escaping user input for literal matching, when optimizing regex performance with static compilation, or when dealing with unsupported features like lookahead or backreferences.
+description: Use when writing, testing, or debugging Rust regular expressions, or when dealing with regex crate limitations like unsupported lookahead and backreferences.
 ---
 
 # Rust Regex
@@ -8,6 +8,25 @@ description: Use when writing, testing, or troubleshooting Rust regular expressi
 ## Overview
 
 The `regex` crate is Rust's standard regex library. It guarantees linear-time matching, forbids catastrophic backtracking, and omits features that require backtracking (lookahead, lookbehind, backreferences). All patterns use `r"..."` raw strings to avoid double-escaping.
+
+## When to Use
+
+Use the `regex` crate when:
+- Pattern matching is genuinely needed, not just literal search or splitting
+- You need captures, character classes, or word boundaries
+- Predictable worst-case search behavior matters
+
+Use simpler `str` methods instead when:
+- You only need literal search, prefix/suffix checks, or simple splitting
+- `str::contains()`, `str::find()`, `str::split()`, or `str::lines()` already solve the problem
+
+Use `regex-lite` instead when:
+- Binary size or compile time matters more than Unicode-heavy features
+- You only need basic text matching and do not need `RegexSet`, `regex::bytes::Regex`, or `\p{...}` Unicode classes
+
+Use `fancy-regex` instead when:
+- You need lookahead, lookbehind, backreferences, atomic groups, or possessive quantifiers
+- You accept slower matching and the loss of the linear-time guarantee
 
 ## Quick Reference
 
@@ -21,10 +40,10 @@ The `regex` crate is Rust's standard regex library. It guarantees linear-time ma
 | Replace first | `re.replace(text, rep)` | `Cow<str>` |
 | Replace all | `re.replace_all(text, rep)` | `Cow<str>` |
 | Split | `re.split(text)` | iterator of `&str` |
-| Split (limit) | `re.splitn(text, n)` | iterator of `&str` |
+| Split (limit) | `re.splitn(text, n)` | iterator of at most `n` `&str` |
 | Escape literal | `regex::escape(text)` | `String` |
 | Multi-pattern | `RegexSet::new([...])` | `RegexSet` |
-| Byte matching | `bytes::Regex::new(pat)` | operates on `&[u8]` |
+| Byte matching | `regex::bytes::Regex::new(pat)` | operates on `&[u8]` |
 | Builder config | `RegexBuilder::new(pat).build()` | `Result<Regex>` |
 
 ### Flags (Inline)
@@ -55,7 +74,9 @@ regex = "1"           # Full-featured, Unicode support
 # regex-lite = "0.1"  # Smaller binary, no Unicode tables
 ```
 
-Use `regex-lite` when binary size matters and you don't need Unicode character classes (`\p{Greek}`, `\p{Letter}`). API is identical.
+Use `regex-lite` when binary size matters and you only need basic text matching. Its core `Regex` API is similar, but it does not provide `RegexSet`, `regex::bytes::Regex`, or `\p{...}` Unicode classes.
+
+**Important:** The `.unwrap()` calls in the examples below are safe because the patterns are compile-time literals in source code. When patterns come from user input or other runtime sources, handle `Regex::new(...)` errors instead.
 
 ## Core Patterns
 
@@ -126,11 +147,11 @@ assert_eq!(re.replace("a1 b2", "X"), "aX b2");
 // Replace all
 assert_eq!(re.replace_all("a1 b2", "X"), "aX bX");
 
-// Back-references in replacement (named)
+// Named capture substitution in replacement
 let re = Regex::new(r"(?P<first>\w+)\s+(?P<last>\w+)").unwrap();
 assert_eq!(re.replace("John Doe", "$last, $first"), "Doe, John");
 
-// Back-references (numbered)
+// Numbered capture substitution in replacement
 let re = Regex::new(r"(\d{3})-(\d{4})").unwrap();
 assert_eq!(re.replace("Call 555-1234", "($1) $2"), "Call (555) 1234");
 
@@ -165,7 +186,11 @@ fn validate_email(email: &str) -> bool {
 }
 ```
 
+For Rust versions before 1.80, use `once_cell::sync::Lazy` with the same pattern.
+
 ### RegexSet (Multi-Pattern)
+
+**Limitation:** `RegexSet` reports which patterns matched, but not match positions, matched text, or capture groups. Use individual `Regex` values when you need those details.
 
 Match against multiple patterns simultaneously in a single pass:
 
@@ -203,6 +228,8 @@ assert_eq!(fields, vec!["a", "b", "c", "d"]);
 let re = Regex::new(r"\s+").unwrap();
 let fields: Vec<&str> = re.splitn("one two three four", 3).collect();
 assert_eq!(fields, vec!["one", "two", "three four"]);
+
+// splitn returns at most n parts; the last part keeps the unsplit remainder
 ```
 
 ### Error Handling and User Input
@@ -248,7 +275,7 @@ Programmatic configuration — useful when accepting patterns from user input:
 ```rust
 use regex::RegexBuilder;
 
-let re = RegexBuilder::new(r"hello world")
+let re = RegexBuilder::new(r"hello.world")
     .case_insensitive(true)
     .multi_line(true)
     .dot_matches_new_line(true)
@@ -256,11 +283,11 @@ let re = RegexBuilder::new(r"hello world")
     .unwrap();
 assert!(re.is_match("HELLO\nWORLD"));
 
-// Limit compiled size to reject complex user-provided patterns
+// size_limit bounds the compiled regex size in bytes for untrusted patterns
 let result = RegexBuilder::new(r"(\w+){100}")
     .size_limit(50)
     .build();
-assert!(result.is_err()); // pattern too complex
+assert!(result.is_err()); // compiled regex exceeds the 50-byte limit
 ```
 
 ### Dynamic Pattern Construction

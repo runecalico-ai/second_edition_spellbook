@@ -2,7 +2,7 @@ import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SELECTORS, SpellbookApp } from "./page-objects/SpellbookApp";
-import { dismissAllAppModals, setupAcceptAllDialogs } from "./utils/dialog-handler";
+import { dismissAllAppModals, handleCustomModal } from "./utils/dialog-handler";
 import { fillControlledTextInput } from "./utils/fill-controlled-text-input";
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
@@ -20,8 +20,6 @@ test.slow();
 test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
-
-  const cleanupDialog = setupAcceptAllDialogs(page);
 
   try {
     await dismissAllAppModals(page);
@@ -103,8 +101,22 @@ test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
     await expect(app.getSpellRow(spellName)).not.toBeVisible();
 
     // Delete saved search
-    await page.getByRole("button", { name: "Delete Selected" }).click();
+    const deleteBtn = page.getByTestId("btn-delete-saved-search");
+    await deleteBtn.focus();
+    await deleteBtn.click();
+
+    const modal = page.getByRole("dialog");
+    await expect(modal.getByRole("heading", { name: "Delete Saved Search" })).toBeVisible({
+      timeout: TIMEOUTS.medium,
+    });
+    await handleCustomModal(page, "Confirm");
+    await page.waitForTimeout(300); // settlement wait for modal close + delete + state reload
+
+    // After deleting the only saved search, the select is removed from the DOM
+    await expect(page.getByTestId("saved-searches-select")).toHaveCount(0, {
+      timeout: TIMEOUTS.medium,
+    });
   } finally {
-    cleanupDialog();
+    // no dialog cleanup needed — delete now uses the custom React modal
   }
 });

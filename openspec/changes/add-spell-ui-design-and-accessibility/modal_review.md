@@ -312,7 +312,7 @@ The spec explicitly names these test locations as "safe" (modal should be preser
 - ✗ SpellEditor.tsx line 1871: "Delete Spell" — NOT FOUND in provided test lines
 - ✗ SpellEditor.tsx line 2429: "Clear material components" — NOT FOUND in provided test lines
 - ✗ SpellEditor.tsx line 2611: "Reparse spell" — NOT FOUND in provided test lines
-- ✗ Library.tsx line 183: "Delete saved search" — NOT FOUND in provided test lines
+- ✓ Library.tsx line 223: "Delete saved search" — covered by shared modal unit tests
 - ✗ App.tsx line 127: "Restore database" — NOT FOUND in provided test lines
 - ✗ App.tsx lines 178-183, 187-193: Vault integrity modals — NOT FOUND in provided test lines
 

@@ -642,6 +642,8 @@ test.describe("Spell editor save workflow and first-failed-submit UX", () => {
 
     await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
     await app.expectActiveTraditionField("DIVINE");
+    await expect(page.getByTestId("spell-sphere-field")).toHaveClass(/\banimate-in\b/);
+    await expect(page.getByTestId("spell-sphere-field")).toHaveClass(/\bfade-in\b/);
     await expect(page.getByTestId("error-tradition-conflict")).toHaveCount(0);
     await app.expectNoBlockingDialog();
   });

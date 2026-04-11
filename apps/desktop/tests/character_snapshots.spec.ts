@@ -165,7 +165,7 @@ test.describe("Character Snapshots", () => {
     // We can use toMatchSnapshot() if we had a stored baseline.
     // For now, implicit assertions above cover "Snapshot Verification" of the logic.
     // But let's use the explicit snapshot to lock the schema structure.
-    expect(JSON.stringify(snapshotSafe, null, 2)).toMatchSnapshot(
+    expect(`${JSON.stringify(snapshotSafe, null, 2)}\n`).toMatchSnapshot(
       "character-bundle-structure.json",
     );
 

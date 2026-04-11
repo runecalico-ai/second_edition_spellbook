@@ -243,7 +243,7 @@ Safe, unchanged modal coverage per spec:
 - [x] Test: Edit legacy spell - basic fields (unblocked).
 - [x] Test: Edit legacy spell - structured field upgrade.
 - [x] Test: Validation error handling.
-- [ ] Test: Conditional field transitions animate and collapse cleanly when controlling fields change.
+- [x] Test: Conditional field transitions animate and collapse cleanly when controlling fields change.
 - [x] Test: Keyboard-only navigation.
 - [x] Test: Theme switching workflow (navigate to `/settings` via gear icon, use theme select and follow-system checkbox, verify immediate application and persistence across reload).
 - [x] Test: Empty library state.
@@ -261,7 +261,7 @@ Safe, unchanged modal coverage per spec:
 - [x] Verify the theme change announcement is emitted through the hidden live region without showing a visible toast.
 - [x] Verify edited views in both light and dark modes.
 - [x] Capture baselines: `cd apps/desktop && npx playwright test --update-snapshots`
-- [ ] Run regression checks: `cd apps/desktop && npx playwright test`
+- [x] Run regression checks: `cd apps/desktop && npx playwright test`
 - [x] Screenshot isolation MAY toggle the `dark` class directly on `<html>`.
 
 #### Transient feedback and modal-boundary verification

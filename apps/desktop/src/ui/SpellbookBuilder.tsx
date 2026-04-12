@@ -1,7 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useNotifications } from "../store/useNotifications";
 import { EmptyState, EmptyStateLiveRegion } from "./components/EmptyState";
+
+function formatBuilderError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 const PRINT_LAYOUTS = [
   { id: "compact", label: "Print Compact" },
@@ -78,6 +87,7 @@ export default function SpellbookBuilder() {
   const pickerSearchInputRef = useRef<HTMLInputElement | null>(null);
   const lastPickerTriggerRef = useRef<HTMLElement | null>(null);
   const wasPickerOpenRef = useRef(false);
+  const pushNotification = useNotifications((state) => state.pushNotification);
 
   const spellIds = useMemo(() => new Set(spellbook.map((entry) => entry.spellId)), [spellbook]);
   const spellbookIsPendingInitialLoad = !spellbookLoaded && spellbook.length === 0;
@@ -176,7 +186,7 @@ export default function SpellbookBuilder() {
       });
       await loadSpellbook();
     } catch (e) {
-      alert(`Failed to add spell: ${e}`);
+      pushNotification("error", `Failed to add spell: ${formatBuilderError(e)}`);
     }
   };
 
@@ -189,7 +199,7 @@ export default function SpellbookBuilder() {
       });
       await loadSpellbook();
     } catch (e) {
-      alert(`Failed to remove spell: ${e}`);
+      pushNotification("error", `Failed to remove spell: ${formatBuilderError(e)}`);
     }
   };
 

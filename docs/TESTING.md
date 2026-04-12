@@ -572,12 +572,20 @@ Three dedicated unit suites cover the spell editor validation and save workflow.
 - Special-hint text appears below the structured group when the expanded kind is `special` or `dm_adjudicated` for detail rows that emit `detail-*-special-hint` (not the Components / Material Component rows in the current `SpellEditor.tsx`)
 
 **`src/ui/Library.test.tsx`** — jsdom component tests for Library notification replacements. Mounts `NotificationViewport` alongside `Library` so live-region assertions target the real notification surface. Covers:
-- add-to-character success → toast, not `alert()` (Library row flow; Spellbook Builder still uses `alert()` for some errors)
+- add-to-character success → toast, not `alert()` (Library row flow)
 - add-to-character failure → toast, not `alert()` (same scope as above)
 - save-search failure → toast, not `alert()`
 - delete-saved-search failure → toast, not `alert()`
 - Toast delivered through `notification-viewport` live region
 - Toast does not steal focus from the triggering control
+
+**`src/ui/SpellbookBuilder.test.tsx`** — jsdom coverage for the character spellbook builder. Includes empty-state CTA behavior, picker focus restoration, and add/remove failure regressions that must surface through `NotificationViewport` error toasts instead of `window.alert()`.
+
+Focused verification for builder and notification viewport regressions:
+
+```powershell
+pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx src/ui/components/NotificationViewport.test.tsx
+```
 
 ### Structured Editor Component Render Tests (Chunk 4)
 

@@ -1116,7 +1116,7 @@ This contract applies to all in-scope scalar surfaces:
 | Routine save success | Toast: *Spell saved.* |
 | Add spell to character success (Library row) | Toast: *Spell added to character!* |
 | Add spell to character failure (Library row) | Toast (error) |
-| Spellbook Builder add/remove failure | `window.alert` (not migrated to toast) |
+| Spellbook Builder add/remove failure | Toast (error) |
 | Save search failure | Toast (error) |
 | Delete saved search failure | Toast (error) |
 | Backend persistence failure (`Save Error`) | Modal dialog |
@@ -1133,6 +1133,7 @@ The toast is delivered through the shared Zustand notification store and rendere
 | `src/ui/spellEditorValidation.test.ts` | Pure validation helper — all rule combinations, exact copy assertions, Node-safe |
 | `src/ui/SpellEditor.test.tsx` | Editor validation state, ARIA wiring, save-progress thresholds, toast routing (jsdom, `// @vitest-environment jsdom`) |
 | `src/ui/Library.test.tsx` | Library notification replacements — toast vs alert, live-region targeting (jsdom) |
+| `src/ui/SpellbookBuilder.test.tsx` | Spellbook Builder — empty spellbook UX, picker focus, add/remove failure toasts (jsdom) |
 | `tests/spell_editor_save_workflow.spec.ts` | Full Playwright save/validation/modal-boundary E2E spec |
 
 ---

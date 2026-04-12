@@ -8,6 +8,8 @@
 
 **Tech Stack:** React 18, React Router 6, Zustand, Vitest, Playwright, Tauri desktop runtime.
 
+**Implementation status (completed 2026-04-12):** All steps and the final verification checklist below are done. Delivered as a single commit (`feat: toast spellbook builder add/remove IPC failures`) covering add/remove toasts, tests, docs, and verification—rather than three separate commits as originally sketched. Failure tests assert toast text via `expect(toast.textContent).toMatch(...)` because the project does not use `@testing-library/jest-dom` matchers such as `toHaveTextContent`.
+
 ---
 
 ## Execution Notes
@@ -53,7 +55,7 @@
 - Modify: `apps/desktop/src/ui/SpellbookBuilder.tsx`
 - Reuse: `apps/desktop/src/ui/components/NotificationViewport.tsx`
 
-- [ ] **Step 1: Write the failing add-failure regression test**
+- [x] **Step 1: Write the failing add-failure regression test**
 
 Update the `SpellbookBuilder.test.tsx` harness so it renders the real notification viewport and resets the singleton notification store:
 
@@ -126,13 +128,13 @@ it("add failure shows notification-viewport error toast and does not call window
 });
 ```
 
-- [ ] **Step 2: Run the focused test to confirm it fails**
+- [x] **Step 2: Run the focused test to confirm it fails**
 
 Run: `pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx -t "add failure shows notification-viewport error toast and does not call window.alert"`
 
 Expected: FAIL because `SpellbookBuilder.tsx` still calls `alert(...)` and no shared error toast is rendered.
 
-- [ ] **Step 3: Write the minimal add-failure implementation**
+- [x] **Step 3: Write the minimal add-failure implementation**
 
 In `apps/desktop/src/ui/SpellbookBuilder.tsx`, import the notification store and add a local formatter so the message stays stable without pulling in unrelated app-shell code:
 
@@ -164,13 +166,13 @@ Replace the add-path catch:
 
 Do not close the picker, do not move focus manually, and do not change the success path. `NotificationViewport` already preserves focus by design.
 
-- [ ] **Step 4: Re-run the focused test to verify it passes**
+- [x] **Step 4: Re-run the focused test to verify it passes**
 
 Run: `pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx -t "add failure shows notification-viewport error toast and does not call window.alert"`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the add-failure slice**
+- [x] **Step 5: Commit the add-failure slice**
 
 ```bash
 git add apps/desktop/src/ui/SpellbookBuilder.tsx apps/desktop/src/ui/SpellbookBuilder.test.tsx
@@ -183,7 +185,7 @@ git commit -m "feat: toast spellbook builder add failures"
 - Modify: `apps/desktop/src/ui/SpellbookBuilder.test.tsx`
 - Modify: `apps/desktop/src/ui/SpellbookBuilder.tsx`
 
-- [ ] **Step 1: Write the failing remove-failure regression test**
+- [x] **Step 1: Write the failing remove-failure regression test**
 
 Add a second focused jsdom test that starts with an existing spellbook row and asserts the remove action shows an error toast instead of a blocking alert:
 
@@ -234,13 +236,13 @@ it("remove failure shows notification-viewport error toast and does not call win
 });
 ```
 
-- [ ] **Step 2: Run the focused test to confirm it fails**
+- [x] **Step 2: Run the focused test to confirm it fails**
 
 Run: `pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx -t "remove failure shows notification-viewport error toast and does not call window.alert"`
 
 Expected: FAIL because `SpellbookBuilder.tsx` still calls `alert(...)` in the remove failure catch.
 
-- [ ] **Step 3: Write the minimal remove-failure implementation**
+- [x] **Step 3: Write the minimal remove-failure implementation**
 
 Reuse the Task 1 formatter/store wiring and replace the remove-path catch in `apps/desktop/src/ui/SpellbookBuilder.tsx`:
 
@@ -252,13 +254,13 @@ Reuse the Task 1 formatter/store wiring and replace the remove-path catch in `ap
 
 Leave the row state untouched on failure; the existing behavior already keeps the current spellbook row rendered when the backend delete fails.
 
-- [ ] **Step 4: Re-run both focused builder tests**
+- [x] **Step 4: Re-run both focused builder tests**
 
 Run: `pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx -t "failure shows notification-viewport error toast and does not call window.alert"`
 
 Expected: PASS for both add and remove failure tests.
 
-- [ ] **Step 5: Commit the remove-failure slice**
+- [x] **Step 5: Commit the remove-failure slice**
 
 ```bash
 git add apps/desktop/src/ui/SpellbookBuilder.tsx apps/desktop/src/ui/SpellbookBuilder.test.tsx
@@ -275,7 +277,7 @@ git commit -m "feat: toast spellbook builder remove failures"
 - Verify: `apps/desktop/src/ui/SpellbookBuilder.test.tsx`
 - Verify: `apps/desktop/tests/spell_editor_save_workflow.spec.ts`
 
-- [ ] **Step 1: Update every stale doc reference to remove the alert exception**
+- [x] **Step 1: Update every stale doc reference to remove the alert exception**
 
 In `README.md`, replace the current exception note with copy that matches the migrated behavior:
 
@@ -295,7 +297,7 @@ Also sweep the remaining stale references before closing the task:
 - update `docs/TESTING.md` where the current builder note still says add/remove failures are alert-based
 - update `docs/dev/spell_editor_components.md` where the shared feedback table still lists builder failures under the alert exception
 
-- [ ] **Step 2: Update the testing guide for the new builder regressions**
+- [x] **Step 2: Update the testing guide for the new builder regressions**
 
 Add a small `SpellbookBuilder.test.tsx` note to `docs/TESTING.md` alongside the other jsdom frontend suites:
 
@@ -309,37 +311,37 @@ Also add the focused verification command so future maintainers re-run the right
 pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx src/ui/components/NotificationViewport.test.tsx
 ```
 
-- [ ] **Step 3: Run formatting/lint checks on the touched UI files**
+- [x] **Step 3: Run formatting/lint checks on the touched UI files**
 
 Run: `pnpm --dir apps/desktop exec biome lint src/ui/SpellbookBuilder.tsx src/ui/SpellbookBuilder.test.tsx`
 
 Expected: PASS with no lint errors.
 
-- [ ] **Step 4: Run typecheck for the desktop app**
+- [x] **Step 4: Run typecheck for the desktop app**
 
 Run: `pnpm --dir apps/desktop typecheck`
 
 Expected: PASS.
 
-- [ ] **Step 5: Run the targeted unit regression bundle**
+- [x] **Step 5: Run the targeted unit regression bundle**
 
 Run: `pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx src/ui/components/NotificationViewport.test.tsx`
 
 Expected: PASS. `SpellbookBuilder.test.tsx` should prove both failure paths use the real notification viewport and never call `window.alert()`.
 
-- [ ] **Step 6: Rebuild the frontend bundle used by the Playwright smoke test**
+- [x] **Step 6: Rebuild the frontend bundle used by the Playwright smoke test**
 
 Run: `pnpm --dir apps/desktop build`
 
 Expected: PASS. This smoke test must run against a fresh frontend bundle, not stale built assets.
 
-- [ ] **Step 7: Run the existing builder Playwright smoke test**
+- [x] **Step 7: Run the existing builder Playwright smoke test**
 
 Run: `cd apps/desktop && npx playwright test tests/spell_editor_save_workflow.spec.ts --grep "empty character spellbook workflow shows explanatory copy and add-spell CTA"`
 
 Expected: PASS. This is only a smoke check that the empty-state CTA still opens the picker cleanly after the failure-toast migration.
 
-- [ ] **Step 8: Commit the docs and verification slice**
+- [x] **Step 8: Commit the docs and verification slice**
 
 ```bash
 git add README.md docs/ARCHITECTURE.md docs/TESTING.md docs/dev/spell_editor_components.md apps/desktop/src/ui/SpellbookBuilder.tsx apps/desktop/src/ui/SpellbookBuilder.test.tsx
@@ -348,10 +350,10 @@ git commit -m "docs: sync spellbook builder notification migration"
 
 ## Final Verification Checklist
 
-- [ ] `pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx src/ui/components/NotificationViewport.test.tsx`
-- [ ] `pnpm --dir apps/desktop exec biome lint src/ui/SpellbookBuilder.tsx src/ui/SpellbookBuilder.test.tsx`
-- [ ] `pnpm --dir apps/desktop typecheck`
-- [ ] `pnpm --dir apps/desktop build`
-- [ ] `cd apps/desktop && npx playwright test tests/spell_editor_save_workflow.spec.ts --grep "empty character spellbook workflow shows explanatory copy and add-spell CTA"`
-- [ ] Verify there are no remaining `alert(` calls in `apps/desktop/src/ui/SpellbookBuilder.tsx`
-- [ ] Verify `README.md`, `docs/ARCHITECTURE.md`, `docs/TESTING.md`, and `docs/dev/spell_editor_components.md` no longer describe the builder alert exception
+- [x] `pnpm --dir apps/desktop exec vitest run src/ui/SpellbookBuilder.test.tsx src/ui/components/NotificationViewport.test.tsx`
+- [x] `pnpm --dir apps/desktop exec biome lint src/ui/SpellbookBuilder.tsx src/ui/SpellbookBuilder.test.tsx`
+- [x] `pnpm --dir apps/desktop typecheck`
+- [x] `pnpm --dir apps/desktop build`
+- [x] `cd apps/desktop && npx playwright test tests/spell_editor_save_workflow.spec.ts --grep "empty character spellbook workflow shows explanatory copy and add-spell CTA"`
+- [x] Verify there are no remaining `alert(` calls in `apps/desktop/src/ui/SpellbookBuilder.tsx`
+- [x] Verify `README.md`, `docs/ARCHITECTURE.md`, `docs/TESTING.md`, and `docs/dev/spell_editor_components.md` no longer describe the builder alert exception

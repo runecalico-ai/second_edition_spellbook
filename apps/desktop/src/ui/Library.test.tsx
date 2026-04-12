@@ -4,9 +4,9 @@ import { afterEach, beforeEach, beforeAll, describe, expect, it, vi } from "vite
 
 beforeAll(() => {
   class ResizeObserverStub {
-    observe() { }
-    unobserve() { }
-    disconnect() { }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
   }
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
 });
@@ -124,7 +124,7 @@ describe("Library notifications (Task 5)", () => {
   let alertSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    alertSpy = vi.spyOn(window, "alert").mockImplementation(() => { });
+    alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
     vi.spyOn(window, "confirm").mockReturnValue(true);
     useNotifications.setState({ notifications: [] });
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
@@ -273,10 +273,10 @@ describe("Library notifications (Task 5)", () => {
   it("delete-saved-search failure shows an error toast and does not call window.alert", async () => {
     // Stub showModal/close so the shared modal works in jsdom
     if (!HTMLDialogElement.prototype.showModal) {
-      HTMLDialogElement.prototype.showModal = function () { };
+      HTMLDialogElement.prototype.showModal = () => {};
     }
     if (!HTMLDialogElement.prototype.close) {
-      HTMLDialogElement.prototype.close = function () { };
+      HTMLDialogElement.prototype.close = () => {};
     }
     vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function (
       this: HTMLDialogElement,
@@ -1003,10 +1003,10 @@ describe("Library saved-search delete modal", () => {
 
     // jsdom doesn't implement showModal/close — define stubs so vi.spyOn can wrap them
     if (!HTMLDialogElement.prototype.showModal) {
-      HTMLDialogElement.prototype.showModal = function () { };
+      HTMLDialogElement.prototype.showModal = () => {};
     }
     if (!HTMLDialogElement.prototype.close) {
-      HTMLDialogElement.prototype.close = function () { };
+      HTMLDialogElement.prototype.close = () => {};
     }
     vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function (
       this: HTMLDialogElement,

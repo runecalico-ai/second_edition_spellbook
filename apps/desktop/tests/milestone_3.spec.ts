@@ -104,7 +104,7 @@ test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
   await deleteBtn.click();
 
   await expect(
-    page.getByRole("dialog").getByRole("heading", { name: "Delete Saved Search" })
+    page.getByRole("dialog").getByRole("heading", { name: "Delete Saved Search" }),
   ).toBeVisible({ timeout: TIMEOUTS.medium });
   await handleCustomModal(page, "Confirm");
 

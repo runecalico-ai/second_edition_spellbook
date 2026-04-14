@@ -161,6 +161,48 @@ describe("MagicResistanceInput", () => {
     });
   });
 
+  it("associates helper text with the disabled part-ids input via aria-describedby", () => {
+    const value: MagicResistanceSpec = {
+      kind: "partial",
+      appliesTo: "whole_spell",
+      partial: {
+        scope: "by_part_id",
+      },
+    };
+
+    render(<MagicResistanceInput value={value} onChange={() => {}} damageKind="none" />);
+
+    const partIds = screen.getByTestId("magic-resistance-part-ids") as HTMLInputElement;
+    const helperText = screen.getByText(
+      "No modeled damage parts available — set Damage to Modeled first",
+    );
+
+    expect(partIds.disabled).toBe(true);
+    expect(helperText).not.toBeNull();
+    expect(partIds.getAttribute("aria-describedby")).toBe("magic-resistance-part-ids-hint");
+    expect(helperText.id).toBe("magic-resistance-part-ids-hint");
+  });
+
+  it("does not add aria-describedby or helper text when damageKind is modeled", () => {
+    const value: MagicResistanceSpec = {
+      kind: "partial",
+      appliesTo: "whole_spell",
+      partial: {
+        scope: "by_part_id",
+      },
+    };
+
+    render(<MagicResistanceInput value={value} onChange={() => {}} damageKind="modeled" />);
+
+    const partIds = screen.getByTestId("magic-resistance-part-ids") as HTMLInputElement;
+
+    expect(partIds.disabled).toBe(false);
+    expect(partIds.getAttribute("aria-describedby")).toBeNull();
+    expect(
+      screen.queryByText("No modeled damage parts available — set Damage to Modeled first"),
+    ).toBeNull();
+  });
+
   it("splits and trims part ids before emitting onChange", () => {
     const onChange = vi.fn();
 

@@ -164,6 +164,9 @@ export function MagicResistanceInput({ value, onChange, damageKind }: MagicResis
                   aria-label="Part IDs (comma-separated)"
                   placeholder="Part IDs (e.g. part_1, part_2)"
                   disabled={damageKind !== "modeled"}
+                  aria-describedby={
+                    damageKind !== "modeled" ? "magic-resistance-part-ids-hint" : undefined
+                  }
                   value={spec.partial?.partIds?.join(", ") ?? ""}
                   onChange={(e) => {
                     const partIds = e.target.value
@@ -181,7 +184,7 @@ export function MagicResistanceInput({ value, onChange, damageKind }: MagicResis
                   className={`w-full disabled:opacity-50 ${controlClass}`}
                 />
                 {damageKind !== "modeled" && (
-                  <p className={helperTextClass}>
+                  <p id="magic-resistance-part-ids-hint" className={helperTextClass}>
                     No modeled damage parts available — set Damage to Modeled first
                   </p>
                 )}

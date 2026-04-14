@@ -2,6 +2,37 @@ import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
+/**
+ * Evaluates horizontal overflow on a set of structured editor containers identified by
+ * data-testid. Returns an array of objects describing any container whose scrollWidth
+ * exceeds its clientWidth (i.e. nested horizontal clipping that would indicate the
+ * content is too wide for the current viewport).
+ *
+ * Called via page.evaluate() so it runs inside the browser context.
+ */
+function buildNestedOverflowChecker(testIds: string[]) {
+  return (ids: string[]) => {
+    return ids
+      .map((id) => {
+        const el = document.querySelector(`[data-testid="${id}"]`);
+        if (!el) return null;
+        const { scrollWidth, clientWidth } = el;
+        return scrollWidth > clientWidth
+          ? { testId: id, scrollWidth, clientWidth, overflow: scrollWidth - clientWidth }
+          : null;
+      })
+      .filter((r): r is { testId: string; scrollWidth: number; clientWidth: number; overflow: number } => r !== null);
+  };
+}
+
+/** Structured editor container test-ids that must not clip horizontally at 900px. */
+const STRUCTURED_SURFACE_IDS = [
+  "structured-field-primary-row",
+  "damage-form",
+  "saving-throw-input",
+  "component-checkboxes",
+] as const;
+
 test.describe("Resize Hardening — 900px viewport", () => {
   // Safety net: restore default viewport even if a test fails mid-resize.
   // Each test also restores inline, but this afterEach ensures cleanup on assertion failures.
@@ -47,8 +78,6 @@ test.describe("Resize Hardening — 900px viewport", () => {
     }
 
     await test.step("Verify no horizontal scrollbar on spell editor page", async () => {
-      // Checks root-level overflow. Note: content hidden by overflow:hidden on parents
-      // won't be detected here — that's acceptable for the 900px minimum-width requirement.
       const hasHorizontalOverflow = await page.evaluate(() => {
         return document.documentElement.scrollWidth > document.documentElement.clientWidth;
       });
@@ -99,7 +128,10 @@ test.describe("Resize Hardening — 900px viewport", () => {
     appContext,
   }) => {
     test.setTimeout(180_000);
-    // Verifies structured detail lines (range / duration / casting time) wrap at 900px when filled.
+    // Verifies structured detail lines (range / duration / casting time / saving throw / damage)
+    // wrap correctly at 900px when fully populated. Nested structured surfaces (damage-form,
+    // saving-throw-input, component-checkboxes, structured-field-primary-row) are also checked
+    // for horizontal overflow — not merely the root document.
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
@@ -114,6 +146,7 @@ test.describe("Resize Hardening — 900px viewport", () => {
         range: "Touch / 10 yards + 5 yards per level beyond 5th, line of sight",
         castingTime: "1 round + 1 segment per HD of target, up to 1 turn",
         duration: "2 rounds + 1 round per level, concentration to 1 turn maximum",
+        savingThrow: "Save vs. Spell",
       });
       // After save, spell is in Library; open it for editing
       await app.waitForLibrary();
@@ -125,6 +158,47 @@ test.describe("Resize Hardening — 900px viewport", () => {
       // behavior changes. app.openSpell() is the robust page-object method for this workflow.
       await app.openSpell(spellName);
       await page.waitForTimeout(500);
+    });
+
+    await test.step("Expand range structured field to surface structured-field-primary-row", async () => {
+      const expandBtn = page.getByTestId("detail-range-expand");
+      if (await expandBtn.isVisible({ timeout: TIMEOUTS.short }).catch(() => false)) {
+        await expandBtn.click();
+        const loading = page.getByTestId("detail-range-loading");
+        if (await loading.count()) {
+          await expect(loading).not.toBeVisible({ timeout: TIMEOUTS.medium });
+        }
+        await expect(page.getByTestId("structured-field-primary-row").first()).toBeVisible({
+          timeout: TIMEOUTS.medium,
+        });
+      }
+    });
+
+    await test.step("Expand saving throw structured field", async () => {
+      const expandBtn = page.getByTestId("detail-saving-throw-expand");
+      if (await expandBtn.isVisible({ timeout: TIMEOUTS.short }).catch(() => false)) {
+        await expandBtn.click();
+        await expect(page.getByTestId("saving-throw-input")).toBeVisible({
+          timeout: TIMEOUTS.medium,
+        });
+      }
+    });
+
+    await test.step("Expand damage structured field and set kind to modeled", async () => {
+      const damageInput = page.getByTestId("detail-damage-input");
+      if (await damageInput.isVisible({ timeout: TIMEOUTS.short }).catch(() => false)) {
+        await damageInput.fill("2d8 fire");
+        const expandBtn = page.getByTestId("detail-damage-expand");
+        if (await expandBtn.isVisible({ timeout: TIMEOUTS.short }).catch(() => false)) {
+          await expandBtn.click();
+          await expect(page.getByTestId("damage-form")).toBeVisible({ timeout: TIMEOUTS.medium });
+          // Switch to modeled kind to render the densest damage-form rows
+          const kindSelect = page.getByTestId("damage-form-kind");
+          if (await kindSelect.isVisible({ timeout: TIMEOUTS.short }).catch(() => false)) {
+            await kindSelect.selectOption("modeled");
+          }
+        }
+      }
     });
 
     await test.step("Resize to 900px wide", async () => {
@@ -141,11 +215,22 @@ test.describe("Resize Hardening — 900px viewport", () => {
       );
     }
 
-    await test.step("Verify no horizontal overflow with populated editor", async () => {
+    await test.step("Verify no horizontal overflow on root document with populated editor", async () => {
       const hasHorizontalOverflow = await page.evaluate(() => {
         return document.documentElement.scrollWidth > document.documentElement.clientWidth;
       });
       expect(hasHorizontalOverflow).toBe(false);
+    });
+
+    await test.step("Verify no nested horizontal overflow on structured editor surfaces", async () => {
+      const overflowingContainers = await page.evaluate(
+        buildNestedOverflowChecker(Array.from(STRUCTURED_SURFACE_IDS)),
+        Array.from(STRUCTURED_SURFACE_IDS),
+      );
+      expect(
+        overflowingContainers,
+        `Nested structured surfaces with horizontal overflow at 900px: ${JSON.stringify(overflowingContainers)}`,
+      ).toHaveLength(0);
     });
 
     await test.step("Restore viewport", async () => {

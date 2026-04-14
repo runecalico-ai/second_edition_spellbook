@@ -2435,8 +2435,18 @@ export default function SpellEditor() {
   if (showLoading) return <div className="p-4">Loading...</div>;
   if (loading && !form.id) return null;
 
+  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean };
+    if (event.key !== "Enter" || nativeEvent.isComposing) return;
+    event.preventDefault();
+    void save();
+  };
+
   return (
-    <div className="p-4 max-w-2xl mx-auto space-y-4 overflow-auto h-full">
+    <div
+      className="p-4 max-w-2xl mx-auto space-y-4 overflow-auto h-full"
+      onKeyDown={handleEditorKeyDown}
+    >
       {parsersPending && (
         <div
           className="rounded border border-blue-600/50 bg-blue-600/10 px-3 py-2 text-sm text-blue-800 dark:text-blue-300"
@@ -2644,14 +2654,6 @@ export default function SpellEditor() {
                 placeholder="Spell Name"
                 value={form.name}
                 onChange={(e) => handleChange("name", e.target.value)}
-                onKeyDown={(event) => {
-                  const nativeEvent = event.nativeEvent as KeyboardEvent & {
-                    isComposing?: boolean;
-                  };
-                  if (event.key !== "Enter" || nativeEvent.isComposing) return;
-                  event.preventDefault();
-                  void save();
-                }}
                 onBlur={() => revealFieldValidation("spell-name")}
                 aria-invalid={ariaInvalidForField("spell-name")}
                 aria-describedby={describedByByField.get("spell-name")}

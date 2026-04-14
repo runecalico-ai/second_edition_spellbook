@@ -1765,3 +1765,155 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     });
   });
 });
+
+describe("SpellEditor keyboard submit parity (Task 5)", () => {
+  beforeEach(() => {
+    alertMock.mockClear();
+    confirmMock.mockClear();
+    vi.mocked(invoke).mockReset();
+    useNotifications.setState({ notifications: [] });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useNotifications.setState({ notifications: [] });
+    vi.restoreAllMocks();
+  });
+
+  it("triggers save when Enter is pressed in the description textarea (non-name field)", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "create_spell") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      1,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("library-route")).toBeTruthy();
+    });
+  });
+
+  it("triggers save when Enter is pressed in the level input (non-name field)", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "create_spell") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-level-input"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      1,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("library-route")).toBeTruthy();
+    });
+  });
+
+  it("does not trigger save when Enter is pressed during IME composition in a non-name field", async () => {
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+        key: "Enter",
+        code: "Enter",
+        isComposing: true,
+      });
+    });
+
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      0,
+    );
+    expect(screen.queryByTestId("library-route")).toBeNull();
+  });
+
+  it("does not trigger save when Enter is pressed in an invalid state (respects blocked-save rules)", async () => {
+    // Render with an invalid form (no name, no description, no school)
+    renderNewSpellWithLibraryAndNotifications();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      0,
+    );
+    // Should show validation hint just like clicking the button does
+    expect(screen.getByTestId("spell-save-validation-hint")).toBeTruthy();
+  });
+
+  it("focuses the first invalid field when Enter is pressed in an invalid state", async () => {
+    renderNewSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    // The name field should receive focus as the first required field
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId("spell-name-input"));
+    });
+  });
+
+  it("does not trigger a second save when Enter is pressed while save is already in flight (no double-submit)", async () => {
+    let resolveSave: () => void;
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "create_spell") return savePromise as Promise<unknown>;
+      return Promise.resolve(undefined);
+    });
+
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    // Trigger the first save via click
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("btn-save-spell"));
+    });
+
+    // First save is now in-flight — Enter should not trigger a second save
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    // Only one create_spell call should have been made
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      1,
+    );
+
+    // Cleanup
+    await act(async () => {
+      resolveSave?.();
+    });
+  });
+});

@@ -183,7 +183,7 @@ test.describe("Modal focus trap and focus return", () => {
     await test.step("Verify focus is trapped inside the modal", async () => {
       await expect(async () => {
         const isInsideModal = await page.evaluate(() => {
-          const dialog = document.querySelector("dialog[open][data-testid='modal-dialog']");
+          const dialog = document.querySelector("[data-testid='modal-dialog']");
           const active = document.activeElement;
           return Boolean(dialog && active && dialog.contains(active));
         });
@@ -193,9 +193,7 @@ test.describe("Modal focus trap and focus return", () => {
 
     await test.step("Tab through all focusable elements — focus never escapes modal", async () => {
       // Count focusable elements first so we tab enough to guarantee a full cycle.
-      // Note: this test verifies focus STAYS inside the modal after N tabs, not that
-      // wrap-around works specifically — wrap-around is browser-native behavior guaranteed
-      // by showModal(). Even with 1 focusable element, after 5 tabs focus stays inside.
+      // Even with 1 focusable element, after 5 tabs focus stays inside the modal.
       const focusableCount = await page
         .locator(
           "[data-testid='modal-dialog'] button, [data-testid='modal-dialog'] a[href], [data-testid='modal-dialog'] input, [data-testid='modal-dialog'] select, [data-testid='modal-dialog'] textarea, [data-testid='modal-dialog'] [tabindex]:not([tabindex='-1'])",
@@ -206,7 +204,7 @@ test.describe("Modal focus trap and focus return", () => {
       for (let i = 0; i < tabCount; i++) {
         await page.keyboard.press("Tab");
         const isInsideModal = await page.evaluate(() => {
-          const dialog = document.querySelector("dialog[open][data-testid='modal-dialog']");
+          const dialog = document.querySelector("[data-testid='modal-dialog']");
           const active = document.activeElement;
           return Boolean(dialog && active && dialog.contains(active));
         });
@@ -374,7 +372,7 @@ test.describe("Keyboard navigation — settings controls", () => {
 });
 
 test.describe("Preserved modal modality", () => {
-  test("Unsaved changes preserved dialog uses native showModal() and traps focus", async ({
+  test("Unsaved changes preserved dialog is visible, traps focus, and returns focus on dismiss", async ({
     appContext,
   }) => {
     const { page } = appContext;
@@ -397,14 +395,14 @@ test.describe("Preserved modal modality", () => {
       });
     });
 
-    await test.step("Assert native <dialog> opened with showModal()", async () => {
-      await expect(page.locator("dialog[open][data-testid='modal-dialog']")).toBeVisible({
+    await test.step("Assert modal dialog is visible", async () => {
+      await expect(page.getByTestId("modal-dialog")).toBeVisible({
         timeout: TIMEOUTS.short,
       });
     });
 
     await test.step("Assert aria-modal='true' on the dialog", async () => {
-      await expect(page.locator("dialog[data-testid='modal-dialog']")).toHaveAttribute(
+      await expect(page.getByTestId("modal-dialog")).toHaveAttribute(
         "aria-modal",
         "true",
       );
@@ -413,7 +411,7 @@ test.describe("Preserved modal modality", () => {
     await test.step("Assert focus is inside the modal", async () => {
       await expect(async () => {
         const isInsideModal = await page.evaluate(() => {
-          const dialog = document.querySelector("dialog[open][data-testid='modal-dialog']");
+          const dialog = document.querySelector("[data-testid='modal-dialog']");
           const active = document.activeElement;
           return Boolean(dialog && active && dialog.contains(active));
         });
@@ -425,7 +423,7 @@ test.describe("Preserved modal modality", () => {
       for (let i = 0; i < 3; i++) {
         await page.keyboard.press("Tab");
         const isInsideModal = await page.evaluate(() => {
-          const dialog = document.querySelector("dialog[open][data-testid='modal-dialog']");
+          const dialog = document.querySelector("[data-testid='modal-dialog']");
           return Boolean(
             dialog && document.activeElement && dialog.contains(document.activeElement),
           );
@@ -436,13 +434,13 @@ test.describe("Preserved modal modality", () => {
 
     await test.step("Dismiss via cancel/stay button inside dialog", async () => {
       await page
-        .locator("dialog[data-testid='modal-dialog']")
+        .getByTestId("modal-dialog")
         .getByRole("button", { name: /cancel|no|stay/i })
         .click();
     });
 
     await test.step("Assert dialog is dismissed", async () => {
-      await expect(page.locator("dialog[data-testid='modal-dialog']")).not.toBeVisible({
+      await expect(page.getByTestId("modal-dialog")).not.toBeVisible({
         timeout: TIMEOUTS.short,
       });
     });

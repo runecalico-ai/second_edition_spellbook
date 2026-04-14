@@ -10,19 +10,17 @@ import { SpellbookApp } from "./page-objects/SpellbookApp";
  *
  * Called via page.evaluate() so it runs inside the browser context.
  */
-function buildNestedOverflowChecker(testIds: string[]) {
-  return (ids: string[]) => {
-    return ids
-      .map((id) => {
-        const el = document.querySelector(`[data-testid="${id}"]`);
-        if (!el) return null;
-        const { scrollWidth, clientWidth } = el;
-        return scrollWidth > clientWidth
-          ? { testId: id, scrollWidth, clientWidth, overflow: scrollWidth - clientWidth }
-          : null;
-      })
-      .filter((r): r is { testId: string; scrollWidth: number; clientWidth: number; overflow: number } => r !== null);
-  };
+function checkNestedOverflow(ids: string[]) {
+  return ids
+    .map((id) => {
+      const el = document.querySelector(`[data-testid="${id}"]`);
+      if (!el) return null;
+      const { scrollWidth, clientWidth } = el;
+      return scrollWidth > clientWidth
+        ? { testId: id, scrollWidth, clientWidth, overflow: scrollWidth - clientWidth }
+        : null;
+    })
+    .filter((r): r is { testId: string; scrollWidth: number; clientWidth: number; overflow: number } => r !== null);
 }
 
 /** Structured editor container test-ids that must not clip horizontally at 900px. */
@@ -30,7 +28,7 @@ const STRUCTURED_SURFACE_IDS = [
   "structured-field-primary-row",
   "damage-form",
   "saving-throw-input",
-  "component-checkboxes",
+  // "component-checkboxes" — requires expanding the components field; not covered here
 ] as const;
 
 test.describe("Resize Hardening — 900px viewport", () => {
@@ -223,10 +221,7 @@ test.describe("Resize Hardening — 900px viewport", () => {
     });
 
     await test.step("Verify no nested horizontal overflow on structured editor surfaces", async () => {
-      const overflowingContainers = await page.evaluate(
-        buildNestedOverflowChecker(Array.from(STRUCTURED_SURFACE_IDS)),
-        Array.from(STRUCTURED_SURFACE_IDS),
-      );
+      const overflowingContainers = await page.evaluate(checkNestedOverflow, Array.from(STRUCTURED_SURFACE_IDS));
       expect(
         overflowingContainers,
         `Nested structured surfaces with horizontal overflow at 900px: ${JSON.stringify(overflowingContainers)}`,

@@ -2124,6 +2124,16 @@ export default function SpellEditor() {
     }
   };
 
+  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter") return;
+    const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean };
+    if (nativeEvent.isComposing) return;
+    const target = event.target as HTMLElement;
+    if (target.tagName === "TEXTAREA") return;
+    event.preventDefault();
+    void save();
+  };
+
   const handleDelete = async () => {
     if (savePending) return;
     const confirmed = await modalConfirm(
@@ -2434,13 +2444,6 @@ export default function SpellEditor() {
 
   if (showLoading) return <div className="p-4">Loading...</div>;
   if (loading && !form.id) return null;
-
-  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean };
-    if (event.key !== "Enter" || nativeEvent.isComposing) return;
-    event.preventDefault();
-    void save();
-  };
 
   return (
     <div

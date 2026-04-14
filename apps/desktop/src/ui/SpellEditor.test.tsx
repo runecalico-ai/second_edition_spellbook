@@ -1780,7 +1780,7 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
     vi.restoreAllMocks();
   });
 
-  it("triggers save when Enter is pressed in the description textarea (non-name field)", async () => {
+  it("does not trigger save when Enter is pressed in the description textarea (textarea guard)", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === "create_spell") return Promise.resolve(undefined);
       return Promise.resolve(undefined);
@@ -1797,11 +1797,9 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
     });
 
     expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
-      1,
+      0,
     );
-    await waitFor(() => {
-      expect(screen.getByTestId("library-route")).toBeTruthy();
-    });
+    expect(screen.queryByTestId("library-route")).toBeNull();
   });
 
   it("triggers save when Enter is pressed in the level input (non-name field)", async () => {
@@ -1833,7 +1831,7 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
     fillValidNewArcaneSpell();
 
     await act(async () => {
-      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+      fireEvent.keyDown(screen.getByTestId("spell-level-input"), {
         key: "Enter",
         code: "Enter",
         isComposing: true,
@@ -1851,7 +1849,7 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
     renderNewSpellWithLibraryAndNotifications();
 
     await act(async () => {
-      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+      fireEvent.keyDown(screen.getByTestId("spell-level-input"), {
         key: "Enter",
         code: "Enter",
       });
@@ -1868,7 +1866,7 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
     renderNewSpell();
 
     await act(async () => {
-      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+      fireEvent.keyDown(screen.getByTestId("spell-level-input"), {
         key: "Enter",
         code: "Enter",
       });
@@ -1900,7 +1898,7 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
 
     // First save is now in-flight — Enter should not trigger a second save
     await act(async () => {
-      fireEvent.keyDown(screen.getByTestId("spell-description-textarea"), {
+      fireEvent.keyDown(screen.getByTestId("spell-level-input"), {
         key: "Enter",
         code: "Enter",
       });

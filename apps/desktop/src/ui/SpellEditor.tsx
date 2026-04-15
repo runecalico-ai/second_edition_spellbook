@@ -2133,8 +2133,13 @@ export default function SpellEditor() {
     if (target.tagName === "TEXTAREA") return;
     // Guard: interactive controls handle their own Enter activation
     // (BUTTON activates onClick; SELECT opens/confirms dropdown)
-    // Note: INPUT[type=button/submit] would also need guarding if added in future
     if (target.tagName === "BUTTON" || target.tagName === "SELECT") return;
+    // Guard: checkbox and radio inputs use Space for toggle; Enter should not submit
+    // Note: other INPUT types (text, number) intentionally fall through to save
+    if (target.tagName === "INPUT") {
+      const inputType = (target as HTMLInputElement).type;
+      if (inputType === "checkbox" || inputType === "radio") return;
+    }
     event.preventDefault();
     void save();
   };

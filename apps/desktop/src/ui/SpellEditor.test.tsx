@@ -1956,4 +1956,26 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
       0,
     );
   });
+
+  it("does not trigger save or suppress toggle when Enter is pressed on a checkbox", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "create_spell") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("chk-cantrip"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      0,
+    );
+    expect(screen.queryByTestId("library-route")).toBeNull();
+  });
 });

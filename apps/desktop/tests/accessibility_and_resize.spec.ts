@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures/test-fixtures";
 import { TIMEOUTS } from "./fixtures/constants";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { fillControlledTextInput } from "./utils/fill-controlled-text-input";
 
 /**
  * Evaluates horizontal overflow on a set of structured editor containers identified by
@@ -616,7 +617,8 @@ test.describe("Keyboard accessibility — form submit via Enter", () => {
       // ARCANE tradition (default) requires a school for levels 1-9
       const schoolInput = page.getByTestId("spell-school-input");
       await expect(schoolInput).toBeVisible({ timeout: TIMEOUTS.medium });
-      await schoolInput.fill("Alteration");
+      await fillControlledTextInput(schoolInput, "Alteration");
+      await expect(schoolInput).toHaveValue("Alteration");
     });
 
     await test.step("Focus level input and press Enter to submit", async () => {

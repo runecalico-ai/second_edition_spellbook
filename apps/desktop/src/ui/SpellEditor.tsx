@@ -2131,7 +2131,9 @@ export default function SpellEditor() {
     const target = event.target as HTMLElement;
     // Guard: multi-line inputs use Enter for newlines, not submission
     if (target.tagName === "TEXTAREA") return;
-    // Guard: buttons handle their own Enter activation (click); select handles dropdown
+    // Guard: interactive controls handle their own Enter activation
+    // (BUTTON activates onClick; SELECT opens/confirms dropdown)
+    // Note: INPUT[type=button/submit] would also need guarding if added in future
     if (target.tagName === "BUTTON" || target.tagName === "SELECT") return;
     event.preventDefault();
     void save();

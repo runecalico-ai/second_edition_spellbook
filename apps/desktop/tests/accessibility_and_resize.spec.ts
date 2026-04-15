@@ -214,6 +214,7 @@ test.describe("Resize Hardening — 900px viewport", () => {
       );
     }
 
+    // Root document overflow check — always valid since document always exists
     await test.step("Verify no horizontal overflow on root document with populated editor", async () => {
       const hasHorizontalOverflow = await page.evaluate(() => {
         return document.documentElement.scrollWidth > document.documentElement.clientWidth;
@@ -221,7 +222,7 @@ test.describe("Resize Hardening — 900px viewport", () => {
       expect(hasHorizontalOverflow).toBe(false);
     });
 
-    await test.step("Assert structured surfaces are visible before overflow check", async () => {
+    await test.step("Assert structured surfaces are visible at 900px before overflow check", async () => {
       for (const id of STRUCTURED_SURFACE_IDS) {
         await expect(page.locator(`[data-testid="${id}"]`).first(),
           `Expected ${id} to be visible for overflow check`

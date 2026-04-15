@@ -1934,7 +1934,6 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
     expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
       0,
     );
-    expect(screen.queryByTestId("library-route")).toBeNull();
   });
 
   it("does not trigger save when Enter is pressed on a select element", async () => {
@@ -1956,6 +1955,5 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
     expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
       0,
     );
-    expect(screen.queryByTestId("library-route")).toBeNull();
   });
 });

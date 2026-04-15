@@ -608,11 +608,15 @@ test.describe("Keyboard accessibility — form submit via Enter", () => {
       });
     });
 
-    await test.step("Fill required fields (name and level)", async () => {
+    await test.step("Fill required fields and focus level input for Enter submit", async () => {
       await page.getByTestId("spell-name-input").fill("Keyboard Submit Test Spell");
-      // level input is a single-line input — pressing Enter there triggers handleEditorKeyDown
+      await page.getByTestId("spell-description-textarea").fill("A test spell for keyboard submit.");
       await page.getByTestId("spell-level-input").fill("3");
       await expect(page.getByTestId("spell-level-input")).toHaveValue("3");
+      // ARCANE tradition (default) requires a school for levels 1-9
+      const schoolInput = page.getByTestId("spell-school-input");
+      await expect(schoolInput).toBeVisible({ timeout: TIMEOUTS.medium });
+      await schoolInput.fill("Alteration");
     });
 
     await test.step("Focus level input and press Enter to submit", async () => {
@@ -620,7 +624,7 @@ test.describe("Keyboard accessibility — form submit via Enter", () => {
       await page.keyboard.press("Enter");
     });
 
-    await test.step("Verify save completed: Library heading is visible (editor navigated away)", async () => {
+    await test.step("Verify editor navigated away to Library after successful save", async () => {
       // After a successful save, SpellEditor calls navigate("/") which renders the Library.
       // We wait for the Library heading to confirm the spell was saved and the editor closed.
       await app.waitForLibrary();

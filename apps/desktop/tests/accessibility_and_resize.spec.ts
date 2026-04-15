@@ -221,6 +221,14 @@ test.describe("Resize Hardening — 900px viewport", () => {
       expect(hasHorizontalOverflow).toBe(false);
     });
 
+    await test.step("Assert structured surfaces are visible before overflow check", async () => {
+      for (const id of STRUCTURED_SURFACE_IDS) {
+        await expect(page.locator(`[data-testid="${id}"]`).first(),
+          `Expected ${id} to be visible for overflow check`
+        ).toBeVisible({ timeout: TIMEOUTS.short });
+      }
+    });
+
     await test.step("Verify no nested horizontal overflow on structured editor surfaces", async () => {
       const overflowingContainers = await page.evaluate(checkNestedOverflow, Array.from(STRUCTURED_SURFACE_IDS));
       expect(

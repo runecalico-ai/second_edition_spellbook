@@ -318,11 +318,12 @@ test.describe("Modal focus trap and focus return", () => {
   });
 });
 
-// NOTE: Escape-key dismissal is not E2E-tested here because all modals reachable
-// from header buttons use dismissible:false. The onCancel handler that processes
-// the Escape 'cancel' event is covered by unit tests in Modal.test.tsx.
-// If a dismissible modal trigger is added in a future chunk, add the Escape E2E
-// test at that time.
+// NOTE: Escape-key dismissal is covered at the unit layer in Modal.test.tsx
+// ("calls onRequestClose when Escape cancel event fires and dismissible=true" and
+// "does not call onRequestClose when Escape fires and dismissible=false").
+// An E2E path is not added here because all modals reachable from header buttons
+// use dismissible:false (vault maintenance, alert, confirm). If a deterministically
+// reachable dismissible modal is added in a future chunk, promote this to an E2E test.
 
 test.describe("Keyboard navigation tab order", () => {
   test("Library page has forward tab navigation without focus loops", async ({ appContext }) => {
@@ -589,6 +590,40 @@ test.describe("Accessibility — ARIA validation", () => {
 
     await test.step("Assert no blocking dialog appeared", async () => {
       await app.expectNoBlockingDialog();
+    });
+  });
+});
+
+test.describe("Keyboard accessibility — form submit via Enter", () => {
+  test("pressing Enter on a non-textarea spell editor field saves the spell and navigates to Library", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Navigate to Add Spell", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+    });
+
+    await test.step("Fill required fields (name and level)", async () => {
+      await page.getByTestId("spell-name-input").fill("Keyboard Submit Test Spell");
+      // level input is a single-line input — pressing Enter there triggers handleEditorKeyDown
+      await page.getByTestId("spell-level-input").fill("3");
+      await expect(page.getByTestId("spell-level-input")).toHaveValue("3");
+    });
+
+    await test.step("Focus level input and press Enter to submit", async () => {
+      await page.getByTestId("spell-level-input").focus();
+      await page.keyboard.press("Enter");
+    });
+
+    await test.step("Verify save completed: Library heading is visible (editor navigated away)", async () => {
+      // After a successful save, SpellEditor calls navigate("/") which renders the Library.
+      // We wait for the Library heading to confirm the spell was saved and the editor closed.
+      await app.waitForLibrary();
     });
   });
 });

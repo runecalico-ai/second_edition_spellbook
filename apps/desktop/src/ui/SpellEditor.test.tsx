@@ -1914,4 +1914,48 @@ describe("SpellEditor keyboard submit parity (Task 5)", () => {
       resolveSave?.();
     });
   });
+
+  it("does not trigger save when Enter is pressed on a button element", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "create_spell") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("btn-cancel-edit"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      0,
+    );
+    expect(screen.queryByTestId("library-route")).toBeNull();
+  });
+
+  it("does not trigger save when Enter is pressed on a select element", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "create_spell") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    renderNewSpellWithLibraryAndNotifications();
+    fillValidNewArcaneSpell();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId("spell-tradition-select"), {
+        key: "Enter",
+        code: "Enter",
+      });
+    });
+
+    expect(vi.mocked(invoke).mock.calls.filter((call) => call[0] === "create_spell")).toHaveLength(
+      0,
+    );
+    expect(screen.queryByTestId("library-route")).toBeNull();
+  });
 });

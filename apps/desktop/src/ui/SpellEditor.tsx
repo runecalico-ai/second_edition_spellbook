@@ -2129,7 +2129,10 @@ export default function SpellEditor() {
     const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean };
     if (nativeEvent.isComposing) return;
     const target = event.target as HTMLElement;
+    // Guard: multi-line inputs use Enter for newlines, not submission
     if (target.tagName === "TEXTAREA") return;
+    // Guard: buttons handle their own Enter activation (click); select handles dropdown
+    if (target.tagName === "BUTTON" || target.tagName === "SELECT") return;
     event.preventDefault();
     void save();
   };

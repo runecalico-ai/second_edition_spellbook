@@ -37,6 +37,12 @@
       "sourceType": "github",
       "computedHash": "246e65cd72a7e360987d94e6c61564ce6d71c6361d1784d529d70e4cbbe8522d"
     },
+    "rust-regex": {
+      "source": "runecalico-ai/local-ai-augment",
+      "ref": "main",
+      "sourceType": "github",
+      "computedHash": "b9251d7d00fb7d322bcaebb2aa3ea4caa5940a0f76252dea5bd6c708eae287f8"
+    },
     "subagent-driven-development": {
       "source": "obra/superpowers",
       "ref": "main",
@@ -48,6 +54,11 @@
       "ref": "main",
       "sourceType": "github",
       "computedHash": "72e9ab72627e4fd8ed26a582e82309a98ecdc4f6e1c99418430ac05682c9e91d"
+    },
+    "tauri-v2": {
+      "source": "nodnarbnitram/claude-code-extensions",
+      "sourceType": "github",
+      "computedHash": "7108944eec3bef17686df9ebae9c9bdbee7809744930c8734c979e3c4573eaab"
     },
     "test-driven-development": {
       "source": "obra/superpowers",
@@ -92,6 +103,12 @@
       "ref": "main",
       "sourceType": "github",
       "computedHash": "9b446f0c7fe1cfb560b1d34439523b1a76d5f177290007b2c053a1c749a4a8ba"
+    },
+    "vitest-v4": {
+      "source": "runecalico-ai/local-ai-augment",
+      "ref": "main",
+      "sourceType": "github",
+      "computedHash": "380baba2baea6170b2a74612e0ea8191d54e2c93ecdd54b80bb6c0e1d95c15c3"
     },
     "web-design-guidelines": {
       "source": "vercel-labs/agent-skills",

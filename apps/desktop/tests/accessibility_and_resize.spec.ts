@@ -21,7 +21,10 @@ function checkNestedOverflow(ids: string[]) {
         ? { testId: id, scrollWidth, clientWidth, overflow: scrollWidth - clientWidth }
         : null;
     })
-    .filter((r): r is { testId: string; scrollWidth: number; clientWidth: number; overflow: number } => r !== null);
+    .filter(
+      (r): r is { testId: string; scrollWidth: number; clientWidth: number; overflow: number } =>
+        r !== null,
+    );
 }
 
 /** Structured editor container test-ids that must not clip horizontally at 900px. */
@@ -224,14 +227,18 @@ test.describe("Resize Hardening — 900px viewport", () => {
 
     await test.step("Assert structured surfaces are visible at 900px before overflow check", async () => {
       for (const id of STRUCTURED_SURFACE_IDS) {
-        await expect(page.locator(`[data-testid="${id}"]`).first(),
-          `Expected ${id} to be visible for overflow check`
+        await expect(
+          page.locator(`[data-testid="${id}"]`).first(),
+          `Expected ${id} to be visible for overflow check`,
         ).toBeVisible({ timeout: TIMEOUTS.short });
       }
     });
 
     await test.step("Verify no nested horizontal overflow on structured editor surfaces", async () => {
-      const overflowingContainers = await page.evaluate(checkNestedOverflow, Array.from(STRUCTURED_SURFACE_IDS));
+      const overflowingContainers = await page.evaluate(
+        checkNestedOverflow,
+        Array.from(STRUCTURED_SURFACE_IDS),
+      );
       expect(
         overflowingContainers,
         `Nested structured surfaces with horizontal overflow at 900px: ${JSON.stringify(overflowingContainers)}`,
@@ -493,10 +500,7 @@ test.describe("Preserved modal modality", () => {
     });
 
     await test.step("Assert aria-modal='true' on the dialog", async () => {
-      await expect(page.getByTestId("modal-dialog")).toHaveAttribute(
-        "aria-modal",
-        "true",
-      );
+      await expect(page.getByTestId("modal-dialog")).toHaveAttribute("aria-modal", "true");
     });
 
     await test.step("Assert focus is inside the modal", async () => {
@@ -620,7 +624,9 @@ test.describe("Keyboard accessibility — form submit via Enter", () => {
 
     await test.step("Fill required fields and focus level input for Enter submit", async () => {
       await page.getByTestId("spell-name-input").fill("Keyboard Submit Test Spell");
-      await page.getByTestId("spell-description-textarea").fill("A test spell for keyboard submit.");
+      await page
+        .getByTestId("spell-description-textarea")
+        .fill("A test spell for keyboard submit.");
       await page.getByTestId("spell-level-input").fill("3");
       await expect(page.getByTestId("spell-level-input")).toHaveValue("3");
       // ARCANE tradition (default) requires a school for levels 1-9

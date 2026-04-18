@@ -324,8 +324,10 @@ pub fn run_hash_backfill(
     eprintln!("{}", summary);
     let total_u = total as u32;
     if total_u > 0 {
-        let pct = (updated_count * 100) / total_u;
-        let fallback_pct = (parse_fallback_count * 100) / total_u;
+        let pct = (updated_count * 100).checked_div(total_u).unwrap_or(0);
+        let fallback_pct = (parse_fallback_count * 100)
+            .checked_div(total_u)
+            .unwrap_or(0);
         eprintln!(
             "Successfully updated: {} ({}%), Fallback used: {} ({}%)",
             updated_count, pct, parse_fallback_count, fallback_pct

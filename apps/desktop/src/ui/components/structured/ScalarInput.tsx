@@ -175,5 +175,3 @@ export function ScalarInput({
     </div>
   );
 }
-
-export { DEFAULT_SCALAR };

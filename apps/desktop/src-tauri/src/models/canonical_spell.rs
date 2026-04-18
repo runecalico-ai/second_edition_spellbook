@@ -1151,21 +1151,17 @@ pub(crate) fn validate_tradition_school_sphere_consistency(
     }
 
     match normalized_tradition.as_str() {
-        "ARCANE" => {
-            if normalized_school.is_none() {
-                return Err(format!(
-                    "Spell '{}' is invalid: ARCANE tradition requires a School and forbids Sphere.",
-                    spell_name
-                ));
-            }
+        "ARCANE" if normalized_school.is_none() => {
+            return Err(format!(
+                "Spell '{}' is invalid: ARCANE tradition requires a School and forbids Sphere.",
+                spell_name
+            ));
         }
-        "DIVINE" => {
-            if normalized_sphere.is_none() {
-                return Err(format!(
-                    "Spell '{}' is invalid: DIVINE tradition requires a Sphere and forbids School.",
-                    spell_name
-                ));
-            }
+        "DIVINE" if normalized_sphere.is_none() => {
+            return Err(format!(
+                "Spell '{}' is invalid: DIVINE tradition requires a Sphere and forbids School.",
+                spell_name
+            ));
         }
         _ => {}
     }

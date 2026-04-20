@@ -153,22 +153,39 @@ export default function Library() {
     }
   }, []);
 
+  const buildSearchFilters = useCallback((): SearchFilters => {
+    let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
+    let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
+    if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
+      [parsedMin, parsedMax] = [parsedMax, parsedMin];
+    }
+    return {
+      schools: schoolFilters.length > 0 ? schoolFilters : null,
+      levelMin: parsedMin,
+      levelMax: parsedMax,
+      source: sourceFilter || null,
+      classList: classListFilter || null,
+      components: componentFilter || null,
+      tags: tagFilter || null,
+      isQuestSpell: isQuestFilter,
+      isCantrip: isCantripFilter,
+    };
+  }, [
+    classListFilter,
+    componentFilter,
+    isCantripFilter,
+    isQuestFilter,
+    levelMax,
+    levelMin,
+    schoolFilters,
+    sourceFilter,
+    tagFilter,
+  ]);
+
   const handleSaveSearch = async () => {
     if (!newSearchName) return;
     try {
-      const parsedMin = levelMin ? Number.parseInt(levelMin) : null;
-      const parsedMax = levelMax ? Number.parseInt(levelMax) : null;
-      const filters: SearchFilters = {
-        schools: schoolFilters.length > 0 ? schoolFilters : null,
-        levelMin: parsedMin,
-        levelMax: parsedMax,
-        source: sourceFilter || null,
-        classList: classListFilter || null,
-        components: componentFilter || null,
-        tags: tagFilter || null,
-        isQuestSpell: isQuestFilter,
-        isCantrip: isCantripFilter,
-      };
+      const filters = buildSearchFilters();
       const payload: SavedSearchPayload = {
         query,
         mode,
@@ -202,6 +219,7 @@ export default function Library() {
         setTagFilter(filters.tags || "");
         setIsQuestFilter(filters.isQuestSpell ?? false);
         setIsCantripFilter(filters.isCantrip ?? false);
+        void runSearch(payload.query ?? "", payload.mode ?? "keyword", filters as SearchFilters);
       } else {
         const filters = parsed as SearchFilters;
         setQuery("");
@@ -215,6 +233,7 @@ export default function Library() {
         setTagFilter(filters.tags || "");
         setIsQuestFilter(filters.isQuestSpell ?? false);
         setIsCantripFilter(filters.isCantrip ?? false);
+        void runSearch("", "keyword", filters);
       }
     } catch (e) {
       console.error("Failed to parse saved search", e);
@@ -283,38 +302,8 @@ export default function Library() {
   };
 
   const search = useCallback(async () => {
-    let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
-    let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
-    if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
-      [parsedMin, parsedMax] = [parsedMax, parsedMin];
-    }
-    const filters: SearchFilters = {
-      schools: schoolFilters.length > 0 ? schoolFilters : null,
-      levelMin: parsedMin,
-      levelMax: parsedMax,
-      source: sourceFilter || null,
-      classList: classListFilter || null,
-      components: componentFilter || null,
-      tags: tagFilter || null,
-      isQuestSpell: isQuestFilter || null,
-      isCantrip: isCantripFilter || null,
-    };
-
-    await runSearch(query, mode, filters);
-  }, [
-    query,
-    mode,
-    schoolFilters,
-    levelMin,
-    levelMax,
-    sourceFilter,
-    classListFilter,
-    componentFilter,
-    tagFilter,
-    isQuestFilter,
-    isCantripFilter,
-    runSearch,
-  ]);
+    await runSearch(query, mode, buildSearchFilters());
+  }, [query, mode, buildSearchFilters, runSearch]);
 
   useEffect(() => {
     loadFacets();

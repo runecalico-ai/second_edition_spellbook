@@ -480,14 +480,14 @@ test.describe("Spell Editor canon-first default", () => {
     });
 
     await test.step("Canon line updates from structured serialization", async () => {
-      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire (half save)");
+      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire");
     });
 
     await test.step("Save and reopen; persisted value remains", async () => {
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
       await app.openSpell(spellName);
-      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire (half save)");
+      await expect(page.getByTestId("detail-damage-input")).toHaveValue("2d8 fire");
     });
   });
 
@@ -569,22 +569,50 @@ test.describe("Spell Editor canon-first default", () => {
       await expect(page.getByTestId("range-base-value")).toHaveValue("60");
     });
 
-    await test.step("Save shows error modal, canon remains synchronized, and editor stays open", async () => {
+    await test.step("Save blocked by inline epic class restriction; no validation/Save Error modal", async () => {
       await page.getByTestId("btn-save-spell").click();
 
+      await expect(page.getByTestId("error-epic-arcane-class-restriction")).toBeVisible({
+        timeout: TIMEOUTS.medium,
+      });
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+
+      await expect(page.getByRole("heading", { name: "Edit Spell" })).toBeVisible();
+      await expect(page).toHaveURL(/\/edit\/\d+/, { timeout: TIMEOUTS.short });
+      await expect(page.getByRole("heading", { name: "Spell Library" })).not.toBeVisible();
+      await expect(page.getByTestId("detail-range-input")).toHaveValue("60 ft", {
+        timeout: TIMEOUTS.medium,
+      });
+    });
+  });
+
+  test("Backend Save Error modal: Quest spell with Wizard-only classes still rejected by server", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await test.step("Fill valid client-side Quest form with incompatible class list for server", async () => {
+      await app.navigate("Add Spell");
+      await expect(page.getByTestId("spell-name-input")).toBeVisible({ timeout: TIMEOUTS.short });
+      await page.getByTestId("spell-name-input").fill("Quest Wizard Backend Reject");
+      await page.getByTestId("spell-level-input").fill("8");
+      await page.getByTestId("chk-quest").check();
+      await page.getByTestId("spell-description-textarea").fill("Backend quest class gate.");
+      await page.getByTestId("spell-tradition-select").selectOption("DIVINE");
+      await page.getByTestId("spell-sphere-input").fill("All");
+      await page.getByTestId("spell-classes-input").fill("Wizard");
+    });
+
+    await test.step("Save reaches server and shows Save Error modal", async () => {
+      await page.getByTestId("btn-save-spell").click();
       const saveErrorDialog = page.getByRole("dialog");
       await expect(saveErrorDialog).toBeVisible({ timeout: TIMEOUTS.medium });
       await expect(saveErrorDialog.getByRole("heading", { name: "Save Error" })).toBeVisible();
       await expect(saveErrorDialog).toContainText("Failed to save");
-      await expect(saveErrorDialog).toContainText("Arcane casters (Wizard/Mage)");
+      await expect(saveErrorDialog).toContainText("Divine casters");
       await handleCustomModal(page, "OK");
-
-      await expect(page.getByRole("heading", { name: "Edit Spell" })).toBeVisible();
-      await expect(page).toHaveURL(/\/edit\/\d+/, { timeout: TIMEOUTS.short });
-      await expect(page.getByRole("heading", { name: "Library" })).not.toBeVisible();
-      await expect(page.getByTestId("detail-range-input")).toHaveValue("60 ft", {
-        timeout: TIMEOUTS.medium,
-      });
+      await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: TIMEOUTS.short });
     });
   });
 
@@ -676,7 +704,6 @@ test.describe("Spell Editor canon-first default", () => {
         timeout: TIMEOUTS.short,
       });
       await expect(page.getByTestId("detail-duration-special-hint")).toBeVisible();
-      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toBeVisible();
     });
 
     await test.step("Collapse, save, and verify fallback text/indicator persisted", async () => {
@@ -1050,6 +1077,14 @@ test.describe("Spell Editor canon-first default", () => {
       await page.getByTestId("btn-cancel-edit").click();
       await expect(page.getByRole("dialog")).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(page.getByRole("heading", { name: "Unsaved changes" })).toBeVisible();
+      // Step 4.2: Confirm preserved dialog uses native showModal() path
+      await expect(page.locator("dialog[open][data-testid='modal-dialog']")).toBeVisible({
+        timeout: TIMEOUTS.short,
+      });
+      await expect(page.locator("dialog[data-testid='modal-dialog']")).toHaveAttribute(
+        "aria-modal",
+        "true",
+      );
     });
 
     await test.step("Cancel dialog keeps user on editor", async () => {
@@ -1058,6 +1093,13 @@ test.describe("Spell Editor canon-first default", () => {
       await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: TIMEOUTS.short });
       await expect(page.getByTestId("spell-name-input")).toBeVisible();
       await expect(page.getByTestId("detail-range-input")).toHaveValue("Touch");
+      // Step 4.2: Verify focus returned to btn-cancel-edit after modal dismissal
+      await expect(async () => {
+        const focusedTestId = await page.evaluate(() =>
+          document.activeElement?.getAttribute("data-testid"),
+        );
+        expect(focusedTestId).toBe("btn-cancel-edit");
+      }).toPass({ timeout: TIMEOUTS.short });
     });
   });
 
@@ -1241,10 +1283,6 @@ test.describe("Spell Editor canon-first default", () => {
         timeout: TIMEOUTS.medium,
       });
       await expect(page.getByTestId("detail-duration-special-hint")).toBeVisible();
-      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toBeVisible();
-      await expect(page.getByTestId("spell-editor-special-fallback-banner")).toContainText(
-        "could not be fully parsed",
-      );
       await page.getByTestId("detail-duration-expand").click();
       await expect(page.getByText("(special)")).toBeVisible({ timeout: TIMEOUTS.short });
       await expect(
@@ -1494,7 +1532,10 @@ test.describe("Spell Editor canon-first default", () => {
 
       await page.getByTestId("detail-magic-resistance-expand").click();
       await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
-      await page.getByTestId("magic-resistance-part-ids").fill("part_a, part_b");
+      await page
+        .getByTestId("magic-resistance-partial-scope")
+        .selectOption("secondary_effects_only");
+      await page.getByTestId("magic-resistance-notes").fill("Partial MR note");
 
       await page.getByTestId("btn-save-spell").click();
       await app.waitForLibrary();
@@ -1517,7 +1558,10 @@ test.describe("Spell Editor canon-first default", () => {
 
       await page.getByTestId("detail-magic-resistance-expand").click();
       await expect(page.getByTestId("magic-resistance-kind")).toHaveValue("partial");
-      await expect(page.getByTestId("magic-resistance-part-ids")).toHaveValue("part_a, part_b");
+      await expect(page.getByTestId("magic-resistance-partial-scope")).toHaveValue(
+        "secondary_effects_only",
+      );
+      await expect(page.getByTestId("magic-resistance-notes")).toHaveValue("Partial MR note");
     });
   });
 

@@ -45,6 +45,10 @@ pnpm dev
 
 ## Features
 
+### Appearance (Light, Dark, and System)
+
+Open **Settings** (`/settings`) to choose **Light**, **Dark**, or **System**. The controls use `settings-theme-select` and `settings-follow-system-checkbox`; **System** follows your OS light/dark preference when follow-system is enabled. The choice is remembered locally for the next launch (storage key `spellbook-theme` in the desktop app). Theme changes are announced through the hidden `theme-announcement-live-region`, not a visible toast. Routine feedback such as save success or hash copy still uses the visible notification strip, and empty Library/search states use inline CTAs instead of dialogs.
+
 ### Character Management
 
 The app supports rich character profiles for AD&D 2e PCs and NPCs with multi-class support and per-class spell management.
@@ -136,6 +140,20 @@ You can export characters for backup, sharing, or use in other tools:
 The app generates printer-friendly layouts directly from the character editor:
 - **Character Sheet**: Generates a standard styled character sheet with stats and save tables.
 - **Spellbook Pack**: Generates a compact "Spellbook" PDF containing full descriptions of all Known/Prepared spells, organized by class and level. Ideal for printing physical spell cards or booklets.
+
+### Spell Editor UX and Accessibility
+
+The **Add Spell** and **Edit Spell** flows use inline accessible validation rather than popup summary dialogs:
+
+- **Inline errors**: each field shows its own error message in-place; pristine fields stay quiet until you blur them or attempt to save.
+- **Tradition-conditional fields**: selecting **Arcane** tradition shows only the School field; selecting **Divine** shows only the Sphere field. The newly mounted field fades in; the hidden field is unmounted immediately.
+- **First failed save**: validates all fields, focuses the first invalid field, and shows *Fix the errors above to save* near the Save button. The button stays disabled until all blocking errors are resolved.
+- **Delayed save label**: the button label stays **Save Spell** for fast saves. If the save takes longer than 300 ms, the label changes to **Saving…** until the save completes.
+- **Success feedback**: after a successful save, a **Spell saved.** toast appears in the global notification bar and the editor returns to the Library. The toast does not steal keyboard focus.
+- **Modal boundaries preserved**: unsaved-changes confirmation and delete confirmation still open blocking dialogs. Real backend save failures surface as a **Save Error** modal. Routine status feedback (save success, add-to-character from the Library, search operations, and Spellbook Builder add/remove failures) is toast-based rather than a dialog.
+- **Empty-state UX**: when the Library, search results, or a character spellbook is empty, the app shows inline empty states with CTAs such as **Create Spell**, **Import Spells**, **Reset Filters**, and **Add Spell from Library** rather than opening a modal.
+
+For full validation rules see [docs/user/spell_editor.md](docs/user/spell_editor.md).
 
 ## Linting and formatting
 

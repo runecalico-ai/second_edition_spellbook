@@ -65,11 +65,18 @@ export function ComponentCheckboxes({
             }));
         const ok = await confirm();
         if (!ok) return;
-        updateMaterials([]);
+        // Single atomic call: uncheck material and clear rows together so
+        // React batch-writes do not restore the stale material list via the
+        // updateComponents closure.
+        const cleared = isVsm
+          ? { ...comp, material: false, focus: false, divineFocus: false, experience: false }
+          : { ...comp, material: false };
+        onChange(cleared, []);
+        return;
       }
       updateComponents({ ...comp, material: checked });
     },
-    [comp, materials.length, updateComponents, updateMaterials, onUncheckMaterialConfirm],
+    [comp, isVsm, materials.length, onChange, onUncheckMaterialConfirm, updateComponents],
   );
 
   const textPreview = isVsm
@@ -86,16 +93,23 @@ export function ComponentCheckboxes({
         .filter(Boolean)
         .join(", ") || "—";
 
+  // H-002: checkbox/material controls use named border roles (neutral-400 in light mode).
   return (
-    <div className="space-y-2" data-testid="component-checkboxes">
-      <div className="flex flex-wrap items-center gap-4">
+    <div
+      className="space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+      data-testid="component-checkboxes"
+    >
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-2"
+        data-testid="component-checkbox-strip"
+      >
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
             data-testid="component-checkbox-verbal"
             checked={comp.verbal}
             onChange={(e) => updateComponents({ ...comp, verbal: e.target.checked })}
-            className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+            className="w-4 h-4 rounded border-neutral-400 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
           />
           <span className="text-sm">Verbal (V)</span>
         </label>
@@ -105,7 +119,7 @@ export function ComponentCheckboxes({
             data-testid="component-checkbox-somatic"
             checked={comp.somatic}
             onChange={(e) => updateComponents({ ...comp, somatic: e.target.checked })}
-            className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+            className="w-4 h-4 rounded border-neutral-400 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
           />
           <span className="text-sm">Somatic (S)</span>
         </label>
@@ -115,7 +129,7 @@ export function ComponentCheckboxes({
             data-testid="component-checkbox-material"
             checked={comp.material}
             onChange={(e) => handleMaterialChange(e.target.checked)}
-            className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+            className="w-4 h-4 rounded border-neutral-400 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
           />
           <span className="text-sm">Material (M)</span>
         </label>
@@ -127,7 +141,7 @@ export function ComponentCheckboxes({
                 data-testid="component-checkbox-focus"
                 checked={comp.focus}
                 onChange={(e) => updateComponents({ ...comp, focus: e.target.checked })}
-                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+                className="w-4 h-4 rounded border-neutral-400 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
               />
               <span className="text-sm">Focus (F)</span>
             </label>
@@ -137,7 +151,7 @@ export function ComponentCheckboxes({
                 data-testid="component-checkbox-divine-focus"
                 checked={comp.divineFocus}
                 onChange={(e) => updateComponents({ ...comp, divineFocus: e.target.checked })}
-                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+                className="w-4 h-4 rounded border-neutral-400 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
               />
               <span className="text-sm">Divine Focus (DF)</span>
             </label>
@@ -147,16 +161,20 @@ export function ComponentCheckboxes({
                 data-testid="component-checkbox-experience"
                 checked={comp.experience}
                 onChange={(e) => updateComponents({ ...comp, experience: e.target.checked })}
-                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+                className="w-4 h-4 rounded border-neutral-400 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
               />
               <span className="text-sm">Experience (XP)</span>
             </label>
           </>
         )}
       </div>
-      <p className="text-sm text-neutral-500 italic" data-testid="component-text-preview">
+      <output
+        className="text-sm italic text-neutral-700 dark:text-neutral-300 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-700"
+        data-testid="component-text-preview"
+        aria-label="Computed component text"
+      >
         {textPreview}
-      </p>
+      </output>
 
       {comp.material && <MaterialSubForm materials={materials} onChange={updateMaterials} />}
     </div>
@@ -193,14 +211,17 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
   };
 
   return (
-    <div className="space-y-2 p-2 bg-neutral-900/50 rounded border border-neutral-800">
+    <div
+      className="mt-1 space-y-2 rounded-xl border border-neutral-300 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800"
+      data-testid="material-subform"
+    >
       <div className="flex justify-between items-center">
-        <span className="text-xs text-neutral-500">Material components</span>
+        <span className="text-xs text-neutral-600 dark:text-neutral-400">Material components</span>
         <button
           type="button"
           data-testid="material-component-add"
           onClick={addMaterial}
-          className="px-2 py-1 text-xs bg-neutral-700 hover:bg-neutral-600 rounded"
+          className="px-2 py-1 text-xs rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 dark:text-neutral-100"
         >
           Add
         </button>
@@ -208,25 +229,26 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
 
       {materials.map((m, idx) => (
         <div
-          key={`material-${idx}-${m.name || "unnamed"}-${m.quantity || 0}`}
-          className="grid gap-2 p-2 bg-neutral-900 rounded text-sm"
+          // biome-ignore lint/suspicious/noArrayIndexKey: rows are keyed by list order; specs have no stable id
+          key={`material-${idx}`}
+          className="grid gap-2 p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-sm border border-neutral-200 dark:border-neutral-700"
           data-testid="material-component-row"
         >
           <div className="flex gap-2 items-start">
             <input
               type="text"
               data-testid="material-component-name"
-              aria-label="Material name"
+              aria-label={`Material ${idx + 1} name`}
               placeholder="Name (required)"
               value={m.name}
               onChange={(e) => updateMaterial(idx, { name: e.target.value })}
-              className="flex-1 min-w-[120px] bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-100"
+              className="flex-1 min-w-[120px] bg-white dark:bg-neutral-800 border border-neutral-400 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
               type="text"
               inputMode="decimal"
               data-testid="material-component-quantity"
-              aria-label="Quantity"
+              aria-label={`Material ${idx + 1} quantity`}
               placeholder="1.0"
               value={m.quantity == null || m.quantity === 1 ? "1.0" : String(m.quantity)}
               onChange={(e) => {
@@ -234,13 +256,13 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
                 const clamped = Math.max(VALIDATION.quantityMinDecimal, clampScalar(v));
                 updateMaterial(idx, { quantity: clamped === 1 ? 1.0 : clamped });
               }}
-              className="w-16 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-100"
+              className="w-16 bg-white dark:bg-neutral-800 border border-neutral-400 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
               type="text"
               inputMode="decimal"
               data-testid="material-component-gp-value"
-              aria-label="GP value"
+              aria-label={`Material ${idx + 1} GP value`}
               placeholder="GP"
               value={m.gpValue ?? ""}
               onChange={(e) => {
@@ -249,7 +271,7 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
                   gpValue: Number.isNaN(v) || v < 0 ? undefined : v,
                 });
               }}
-              className="w-16 bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-100"
+              className="w-16 bg-white dark:bg-neutral-800 border border-neutral-400 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <label className="flex items-center gap-1 cursor-pointer whitespace-nowrap">
               <input
@@ -257,15 +279,20 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
                 data-testid="material-component-consumed"
                 checked={m.isConsumed ?? false}
                 onChange={(e) => updateMaterial(idx, { isConsumed: e.target.checked })}
-                className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600"
+                className="w-4 h-4 rounded border-neutral-400 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
               />
               <span className="text-xs">Consumed</span>
             </label>
             <button
               type="button"
               data-testid="material-component-remove"
+              aria-label={
+                m.name.trim()
+                  ? `Remove material ${m.name.trim()}`
+                  : `Remove material row ${idx + 1}`
+              }
               onClick={() => removeMaterial(idx)}
-              className="px-2 py-1 text-xs text-red-400 hover:bg-neutral-800 rounded"
+              className="px-2 py-1 text-xs text-red-600 dark:text-red-400 bg-transparent dark:bg-neutral-900/30 hover:bg-red-50 dark:hover:bg-neutral-800 rounded focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900"
             >
               Remove
             </button>
@@ -273,19 +300,19 @@ function MaterialSubForm({ materials, onChange }: MaterialSubFormProps) {
           <input
             type="text"
             data-testid="material-component-unit"
-            aria-label="Unit"
+            aria-label={`Material ${idx + 1} unit`}
             placeholder="Unit (e.g. grams)"
             value={m.unit ?? ""}
             onChange={(e) => updateMaterial(idx, { unit: e.target.value || undefined })}
-            className="w-full max-w-[200px] bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
+            className="w-full max-w-[200px] bg-white dark:bg-neutral-800 border border-neutral-400 dark:border-neutral-700 rounded px-2 py-1 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <textarea
             data-testid="material-component-description"
-            aria-label="Description"
+            aria-label={`Material ${idx + 1} description`}
             placeholder="Description (optional)"
             value={m.description ?? ""}
             onChange={(e) => updateMaterial(idx, { description: e.target.value || undefined })}
-            className="w-full min-h-[40px] bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
+            className="w-full min-h-[40px] bg-white dark:bg-neutral-800 border border-neutral-400 dark:border-neutral-700 rounded px-2 py-1 text-xs text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       ))}

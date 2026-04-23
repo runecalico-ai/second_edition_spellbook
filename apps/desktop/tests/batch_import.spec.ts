@@ -3,22 +3,22 @@ import path from "node:path";
 import { TIMEOUTS } from "./fixtures/constants";
 import type { FileTracker } from "./fixtures/tauri-fixture";
 import { expect, test } from "./fixtures/test-fixtures";
-import { generateRunId, getTestDirname } from "./fixtures/test-utils";
+import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
-
-const __dirname = getTestDirname(import.meta.url);
 
 test.describe("Batch Import Wizard", () => {
   test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
   test.slow();
-  test("imports 50 markdown files successfully", async ({ appContext, fileTracker }) => {
+  test("imports 50 markdown files successfully", async ({
+    appContext,
+    fileTracker,
+    testTmpDir,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    const runId = generateRunId();
 
-    const testDir = path.join(__dirname, `tmp/batch_test_${runId}`);
-    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
-
+    const testDir = path.join(testTmpDir, "batch");
+    fs.mkdirSync(testDir, { recursive: true });
     const files = await generateTestSpells(testDir, 50, fileTracker);
 
     await test.step("Perform batch import", async () => {
@@ -38,18 +38,17 @@ test.describe("Batch Import Wizard", () => {
     });
   });
 
-  test("handles mixed format files gracefully", async ({ appContext, fileTracker }) => {
+  test("handles mixed format files gracefully", async ({ appContext, fileTracker, testTmpDir }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
-    const runId = generateRunId();
 
-    const testDir = path.join(__dirname, `tmp/mixed_test_${runId}`);
-    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+    const testDir = path.join(testTmpDir, "mixed");
+    fs.mkdirSync(testDir, { recursive: true });
 
     const mdFile = fileTracker.track(path.join(testDir, "valid_spell.md"));
     fs.writeFileSync(
       mdFile,
-      "---\nname: Valid Markdown Spell\nlevel: 3\n---\nThis is a valid spell description.\n",
+      "---\nname: Valid Markdown Spell\nlevel: 3\nschool: Evocation\n---\nThis is a valid spell description.\n",
     );
 
     const txtFile = fileTracker.track(path.join(testDir, "unsupported.txt"));

@@ -8,7 +8,26 @@ import type {
 } from "../../../types/spell";
 import { areaToText, defaultAreaSpec } from "../../../types/spell";
 import { useMemo } from "react";
-import { ScalarInput } from "./ScalarInput";
+import type {
+  SpellEditorFieldError,
+  SpellEditorValidatedFieldKey,
+} from "../../spellEditorValidation";
+import { ScalarInput, type ScalarFieldValidationError } from "./ScalarInput";
+
+// H-002: interactive selects/inputs must use named border roles in light mode.
+const areaSelectClass =
+  "rounded border border-neutral-400 bg-white px-2 py-1 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus-visible:ring-offset-neutral-900";
+
+const areaTextInputClass =
+  "rounded border border-neutral-400 bg-white px-2 py-1 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus-visible:ring-offset-neutral-900";
+
+function pickAreaScalarErr(
+  errors: SpellEditorFieldError[] | undefined,
+  key: SpellEditorValidatedFieldKey,
+): ScalarFieldValidationError | null {
+  const e = errors?.find((x) => x.field === key);
+  return e ? { testId: e.testId, message: e.message } : null;
+}
 
 const AREA_KIND_LABELS: Record<AreaKind, string> = {
   point: "Point",
@@ -100,9 +119,13 @@ const SCOPE_UNITS = [
 interface AreaFormProps {
   value: AreaSpec | null | undefined;
   onChange: (v: AreaSpec) => void;
+  /** Spell editor: mark area scalar validation fields visible on blur / mode change. */
+  onValidationBlur?: () => void;
+  /** Spell editor inline validation (Task 3). */
+  visibleFieldErrors?: SpellEditorFieldError[];
 }
 
-export function AreaForm({ value, onChange }: AreaFormProps) {
+export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors }: AreaFormProps) {
   const spec = value ?? defaultAreaSpec();
 
   const updateSpec = (updates: Partial<AreaSpec>) => {
@@ -177,8 +200,9 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
               next.text = areaToText(next);
             }
             onChange(next);
+            onValidationBlur?.();
           }}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={areaSelectClass}
         >
           {(Object.entries(AREA_KIND_LABELS) as [AreaKind, string][]).map(([k, label]) => (
             <option key={k} value={k}>
@@ -194,18 +218,22 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       ) && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.radius ?? { mode: "fixed", value: 0 }}
             onChange={(r) => updateSpec({ radius: r })}
             data-testid="area-form-radius"
+            accessibleNamePrefix="Area radius "
             baseValueTestId="area-form-radius-value"
             perLevelTestId="area-form-radius-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-per-level")}
           />
           <select
             data-testid="area-form-shape-unit"
             aria-label="Shape unit"
             value={spec.shapeUnit ?? "ft"}
             onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {SHAPE_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -220,18 +248,22 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {(["cone", "line"] as const).includes(spec.kind as "cone" | "line") && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.length ?? { mode: "fixed", value: 0 }}
             onChange={(l) => updateSpec({ length: l })}
             data-testid="area-form-length"
+            accessibleNamePrefix="Area length "
             baseValueTestId="area-form-length-value"
             perLevelTestId="area-form-length-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-per-level")}
           />
           <select
             data-testid="area-form-shape-unit"
             aria-label="Shape unit"
             value={spec.shapeUnit ?? "ft"}
             onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {SHAPE_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -246,25 +278,33 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {spec.kind === "rect" && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.length ?? { mode: "fixed", value: 0 }}
             onChange={(l) => updateSpec({ length: l })}
             data-testid="area-form-length"
+            accessibleNamePrefix="Area rectangle length "
             baseValueTestId="area-form-length-value"
             perLevelTestId="area-form-length-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-per-level")}
           />
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.width ?? { mode: "fixed", value: 0 }}
             onChange={(w) => updateSpec({ width: w })}
             data-testid="area-form-width"
+            accessibleNamePrefix="Area rectangle width "
             baseValueTestId="area-form-width-value"
             perLevelTestId="area-form-width-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-width-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-width-per-level")}
           />
           <select
             data-testid="area-form-shape-unit"
             aria-label="Shape unit"
             value={spec.shapeUnit ?? "ft"}
             onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {SHAPE_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -279,32 +319,44 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {spec.kind === "rect_prism" && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.length ?? { mode: "fixed", value: 0 }}
             onChange={(l) => updateSpec({ length: l })}
             data-testid="area-form-length"
+            accessibleNamePrefix="Area prism length "
             baseValueTestId="area-form-length-value"
             perLevelTestId="area-form-length-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-per-level")}
           />
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.width ?? { mode: "fixed", value: 0 }}
             onChange={(w) => updateSpec({ width: w })}
             data-testid="area-form-width"
+            accessibleNamePrefix="Area prism width "
             baseValueTestId="area-form-width-value"
             perLevelTestId="area-form-width-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-width-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-width-per-level")}
           />
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.height ?? { mode: "fixed", value: 0 }}
             onChange={(h) => updateSpec({ height: h })}
             data-testid="area-form-height"
+            accessibleNamePrefix="Area prism height "
             baseValueTestId="area-form-height-value"
             perLevelTestId="area-form-height-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-per-level")}
           />
           <select
             data-testid="area-form-shape-unit"
             aria-label="Shape unit"
             value={spec.shapeUnit ?? "ft"}
             onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {SHAPE_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -319,25 +371,33 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {spec.kind === "cylinder" && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.radius ?? { mode: "fixed", value: 0 }}
             onChange={(r) => updateSpec({ radius: r })}
             data-testid="area-form-radius"
+            accessibleNamePrefix="Area cylinder radius "
             baseValueTestId="area-form-radius-value"
             perLevelTestId="area-form-radius-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-per-level")}
           />
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.height ?? { mode: "fixed", value: 0 }}
             onChange={(h) => updateSpec({ height: h })}
             data-testid="area-form-height"
+            accessibleNamePrefix="Area cylinder height "
             baseValueTestId="area-form-height-value"
             perLevelTestId="area-form-height-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-per-level")}
           />
           <select
             data-testid="area-form-shape-unit"
             aria-label="Shape unit"
             value={spec.shapeUnit ?? "ft"}
             onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {SHAPE_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -352,32 +412,47 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {spec.kind === "wall" && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.length ?? { mode: "fixed", value: 0 }}
             onChange={(l) => updateSpec({ length: l })}
             data-testid="area-form-length"
+            accessibleNamePrefix="Area wall length "
             baseValueTestId="area-form-length-value"
             perLevelTestId="area-form-length-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-length-per-level")}
           />
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.height ?? { mode: "fixed", value: 0 }}
             onChange={(h) => updateSpec({ height: h })}
             data-testid="area-form-height"
+            accessibleNamePrefix="Area wall height "
             baseValueTestId="area-form-height-value"
             perLevelTestId="area-form-height-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-height-per-level")}
           />
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.thickness ?? { mode: "fixed", value: 0 }}
             onChange={(t) => updateSpec({ thickness: t })}
             data-testid="area-form-thickness"
+            accessibleNamePrefix="Area wall thickness "
             baseValueTestId="area-form-thickness-value"
             perLevelTestId="area-form-thickness-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-thickness-value")}
+            perLevelFieldError={pickAreaScalarErr(
+              visibleFieldErrors,
+              "area-form-thickness-per-level",
+            )}
           />
           <select
             data-testid="area-form-shape-unit"
             aria-label="Shape unit"
             value={spec.shapeUnit ?? "ft"}
             onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {SHAPE_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -392,18 +467,22 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {spec.kind === "cube" && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.edge ?? { mode: "fixed", value: 0 }}
             onChange={(e) => updateSpec({ edge: e })}
             data-testid="area-form-edge"
+            accessibleNamePrefix="Area cube edge "
             baseValueTestId="area-form-edge-value"
             perLevelTestId="area-form-edge-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-edge-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-edge-per-level")}
           />
           <select
             data-testid="area-form-shape-unit"
             aria-label="Shape unit"
             value={spec.shapeUnit ?? "ft"}
             onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {SHAPE_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -418,18 +497,25 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {spec.kind === "surface" && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.surfaceArea ?? { mode: "fixed", value: 0 }}
             onChange={(s) => updateSpec({ surfaceArea: s })}
             data-testid="area-form-surface-area"
+            accessibleNamePrefix="Area surface "
             baseValueTestId="area-form-surface-area-value"
             perLevelTestId="area-form-surface-area-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-surface-area-value")}
+            perLevelFieldError={pickAreaScalarErr(
+              visibleFieldErrors,
+              "area-form-surface-area-per-level",
+            )}
           />
           <select
             data-testid="area-form-unit"
             aria-label="Area unit"
             value={spec.unit ?? "ft2"}
             onChange={(e) => updateSpec({ unit: e.target.value as AreaUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {AREA_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -444,18 +530,22 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {spec.kind === "volume" && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.volume ?? { mode: "fixed", value: 0 }}
             onChange={(v) => updateSpec({ volume: v })}
             data-testid="area-form-volume"
+            accessibleNamePrefix="Area volume "
             baseValueTestId="area-form-volume-value"
             perLevelTestId="area-form-volume-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-volume-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-volume-per-level")}
           />
           <select
             data-testid="area-form-unit"
             aria-label="Volume unit"
             value={spec.unit ?? "ft3"}
             onChange={(e) => updateSpec({ unit: e.target.value as AreaUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {AREA_UNIT_OPTIONS.filter((o) =>
               ["ft3", "yd3", "hex", "room", "floor"].includes(o.value),
@@ -476,7 +566,7 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
             aria-label="Tile unit"
             value={spec.tileUnit ?? "square"}
             onChange={(e) => updateSpec({ tileUnit: e.target.value as TileUnit })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {TILE_UNIT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -485,11 +575,18 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
             ))}
           </select>
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.tileCount ?? { mode: "fixed", value: 1 }}
             onChange={(t) => updateSpec({ tileCount: t })}
             data-testid="area-form-tile-count"
+            accessibleNamePrefix="Area tile count "
             baseValueTestId="area-form-tile-count-value"
             perLevelTestId="area-form-tile-count-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-tile-count-value")}
+            perLevelFieldError={pickAreaScalarErr(
+              visibleFieldErrors,
+              "area-form-tile-count-per-level",
+            )}
           />
         </div>
       )}
@@ -498,18 +595,22 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
       {(["creatures", "objects"] as const).includes(spec.kind as "creatures" | "objects") && (
         <div className="flex flex-wrap items-center gap-2">
           <ScalarInput
+            onFieldBlur={onValidationBlur}
             value={spec.count ?? { mode: "fixed", value: 1 }}
             onChange={(c) => updateSpec({ count: c })}
             data-testid="area-form-count"
+            accessibleNamePrefix="Area target count "
             baseValueTestId="area-form-count-value"
             perLevelTestId="area-form-count-per-level"
+            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-count-value")}
+            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-count-per-level")}
           />
           <select
             data-testid="area-form-count-subject"
             aria-label="Count subject"
             value={spec.countSubject ?? "creature"}
             onChange={(e) => updateSpec({ countSubject: e.target.value as CountSubject })}
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+            className={areaSelectClass}
           >
             {COUNT_SUBJECT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -527,7 +628,7 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
           aria-label="Region unit"
           value={spec.regionUnit ?? "region"}
           onChange={(e) => updateSpec({ regionUnit: e.target.value })}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={areaSelectClass}
         >
           {REGION_UNITS.map((u) => (
             <option key={u} value={u}>
@@ -544,7 +645,7 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
           aria-label="Scope unit"
           value={spec.scopeUnit ?? "los"}
           onChange={(e) => updateSpec({ scopeUnit: e.target.value })}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={areaSelectClass}
         >
           {SCOPE_UNITS.map((u) => (
             <option key={u} value={u}>
@@ -570,7 +671,7 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
               text: rawLegacyValue,
             });
           }}
-          className="flex-1 min-w-[200px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={`min-w-[200px] flex-1 ${areaTextInputClass}`}
         />
       )}
 
@@ -580,12 +681,16 @@ export function AreaForm({ value, onChange }: AreaFormProps) {
         placeholder="Area notes (optional)..."
         value={spec.notes ?? ""}
         onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
-        className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+        className={`min-h-[60px] w-full ${areaTextInputClass}`}
       />
 
-      <p className="text-sm text-neutral-500 italic" data-testid="area-text-preview">
+      <output
+        className="text-sm text-neutral-500 italic dark:text-neutral-400"
+        data-testid="area-text-preview"
+        aria-label="Computed area text"
+      >
         {textPreview || "—"}
-      </p>
+      </output>
     </div>
   );
 }

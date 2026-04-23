@@ -4,8 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Spellbook</title>
+    <script>
+      (() => {
+        const storageKey = "spellbook-theme";
+        let storedValue = null;
+        try {
+          storedValue = window.localStorage.getItem(storageKey);
+        } catch {
+          storedValue = null;
+        }
+        const mode =
+          storedValue === "light" || storedValue === "dark" || storedValue === "system"
+            ? storedValue
+            : "system";
+        const prefersDark =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const resolvedTheme = mode === "system" ? (prefersDark ? "dark" : "light") : mode;
+
+        document.documentElement.classList.toggle("dark", resolvedTheme === "dark");
+        document.documentElement.dataset.theme = resolvedTheme;
+      })();
+    </script>
   </head>
-  <body class="bg-neutral-950 text-neutral-100">
+  <body class="min-h-screen bg-stone-50 text-stone-950 dark:bg-neutral-950 dark:text-neutral-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

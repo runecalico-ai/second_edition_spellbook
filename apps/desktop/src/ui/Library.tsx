@@ -2,6 +2,9 @@ import * as Slider from "@radix-ui/react-slider";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useModal } from "../store/useModal";
+import { useNotifications } from "../store/useNotifications";
+import { EmptyState, EmptyStateLiveRegion } from "./components/EmptyState";
 
 type SpellSummary = {
   id: number;
@@ -55,6 +58,30 @@ type SavedSearch = {
   createdAt: string;
 };
 
+const EMPTY_LIBRARY_STATE = {
+  heading: "No Spells Yet",
+  description: "Your spell library is empty. Create your first spell or import spells from a file.",
+};
+
+const EMPTY_SEARCH_STATE = {
+  heading: "No Results",
+  description: "No spells match your current search or filters.",
+};
+
+function createDefaultSearchFilters(): SearchFilters {
+  return {
+    schools: null,
+    levelMin: null,
+    levelMax: null,
+    source: null,
+    classList: null,
+    components: null,
+    tags: null,
+    isQuestSpell: null,
+    isCantrip: null,
+  };
+}
+
 export default function Library() {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"keyword" | "semantic">("keyword");
@@ -80,13 +107,28 @@ export default function Library() {
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [newSearchName, setNewSearchName] = useState("");
+  const [selectedSavedSearchId, setSelectedSavedSearchId] = useState<number | null>(null);
+  const [activeSearchRequestId, setActiveSearchRequestId] = useState(0);
+  const [resultsSettledForCurrentSearch, setResultsSettledForCurrentSearch] = useState(false);
   const saveInputRef = useRef<HTMLInputElement>(null);
+  const searchRequestIdRef = useRef(0);
+  const pushNotification = useNotifications((state) => state.pushNotification);
+  const { confirm: modalConfirm } = useModal();
 
   useEffect(() => {
     if (isSaving && saveInputRef.current) {
       saveInputRef.current.focus();
     }
   }, [isSaving]);
+
+  useEffect(() => {
+    if (
+      selectedSavedSearchId !== null &&
+      !savedSearches.some((s) => s.id === selectedSavedSearchId)
+    ) {
+      setSelectedSavedSearchId(null);
+    }
+  }, [savedSearches, selectedSavedSearchId]);
 
   const loadFacets = useCallback(async () => {
     const data = await invoke<Facets>("list_facets");
@@ -111,22 +153,39 @@ export default function Library() {
     }
   }, []);
 
+  const buildSearchFilters = useCallback((): SearchFilters => {
+    let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
+    let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
+    if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
+      [parsedMin, parsedMax] = [parsedMax, parsedMin];
+    }
+    return {
+      schools: schoolFilters.length > 0 ? schoolFilters : null,
+      levelMin: parsedMin,
+      levelMax: parsedMax,
+      source: sourceFilter || null,
+      classList: classListFilter || null,
+      components: componentFilter || null,
+      tags: tagFilter || null,
+      isQuestSpell: isQuestFilter,
+      isCantrip: isCantripFilter,
+    };
+  }, [
+    classListFilter,
+    componentFilter,
+    isCantripFilter,
+    isQuestFilter,
+    levelMax,
+    levelMin,
+    schoolFilters,
+    sourceFilter,
+    tagFilter,
+  ]);
+
   const handleSaveSearch = async () => {
     if (!newSearchName) return;
     try {
-      const parsedMin = levelMin ? Number.parseInt(levelMin) : null;
-      const parsedMax = levelMax ? Number.parseInt(levelMax) : null;
-      const filters: SearchFilters = {
-        schools: schoolFilters.length > 0 ? schoolFilters : null,
-        levelMin: parsedMin,
-        levelMax: parsedMax,
-        source: sourceFilter || null,
-        classList: classListFilter || null,
-        components: componentFilter || null,
-        tags: tagFilter || null,
-        isQuestSpell: isQuestFilter,
-        isCantrip: isCantripFilter,
-      };
+      const filters = buildSearchFilters();
       const payload: SavedSearchPayload = {
         query,
         mode,
@@ -137,7 +196,7 @@ export default function Library() {
       setIsSaving(false);
       loadSavedSearches();
     } catch (e) {
-      alert(`Failed to save search: ${e}`);
+      pushNotification("error", `Failed to save search: ${e}`);
     }
   };
 
@@ -160,6 +219,7 @@ export default function Library() {
         setTagFilter(filters.tags || "");
         setIsQuestFilter(filters.isQuestSpell ?? false);
         setIsCantripFilter(filters.isCantrip ?? false);
+        void runSearch(payload.query ?? "", payload.mode ?? "keyword", filters as SearchFilters);
       } else {
         const filters = parsed as SearchFilters;
         setQuery("");
@@ -173,6 +233,7 @@ export default function Library() {
         setTagFilter(filters.tags || "");
         setIsQuestFilter(filters.isQuestSpell ?? false);
         setIsCantripFilter(filters.isCantrip ?? false);
+        void runSearch("", "keyword", filters);
       }
     } catch (e) {
       console.error("Failed to parse saved search", e);
@@ -180,14 +241,49 @@ export default function Library() {
   };
 
   const handleDeleteSavedSearch = async (id: number) => {
-    if (!confirm("Delete this saved search?")) return;
+    const confirmed = await modalConfirm("Delete this saved search?", "Delete Saved Search");
+    if (!confirmed) return;
     try {
       await invoke("delete_saved_search", { id });
+      setSelectedSavedSearchId(null);
       loadSavedSearches();
     } catch (e) {
-      alert(`Failed to delete saved search: ${e}`);
+      pushNotification("error", `Failed to delete saved search: ${e}`);
     }
   };
+
+  const runSearch = useCallback(
+    async (nextQuery: string, nextMode: "keyword" | "semantic", filters: SearchFilters) => {
+      const requestId = ++searchRequestIdRef.current;
+      setActiveSearchRequestId(requestId);
+      setResultsSettledForCurrentSearch(false);
+
+      try {
+        const results =
+          nextMode === "semantic"
+            ? await invoke<SpellSummary[]>("search_semantic", { query: nextQuery })
+            : await invoke<SpellSummary[]>("search_keyword", { query: nextQuery, filters });
+
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        setSpells(results);
+      } catch (e) {
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        console.error("Failed to search library", e);
+        setSpells([]);
+      } finally {
+        if (requestId === searchRequestIdRef.current) {
+          setResultsSettledForCurrentSearch(true);
+        }
+      }
+    },
+    [],
+  );
 
   const handleResetFilters = () => {
     setQuery("");
@@ -201,57 +297,55 @@ export default function Library() {
     setTagFilter("");
     setIsQuestFilter(false);
     setIsCantripFilter(false);
+    setSelectedSavedSearchId(null); // NEW: also clear saved search selection
+    void runSearch("", "keyword", createDefaultSearchFilters());
   };
 
   const search = useCallback(async () => {
-    let parsedMin = levelMin ? Number.parseInt(levelMin) : null;
-    let parsedMax = levelMax ? Number.parseInt(levelMax) : null;
-    if (parsedMin !== null && parsedMax !== null && parsedMin > parsedMax) {
-      [parsedMin, parsedMax] = [parsedMax, parsedMin];
-    }
-    const filters: SearchFilters = {
-      schools: schoolFilters.length > 0 ? schoolFilters : null,
-      levelMin: parsedMin,
-      levelMax: parsedMax,
-      source: sourceFilter || null,
-      classList: classListFilter || null,
-      components: componentFilter || null,
-      tags: tagFilter || null,
-      isQuestSpell: isQuestFilter || null,
-      isCantrip: isCantripFilter || null,
-    };
-
-    if (mode === "semantic") {
-      const results = await invoke<SpellSummary[]>("search_semantic", { query });
-      setSpells(results);
-      return;
-    }
-    const results = await invoke<SpellSummary[]>("search_keyword", { query, filters });
-    setSpells(results);
-  }, [
-    query,
-    mode,
-    schoolFilters,
-    levelMin,
-    levelMax,
-    sourceFilter,
-    classListFilter,
-    componentFilter,
-    tagFilter,
-    isQuestFilter,
-    isCantripFilter,
-  ]);
+    await runSearch(query, mode, buildSearchFilters());
+  }, [query, mode, buildSearchFilters, runSearch]);
 
   useEffect(() => {
     loadFacets();
     loadCharacters();
     loadSavedSearches();
-    search();
-  }, [loadFacets, loadCharacters, loadSavedSearches, search]);
+  }, [loadFacets, loadCharacters, loadSavedSearches]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initial load; further searches are explicit (Search / Enter)
   useEffect(() => {
-    search();
-  }, [search]);
+    void search();
+  }, []);
+
+  const hasActiveFilters = Boolean(
+    query.trim() ||
+      mode !== "keyword" ||
+      schoolFilters.length > 0 ||
+      levelMin ||
+      levelMax ||
+      sourceFilter ||
+      classListFilter ||
+      componentFilter ||
+      tagFilter ||
+      isQuestFilter ||
+      isCantripFilter ||
+      selectedSavedSearchId !== null,
+  );
+  const showEmptyLibrary =
+    resultsSettledForCurrentSearch && spells.length === 0 && !hasActiveFilters;
+  const showEmptySearch = resultsSettledForCurrentSearch && spells.length === 0 && hasActiveFilters;
+  const activeEmptyStateAnnouncement = showEmptyLibrary
+    ? EMPTY_LIBRARY_STATE
+    : showEmptySearch
+      ? EMPTY_SEARCH_STATE
+      : null;
+
+  const focusVisibleRingClassName =
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
+  const secondaryActionClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-500 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700`;
+  const filterControlClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-500 bg-white px-3 py-2 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`;
+  const compactFilterControlClassName = `${focusVisibleRingClassName} rounded-md border border-neutral-500 bg-white px-3 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`;
+  const filterChipClassName =
+    "cursor-pointer rounded-md border border-neutral-500 bg-white px-3 py-1 transition-colors hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800";
 
   const addToCharacter = async (spellId: number, charIdStr: string) => {
     if (!charIdStr) return;
@@ -264,21 +358,27 @@ export default function Library() {
         known: 1,
         notes: "",
       });
-      alert("Spell added to character!");
+      pushNotification("success", "Spell added to character!");
     } catch (e) {
-      alert(`Failed to add spell: ${e}`);
+      pushNotification("error", `Failed to add spell: ${e}`);
     }
   };
 
   return (
     <div className="space-y-3 h-full flex flex-col">
+      <EmptyStateLiveRegion
+        heading={activeEmptyStateAnnouncement?.heading ?? ""}
+        description={activeEmptyStateAnnouncement?.description ?? ""}
+        testId="library-empty-state"
+        active={activeEmptyStateAnnouncement !== null}
+      />
       <div className="flex justify-between items-center">
-        <h1 className="text-xl font-bold">Library</h1>
+        <h1 className="text-xl font-bold">Spell Library</h1>
         <div className="space-x-2 flex items-center">
           <Link
             to="/character"
             data-testid="link-to-characters"
-            className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
+            className={`px-3 py-2 ${secondaryActionClassName}`}
           >
             Characters
           </Link>
@@ -286,35 +386,51 @@ export default function Library() {
             to="/edit/new"
             data-testid="link-add-spell"
             id="link-add-spell"
-            className="px-3 py-2 bg-blue-700 text-white rounded-md hover:bg-blue-600"
+            className={`${focusVisibleRingClassName} px-3 py-2 bg-blue-700 text-white rounded-md hover:bg-blue-600`}
           >
             Add Spell
           </Link>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <input
-          className="flex-1 bg-neutral-900 border border-neutral-700 rounded-md px-3 py-2"
-          placeholder="Search spells…"
-          data-testid="library-search-input"
-          aria-label="Search spells"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && search()}
-        />
-        <select
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-2"
-          data-testid="library-mode-select"
-          aria-label="Search mode"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as "keyword" | "semantic")}
-        >
-          <option value="keyword">Keyword</option>
-          <option value="semantic">Semantic</option>
-        </select>
+      <div className="flex flex-wrap gap-2 items-end">
+        <div className="flex min-w-[140px] flex-1 flex-col gap-1">
+          <label
+            htmlFor="library-search-input"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Search
+          </label>
+          <input
+            id="library-search-input"
+            className={filterControlClassName}
+            placeholder="Keywords or spell name…"
+            data-testid="search-input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && search()}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-mode-select"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Mode
+          </label>
+          <select
+            id="library-mode-select"
+            className={filterControlClassName}
+            data-testid="library-mode-select"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as "keyword" | "semantic")}
+          >
+            <option value="keyword">Keyword</option>
+            <option value="semantic">Semantic</option>
+          </select>
+        </div>
         <button
-          className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700"
+          className={`px-3 py-2 ${secondaryActionClassName}`}
           data-testid="library-search-button"
           onClick={search}
           type="button"
@@ -322,7 +438,7 @@ export default function Library() {
           Search
         </button>
         <button
-          className="px-3 py-2 bg-neutral-800 rounded-md hover:bg-neutral-700 border border-neutral-700"
+          className={`px-3 py-2 ${secondaryActionClassName}`}
           data-testid="library-reset-button"
           onClick={handleResetFilters}
           type="button"
@@ -334,12 +450,17 @@ export default function Library() {
 
       <div className="flex flex-wrap gap-2 text-sm">
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-neutral-400">Schools</span>
+          <label
+            htmlFor="library-filter-schools"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Schools
+          </label>
           <select
+            id="library-filter-schools"
             multiple
-            aria-label="Schools filter"
             data-testid="filter-school-select"
-            className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 min-w-[160px]"
+            className={`min-w-[160px] ${compactFilterControlClassName}`}
             value={schoolFilters}
             onChange={(e) =>
               setSchoolFilters(Array.from(e.target.selectedOptions).map((opt) => opt.value))
@@ -353,12 +474,16 @@ export default function Library() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-neutral-400 font-medium">
+          <span
+            id="library-level-range-label"
+            className="text-xs font-medium text-neutral-600 dark:text-neutral-400"
+          >
             Level range: {levelMin || 0} - {levelMax || 12}
           </span>
           <div className="pt-2 px-1">
             <Slider.Root
-              className="relative flex items-center select-none touch-none w-32 h-5"
+              className="relative flex h-6 w-32 touch-none select-none items-center"
+              aria-labelledby="library-level-range-label"
               data-testid="filter-level-slider"
               value={[
                 levelMin ? Number.parseInt(levelMin) : 0,
@@ -371,143 +496,198 @@ export default function Library() {
                 setLevelMax(String(max));
               }}
             >
-              <Slider.Track className="bg-neutral-800 relative grow rounded-full h-[3px]">
+              <Slider.Track className="relative h-[3px] grow rounded-full bg-neutral-400 dark:bg-neutral-800">
                 <Slider.Range className="absolute bg-blue-500 rounded-full h-full" />
               </Slider.Track>
               <Slider.Thumb
-                className="block w-4 h-4 bg-white shadow-lg rounded-full hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className={`${focusVisibleRingClassName} block h-6 w-6 min-h-6 min-w-6 cursor-pointer rounded-full border border-neutral-500 bg-white shadow-lg hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-100 dark:hover:bg-white`}
                 aria-label="Min Level"
                 data-testid="filter-level-min-thumb"
               />
               <Slider.Thumb
-                className="block w-4 h-4 bg-white shadow-lg rounded-full hover:bg-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                className={`${focusVisibleRingClassName} block h-6 w-6 min-h-6 min-w-6 cursor-pointer rounded-full border border-neutral-500 bg-white shadow-lg hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-100 dark:hover:bg-white`}
                 aria-label="Max Level"
                 data-testid="filter-level-max-thumb"
               />
             </Slider.Root>
           </div>
         </div>
-        <select
-          aria-label="Source filter"
-          data-testid="filter-source-select"
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
-          value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
-        >
-          <option value="">All sources</option>
-          {facets.sources.map((source) => (
-            <option key={source} value={source}>
-              {source}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Class filter"
-          data-testid="filter-class-select"
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
-          value={classListFilter}
-          onChange={(e) => setClassListFilter(e.target.value)}
-        >
-          <option value="">All classes</option>
-          {facets.classList.map((className) => (
-            <option key={className} value={className}>
-              {className}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Component filter"
-          data-testid="filter-component-select"
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
-          value={componentFilter}
-          onChange={(e) => setComponentFilter(e.target.value)}
-        >
-          <option value="">All components</option>
-          {facets.components.map((component) => (
-            <option key={component} value={component}>
-              {component}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Tag filter"
-          data-testid="filter-tag-select"
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1"
-          value={tagFilter}
-          onChange={(e) => setTagFilter(e.target.value)}
-        >
-          <option value="">All tags</option>
-          {facets.tags.map((tag) => (
-            <option key={tag} value={tag}>
-              {tag}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors">
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-filter-source"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Source
+          </label>
+          <select
+            id="library-filter-source"
+            data-testid="filter-source-select"
+            className={compactFilterControlClassName}
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+          >
+            <option value="">All sources</option>
+            {facets.sources.map((source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-filter-class"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Class
+          </label>
+          <select
+            id="library-filter-class"
+            data-testid="filter-class-select"
+            className={compactFilterControlClassName}
+            value={classListFilter}
+            onChange={(e) => setClassListFilter(e.target.value)}
+          >
+            <option value="">All classes</option>
+            {facets.classList.map((className) => (
+              <option key={className} value={className}>
+                {className}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-filter-component"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Component filter
+          </label>
+          <select
+            id="library-filter-component"
+            data-testid="filter-component-select"
+            className={compactFilterControlClassName}
+            value={componentFilter}
+            onChange={(e) => setComponentFilter(e.target.value)}
+          >
+            <option value="">All components</option>
+            {facets.components.map((component) => (
+              <option key={component} value={component}>
+                {component}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="library-filter-tag"
+            className="text-xs text-neutral-600 dark:text-neutral-400"
+          >
+            Tags
+          </label>
+          <select
+            id="library-filter-tag"
+            data-testid="filter-tag-select"
+            className={compactFilterControlClassName}
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+          >
+            <option value="">All tags</option>
+            {facets.tags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+        </div>
+        <label className={`flex items-center gap-1.5 ${filterChipClassName}`}>
           <input
             type="checkbox"
             data-testid="filter-quest-checkbox"
             checked={isQuestFilter}
             onChange={(e) => setIsQuestFilter(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-offset-neutral-900"
+            className={`${focusVisibleRingClassName} h-3.5 w-3.5 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-800`}
           />
-          <span className="text-xs text-neutral-300">Quest Spells</span>
+          <span className="text-xs text-neutral-700 dark:text-neutral-300">Quest Spells</span>
         </label>
-        <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-800 transition-colors">
+        <label className={`flex items-center gap-1.5 ${filterChipClassName}`}>
           <input
             type="checkbox"
             data-testid="filter-cantrip-checkbox"
             checked={isCantripFilter}
             onChange={(e) => setIsCantripFilter(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-neutral-700 bg-neutral-800 text-blue-600 focus:ring-offset-neutral-900"
+            className={`${focusVisibleRingClassName} h-3.5 w-3.5 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-800`}
           />
-          <span className="text-xs text-neutral-300">Cantrips Only</span>
+          <span className="text-xs text-neutral-700 dark:text-neutral-300">Cantrips Only</span>
         </label>
 
-        <div className="border-l border-neutral-800 mx-1 self-stretch" />
+        <div className="mx-1 self-stretch border-l border-neutral-500 dark:border-neutral-800" />
 
         <div className="flex items-center gap-2">
           {savedSearches.length > 0 && (
-            <select
-              className="bg-neutral-900 border border-neutral-700 rounded-md px-3 py-1 text-xs"
-              data-testid="saved-searches-select"
-              aria-label="Saved searches"
-              onChange={(e) => {
-                const saved = savedSearches.find((s) => s.id === Number.parseInt(e.target.value));
-                if (saved) loadSearch(saved);
-              }}
-              value=""
-            >
-              <option value="">Saved Searches</option>
-              {savedSearches.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="library-saved-searches-select"
+                className="text-xs text-neutral-600 dark:text-neutral-400"
+              >
+                Saved searches
+              </label>
+              <select
+                id="library-saved-searches-select"
+                className={`text-xs ${compactFilterControlClassName}`}
+                data-testid="saved-searches-select"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (!raw) {
+                    setSelectedSavedSearchId(null);
+                    return;
+                  }
+                  const id = Number.parseInt(raw, 10);
+                  const saved = savedSearches.find((s) => s.id === id);
+                  if (saved) loadSearch(saved);
+                  setSelectedSavedSearchId(id);
+                }}
+                value={selectedSavedSearchId !== null ? String(selectedSavedSearchId) : ""}
+              >
+                <option value="">Saved Searches</option>
+                {savedSearches.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           {isSaving ? (
             <div
-              className="flex gap-1 animate-in slide-in-from-right-1 duration-200"
+              className="flex items-end gap-1 animate-in slide-in-from-right-1 duration-200"
               data-testid="save-search-container"
             >
-              <input
-                ref={saveInputRef}
-                className="bg-neutral-900 border border-neutral-700 rounded-md px-2 py-1 text-xs w-32"
-                placeholder="Name..."
-                data-testid="save-search-name-input"
-                aria-label="Search name"
-                value={newSearchName}
-                onChange={(e) => setNewSearchName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveSearch();
-                  if (e.key === "Escape") setIsSaving(false);
-                }}
-              />
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="save-search-name-input"
+                  className="text-xs text-neutral-600 dark:text-neutral-400"
+                >
+                  Save as
+                </label>
+                <input
+                  ref={saveInputRef}
+                  id="save-search-name-input"
+                  className={`${focusVisibleRingClassName} w-32 rounded-md border border-neutral-500 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
+                  placeholder="Name…"
+                  data-testid="save-search-name-input"
+                  value={newSearchName}
+                  onChange={(e) => setNewSearchName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveSearch();
+                    if (e.key === "Escape") setIsSaving(false);
+                  }}
+                />
+              </div>
               <button
                 type="button"
-                className="px-2 py-1 bg-blue-700 text-white rounded text-xs"
+                className={`${focusVisibleRingClassName} px-2 py-1 bg-blue-700 text-white rounded text-xs`}
                 data-testid="btn-save-search-confirm"
                 onClick={handleSaveSearch}
               >
@@ -515,8 +695,9 @@ export default function Library() {
               </button>
               <button
                 type="button"
-                className="px-2 py-1 bg-neutral-800 rounded text-xs"
+                className={`${focusVisibleRingClassName} rounded border border-neutral-500 bg-neutral-200 px-2 py-1 text-xs text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700`}
                 data-testid="btn-save-search-cancel"
+                aria-label="Cancel saving search"
                 onClick={() => setIsSaving(false)}
               >
                 ✕
@@ -525,7 +706,7 @@ export default function Library() {
           ) : (
             <button
               type="button"
-              className="px-3 py-1 bg-neutral-800 border border-neutral-700 rounded-md text-xs hover:bg-neutral-700 transition-colors"
+              className={`px-3 py-1 text-xs transition-colors ${secondaryActionClassName}`}
               data-testid="btn-save-search-trigger"
               onClick={() => setIsSaving(true)}
             >
@@ -536,15 +717,11 @@ export default function Library() {
           {savedSearches.length > 0 && (
             <button
               type="button"
-              className="text-xs text-neutral-500 hover:text-red-400 ml-1"
+              className={`${focusVisibleRingClassName} ml-1 text-xs text-neutral-600 hover:text-red-600 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-400 dark:disabled:text-neutral-600 dark:hover:text-red-400`}
               data-testid="btn-delete-saved-search"
+              disabled={selectedSavedSearchId === null}
               onClick={() => {
-                const currentVal = (
-                  document.querySelector(
-                    'select[data-testid="saved-searches-select"]',
-                  ) as HTMLSelectElement
-                )?.value;
-                if (currentVal) handleDeleteSavedSearch(Number.parseInt(currentVal));
+                if (selectedSavedSearchId !== null) handleDeleteSavedSearch(selectedSavedSearchId);
               }}
               title="Delete selected saved search"
             >
@@ -554,18 +731,41 @@ export default function Library() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-neutral-900/30 rounded-md border border-neutral-800">
+      <div
+        className="flex-1 overflow-auto rounded-md border border-neutral-500 bg-white/80 dark:border-neutral-800 dark:bg-neutral-900/30"
+        data-testid="library-results-state"
+        data-search-request-id={activeSearchRequestId}
+        data-results-settled={resultsSettledForCurrentSearch ? "true" : "false"}
+        aria-busy={resultsSettledForCurrentSearch ? "false" : "true"}
+      >
         <table
           className="w-full text-sm text-left border-collapse"
           data-testid="spell-library-table"
         >
-          <thead className="text-neutral-400 bg-neutral-900 sticky top-0">
+          <caption className="sr-only">Spell library results</caption>
+          <thead className="sticky top-0 bg-neutral-100 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
             <tr>
-              <th className="p-2 border-b border-neutral-800">Name</th>
-              <th className="p-2 border-b border-neutral-800">School</th>
-              <th className="p-2 border-b border-neutral-800 w-16 text-center">Level</th>
-              <th className="p-2 border-b border-neutral-800">Classes</th>
-              <th className="p-2 border-b border-neutral-800 text-center">Comp</th>
+              <th scope="col" className="border-b border-neutral-500 p-2 dark:border-neutral-800">
+                Name
+              </th>
+              <th scope="col" className="border-b border-neutral-500 p-2 dark:border-neutral-800">
+                School
+              </th>
+              <th
+                scope="col"
+                className="w-16 border-b border-neutral-500 p-2 text-center dark:border-neutral-800"
+              >
+                Level
+              </th>
+              <th scope="col" className="border-b border-neutral-500 p-2 dark:border-neutral-800">
+                Classes
+              </th>
+              <th
+                scope="col"
+                className="border-b border-neutral-500 p-2 text-center dark:border-neutral-800"
+              >
+                Components
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -573,39 +773,39 @@ export default function Library() {
               <tr
                 key={s.id}
                 data-testid={`spell-row-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
-                className="border-b border-neutral-800/50 hover:bg-neutral-800 group"
+                className="group border-b border-neutral-200 hover:bg-neutral-100 dark:border-neutral-800/50 dark:hover:bg-neutral-800"
               >
                 <td className="p-2 space-x-2 flex items-center">
                   <Link
                     to={`/edit/${s.id}`}
                     data-testid={`spell-link-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
-                    className="text-blue-400 hover:underline"
+                    className={`${focusVisibleRingClassName} text-blue-700 hover:underline dark:text-blue-400`}
                   >
                     {s.name}
                   </Link>
                   {s.isQuestSpell === 1 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-500">
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-700 dark:text-yellow-400">
                       Quest
                     </span>
                   )}
                   {s.level >= 10 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-400">
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-700 dark:text-purple-400">
                       Epic
                     </span>
                   )}
                   {s.level === 0 && s.isCantrip === 1 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-400">
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-500 dark:text-neutral-400">
                       Cantrip
                     </span>
                   )}
                   <select
-                    className="ml-2 w-4 h-4 text-xs bg-neutral-800 text-transparent hover:text-white rounded focus:w-auto focus:text-white transition-all"
+                    className={`${focusVisibleRingClassName} ml-2 min-h-6 min-w-[7.5rem] rounded-md border border-neutral-500 bg-white px-1.5 py-1 text-sm text-neutral-900 transition-colors dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
                     data-testid={`add-to-char-select-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
                     aria-label={`Add ${s.name} to character`}
                     onChange={(e) => addToCharacter(s.id, e.target.value)}
                     value=""
                   >
-                    <option value="">+</option>
+                    <option value="">Add to character…</option>
                     {characters.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -619,14 +819,49 @@ export default function Library() {
                 <td className="p-2 text-center">{s.components}</td>
               </tr>
             ))}
-            {spells.length === 0 && (
+            {showEmptyLibrary && (
               <tr>
-                <td
-                  colSpan={5}
-                  className="p-8 text-center text-neutral-500"
-                  data-testid="no-spells-found"
-                >
-                  No spells found.
+                <td colSpan={5}>
+                  <EmptyState
+                    heading={EMPTY_LIBRARY_STATE.heading}
+                    description={EMPTY_LIBRARY_STATE.description}
+                    testId="empty-library-state"
+                  >
+                    <Link
+                      to="/edit/new"
+                      data-testid="empty-library-create-button"
+                      className={`${focusVisibleRingClassName} px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-500 text-sm`}
+                    >
+                      Create Spell
+                    </Link>
+                    <Link
+                      to="/import"
+                      data-testid="empty-library-import-button"
+                      className={`${focusVisibleRingClassName} px-4 py-2 bg-neutral-200 text-neutral-900 rounded-md hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 text-sm`}
+                    >
+                      Import Spells
+                    </Link>
+                  </EmptyState>
+                </td>
+              </tr>
+            )}
+            {showEmptySearch && (
+              <tr>
+                <td colSpan={5}>
+                  <EmptyState
+                    heading={EMPTY_SEARCH_STATE.heading}
+                    description={EMPTY_SEARCH_STATE.description}
+                    testId="empty-search-state"
+                  >
+                    <button
+                      type="button"
+                      data-testid="empty-search-reset-button"
+                      onClick={handleResetFilters}
+                      className={`${focusVisibleRingClassName} px-4 py-2 bg-neutral-200 text-neutral-900 rounded-md hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 text-sm`}
+                    >
+                      Reset Filters
+                    </button>
+                  </EmptyState>
                 </td>
               </tr>
             )}

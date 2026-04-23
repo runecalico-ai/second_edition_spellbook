@@ -12,12 +12,12 @@ export function WarningBanner({ fields }: WarningBannerProps) {
   if (fields.length === 0) return null;
   const fieldList = fields.join(" and ");
   return (
-    <div
-      role="alert"
-      className="rounded border border-amber-600/50 bg-amber-600/10 px-3 py-2 text-sm text-amber-200"
+    <output
+      aria-live="polite"
+      className="block rounded border border-amber-600/50 bg-amber-600/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100"
       data-testid="spell-editor-special-fallback-banner"
     >
       {fieldList} could not be fully parsed; original text preserved.
-    </div>
+    </output>
   );
 }

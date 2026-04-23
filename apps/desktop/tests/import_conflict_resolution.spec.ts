@@ -14,10 +14,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
-import { generateRunId, getTestDirname } from "./fixtures/test-utils";
+import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
-
-const __dirname = getTestDirname(import.meta.url);
 const LARGE_IMPORT_WARNING_THRESHOLD_BYTES = 10 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
@@ -158,6 +156,7 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("json import: malicious strings render as text without injected elements", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -166,9 +165,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     const maliciousDescription = `<script>alert(1)</script> Imported ${runId}`;
 
     await test.step("Preview shows malicious strings as plain text", async () => {
-      const tmpDir = path.join(__dirname, `tmp/xss_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       writeSpellBundle(jsonPath, [makeSpell(maliciousName, maliciousDescription)]);
 
       await app.resetImportWizard();
@@ -197,13 +194,12 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("json preview: persisted reject-spell policy blocks invalid SourceRef URLs", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
-    const tmpDir = path.join(__dirname, `tmp/policy_${runId}`);
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-    const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+    const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
 
     writeSpellBundle(jsonPath, [
       {
@@ -240,6 +236,7 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("per-conflict: Keep Existing preserves original spell", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -253,9 +250,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
 
     await test.step("Import JSON with conflict", async () => {
-      const tmpDir = path.join(__dirname, `tmp/cke_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       writeSpellBundle(jsonPath, [makeSpell(spellName, incomingDesc)]);
 
       await app.importJsonFile(jsonPath);
@@ -283,6 +278,7 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("per-conflict: Replace with New overwrites spell content", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -296,9 +292,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
 
     await test.step("Import conflicting JSON", async () => {
-      const tmpDir = path.join(__dirname, `tmp/crep_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       writeSpellBundle(jsonPath, [makeSpell(spellName, incomingDesc)]);
 
       await app.importJsonFile(jsonPath);
@@ -322,7 +316,11 @@ test.describe("JSON Import Conflict Resolution", () => {
   });
 
   // ─── Test 3: Per-conflict — Keep Both ──────────────────────────────────
-  test("per-conflict: Keep Both creates a suffixed copy", async ({ appContext, fileTracker }) => {
+  test("per-conflict: Keep Both creates a suffixed copy", async ({
+    appContext,
+    fileTracker,
+    testTmpDir,
+  }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
     const runId = generateRunId();
@@ -335,9 +333,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
 
     await test.step("Import conflicting JSON", async () => {
-      const tmpDir = path.join(__dirname, `tmp/ckb_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       writeSpellBundle(jsonPath, [makeSpell(spellName, incomingDesc)]);
 
       await app.importJsonFile(jsonPath);
@@ -361,8 +357,8 @@ test.describe("JSON Import Conflict Resolution", () => {
 
       // Suffixed copy "(1)" should also exist
       await app.navigate("Library");
-      await page.getByPlaceholder(/Search spells/i).fill(spellName);
-      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.getByTestId("search-input").fill(spellName);
+      await page.getByTestId("library-search-button").click();
 
       // Both the original and "(1)" variant should appear in results
       await expect(page.getByRole("link", { name: spellName, exact: true })).toBeVisible({
@@ -378,6 +374,7 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("per-conflict: Apply to All resolves remaining conflicts in one click", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -391,9 +388,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
 
     await test.step("Import 3-spell bundle (all conflict)", async () => {
-      const tmpDir = path.join(__dirname, `tmp/ata_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       writeSpellBundle(
         jsonPath,
         spellNames.map((n) => makeSpell(n, `Updated ${runId} for ${n}`)),
@@ -422,6 +417,7 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("bulk dialog: shown for 10+ conflicts; Replace All resolves all", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -435,9 +431,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
 
     await test.step(`Import ${conflictCount}-spell bundle (all conflict)`, async () => {
-      const tmpDir = path.join(__dirname, `tmp/bulk_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       const spells = Array.from({ length: conflictCount }, (_, i) =>
         makeSpell(`BulkSpell_${runId}_${i}`, `Updated ${runId} version`),
       );
@@ -469,6 +463,7 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("bulk dialog: Skip All keeps existing content; library unchanged", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -484,9 +479,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
 
     await test.step(`Import ${conflictCount}-spell bundle (all conflict)`, async () => {
-      const tmpDir = path.join(__dirname, `tmp/skipall_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       const spells = Array.from({ length: conflictCount }, (_, i) =>
         makeSpell(`BulkSkip_${runId}_${i}`, `Incoming ${runId} — should be skipped`),
       );
@@ -520,6 +513,7 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("bulk dialog: Keep All adds suffixed copies; library has both", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -536,9 +530,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
 
     await test.step(`Import ${conflictCount}-spell bundle (all conflict)`, async () => {
-      const tmpDir = path.join(__dirname, `tmp/keepall_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       const spells = Array.from({ length: conflictCount }, (_, i) =>
         makeSpell(`BulkKeep_${runId}_${i}`, incomingDesc),
       );
@@ -567,8 +559,8 @@ test.describe("JSON Import Conflict Resolution", () => {
       await expect(page.getByText(originalDesc)).toBeVisible({ timeout: TIMEOUTS.medium });
 
       await app.navigate("Library");
-      await page.getByPlaceholder(/Search spells/i).fill(baseName);
-      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.getByTestId("search-input").fill(baseName);
+      await page.getByTestId("library-search-button").click();
 
       await expect(page.getByRole("link", { name: baseName, exact: true })).toBeVisible({
         timeout: TIMEOUTS.medium,
@@ -583,6 +575,7 @@ test.describe("JSON Import Conflict Resolution", () => {
   test("bulk dialog: Review Each shows per-conflict dialog with progress", async ({
     appContext,
     fileTracker,
+    testTmpDir,
   }) => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
@@ -596,9 +589,7 @@ test.describe("JSON Import Conflict Resolution", () => {
     });
 
     await test.step(`Import ${conflictCount}-spell bundle (all conflict)`, async () => {
-      const tmpDir = path.join(__dirname, `tmp/review_${runId}`);
-      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-      const jsonPath = fileTracker.track(path.join(tmpDir, "bundle.json"));
+      const jsonPath = fileTracker.track(path.join(testTmpDir, "bundle.json"));
       const spells = Array.from({ length: conflictCount }, (_, i) =>
         makeSpell(`BulkReview_${runId}_${i}`, `Updated ${runId}`),
       );

@@ -1,12 +1,67 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { useLayoutEffect, type ComponentType, type ReactNode } from "react";
 import { ComponentCheckboxes } from "./ComponentCheckboxes";
 import { fn } from "./storybook-utils";
+
+type StoryTheme = "light" | "dark";
+
+function StoryThemeFrame({
+  theme,
+  children,
+}: {
+  theme: StoryTheme;
+  children: ReactNode;
+}) {
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const previousHasDarkClass = root.classList.contains("dark");
+    const previousColorScheme = root.style.colorScheme;
+
+    root.classList.toggle("dark", theme === "dark");
+    root.style.colorScheme = theme;
+
+    return () => {
+      root.classList.toggle("dark", previousHasDarkClass);
+      root.style.colorScheme = previousColorScheme;
+    };
+  }, [theme]);
+
+  return (
+    <div
+      className={
+        // NEW-001: Keep dark verification wrapper on the approved neutral palette.
+        theme === "dark" ? "dark rounded-2xl bg-neutral-900 p-4" : "rounded-2xl bg-white p-4"
+      }
+    >
+      <div className="max-w-4xl">{children}</div>
+    </div>
+  );
+}
+
+const withTheme = (theme: StoryTheme) => (Story: ComponentType) => (
+  <StoryThemeFrame theme={theme}>
+    <Story />
+  </StoryThemeFrame>
+);
+
+const darkStory = {
+  // H-003: Keep explicit dark-mode story coverage for chunk-4 visual verification.
+  parameters: {
+    backgrounds: {
+      default: "dark",
+    },
+  },
+  decorators: [withTheme("dark")],
+};
 
 const meta = {
   title: "SpellEditor/ComponentCheckboxes",
   component: ComponentCheckboxes,
   parameters: {
     layout: "padded",
+    backgrounds: {
+      default: "light",
+    },
   },
   tags: ["autodocs"],
 } satisfies Meta<typeof ComponentCheckboxes>;
@@ -37,6 +92,11 @@ export const VsmOnly: Story = {
     materialComponents: [],
     onChange: fn(),
   },
+};
+
+export const VsmOnlyDark: Story = {
+  ...darkStory,
+  args: VsmOnly.args,
 };
 
 export const VerbalOnly: Story = {
@@ -82,6 +142,34 @@ export const AllComponents: Story = {
     materialComponents: [],
     onChange: fn(),
   },
+};
+
+export const AllVariant: Story = {
+  args: {
+    variant: "all",
+    components: {
+      verbal: true,
+      somatic: true,
+      material: true,
+      focus: true,
+      divineFocus: true,
+      experience: true,
+    },
+    materialComponents: [
+      {
+        name: "Diamond dust",
+        quantity: 1.0,
+        isConsumed: true,
+        gpValue: 100,
+      },
+    ],
+    onChange: fn(),
+  },
+};
+
+export const AllVariantDark: Story = {
+  ...darkStory,
+  args: AllVariant.args,
 };
 
 export const WithSingleMaterial: Story = {
@@ -154,6 +242,11 @@ export const WithComplexMaterial: Story = {
     ],
     onChange: fn(),
   },
+};
+
+export const WithComplexMaterialDark: Story = {
+  ...darkStory,
+  args: WithComplexMaterial.args,
 };
 
 export const WithQuantityGreaterThanOne: Story = {

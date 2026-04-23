@@ -1,8 +1,10 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { RouterProvider, createBrowserRouter } from "react-router-dom";
+import { RouterProvider, createBrowserRouter, type RouteObject } from "react-router-dom";
 import "./index.css";
-import { useParams } from "react-router-dom";
+import { useEffect } from "react";
+import type { ThemeState } from "./store/useTheme";
+import { useTheme } from "./store/useTheme";
 import App from "./ui/App";
 import CharacterEditor from "./ui/CharacterEditor";
 import CharacterManager from "./ui/CharacterManager";
@@ -12,21 +14,93 @@ import ImportWizard from "./ui/ImportWizard";
 import Library from "./ui/Library";
 import SpellEditor from "./ui/SpellEditor";
 import SpellbookBuilder from "./ui/SpellbookBuilder";
+import SettingsPage from "./ui/SettingsPage";
 
-// This wrapper is now responsible for passing the ID to SpellEditor,
-// allowing SpellEditor to manage its own state and data fetching based on the ID prop,
-// rather than forcing a remount with the 'key' prop.
 function SpellEditorWrapper() {
-  const { id } = useParams();
-  return <SpellEditor key={id} />;
+  return <SpellEditor />;
 }
 
-const router = createBrowserRouter([
+type ThemeStore = {
+  getState: () => ThemeState;
+  subscribe: (listener: (state: ThemeState) => void) => () => void;
+};
+
+type ThemeMediaQueryList = {
+  matches: boolean;
+  addEventListener: (type: "change", listener: (event: { matches: boolean }) => void) => void;
+  removeEventListener: (type: "change", listener: (event: { matches: boolean }) => void) => void;
+};
+
+type ThemeRuntimeRoot = {
+  classList: {
+    toggle: (token: string, force?: boolean) => boolean;
+  };
+  dataset: DOMStringMap;
+};
+
+export function applyResolvedTheme(
+  rootElement: ThemeRuntimeRoot,
+  resolvedTheme: ThemeState["resolvedTheme"],
+) {
+  rootElement.classList.toggle("dark", resolvedTheme === "dark");
+  rootElement.dataset.theme = resolvedTheme;
+}
+
+export function attachThemeRuntime({
+  rootElement,
+  mediaQueryList,
+  store,
+}: {
+  rootElement: ThemeRuntimeRoot;
+  mediaQueryList: ThemeMediaQueryList;
+  store: ThemeStore;
+}) {
+  applyResolvedTheme(rootElement, store.getState().resolvedTheme);
+
+  const handleSystemThemeChange = (event: { matches: boolean }) => {
+    store.getState().syncResolvedTheme(event.matches);
+  };
+
+  const unsubscribe = store.subscribe((state) => {
+    applyResolvedTheme(rootElement, state.resolvedTheme);
+  });
+
+  mediaQueryList.addEventListener("change", handleSystemThemeChange);
+
+  return () => {
+    unsubscribe();
+    mediaQueryList.removeEventListener("change", handleSystemThemeChange);
+  };
+}
+
+function ThemeRuntime() {
+  useEffect(() => {
+    if (
+      typeof document === "undefined" ||
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return undefined;
+    }
+
+    const mediaQueryList = window.matchMedia("(prefers-color-scheme: dark)");
+    return attachThemeRuntime({
+      rootElement: document.documentElement,
+      mediaQueryList,
+      store: useTheme,
+    });
+  }, []);
+
+  return null;
+}
+
+export const appRoutes: RouteObject[] = [
   {
     path: "/",
     element: <App />,
     children: [
       { index: true, element: <Library /> },
+      { path: "settings", element: <SettingsPage /> },
       { path: "import", element: <ImportWizard /> },
       { path: "chat", element: <Chat /> },
       { path: "export", element: <ExportPage /> },
@@ -36,16 +110,40 @@ const router = createBrowserRouter([
       { path: "character/:id/edit", element: <CharacterEditor /> },
     ],
   },
-]);
+];
 
-const root = document.getElementById("root");
+export function createAppRouter() {
+  return createBrowserRouter(appRoutes);
+}
 
-if (root) {
-  createRoot(root).render(
-    <React.StrictMode>
+export function AppRuntime({
+  activeRouter,
+}: {
+  activeRouter?: ReturnType<typeof createAppRouter>;
+}) {
+  const router = activeRouter ?? createAppRouter();
+
+  return (
+    <>
+      <ThemeRuntime />
       <RouterProvider router={router} />
+    </>
+  );
+}
+
+export function mountApp(rootElement: HTMLElement | null) {
+  if (!rootElement) {
+    console.error("Root element not found for React app.");
+    return;
+  }
+
+  createRoot(rootElement).render(
+    <React.StrictMode>
+      <AppRuntime />
     </React.StrictMode>,
   );
-} else {
-  console.error("Root element not found for React app.");
+}
+
+if (typeof document !== "undefined") {
+  mountApp(document.getElementById("root"));
 }

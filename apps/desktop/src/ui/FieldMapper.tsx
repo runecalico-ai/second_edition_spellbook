@@ -133,6 +133,7 @@ export default function FieldMapper({ spells, onConfirm, onCancel }: FieldMapper
           </button>
           <button
             type="button"
+            data-testid="btn-import-field-mapper-cancel"
             onClick={onCancel}
             className="px-3 py-1 text-xs bg-neutral-800 text-neutral-400 rounded hover:bg-neutral-700"
           >

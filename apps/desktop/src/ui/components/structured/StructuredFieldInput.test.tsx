@@ -1,0 +1,505 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DurationSpec, RangeSpec, SpellCastingTime } from "../../../types/spell";
+import type { SpellEditorFieldError } from "../../spellEditorValidation";
+import { StructuredFieldInput } from "./StructuredFieldInput";
+
+afterEach(() => {
+  cleanup();
+});
+
+const ROOT_SURFACE_CLASSES = [
+  "rounded-xl",
+  "border-neutral-300",
+  "bg-white",
+  "dark:bg-neutral-800",
+];
+
+const DIRECT_INPUT_BORDER_CLASS = "border-neutral-400"; // H-002
+
+const PRIMARY_ROW_CLASSES = ["flex", "min-w-0", "flex-wrap", "items-center", "gap-2"];
+
+// M-004: lock key light-mode support tokens on grouped supporting/preview rows.
+const SUPPORTING_ROW_CLASSES = [
+  "rounded-lg",
+  "border-neutral-200",
+  "bg-neutral-50/70",
+  "dark:bg-neutral-700",
+];
+
+const PREVIEW_ROW_CLASSES = [
+  "rounded-lg",
+  "border-neutral-200",
+  "bg-neutral-50",
+  "dark:bg-neutral-700",
+];
+
+const FOCUS_RING_CLASSES = [
+  "focus-visible:ring-2",
+  "focus-visible:ring-blue-500",
+  "focus-visible:ring-offset-1",
+  "dark:focus-visible:ring-offset-neutral-900",
+];
+
+function expectClasses(node: HTMLElement, classes: string[]) {
+  const tokens = new Set(node.className.split(/\s+/).filter(Boolean));
+  for (const className of classes) {
+    expect(tokens.has(className)).toBe(true);
+  }
+}
+
+function expectFocusRing(node: Element) {
+  expectClasses(node as HTMLElement, FOCUS_RING_CLASSES);
+}
+
+function getRoot() {
+  return screen.getByTestId("structured-field-input");
+}
+
+function expectGroupLegend(root: HTMLElement, expectedLabel: string) {
+  expect(root.tagName).toBe("FIELDSET");
+  const legend = root.querySelector("legend");
+  expect(legend).not.toBeNull();
+  expect(legend?.className.split(/\s+/)).toContain("sr-only");
+  expect(legend?.textContent).toBe(expectedLabel);
+}
+
+function getPrimaryRow() {
+  return screen.getByTestId("structured-field-primary-row");
+}
+
+function getSupportingRow() {
+  return screen.getByTestId("structured-field-supporting-row");
+}
+
+function getPreviewRow() {
+  return screen.getByTestId("structured-field-preview-row");
+}
+
+const PREVIEW_ARIA_LABEL: Record<string, string> = {
+  "range-text-preview": "Computed range text",
+  "duration-text-preview": "Computed duration text",
+  "casting-time-text-preview": "Computed casting time text",
+};
+
+function expectPreviewRow(previewTestId: string, expectedText: string) {
+  const preview = screen.getByTestId(previewTestId);
+  expect(preview.tagName).toBe("OUTPUT");
+  expect(preview.textContent).toBe(expectedText);
+  expect(preview.getAttribute("aria-live")).toBeNull();
+  expect(preview.getAttribute("aria-label")).toBe(PREVIEW_ARIA_LABEL[previewTestId] ?? null);
+  return preview;
+}
+
+describe("StructuredFieldInput", () => {
+  it("primary control row includes flex-wrap for 900px layout compatibility", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="range"
+        value={
+          { kind: "distance", unit: "ft", distance: { mode: "fixed", value: 10 } } as RangeSpec
+        }
+        onChange={() => {}}
+      />,
+    );
+    const root = getRoot();
+    const primary = getPrimaryRow();
+    const tokens = new Set(primary.className.split(/\s+/).filter(Boolean));
+    expect(tokens.has("flex-wrap")).toBe(true);
+    expect(tokens.has("min-w-0")).toBe(true);
+    expect(root.contains(primary)).toBe(true);
+  });
+
+  it("applies the standard focus-visible ring to structured controls across field types", () => {
+    const { rerender } = render(
+      <StructuredFieldInput
+        fieldType="range"
+        value={
+          {
+            kind: "special",
+            rawLegacyValue: "legacy range",
+            notes: "range notes",
+          } as RangeSpec
+        }
+        onChange={() => {}}
+      />,
+    );
+
+    for (const element of getRoot().querySelectorAll("select, input, textarea")) {
+      expectFocusRing(element);
+    }
+
+    rerender(
+      <StructuredFieldInput
+        fieldType="duration"
+        value={
+          {
+            kind: "usage_limited",
+            uses: { mode: "fixed", value: 2 },
+            notes: "duration notes",
+          } as DurationSpec
+        }
+        onChange={() => {}}
+      />,
+    );
+
+    for (const element of getRoot().querySelectorAll("select, input, textarea")) {
+      expectFocusRing(element);
+    }
+
+    rerender(
+      <StructuredFieldInput
+        fieldType="casting_time"
+        value={
+          {
+            text: "1 round",
+            unit: "round",
+            baseValue: 1,
+            perLevel: 0,
+            levelDivisor: 1,
+            rawLegacyValue: "legacy ct",
+          } as SpellCastingTime
+        }
+        onChange={() => {}}
+      />,
+    );
+
+    for (const element of getRoot().querySelectorAll("select, input")) {
+      expectFocusRing(element);
+    }
+  });
+
+  it("M-003: locks the range grouped DOM contract (H-001/H-002 palette tokens)", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="range"
+        value={
+          {
+            kind: "distance",
+            unit: "ft",
+            distance: { mode: "fixed", value: 30 },
+          } as RangeSpec
+        }
+        onChange={() => {}}
+      />,
+    );
+
+    const root = getRoot();
+    expectGroupLegend(root, "Range");
+    expectClasses(root, ROOT_SURFACE_CLASSES);
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
+    expectClasses(supporting, SUPPORTING_ROW_CLASSES);
+    expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expect(primary.contains(screen.getByTestId("range-kind-select"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("range-scalar"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("range-unit"))).toBe(true);
+    expect(screen.getByTestId("range-kind-select").className.split(/\s+/)).toContain(
+      DIRECT_INPUT_BORDER_CLASS,
+    );
+    expect(screen.getByTestId("range-unit").className.split(/\s+/)).toContain(
+      DIRECT_INPUT_BORDER_CLASS,
+    );
+    expect(screen.getByTestId("range-notes").className.split(/\s+/)).toContain(
+      DIRECT_INPUT_BORDER_CLASS,
+    );
+    expect(screen.queryByTestId("range-raw-legacy")).toBeNull();
+    expect(supporting.contains(screen.getByTestId("range-notes"))).toBe(true);
+    expect(preview.contains(expectPreviewRow("range-text-preview", "30 ft"))).toBe(true);
+  });
+
+  it("keeps range raw legacy fields in the primary row", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="range"
+        value={{ kind: "special", rawLegacyValue: "legacy range" } as RangeSpec}
+        onChange={() => {}}
+      />,
+    );
+
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
+    expectClasses(supporting, SUPPORTING_ROW_CLASSES);
+    expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expect(primary.contains(screen.getByTestId("range-kind-select"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("range-raw-legacy"))).toBe(true);
+  });
+
+  it("range kind changes recompute text and clear stale structured fields", () => {
+    const onChange = vi.fn();
+    render(
+      <StructuredFieldInput
+        fieldType="range"
+        value={{
+          kind: "distance",
+          unit: "ft",
+          distance: { mode: "fixed", value: 30 },
+          rawLegacyValue: "legacy text",
+          notes: "keep notes",
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("range-kind-select"), { target: { value: "personal" } });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0]).toMatchObject({
+      kind: "personal",
+      text: "Personal",
+      unit: undefined,
+      distance: undefined,
+      rawLegacyValue: undefined,
+    });
+  });
+
+  it("M-003: locks the duration grouped DOM contract", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="duration"
+        value={{ kind: "time", unit: "round", duration: { mode: "fixed", value: 3 } }}
+        onChange={() => {}}
+      />,
+    );
+
+    const root = getRoot();
+    expectGroupLegend(root, "Duration");
+    expectClasses(root, ROOT_SURFACE_CLASSES);
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
+    expectClasses(supporting, SUPPORTING_ROW_CLASSES);
+    expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("duration-scalar"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("duration-unit"))).toBe(true);
+    expect(screen.queryByTestId("duration-condition")).toBeNull();
+    expect(screen.queryByTestId("duration-raw-legacy")).toBeNull();
+    expect(supporting.contains(screen.getByTestId("duration-notes"))).toBe(true);
+    expect(preview.contains(expectPreviewRow("duration-text-preview", "3 round"))).toBe(true);
+  });
+
+  it("keeps duration special raw fields in the primary row", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="duration"
+        value={
+          {
+            kind: "special",
+            rawLegacyValue: "legacy duration",
+            notes: "notes",
+          } as DurationSpec
+        }
+        onChange={() => {}}
+      />,
+    );
+
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
+    expectClasses(supporting, SUPPORTING_ROW_CLASSES);
+    expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("duration-raw-legacy"))).toBe(true);
+  });
+
+  it("keeps duration condition fields in the primary row", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="duration"
+        value={
+          {
+            kind: "conditional",
+            condition: "When cast",
+          } as DurationSpec
+        }
+        onChange={() => {}}
+      />,
+    );
+
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
+    expectClasses(supporting, SUPPORTING_ROW_CLASSES);
+    expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("duration-condition"))).toBe(true);
+  });
+
+  it("keeps duration usage-limited scalar controls in the primary row", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="duration"
+        value={
+          {
+            kind: "usage_limited",
+            uses: { mode: "fixed", value: 2 },
+          } as DurationSpec
+        }
+        onChange={() => {}}
+      />,
+    );
+
+    const primary = getPrimaryRow();
+    const supporting = getSupportingRow();
+    const preview = getPreviewRow();
+    expectClasses(supporting, SUPPORTING_ROW_CLASSES);
+    expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expect(primary.contains(screen.getByTestId("duration-kind-select"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("duration-uses-scalar"))).toBe(true);
+    expect(preview.contains(expectPreviewRow("duration-text-preview", "2 use(s)"))).toBe(true);
+  });
+
+  it("duration kind changes recompute text and clear stale structured fields", () => {
+    const onChange = vi.fn();
+    render(
+      <StructuredFieldInput
+        fieldType="duration"
+        value={{
+          kind: "time",
+          unit: "round",
+          duration: { mode: "fixed", value: 3 },
+          rawLegacyValue: "legacy text",
+          notes: "keep notes",
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("duration-kind-select"), { target: { value: "instant" } });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0]).toMatchObject({
+      kind: "instant",
+      text: "Instant",
+      unit: undefined,
+      duration: undefined,
+      rawLegacyValue: undefined,
+    });
+  });
+
+  it("M-003: locks the casting-time grouped DOM contract", () => {
+    render(
+      <StructuredFieldInput
+        fieldType="casting_time"
+        value={
+          {
+            text: "1 segment",
+            unit: "segment",
+            baseValue: 1,
+            perLevel: 0,
+            levelDivisor: 1,
+            rawLegacyValue: "legacy ct",
+          } as SpellCastingTime
+        }
+        onChange={() => {}}
+      />,
+    );
+
+    const root = getRoot();
+    expectGroupLegend(root, "Casting Time");
+    expectClasses(root, ROOT_SURFACE_CLASSES);
+    const primary = getPrimaryRow();
+    const preview = getPreviewRow();
+    expectClasses(preview, PREVIEW_ROW_CLASSES);
+    expectClasses(primary, PRIMARY_ROW_CLASSES);
+    expect(primary.contains(screen.getByTestId("casting-time-base-value"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("casting-time-per-level"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("casting-time-level-divisor"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("casting-time-unit"))).toBe(true);
+    expect(primary.contains(screen.getByTestId("casting-time-raw-legacy"))).toBe(true);
+    expect(preview.contains(expectPreviewRow("casting-time-text-preview", "1 segment"))).toBe(true);
+  });
+
+  it("casting time unit switches clear raw legacy text when leaving special", () => {
+    const onChange = vi.fn();
+    render(
+      <StructuredFieldInput
+        fieldType="casting_time"
+        value={
+          {
+            text: "legacy ct",
+            unit: "special",
+            baseValue: 1,
+            perLevel: 0,
+            levelDivisor: 1,
+            rawLegacyValue: "legacy ct",
+          } as SpellCastingTime
+        }
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("casting-time-unit"), { target: { value: "segment" } });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0]).toMatchObject({
+      unit: "segment",
+      rawLegacyValue: undefined,
+    });
+  });
+
+  it("casting time base value edits recompute text through onChange", () => {
+    const onChange = vi.fn();
+    render(
+      <StructuredFieldInput
+        fieldType="casting_time"
+        value={
+          {
+            text: "1 segment",
+            unit: "segment",
+            baseValue: 1,
+            perLevel: 0,
+            levelDivisor: 1,
+          } as SpellCastingTime
+        }
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("casting-time-base-value"), { target: { value: "2" } });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0]).toMatchObject({
+      baseValue: 2,
+      unit: "segment",
+      text: "2 segments",
+    });
+  });
+
+  it("casting time validation errors are rendered directly on the field", () => {
+    const errors: SpellEditorFieldError[] = [
+      {
+        field: "casting-time-base-value",
+        testId: "error-casting-time-base-value",
+        message: "Base value must be 0 or greater",
+        focusTarget: "casting-time-base-value",
+      },
+    ];
+
+    render(
+      <StructuredFieldInput
+        fieldType="casting_time"
+        value={null}
+        onChange={() => {}}
+        visibleFieldErrors={errors}
+      />,
+    );
+
+    const error = screen.getByTestId("error-casting-time-base-value");
+    expect(error.tagName).toBe("P");
+    expect(error.textContent).toBe("Base value must be 0 or greater");
+    expect(screen.getByTestId("casting-time-base-value").getAttribute("aria-describedby")).toBe(
+      "error-casting-time-base-value",
+    );
+  });
+});

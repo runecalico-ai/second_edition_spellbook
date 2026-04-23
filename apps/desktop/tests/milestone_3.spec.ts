@@ -2,7 +2,8 @@ import { TIMEOUTS } from "./fixtures/constants";
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SELECTORS, SpellbookApp } from "./page-objects/SpellbookApp";
-import { setupAcceptAllDialogs } from "./utils/dialog-handler";
+import { dismissAllAppModals, handleCustomModal } from "./utils/dialog-handler";
+import { fillControlledTextInput } from "./utils/fill-controlled-text-input";
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
 
@@ -20,8 +21,7 @@ test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
   const { page } = appContext;
   const app = new SpellbookApp(page);
 
-  const cleanupDialog = setupAcceptAllDialogs(page);
-
+  await dismissAllAppModals(page);
   await app.navigate("Library");
 
   try {
@@ -43,15 +43,17 @@ test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
   await expect(page).toHaveURL(/\/edit\/new/);
   await page.getByLabel("Name", { exact: true }).fill(spellName);
   await page.getByLabel("Level", { exact: true }).fill("1");
+  await fillControlledTextInput(page.getByTestId("spell-school-input"), "Alteration");
   await page.getByLabel("Author").fill(authorName);
   await page.locator(SELECTORS.description).fill("Testing author search");
   await page.getByRole("button", { name: "Save Spell" }).click();
   await app.waitForLibrary();
+  await dismissAllAppModals(page);
 
   // Verify author search
   await app.navigate("Library");
-  await page.getByPlaceholder(/Search spells/i).fill(authorName);
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByTestId("search-input").fill(authorName);
+  await page.getByTestId("library-search-button").click();
   await expect(app.getSpellRow(spellName)).toBeVisible();
 
   // Verify level slider
@@ -59,11 +61,14 @@ test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
   await app.navigate("Add Spell");
   await page.getByLabel("Name", { exact: true }).fill(level5Spell);
   await page.getByLabel("Level", { exact: true }).fill("5");
+  await fillControlledTextInput(page.getByTestId("spell-school-input"), "Alteration");
   await page.locator(SELECTORS.description).fill("Level 5 test");
   await page.getByRole("button", { name: "Save Spell" }).click();
+  await app.waitForLibrary();
+  await dismissAllAppModals(page);
 
   await app.navigate("Library");
-  await page.getByPlaceholder(/Search spells/i).fill("");
+  await page.getByTestId("search-input").fill("");
 
   const thumbs = page.locator('[role="slider"]');
   await thumbs.nth(0).focus();
@@ -71,18 +76,18 @@ test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
   await thumbs.nth(1).focus();
   for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowLeft");
 
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByTestId("library-search-button").click();
   await expect(app.getSpellRow(level5Spell)).toBeVisible();
   await expect(app.getSpellRow(spellName)).not.toBeVisible();
 
   // Verify saved searches
   await page.getByRole("button", { name: "Save Current Search" }).click();
   const saveName = `Search ${runId}`;
-  await page.getByPlaceholder("Name...").fill(saveName);
+  await page.getByTestId("save-search-name-input").fill(saveName);
   await page.keyboard.press("Enter");
 
   await page.getByRole("button", { name: "Reset Filters" }).click();
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByTestId("library-search-button").click();
   await expect(app.getSpellRow(spellName)).toBeVisible();
 
   // Load saved search
@@ -90,12 +95,21 @@ test("Milestone 3: Robust Search & Saved Searches", async ({ appContext }) => {
     .getByRole("combobox")
     .filter({ hasText: "Saved Searches" })
     .selectOption({ label: saveName });
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByTestId("library-search-button").click();
   await expect(app.getSpellRow(level5Spell)).toBeVisible();
   await expect(app.getSpellRow(spellName)).not.toBeVisible();
 
   // Delete saved search
-  await page.getByRole("button", { name: "Delete Selected" }).click();
+  const deleteBtn = page.getByTestId("btn-delete-saved-search");
+  await deleteBtn.click();
 
-  cleanupDialog();
+  await expect(
+    page.getByRole("dialog").getByRole("heading", { name: "Delete Saved Search" }),
+  ).toBeVisible({ timeout: TIMEOUTS.medium });
+  await handleCustomModal(page, "Confirm");
+
+  // After deleting the only saved search, the select is removed from the DOM
+  await expect(page.getByTestId("saved-searches-select")).toHaveCount(0, {
+    timeout: TIMEOUTS.medium,
+  });
 });

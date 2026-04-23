@@ -1,6 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useNotifications } from "../store/useNotifications";
+import { EmptyState, EmptyStateLiveRegion } from "./components/EmptyState";
+
+function formatBuilderError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 const PRINT_LAYOUTS = [
   { id: "compact", label: "Print Compact" },
@@ -45,6 +55,14 @@ type SearchFilters = {
   isCantrip?: boolean | null;
 };
 
+const builderMutedTextClass = "text-neutral-600 dark:text-neutral-400";
+const builderHeaderSelectClass =
+  "rounded border border-neutral-500 bg-white px-2 py-1 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+const builderHeaderSecondaryActionClass =
+  "rounded border border-neutral-500 bg-neutral-200 text-neutral-900 hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700";
+const builderBackLinkClass =
+  "text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white";
+
 export default function SpellbookBuilder() {
   const { id } = useParams();
   const characterId = Number.parseInt(id || "", 10);
@@ -63,8 +81,17 @@ export default function SpellbookBuilder() {
   const [spellbookLoaded, setSpellbookLoaded] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [pageSize, setPageSize] = useState<"a4" | "letter">("letter");
+  const headerPickerButtonRef = useRef<HTMLButtonElement | null>(null);
+  const backLinkRef = useRef<HTMLAnchorElement | null>(null);
+  const pickerDialogRef = useRef<HTMLDialogElement | null>(null);
+  const pickerSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const lastPickerTriggerRef = useRef<HTMLElement | null>(null);
+  const wasPickerOpenRef = useRef(false);
+  const pushNotification = useNotifications((state) => state.pushNotification);
 
   const spellIds = useMemo(() => new Set(spellbook.map((entry) => entry.spellId)), [spellbook]);
+  const spellbookIsPendingInitialLoad = !spellbookLoaded && spellbook.length === 0;
+  const showEmptySpellbook = spellbookLoaded && spellbook.length === 0;
 
   const loadCharacter = useCallback(async () => {
     if (!Number.isFinite(characterId)) return;
@@ -121,6 +148,31 @@ export default function SpellbookBuilder() {
     searchPicker();
   }, [pickerOpen, searchPicker]);
 
+  useEffect(() => {
+    if (pickerOpen && characterLoaded && !character) {
+      setPickerOpen(false);
+    }
+  }, [pickerOpen, characterLoaded, character]);
+
+  useEffect(() => {
+    if (!pickerOpen) {
+      if (wasPickerOpenRef.current) {
+        if (lastPickerTriggerRef.current?.isConnected) {
+          lastPickerTriggerRef.current.focus();
+        } else if (headerPickerButtonRef.current?.isConnected) {
+          headerPickerButtonRef.current?.focus();
+        } else {
+          backLinkRef.current?.focus();
+        }
+      }
+      wasPickerOpenRef.current = false;
+      return;
+    }
+
+    wasPickerOpenRef.current = true;
+    pickerSearchInputRef.current?.focus();
+  }, [pickerOpen]);
+
   const addSpell = async (spell: SpellSummary) => {
     if (!character) return;
     if (spellIds.has(spell.id)) return;
@@ -134,7 +186,7 @@ export default function SpellbookBuilder() {
       });
       await loadSpellbook();
     } catch (e) {
-      alert(`Failed to add spell: ${e}`);
+      pushNotification("error", `Failed to add spell: ${formatBuilderError(e)}`);
     }
   };
 
@@ -147,7 +199,7 @@ export default function SpellbookBuilder() {
       });
       await loadSpellbook();
     } catch (e) {
-      alert(`Failed to remove spell: ${e}`);
+      pushNotification("error", `Failed to remove spell: ${formatBuilderError(e)}`);
     }
   };
 
@@ -202,12 +254,60 @@ export default function SpellbookBuilder() {
     }
   };
 
+  const openPicker = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    lastPickerTriggerRef.current =
+      event?.currentTarget ??
+      (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    // TODO(chunk-5): picker overlay still needs a hardened focus trap and full modal parity review in the Chunk 5 accessibility pass.
+    setPickerOpen(true);
+  };
+
+  const closePicker = () => {
+    setPickerOpen(false);
+  };
+
+  const handlePickerKeyDown = (event: React.KeyboardEvent<HTMLDialogElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePicker();
+      return;
+    }
+
+    if (event.key !== "Tab" || !pickerDialogRef.current) {
+      return;
+    }
+
+    const focusableElements = Array.from(
+      pickerDialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+
+    if (focusableElements.length === 0) {
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus();
+      return;
+    }
+
+    if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus();
+    }
+  };
+
   if (!Number.isFinite(characterId)) {
     return (
       <div className="p-4 space-y-2">
         <h2 className="text-xl font-bold">Spellbook Builder</h2>
-        <p className="text-neutral-500">Invalid character selection.</p>
-        <Link to="/character" className="text-sm text-neutral-400 hover:text-white">
+        <p className={builderMutedTextClass}>Invalid character selection.</p>
+        <Link ref={backLinkRef} to="/character" className={builderBackLinkClass}>
           ← Back to Characters
         </Link>
       </div>
@@ -218,8 +318,8 @@ export default function SpellbookBuilder() {
     return (
       <div className="p-4 space-y-2">
         <h2 className="text-xl font-bold">Spellbook Builder</h2>
-        <p className="text-neutral-500">Character not found.</p>
-        <Link to="/character" className="text-sm text-neutral-400 hover:text-white">
+        <p className={builderMutedTextClass}>Character not found.</p>
+        <Link ref={backLinkRef} to="/character" className={builderBackLinkClass}>
           ← Back to Characters
         </Link>
       </div>
@@ -228,22 +328,29 @@ export default function SpellbookBuilder() {
 
   return (
     <div className="p-4 space-y-4 h-full overflow-auto">
+      <EmptyStateLiveRegion
+        heading="No Spells Added"
+        description="This character's spellbook is empty."
+        testId="empty-character-spellbook-state"
+        active={showEmptySpellbook}
+      />
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Spellbook Builder</h1>
           {character ? (
-            <p className="text-sm text-neutral-400" data-testid="character-summary-label">
+            <p className={`text-sm ${builderMutedTextClass}`} data-testid="character-summary-label">
               {character.name} · {character.type} spellbook
             </p>
           ) : (
-            <p className="text-sm text-neutral-500">Loading character…</p>
+            <p className={`text-sm ${builderMutedTextClass}`}>Loading character…</p>
           )}
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
+            ref={headerPickerButtonRef}
             data-testid="btn-open-picker"
-            onClick={() => setPickerOpen(true)}
+            onClick={openPicker}
             className="px-3 py-2 bg-blue-600 rounded hover:bg-blue-500 text-sm"
           >
             Add Spells
@@ -254,7 +361,7 @@ export default function SpellbookBuilder() {
               data-testid="print-page-size-select"
               aria-label="Print page size"
               onChange={(e) => setPageSize(e.target.value as "a4" | "letter")}
-              className="bg-neutral-800 text-xs rounded px-2 py-1 border border-neutral-700"
+              className={builderHeaderSelectClass}
             >
               <option value="letter">Letter</option>
               <option value="a4">A4</option>
@@ -265,16 +372,17 @@ export default function SpellbookBuilder() {
                 type="button"
                 data-testid={`btn-print-spellbook-${layout.id}`}
                 onClick={() => printSpellbook(layout.id)}
-                className="px-2 py-1 text-xs bg-neutral-800 rounded hover:bg-neutral-700"
+                className={`px-2 py-1 text-xs ${builderHeaderSecondaryActionClass}`}
               >
                 {layout.label}
               </button>
             ))}
           </div>
           <Link
+            ref={backLinkRef}
             to="/character"
             data-testid="link-back-to-characters"
-            className="text-sm text-neutral-400 hover:text-white"
+            className={builderBackLinkClass}
           >
             ← Characters
           </Link>
@@ -283,7 +391,15 @@ export default function SpellbookBuilder() {
 
       {statusMessage && <div className="text-xs text-neutral-400">{statusMessage}</div>}
 
-      <div className="text-sm text-neutral-500">{spellbook.length} spells in spellbook</div>
+      <div
+        data-testid="spellbook-count-label"
+        aria-live="polite"
+        className="text-sm text-neutral-500"
+      >
+        {spellbookIsPendingInitialLoad
+          ? "Loading spellbook…"
+          : `${spellbook.length} spells in spellbook`}
+      </div>
 
       <table className="w-full text-left text-sm border-collapse">
         <thead className="text-neutral-400 border-b border-neutral-800">
@@ -379,14 +495,27 @@ export default function SpellbookBuilder() {
               </td>
             </tr>
           ))}
-          {spellbookLoaded && spellbook.length === 0 && (
+          {showEmptySpellbook && (
             <tr>
-              <td colSpan={7} className="p-8 text-center text-neutral-500">
-                No spells added yet. Use Add Spells to build the spellbook.
+              <td colSpan={7}>
+                <EmptyState
+                  heading="No Spells Added"
+                  description="This character's spellbook is empty."
+                  testId="empty-character-spellbook-state"
+                >
+                  <button
+                    type="button"
+                    data-testid="empty-character-add-spell-button"
+                    onClick={openPicker}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-500 text-sm"
+                  >
+                    Add Spell from Library
+                  </button>
+                </EmptyState>
               </td>
             </tr>
           )}
-          {!spellbookLoaded && (
+          {spellbookIsPendingInitialLoad && (
             <tr>
               <td colSpan={7} className="p-8 text-center text-neutral-500">
                 Loading spellbook…
@@ -397,14 +526,32 @@ export default function SpellbookBuilder() {
       </table>
 
       {pickerOpen && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-neutral-900 border border-neutral-700 rounded-lg w-[80vw] max-w-4xl p-4 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close spell picker"
+            data-testid="spellbook-picker-backdrop"
+            tabIndex={-1}
+            className="absolute inset-0 bg-black/70 border-none p-0 m-0 w-full h-full cursor-default"
+            onClick={closePicker}
+          />
+          <dialog
+            open
+            aria-modal="true"
+            aria-labelledby="spellbook-picker-heading"
+            data-testid="spellbook-picker-dialog"
+            ref={pickerDialogRef}
+            onKeyDown={handlePickerKeyDown}
+            className="relative bg-white border border-neutral-500 dark:bg-neutral-800 dark:border-neutral-700 rounded-lg w-[80vw] max-w-4xl p-4 space-y-4"
+          >
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Add spells</h3>
+              <h3 id="spellbook-picker-heading" className="text-lg font-semibold">
+                Add spells
+              </h3>
               <button
                 type="button"
-                onClick={() => setPickerOpen(false)}
-                className="text-sm text-neutral-400 hover:text-white"
+                onClick={closePicker}
+                className="text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
               >
                 Close
               </button>
@@ -412,7 +559,9 @@ export default function SpellbookBuilder() {
 
             <div className="flex flex-wrap gap-2">
               <input
-                className="flex-1 bg-neutral-800 border border-neutral-700 rounded-md px-3 py-2"
+                data-testid="spellbook-picker-search-input"
+                ref={pickerSearchInputRef}
+                className="flex-1 bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-2 text-neutral-900 dark:text-neutral-100"
                 placeholder="Search spells…"
                 value={pickerQuery}
                 onChange={(e) => setPickerQuery(e.target.value)}
@@ -421,18 +570,24 @@ export default function SpellbookBuilder() {
               <button
                 type="button"
                 onClick={searchPicker}
-                className="px-3 py-2 bg-neutral-700 rounded hover:bg-neutral-600"
+                className="px-3 py-2 bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600"
               >
                 Search
               </button>
             </div>
 
+            {!character && (
+              <output className="text-xs text-neutral-400">
+                Character details are still loading. Spell add actions will unlock shortly.
+              </output>
+            )}
+
             <div className="flex flex-wrap gap-3 text-sm">
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-neutral-400">Schools</span>
+                <span className="text-xs text-neutral-600 dark:text-neutral-400">Schools</span>
                 <select
                   multiple
-                  className="bg-neutral-800 border border-neutral-700 rounded-md px-3 py-1 min-w-[160px]"
+                  className="bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 min-w-[160px] text-neutral-900 dark:text-neutral-100"
                   value={schoolFilters}
                   onChange={(e) =>
                     setSchoolFilters(Array.from(e.target.selectedOptions).map((opt) => opt.value))
@@ -446,10 +601,10 @@ export default function SpellbookBuilder() {
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-neutral-400">Level range</span>
+                <span className="text-xs text-neutral-600 dark:text-neutral-400">Level range</span>
                 <div className="flex gap-2">
                   <select
-                    className="bg-neutral-800 border border-neutral-700 rounded-md px-3 py-1"
+                    className="bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 text-neutral-900 dark:text-neutral-100"
                     value={levelMin}
                     onChange={(e) => setLevelMin(e.target.value)}
                   >
@@ -461,7 +616,7 @@ export default function SpellbookBuilder() {
                     ))}
                   </select>
                   <select
-                    className="bg-neutral-800 border border-neutral-700 rounded-md px-3 py-1"
+                    className="bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md px-3 py-1 text-neutral-900 dark:text-neutral-100"
                     value={levelMax}
                     onChange={(e) => setLevelMax(e.target.value)}
                   >
@@ -476,46 +631,57 @@ export default function SpellbookBuilder() {
               </div>
               <div className="flex flex-col gap-1 justify-end">
                 <div className="flex gap-2 mb-1">
-                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-700 transition-colors">
+                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors">
                     <input
                       type="checkbox"
                       checked={isQuestFilter}
                       onChange={(e) => setIsQuestFilter(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-neutral-600 bg-neutral-900 text-blue-600"
+                      className="w-3.5 h-3.5 rounded border-neutral-500 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-blue-600"
                     />
-                    <span className="text-xs text-neutral-300">Quest</span>
+                    <span className="text-xs text-neutral-700 dark:text-neutral-300">Quest</span>
                   </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 border border-neutral-700 rounded-md cursor-pointer hover:bg-neutral-700 transition-colors">
+                  <label className="flex items-center gap-1.5 px-3 py-1 bg-neutral-100 border border-neutral-500 dark:bg-neutral-700 dark:border-neutral-600 rounded-md cursor-pointer hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors">
                     <input
                       type="checkbox"
                       checked={isCantripFilter}
                       onChange={(e) => setIsCantripFilter(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-neutral-600 bg-neutral-900 text-blue-600"
+                      className="w-3.5 h-3.5 rounded border-neutral-500 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-blue-600"
                     />
-                    <span className="text-xs text-neutral-300">Cantrips Only</span>
+                    <span className="text-xs text-neutral-700 dark:text-neutral-300">
+                      Cantrips Only
+                    </span>
                   </label>
                 </div>
               </div>
             </div>
 
-            <div className="max-h-[50vh] overflow-auto border border-neutral-800 rounded">
+            <div className="max-h-[50vh] overflow-auto border border-neutral-500 dark:border-neutral-700 rounded">
               <table className="w-full text-sm text-left border-collapse">
-                <thead className="text-neutral-400 bg-neutral-900 sticky top-0">
+                <thead className="text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-700 sticky top-0">
                   <tr>
-                    <th className="p-2 border-b border-neutral-800">Name</th>
-                    <th className="p-2 border-b border-neutral-800">School</th>
-                    <th className="p-2 border-b border-neutral-800 w-16 text-center">Level</th>
-                    <th className="p-2 border-b border-neutral-800 w-24 text-right">Action</th>
+                    <th className="p-2 border-b border-neutral-500 dark:border-neutral-600">
+                      Name
+                    </th>
+                    <th className="p-2 border-b border-neutral-500 dark:border-neutral-600">
+                      School
+                    </th>
+                    <th className="p-2 border-b border-neutral-500 dark:border-neutral-600 w-16 text-center">
+                      Level
+                    </th>
+                    <th className="p-2 border-b border-neutral-500 dark:border-neutral-600 w-24 text-right">
+                      Action
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {pickerResults.map((spell) => {
                     const alreadyAdded = spellIds.has(spell.id);
+                    const canAddSpell = character !== null && !alreadyAdded;
                     return (
                       <tr
                         key={spell.id}
                         data-testid={`picker-spell-row-${spell.name.replace(/\s+/g, "-").toLowerCase()}`}
-                        className="border-b border-neutral-800/50 hover:bg-neutral-800"
+                        className="border-b border-neutral-200 dark:border-neutral-700/50 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                       >
                         <td className="p-2">
                           <div className="flex items-center gap-2">
@@ -545,13 +711,15 @@ export default function SpellbookBuilder() {
                             data-testid={`btn-add-picker-${spell.name.replace(/\s+/g, "-").toLowerCase()}`}
                             onClick={() => addSpell(spell)}
                             className={`text-xs px-2 py-1 rounded ${
-                              alreadyAdded
-                                ? "bg-neutral-800 text-neutral-500 cursor-not-allowed"
-                                : "bg-blue-600 hover:bg-blue-500"
+                              canAddSpell
+                                ? "bg-blue-600 hover:bg-blue-500"
+                                : alreadyAdded
+                                  ? "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 cursor-not-allowed"
+                                  : "bg-neutral-200 text-neutral-500 dark:bg-neutral-700 dark:text-neutral-400 cursor-not-allowed"
                             }`}
-                            disabled={alreadyAdded}
+                            disabled={!canAddSpell}
                           >
-                            {alreadyAdded ? "Added" : "Add"}
+                            {alreadyAdded ? "Added" : canAddSpell ? "Add" : "Loading..."}
                           </button>
                         </td>
                       </tr>
@@ -567,7 +735,7 @@ export default function SpellbookBuilder() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </dialog>
         </div>
       )}
     </div>

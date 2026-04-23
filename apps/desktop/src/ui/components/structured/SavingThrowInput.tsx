@@ -61,6 +61,26 @@ const DEFAULT_SINGLE_SAVE: SingleSave = {
   onFailure: { result: "full_effect" },
 };
 
+const rootSurfaceClass =
+  "space-y-2 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100";
+
+const controlClass =
+  "rounded border border-neutral-400 bg-white px-2 py-1 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+
+const nestedSurfaceClass =
+  "space-y-2 rounded-lg border border-neutral-200 bg-neutral-50/70 p-2 dark:border-neutral-800 dark:bg-neutral-700";
+
+const annotationClass =
+  "flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] italic text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-400";
+
+const mutedTextClass = "text-neutral-600 dark:text-neutral-400";
+
+const secondaryButtonClass =
+  "rounded border border-neutral-300 bg-neutral-100 px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600";
+
+const removeButtonClass =
+  "rounded px-1 text-xs text-red-600 hover:bg-neutral-100 dark:text-red-400 dark:hover:bg-neutral-800";
+
 interface SavingThrowInputProps {
   value: SavingThrowSpec | null | undefined;
   onChange: (v: SavingThrowSpec) => void;
@@ -96,8 +116,10 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
     }
   };
 
+  // M-003: grouped semantics contract uses a fieldset root plus an sr-only legend label.
   return (
-    <div className="space-y-2" data-testid="saving-throw-input">
+    <fieldset className={rootSurfaceClass} data-testid="saving-throw-input">
+      <legend className="sr-only">Saving Throw</legend>
       <div className="flex flex-wrap items-center gap-2">
         <select
           data-testid="saving-throw-kind"
@@ -129,7 +151,7 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
               });
             }
           }}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={controlClass}
         >
           {(Object.entries(SAVING_THROW_KIND_LABELS) as [SavingThrowKind, string][]).map(
             ([k, label]) => (
@@ -142,10 +164,7 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
       </div>
 
       {spec.rawLegacyValue && (
-        <div
-          data-testid="saving-throw-raw-legacy-annotation"
-          className="flex items-center gap-2 px-2 py-1 bg-amber-900/10 border border-amber-900/30 rounded text-[10px] text-amber-200/70 italic"
-        >
+        <div data-testid="saving-throw-raw-legacy-annotation" className={annotationClass}>
           <span className="font-bold uppercase not-italic">Original source text:</span>
           <span>{spec.rawLegacyValue}</span>
         </div>
@@ -161,18 +180,15 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
 
       {spec.kind === "multiple" &&
         spec.multiple?.map((s, idx) => (
-          <div
-            key={`save-${idx}-${s.saveType}-${s.appliesTo}`}
-            className="p-2 bg-neutral-900/50 rounded border border-neutral-800 space-y-2"
-          >
+          <div key={`save-${idx}-${s.saveType}-${s.appliesTo}`} className={nestedSurfaceClass}>
             <div className="flex justify-between items-center">
-              <span className="text-xs text-neutral-500">Save #{idx + 1}</span>
+              <span className={`text-xs ${mutedTextClass}`}>Save #{idx + 1}</span>
               <button
                 type="button"
                 data-testid={`saving-throw-remove-multiple-${idx}`}
                 aria-label="Remove save"
                 onClick={() => removeMultiple(idx)}
-                className="text-xs text-red-400 hover:bg-neutral-800 rounded px-1"
+                className={removeButtonClass}
               >
                 Remove
               </button>
@@ -189,7 +205,7 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
           type="button"
           data-testid="saving-throw-add-multiple"
           onClick={addMultiple}
-          className="px-2 py-1 text-xs bg-neutral-700 hover:bg-neutral-600 rounded"
+          className={secondaryButtonClass}
         >
           Add save
         </button>
@@ -202,9 +218,9 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
         placeholder="Overall saving throw notes (optional)..."
         value={spec.notes ?? ""}
         onChange={(e) => updateSpec({ notes: e.target.value || undefined })}
-        className="w-full min-h-[60px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+        className={`w-full min-h-[60px] ${controlClass}`}
       />
-    </div>
+    </fieldset>
   );
 }
 
@@ -218,7 +234,7 @@ function SingleSaveForm({
   dataTestIdPrefix: string;
 }) {
   return (
-    <div className="flex flex-col gap-2 p-2 bg-neutral-900/50 rounded">
+    <div className={`flex flex-col gap-2 ${nestedSurfaceClass}`}>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
@@ -230,14 +246,14 @@ function SingleSaveForm({
             const val = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_");
             onChange({ id: val || undefined });
           }}
-          className="w-24 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100 font-mono"
+          className={`w-24 font-mono ${controlClass}`}
         />
         <select
           data-testid={`${dataTestIdPrefix}-save-type`}
           aria-label="Save type"
           value={save.saveType}
           onChange={(e) => onChange({ saveType: e.target.value as SaveType })}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={controlClass}
         >
           {(Object.entries(SAVE_TYPE_LABELS) as [SaveType, string][]).map(([k, label]) => (
             <option key={k} value={k}>
@@ -250,7 +266,7 @@ function SingleSaveForm({
           aria-label="Save vs"
           value={save.saveVs ?? "spell"}
           onChange={(e) => onChange({ saveVs: e.target.value })}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={controlClass}
         >
           {Object.entries(SAVE_VS_LABELS).map(([k, label]) => (
             <option key={k} value={k}>
@@ -269,14 +285,14 @@ function SingleSaveForm({
             const v = parseNumericInput(e.target.value);
             onChange({ modifier: Number.isNaN(v) ? 0 : v });
           }}
-          className="w-12 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={`w-12 ${controlClass}`}
         />
         <select
           data-testid={`${dataTestIdPrefix}-applies-to`}
           aria-label="Applies to"
           value={save.appliesTo ?? "each_target"}
           onChange={(e) => onChange({ appliesTo: e.target.value })}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={controlClass}
         >
           <option value="each_target">Each Target</option>
           <option value="each_round">Each Round</option>
@@ -289,7 +305,7 @@ function SingleSaveForm({
           aria-label="Timing"
           value={save.timing ?? "on_effect"}
           onChange={(e) => onChange({ timing: e.target.value })}
-          className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-sm text-neutral-100"
+          className={controlClass}
         >
           {Object.entries(SAVE_TIMING_LABELS).map(([k, label]) => (
             <option key={k} value={k}>
@@ -302,7 +318,7 @@ function SingleSaveForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-500">Success:</span>
+            <span className={`text-xs ${mutedTextClass}`}>Success:</span>
             <select
               data-testid={`${dataTestIdPrefix}-on-success`}
               aria-label="On success"
@@ -312,7 +328,7 @@ function SingleSaveForm({
                   onSuccess: { ...save.onSuccess, result: e.target.value as SaveOutcome },
                 })
               }
-              className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
+              className={`flex-1 ${controlClass} text-xs`}
             >
               {(Object.entries(SAVE_OUTCOME_LABELS) as [SaveOutcome, string][]).map(
                 ([k, label]) => (
@@ -331,13 +347,13 @@ function SingleSaveForm({
             onChange={(e) =>
               onChange({ onSuccess: { ...save.onSuccess, notes: e.target.value || undefined } })
             }
-            className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
+            className={`w-full min-h-[40px] ${controlClass} text-xs`}
           />
         </div>
 
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-500">Failure:</span>
+            <span className={`text-xs ${mutedTextClass}`}>Failure:</span>
             <select
               data-testid={`${dataTestIdPrefix}-on-failure`}
               aria-label="On failure"
@@ -347,7 +363,7 @@ function SingleSaveForm({
                   onFailure: { ...save.onFailure, result: e.target.value as SaveOutcome },
                 })
               }
-              className="flex-1 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
+              className={`flex-1 ${controlClass} text-xs`}
             >
               {(Object.entries(SAVE_OUTCOME_LABELS) as [SaveOutcome, string][]).map(
                 ([k, label]) => (
@@ -366,7 +382,7 @@ function SingleSaveForm({
             onChange={(e) =>
               onChange({ onFailure: { ...save.onFailure, notes: e.target.value || undefined } })
             }
-            className="w-full min-h-[40px] bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-100"
+            className={`w-full min-h-[40px] ${controlClass} text-xs`}
           />
         </div>
       </div>

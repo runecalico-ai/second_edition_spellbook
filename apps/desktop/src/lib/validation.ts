@@ -34,13 +34,6 @@ export function isAboveAdvisoryCap(value: number): boolean {
   return !Number.isNaN(value) && value > ADVISORY_CAP;
 }
 
-/**
- * Format a validation error message for display.
- */
-export function formatError(field: string, message: string): string {
-  return `${field}: ${message}`;
-}
-
 export const VALIDATION = {
   baseValueMin: 0,
   perLevelMin: 0,

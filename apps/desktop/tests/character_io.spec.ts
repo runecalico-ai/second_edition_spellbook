@@ -1,13 +1,17 @@
 import * as fs from "node:fs";
 import path from "node:path";
+import type { ConsoleMessage } from "@playwright/test";
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
-import { handleCustomModal } from "./utils/dialog-handler";
+import { dismissAllAppModals, handleCustomModal } from "./utils/dialog-handler";
 
 test.describe("Character Import/Export", () => {
+  const logBrowserConsole = (msg: ConsoleMessage) =>
+    console.log(`BROWSER [${msg.type()}]: ${msg.text()}`);
+
   test.beforeEach(async ({ appContext }) => {
-    appContext.page.on("console", (msg) => console.log(`BROWSER [${msg.type()}]: ${msg.text()}`));
+    appContext.page.on("console", logBrowserConsole);
     // signal frontend to use legacy download instead of native dialogs
     await appContext.page.addInitScript(() => {
       window.__IS_PLAYWRIGHT__ = true;
@@ -15,6 +19,10 @@ test.describe("Character Import/Export", () => {
     await appContext.page.evaluate(() => {
       window.__IS_PLAYWRIGHT__ = true;
     });
+  });
+
+  test.afterEach(async ({ appContext }) => {
+    appContext.page.off("console", logBrowserConsole);
   });
 
   test("should export and import a character bundle (Round Trip)", async ({ appContext }) => {
@@ -245,6 +253,7 @@ test.describe("Character Import/Export", () => {
     const charName = `Print_${runId}`;
 
     await app.createCharacter(charName);
+    await dismissAllAppModals(page);
     await app.openCharacterEditor(charName);
     await app.addClass("Mage");
     await app.addClass("Cleric");
@@ -252,6 +261,8 @@ test.describe("Character Import/Export", () => {
     // Print Character Sheet
     console.log("Testing Character Sheet Print...");
     await page.getByTestId("btn-print-sheet").click();
+    await expect(page.getByTestId("print-options-dialog")).toBeVisible({ timeout: 20000 });
+    await page.getByTestId("btn-confirm-print").click();
     await expect(page.getByText("Character sheet saved to:")).toBeVisible({ timeout: 20000 });
     await handleCustomModal(page, "OK");
 
@@ -259,6 +270,8 @@ test.describe("Character Import/Export", () => {
     console.log("Testing Spellbook Pack Print (Mage)...");
     const mageSection = page.locator('[aria-label="Class section for Mage"]');
     await mageSection.getByTestId("btn-print-pack").click();
+    await expect(page.getByTestId("print-options-dialog")).toBeVisible({ timeout: 20000 });
+    await page.getByTestId("btn-confirm-print").click();
     await expect(page.getByText("Spellbook pack saved to:")).toBeVisible({ timeout: 20000 });
     await handleCustomModal(page, "OK");
 

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useModal } from "../store/useModal";
 import type {
@@ -9,6 +9,7 @@ import type {
   CharacterSpellbookEntry,
 } from "../types/character";
 import PrintOptionsDialog, { type PrintOptions } from "./components/PrintOptionsDialog";
+import { spellbookE2EHarness } from "./spellbookE2EHarness";
 
 const SPHERES = [
   "All",
@@ -252,6 +253,13 @@ export default function CharacterEditor() {
             >
               Reload
             </button>
+            <Link
+              to={`/character/${character.id}/builder`}
+              data-testid="link-open-spellbook-builder"
+              className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 rounded text-xs font-medium transition-colors"
+            >
+              Spellbook Builder
+            </Link>
             <button
               type="button"
               data-testid="btn-print-sheet"
@@ -776,6 +784,7 @@ function ClassSpellList({
                   key={tab}
                   type="button"
                   data-testid={`tab-${tab.toLowerCase()}`}
+                  aria-pressed={activeTab === tab}
                   onClick={() => {
                     setActiveTab(tab);
                     setSelectedRemoveIds(new Set());
@@ -1009,6 +1018,40 @@ interface PickerSpell {
   tags?: string | null;
 }
 
+function buildSpellPickerFilterKey(
+  listType: "KNOWN" | "PREPARED",
+  query: string,
+  filters: {
+    isQuestSpell: boolean;
+    isCantrip: boolean;
+    school: string;
+    sphere: string;
+    levelMin?: number;
+    levelMax?: number;
+    tags: string;
+  },
+  preparedSourceKey?: string,
+): string {
+  return JSON.stringify({
+    listType,
+    query,
+    filters,
+    preparedSourceKey: listType === "PREPARED" ? (preparedSourceKey ?? "") : undefined,
+  });
+}
+
+function createSpellPickerFilters() {
+  return {
+    isQuestSpell: false,
+    isCantrip: false,
+    school: "",
+    sphere: "",
+    levelMin: undefined as number | undefined,
+    levelMax: undefined as number | undefined,
+    tags: "",
+  };
+}
+
 function SpellPicker({
   charClass,
   onAdded,
@@ -1024,114 +1067,177 @@ function SpellPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PickerSpell[]>([]);
-  const [filters, setFilters] = useState({
-    isQuestSpell: false,
-    isCantrip: false,
-    school: "",
-    sphere: "",
-    levelMin: undefined as number | undefined,
-    levelMax: undefined as number | undefined,
-    tags: "",
-  });
+  const [filters, setFilters] = useState(createSpellPickerFilters);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [activeSearchRequestId, setActiveSearchRequestId] = useState(0);
+  const [settledFilterKey, setSettledFilterKey] = useState("");
+  const [resultsSettled, setResultsSettled] = useState(false);
+  const [openStateReady, setOpenStateReady] = useState(false);
+  const searchRequestIdRef = useRef(0);
+
+  const preparedSourceKey = useMemo(() => {
+    return JSON.stringify(
+      knownSpells.map((spell) => [
+        spell.spellId,
+        spell.spellName,
+        spell.spellLevel,
+        spell.spellSchool ?? "",
+        spell.spellSphere ?? "",
+        spell.isQuestSpell ? 1 : 0,
+        spell.isCantrip ? 1 : 0,
+        spell.tags ?? "",
+      ]),
+    );
+  }, [knownSpells]);
+
+  const filterKey = useMemo(() => {
+    return buildSpellPickerFilterKey(listType, query, filters, preparedSourceKey);
+  }, [filters, listType, preparedSourceKey, query]);
+
+  const currentResultsSettled = resultsSettled && settledFilterKey === filterKey;
+
+  const resetPickerSession = useCallback((nextSearchRequestId: number) => {
+    setQuery("");
+    setResults([]);
+    setFilters(createSpellPickerFilters());
+    setSelectedIds(new Set());
+    setActiveSearchRequestId(nextSearchRequestId);
+    setSettledFilterKey("");
+    setResultsSettled(false);
+  }, []);
+
+  const invalidateSearchSession = useCallback(() => {
+    const nextSearchRequestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = nextSearchRequestId;
+    resetPickerSession(nextSearchRequestId);
+  }, [resetPickerSession]);
+
+  const closePicker = useCallback(() => {
+    setOpenStateReady(false);
+    invalidateSearchSession();
+    setOpen(false);
+  }, [invalidateSearchSession]);
 
   // Reset all filters when dialog opens (Spec: Filter State Reset on Dialog Open)
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setFilters({
-        isQuestSpell: false,
-        isCantrip: false,
-        school: "",
-        sphere: "",
-        levelMin: undefined,
-        levelMax: undefined,
-        tags: "",
-      });
-      setSelectedIds(new Set());
-    }
-  }, [open]);
-
-  const search = useCallback(async () => {
-    if (listType === "PREPARED") {
-      // Local search in known spells
-      console.log("LOCAL SEARCH START", { query, filters, count: knownSpells.length });
-      if (knownSpells.length > 0) console.log("SAMPLE SPELL:", JSON.stringify(knownSpells[0]));
-
-      const lowerQuery = query.toLowerCase();
-      const filtered = knownSpells
-        .filter((s) => {
-          const sName = s.spellName.toLowerCase();
-          if (query && !sName.includes(lowerQuery)) return false;
-
-          const sSchool = s.spellSchool || "";
-          if (filters.school && !sSchool.includes(filters.school)) return false;
-
-          const sSphere = s.spellSphere || "";
-          if (filters.sphere && !sSphere.includes(filters.sphere)) return false;
-
-          const sLevel = s.spellLevel;
-          if (filters.levelMin !== undefined && sLevel < filters.levelMin) return false;
-          if (filters.levelMax !== undefined && sLevel > filters.levelMax) return false;
-
-          const isQuest = s.isQuestSpell;
-          const isCantrip = s.isCantrip;
-
-          if (filters.isQuestSpell && !isQuest) return false;
-          if (filters.isCantrip && !isCantrip) return false;
-
-          const sTags = s.tags || "";
-          if (filters.tags && !sTags.toLowerCase().includes(filters.tags.toLowerCase()))
-            return false;
-
-          return true;
-        })
-        .map((s): PickerSpell => {
-          return {
-            id: s.spellId,
-            name: s.spellName,
-            level: s.spellLevel,
-            school: s.spellSchool,
-            sphere: s.spellSphere,
-            isQuestSpell: s.isQuestSpell,
-            isCantrip: s.isCantrip,
-            tags: s.tags,
-          };
-        });
-      console.log("LOCAL SEARCH END", { resultCount: filtered.length });
-      setResults(filtered);
+    if (!open) {
       return;
     }
 
-    try {
-      console.log("GLOBAL SEARCH START", { query, filters });
-      const res = await invoke<PickerSpell[]>("search_keyword", {
-        query,
-        filters: {
-          isQuestSpell: filters.isQuestSpell || undefined,
-          isCantrip: filters.isCantrip || undefined,
-          schools: filters.school ? [filters.school] : undefined,
-          spheres: filters.sphere ? [filters.sphere] : undefined,
-          levelMin: filters.levelMin,
-          levelMax: filters.levelMax,
-          tags: filters.tags || undefined,
-        },
-      });
-      console.log("GLOBAL SEARCH RESULT", {
-        count: res.length,
-        first: res.length > 0 ? JSON.stringify(res[0]) : "none",
-      });
-      setResults(res);
-    } catch (e) {
-      console.error(e);
-    }
-  }, [query, filters, listType, knownSpells]);
+    resetPickerSession(0);
+    setOpenStateReady(true);
+  }, [open, resetPickerSession]);
+
+  const search = useCallback(
+    async (currentFilterKey: string) => {
+      const requestId = searchRequestIdRef.current + 1;
+      searchRequestIdRef.current = requestId;
+      setActiveSearchRequestId(requestId);
+      setResultsSettled(false);
+
+      const currentQuery = query;
+      spellbookE2EHarness.spellPicker.recordSearchEvent(listType, currentQuery, "start");
+      await spellbookE2EHarness.spellPicker.waitForSearchDelay(listType, currentQuery);
+
+      if (listType === "PREPARED") {
+        const lowerQuery = currentQuery.toLowerCase();
+        const filtered = knownSpells
+          .filter((s) => {
+            const sName = s.spellName.toLowerCase();
+            if (currentQuery && !sName.includes(lowerQuery)) return false;
+
+            const sSchool = s.spellSchool || "";
+            if (filters.school && !sSchool.includes(filters.school)) return false;
+
+            const sSphere = s.spellSphere || "";
+            if (filters.sphere && !sSphere.includes(filters.sphere)) return false;
+
+            const sLevel = s.spellLevel;
+            if (filters.levelMin !== undefined && sLevel < filters.levelMin) return false;
+            if (filters.levelMax !== undefined && sLevel > filters.levelMax) return false;
+
+            const isQuest = s.isQuestSpell;
+            const isCantrip = s.isCantrip;
+
+            if (filters.isQuestSpell && !isQuest) return false;
+            if (filters.isCantrip && !isCantrip) return false;
+
+            const sTags = s.tags || "";
+            if (filters.tags && !sTags.toLowerCase().includes(filters.tags.toLowerCase()))
+              return false;
+
+            return true;
+          })
+          .map((s): PickerSpell => {
+            return {
+              id: s.spellId,
+              name: s.spellName,
+              level: s.spellLevel,
+              school: s.spellSchool,
+              sphere: s.spellSphere,
+              isQuestSpell: s.isQuestSpell,
+              isCantrip: s.isCantrip,
+              tags: s.tags,
+            };
+          });
+
+        spellbookE2EHarness.spellPicker.recordSearchEvent(listType, currentQuery, "resolve");
+
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        setResults(filtered);
+        setSettledFilterKey(currentFilterKey);
+        setResultsSettled(true);
+        return;
+      }
+
+      try {
+        const res = await invoke<PickerSpell[]>("search_keyword", {
+          query: currentQuery,
+          filters: {
+            isQuestSpell: filters.isQuestSpell || undefined,
+            isCantrip: filters.isCantrip || undefined,
+            schools: filters.school ? [filters.school] : undefined,
+            spheres: filters.sphere ? [filters.sphere] : undefined,
+            levelMin: filters.levelMin,
+            levelMax: filters.levelMax,
+            tags: filters.tags || undefined,
+          },
+        });
+
+        spellbookE2EHarness.spellPicker.recordSearchEvent(listType, currentQuery, "resolve");
+
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        setResults(res);
+        setSettledFilterKey(currentFilterKey);
+        setResultsSettled(true);
+      } catch (e) {
+        console.error(e);
+
+        spellbookE2EHarness.spellPicker.recordSearchEvent(listType, currentQuery, "resolve");
+
+        if (requestId !== searchRequestIdRef.current) {
+          return;
+        }
+
+        setResults([]);
+        setSettledFilterKey(currentFilterKey);
+        setResultsSettled(true);
+      }
+    },
+    [query, filters, listType, knownSpells],
+  );
 
   useEffect(() => {
-    if (open) {
-      search();
+    if (open && openStateReady) {
+      void search(filterKey);
     }
-  }, [open, search]);
+  }, [filterKey, open, openStateReady, search]);
 
   const toggleId = (id: number) => {
     const next = new Set(selectedIds);
@@ -1167,8 +1273,7 @@ function SpellPicker({
         );
       }
       await onAdded(); // Await refresh before closing
-      setOpen(false);
-      setSelectedIds(new Set());
+      closePicker();
     } catch (e) {
       modalAlert(`Bulk Error: ${e}`, "Error", "error");
     }
@@ -1205,14 +1310,36 @@ function SpellPicker({
             <div className="p-6 border-b border-neutral-800 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold">Add to {charClass.className}</h3>
-                <p className="text-xs text-neutral-500 uppercase tracking-widest font-bold mt-1">
+                <span
+                  className="sr-only"
+                  data-testid="spell-picker-class-name-marker"
+                  data-class-name={charClass.className}
+                >
+                  {charClass.className}
+                </span>
+                <p
+                  className="text-xs text-neutral-500 uppercase tracking-widest font-bold mt-1"
+                  data-testid="spell-picker-list-type"
+                  data-list-type={listType}
+                >
                   List: {listType}
                 </p>
+                <span
+                  className="sr-only"
+                  data-testid="spell-picker-results-state"
+                  data-search-request-id={activeSearchRequestId}
+                  data-filter-key={filterKey}
+                  data-settled-filter-key={settledFilterKey}
+                  data-results-settled={currentResultsSettled ? "true" : "false"}
+                  aria-busy={currentResultsSettled ? "false" : "true"}
+                >
+                  {currentResultsSettled ? "settled" : "loading"}
+                </span>
               </div>
               <button
                 type="button"
                 data-testid="btn-close-spell-picker"
-                onClick={() => setOpen(false)}
+                onClick={closePicker}
                 className="text-neutral-500 hover:text-white transition-colors"
               >
                 <svg
@@ -1234,7 +1361,11 @@ function SpellPicker({
               </button>
             </div>
 
-            <div className="p-6 border-b border-neutral-800 bg-neutral-950/20 space-y-4">
+            <div className="p-6 border-b border-neutral-800 space-y-4">
+              <label htmlFor="spell-search-input" className="sr-only">
+                Search spells by name
+              </label>
+
               <input
                 id="spell-search-input"
                 data-testid="spell-picker-search-input"
@@ -1401,7 +1532,7 @@ function SpellPicker({
                           notes: "",
                         });
                         await onAdded();
-                        setOpen(false);
+                        closePicker();
                       } catch (e) {
                         modalAlert(`Error: ${e}`, "Error", "error");
                       }
@@ -1423,7 +1554,7 @@ function SpellPicker({
                 <button
                   type="button"
                   data-testid="btn-cancel-picker"
-                  onClick={() => setOpen(false)}
+                  onClick={closePicker}
                   className="px-4 py-2 text-xs font-bold text-neutral-500 hover:text-white transition-colors"
                 >
                   CANCEL

@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures/test-fixtures";
 import { generateRunId } from "./fixtures/test-utils";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
+import { handleCustomModal } from "./utils/dialog-handler";
 
 test.describe("Character Snapshots", () => {
   test("should match JSON export snapshot", async ({ appContext }) => {
@@ -164,9 +165,12 @@ test.describe("Character Snapshots", () => {
     // We can use toMatchSnapshot() if we had a stored baseline.
     // For now, implicit assertions above cover "Snapshot Verification" of the logic.
     // But let's use the explicit snapshot to lock the schema structure.
-    expect(JSON.stringify(snapshotSafe, null, 2)).toMatchSnapshot(
+    expect(`${JSON.stringify(snapshotSafe, null, 2)}\n`).toMatchSnapshot(
       "character-bundle-structure.json",
     );
+
+    await handleCustomModal(page, "OK");
+    await page.waitForTimeout(300);
 
     // Cleanup
     await app.deleteCharacterFromList(charName);
@@ -311,8 +315,8 @@ test.describe("Character Snapshots", () => {
       const dialog = page.getByTestId("print-options-dialog");
       await expect(dialog).toBeVisible();
 
-      // PDF is default format, just confirm
-      await expect(page.getByTestId("print-format-select")).toHaveValue("pdf");
+      // Print dialog offers HTML (print-ready) and Markdown; HTML is the default print path.
+      await expect(page.getByTestId("print-format-select")).toHaveValue("html");
 
       // Confirm
       await page.getByTestId("btn-confirm-print").click();

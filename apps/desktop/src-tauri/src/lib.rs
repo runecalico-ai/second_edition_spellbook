@@ -77,6 +77,8 @@ pub fn run() {
             #[cfg(debug_assertions)]
             test_seed_spell,
             #[cfg(debug_assertions)]
+            test_seed_conflicted_spell,
+            #[cfg(debug_assertions)]
             test_seed_character_with_orphan_spell,
             get_character_spellbook,
             update_character_spell,

@@ -78,7 +78,7 @@ test.describe("Character Profiles Foundation", () => {
     await app.addClass("Mage");
 
     // 1. Try to add to PREPARED immediately (should fail with an error)
-    await app.openSpellPicker("Mage", "PREPARED");
+    await app.triggerPreparedPickerBlockedModal("Mage");
     // Wait for the alert modal
     await handleCustomModal(page, "OK");
     await page.waitForTimeout(300); // Settlement wait for modal close

@@ -143,3 +143,84 @@ To ensure hash stability, the following are excluded from **canonical** serialis
 >
 > For the complete metadata exclusion rules and field inventory, see the [Canonical Serialization Contract](./architecture/canonical-serialization.md).
 
+---
+
+## Modal Focus Trap
+
+`ModalShell` (`src/ui/components/Modal.tsx`) uses the native `<dialog>` element with `showModal()`/`close()` for first-class browser focus trapping. The Tauri WebView2 (Chromium) top-layer is used, with a supplemental capture-phase `keydown` listener on `document` to handle a known WebView2 quirk where Tab can escape `showModal()` context.
+
+Background content is disabled via the HTML `inert` attribute while a modal is open (applied in `App.tsx`). Focus returns to the trigger element after close.
+
+The `dialog::backdrop` pseudo-element is styled in `src/index.css`.
+
+---
+
+## Theme persistence and announcements
+
+- **User-facing modes:** `light`, `dark`, and `system` (`ThemeMode` in `apps/desktop/src/store/useTheme.ts`). **System** resolves to light or dark from `matchMedia("(prefers-color-scheme: dark)")` via `resolveThemeMode`.
+- **Persistence:** The selected mode is stored under localStorage key **`spellbook-theme`** (`THEME_STORAGE_KEY`). `readStoredThemeMode()` returns `null` when the key is missing or invalid; **`createThemeStore`** then defaults the in-memory mode to **`system`** (`?? "system"`). `sanitizeThemeMode` maps other garbage to `system` at boundaries like pre-hydration. Writes use `setItem` inside `setTheme`; storage failures are swallowed so in-memory theme still updates (`M-002` contract in unit tests).
+- **First paint / first load:** `apps/desktop/src/theme/preHydrationTheme.ts` runs before React hydration to set `document.documentElement` class `dark` and `data-theme` to the resolved effective theme so the first frame does not flash the wrong palette. When no stored preference exists, the store resolves from the current system theme and then persists the user’s later selection under the same key.
+- **Settings UI:** `SettingsPage.tsx` exposes the theme select and optional “follow system” behaviour; E2E uses `/settings` for persistence and keyboard-navigation checks.
+- **Hidden live region (not a toast):** `App.tsx` renders `data-testid="theme-announcement-live-region"` with `aria-live="polite"` and `className="sr-only"`. On real mode transitions it speaks short phrases from `getThemeAnnouncement`: *Light mode*, *Dark mode*, or *System mode*. When the user is in **system** mode and the OS preference changes, the live region announces the **resolved** theme (*Light mode* / *Dark mode*) unless a guard suppresses duplicate announcements on the transition back to system (see coordinated `useEffect` comments in `App.tsx`). Initial mount leaves the region empty so StrictMode does not double-announce.
+- **Versus notifications:** Theme changes never use the stacked toast viewport; routine toasts (`NotificationViewport`) remain separate for save success, hash copy, Library add-to-character, and Spellbook Builder add/remove failures.
+
+---
+
+## Frontend Spell Editor State and Feedback Flow
+
+### Validation helper
+
+The editor's client-side validation logic lives in the pure helper `apps/desktop/src/ui/spellEditorValidation.ts`. The helper:
+
+- Accepts `SpellEditorValidationInput`: flat `form`, `tradition`, and in-scope structured specs (`rangeSpec`, `durationSpec`, `castingTimeSpec`, `areaSpec`).
+- Returns a typed `SpellEditorFieldError[]` array (fields: `field`, `testId`, `message`, `focusTarget`).
+- Is side-effect-free and Node-safe — usable in Vitest unit tests without a DOM.
+- Exposes `deriveSpellEditorFieldErrors`, `sortFieldErrorsByFocusOrder`, and `getFirstInvalidFocusTarget` — `SpellEditor.tsx` sorts errors and focuses the first target with a mounted DOM `id` after expanding detail panels when needed.
+- First failed submit flow: after a failed save attempt, `SpellEditor.tsx` surfaces every blocking error, expands the first missing panel if required, and focuses the first invalid control with a mounted DOM `id` before showing the save hint.
+
+Full contract is documented in [docs/dev/spell_editor_components.md](dev/spell_editor_components.md#spell-editor-validation-architecture).
+
+### Validation-visibility and submit state model
+
+`SpellEditor.tsx` tracks two pieces of validation state:
+
+- **`fieldValidationVisible: Set<string>`** — fields whose inline validation is currently allowed to render before submit. `revealFieldValidation(...)` is called from blur and from controlling changes that should immediately reveal related errors.
+- **`hasAttemptedSubmit: boolean`** — set on first failed save click. Once set, all errors are visible and the save button is disabled until they are resolved.
+
+Timing rules:
+- Text inputs validate on blur.
+- Select controls (including Tradition) validate on change.
+- Dependent fields (School/Sphere) call `revealFieldValidation(...)` and revalidate immediately when their controlling value (Tradition) changes.
+
+### Tradition-conditional School/Sphere rendering
+
+Arcane and Divine traditions each require a different classification field:
+
+- **Arcane** → School rendered, Sphere unmounted.
+- **Divine** → Sphere rendered, School unmounted.
+
+Switching tradition: the newly mounted field wrapper gets `animate-in fade-in`; the hidden field unmounts without an exit-animation placeholder; stale errors for the hidden field are cleared; the newly relevant field is revalidated immediately.
+
+### Save-progress and success feedback
+
+- A re-entry guard activates immediately on save start (prevents double-submit even before visual feedback appears).
+- A 300 ms timer runs concurrently; if the save is still pending at threshold, the button label changes from `Save Spell` to `Saving…`.
+- Editor inputs are frozen for the duration of the save so the submitted payload cannot change mid-flight.
+- On success: `pushNotification("success", "Spell saved.")` is called before `navigate("/")`. The success toast appears in the global notification viewport (mounted in the app shell above the router outlet) and survives the route change.
+- The toast does not steal keyboard focus (`aria-live="polite"`).
+
+### Notification-versus-modal boundary contract
+
+| Scenario | Mechanism |
+|----------|-----------|
+| Routine save success | Zustand notification store → `NotificationViewport` toast |
+| Add-to-character from Library row (success / failure) | Toast (`Library.tsx`) |
+| Spellbook Builder add/remove failures | Toast (`SpellbookBuilder.tsx`) |
+| Search save/delete failure | Toast |
+| Backend persistence failure | `Save Error` modal (`modalAlert`) |
+| Unsaved-changes navigation guard | `modalConfirm` |
+| Delete confirmation | `modalConfirm` |
+| Parser reparse failure | `Reparse Error` modal |
+
+This boundary ensures that routine status feedback never interrupts the user's workflow while destructive and hard-error paths still require explicit acknowledgement.
+

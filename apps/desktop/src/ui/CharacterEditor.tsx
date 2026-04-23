@@ -9,6 +9,7 @@ import type {
   CharacterSpellbookEntry,
 } from "../types/character";
 import PrintOptionsDialog, { type PrintOptions } from "./components/PrintOptionsDialog";
+import { spellbookE2EHarness } from "./spellbookE2EHarness";
 
 const SPHERES = [
   "All",
@@ -789,11 +790,10 @@ function ClassSpellList({
                     setSelectedRemoveIds(new Set());
                     setSelectedRemoveHashes(new Set());
                   }}
-                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${
-                    activeTab === tab
-                      ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
-                      : "text-neutral-600 hover:text-neutral-400"
-                  }`}
+                  className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded transition-all ${activeTab === tab
+                    ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
+                    : "text-neutral-600 hover:text-neutral-400"
+                    }`}
                 >
                   {tab}
                 </button>
@@ -1051,31 +1051,6 @@ function createSpellPickerFilters() {
   };
 }
 
-function getPlaywrightSpellPickerDelayKey(listType: "KNOWN" | "PREPARED", query: string): string {
-  return `${listType}:${query}`;
-}
-
-function pushPlaywrightSpellPickerSearchEvent(
-  listType: "KNOWN" | "PREPARED",
-  query: string,
-  phase: "start" | "resolve",
-): void {
-  if (typeof window === "undefined" || !window.__IS_PLAYWRIGHT__) return;
-  window.__SPELLBOOK_E2E_SPELL_PICKER_SEARCH_EVENTS__?.push({ listType, query, phase });
-}
-
-async function sleepPlaywrightSpellPickerSearchDelay(
-  listType: "KNOWN" | "PREPARED",
-  query: string,
-): Promise<void> {
-  if (typeof window === "undefined" || !window.__IS_PLAYWRIGHT__) return;
-  const delays = window.__SPELLBOOK_E2E_SPELL_PICKER_SEARCH_DELAYS__;
-  if (!delays) return;
-  const ms = delays[getPlaywrightSpellPickerDelayKey(listType, query)];
-  if (typeof ms !== "number" || Number.isNaN(ms) || ms <= 0) return;
-  await new Promise((resolve) => setTimeout(resolve, Math.min(Math.floor(ms), 30_000)));
-}
-
 function SpellPicker({
   charClass,
   onAdded,
@@ -1160,8 +1135,8 @@ function SpellPicker({
       setResultsSettled(false);
 
       const currentQuery = query;
-      pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "start");
-      await sleepPlaywrightSpellPickerSearchDelay(listType, currentQuery);
+      spellbookE2EHarness.spellPicker.recordSearchEvent(listType, currentQuery, "start");
+      await spellbookE2EHarness.spellPicker.waitForSearchDelay(listType, currentQuery);
 
       if (listType === "PREPARED") {
         const lowerQuery = currentQuery.toLowerCase();
@@ -1205,7 +1180,7 @@ function SpellPicker({
             };
           });
 
-        pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
+        spellbookE2EHarness.spellPicker.recordSearchEvent(listType, currentQuery, "resolve");
 
         if (requestId !== searchRequestIdRef.current) {
           return;
@@ -1231,7 +1206,7 @@ function SpellPicker({
           },
         });
 
-        pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
+        spellbookE2EHarness.spellPicker.recordSearchEvent(listType, currentQuery, "resolve");
 
         if (requestId !== searchRequestIdRef.current) {
           return;
@@ -1243,7 +1218,7 @@ function SpellPicker({
       } catch (e) {
         console.error(e);
 
-        pushPlaywrightSpellPickerSearchEvent(listType, currentQuery, "resolve");
+        spellbookE2EHarness.spellPicker.recordSearchEvent(listType, currentQuery, "resolve");
 
         if (requestId !== searchRequestIdRef.current) {
           return;

@@ -38,6 +38,7 @@ function pickScalarErr(
 
 export type StructuredFieldValue = RangeSpec | DurationSpec | SpellCastingTime;
 
+// H-002: interactive inputs must use named border roles in light mode.
 const structuredSelectClass =
   "bg-white dark:bg-neutral-900 border-neutral-400 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 rounded px-2 py-1 text-sm border focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 
@@ -79,6 +80,8 @@ const STRUCTURED_FIELD_GROUP_LABELS: Record<StructuredFieldType, string> = {
   duration: "Duration",
   casting_time: "Casting Time",
 };
+
+// M-003: grouped semantics contract is a fieldset root with an sr-only legend label.
 
 const ALL_DURATION_KINDS: { value: DurationKind; label: string }[] = [
   ...DURATION_KIND_ONLY.map((k) => ({

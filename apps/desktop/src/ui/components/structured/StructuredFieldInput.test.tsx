@@ -16,10 +16,11 @@ const ROOT_SURFACE_CLASSES = [
   "dark:bg-neutral-800",
 ];
 
-const DIRECT_INPUT_BORDER_CLASS = "border-neutral-400";
+const DIRECT_INPUT_BORDER_CLASS = "border-neutral-400"; // H-002
 
 const PRIMARY_ROW_CLASSES = ["flex", "min-w-0", "flex-wrap", "items-center", "gap-2"];
 
+// M-004: lock key light-mode support tokens on grouped supporting/preview rows.
 const SUPPORTING_ROW_CLASSES = [
   "rounded-lg",
   "border-neutral-200",
@@ -99,7 +100,7 @@ describe("StructuredFieldInput", () => {
         value={
           { kind: "distance", unit: "ft", distance: { mode: "fixed", value: 10 } } as RangeSpec
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
     const root = getRoot();
@@ -121,7 +122,7 @@ describe("StructuredFieldInput", () => {
             notes: "range notes",
           } as RangeSpec
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -139,7 +140,7 @@ describe("StructuredFieldInput", () => {
             notes: "duration notes",
           } as DurationSpec
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -160,7 +161,7 @@ describe("StructuredFieldInput", () => {
             rawLegacyValue: "legacy ct",
           } as SpellCastingTime
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -169,7 +170,7 @@ describe("StructuredFieldInput", () => {
     }
   });
 
-  it("locks the range grouped DOM contract", () => {
+  it("M-003: locks the range grouped DOM contract (H-001/H-002 palette tokens)", () => {
     render(
       <StructuredFieldInput
         fieldType="range"
@@ -180,7 +181,7 @@ describe("StructuredFieldInput", () => {
             distance: { mode: "fixed", value: 30 },
           } as RangeSpec
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -215,7 +216,7 @@ describe("StructuredFieldInput", () => {
       <StructuredFieldInput
         fieldType="range"
         value={{ kind: "special", rawLegacyValue: "legacy range" } as RangeSpec}
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -257,12 +258,12 @@ describe("StructuredFieldInput", () => {
     });
   });
 
-  it("locks the duration grouped DOM contract", () => {
+  it("M-003: locks the duration grouped DOM contract", () => {
     render(
       <StructuredFieldInput
         fieldType="duration"
         value={{ kind: "time", unit: "round", duration: { mode: "fixed", value: 3 } }}
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -295,7 +296,7 @@ describe("StructuredFieldInput", () => {
             notes: "notes",
           } as DurationSpec
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -319,7 +320,7 @@ describe("StructuredFieldInput", () => {
             condition: "When cast",
           } as DurationSpec
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -343,7 +344,7 @@ describe("StructuredFieldInput", () => {
             uses: { mode: "fixed", value: 2 },
           } as DurationSpec
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -386,7 +387,7 @@ describe("StructuredFieldInput", () => {
     });
   });
 
-  it("locks the casting-time grouped DOM contract", () => {
+  it("M-003: locks the casting-time grouped DOM contract", () => {
     render(
       <StructuredFieldInput
         fieldType="casting_time"
@@ -400,7 +401,7 @@ describe("StructuredFieldInput", () => {
             rawLegacyValue: "legacy ct",
           } as SpellCastingTime
         }
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -489,7 +490,7 @@ describe("StructuredFieldInput", () => {
       <StructuredFieldInput
         fieldType="casting_time"
         value={null}
-        onChange={() => {}}
+        onChange={() => { }}
         visibleFieldErrors={errors}
       />,
     );

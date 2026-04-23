@@ -55,6 +55,7 @@ export function MagicResistanceInput({ value, onChange, damageKind }: MagicResis
 
   const showAppliesTo = spec.kind !== "unknown";
 
+  // M-003: grouped semantics contract uses a fieldset root plus an sr-only legend label.
   return (
     <fieldset className={rootSurfaceClass} data-testid="magic-resistance-input">
       <legend className="sr-only">Magic Resistance</legend>

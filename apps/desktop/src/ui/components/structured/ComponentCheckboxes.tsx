@@ -81,18 +81,19 @@ export function ComponentCheckboxes({
 
   const textPreview = isVsm
     ? [comp.verbal && "V", comp.somatic && "S", comp.material && "M"].filter(Boolean).join(", ") ||
-      "—"
+    "—"
     : [
-        comp.verbal && "V",
-        comp.somatic && "S",
-        comp.material && "M",
-        comp.focus && "F",
-        comp.divineFocus && "DF",
-        comp.experience && "XP",
-      ]
-        .filter(Boolean)
-        .join(", ") || "—";
+      comp.verbal && "V",
+      comp.somatic && "S",
+      comp.material && "M",
+      comp.focus && "F",
+      comp.divineFocus && "DF",
+      comp.experience && "XP",
+    ]
+      .filter(Boolean)
+      .join(", ") || "—";
 
+  // H-002: checkbox/material controls use named border roles (neutral-400 in light mode).
   return (
     <div
       className="space-y-3 rounded-xl border border-neutral-300 bg-white p-3 text-neutral-900 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"

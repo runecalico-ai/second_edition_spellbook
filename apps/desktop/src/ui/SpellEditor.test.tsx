@@ -1740,6 +1740,59 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
     }
   });
 
+  it("shows an explicit load error and blocks stale saves after a fast spell-detail load failure", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+
+    try {
+      vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+        if (cmd === "update_spell") return Promise.resolve(undefined);
+        if (cmd !== "get_spell") return Promise.resolve(undefined);
+
+        const spellId = (args as { id?: number } | undefined)?.id;
+        if (spellId === 1) {
+          return Promise.resolve(baseLoadedSpell({ id: 1, name: "First Spell" }));
+        }
+        if (spellId === 2) {
+          return Promise.reject(new Error("backend unavailable"));
+        }
+        return Promise.resolve(undefined);
+      });
+
+      const router = createMemoryRouter(
+        [
+          { path: "/", element: <div data-testid="library-route">Library</div> },
+          { path: "/edit/:id", element: <SpellEditor /> },
+        ],
+        { initialEntries: ["/edit/1"] },
+      );
+
+      render(<RouterProvider router={router} />);
+
+      await waitFor(() => {
+        expect((screen.getByTestId("spell-name-input") as HTMLInputElement).value).toBe(
+          "First Spell",
+        );
+      });
+
+      await act(async () => {
+        await router.navigate("/edit/2");
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("spell-load-error")).toBeTruthy();
+      });
+
+      expect(screen.queryByTestId("btn-save-spell")).toBeNull();
+      expect(screen.queryByDisplayValue("First Spell")).toBeNull();
+      expect(screen.getByTestId("spell-load-error").textContent ?? "").toContain(
+        "Failed to load spell.",
+      );
+      expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "update_spell")).toBe(false);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it("keeps the editor visible until save resolves, then navigates to Library", async () => {
     let resolveSave: () => void;
     const savePromise = new Promise<void>((resolve) => {

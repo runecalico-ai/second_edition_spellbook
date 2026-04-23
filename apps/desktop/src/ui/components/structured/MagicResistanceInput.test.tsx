@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// C-002 regression coverage: structured contract checks for layout, theme tokens, and onChange plumbing.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MagicResistanceSpec } from "../../../types/spell";
@@ -61,7 +62,7 @@ const ANNOTATION_CLASSES = [
 const HELPER_TEXT_CLASSES = ["text-amber-700", "dark:text-amber-400"];
 
 describe("MagicResistanceInput", () => {
-  it("renders the root controls, notes field, and source text annotation", () => {
+  it("C-001/M-003: renders dual-theme root controls, grouped semantics, notes field, and source text annotation", () => {
     render(
       <MagicResistanceInput
         value={{
@@ -70,7 +71,7 @@ describe("MagicResistanceInput", () => {
           notes: "MR applies normally",
           sourceText: "Magic resistance applies",
         }}
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -109,7 +110,7 @@ describe("MagicResistanceInput", () => {
       notes: "Partial MR",
     };
 
-    render(<MagicResistanceInput value={value} onChange={() => {}} damageKind="none" />);
+    render(<MagicResistanceInput value={value} onChange={() => { }} damageKind="none" />);
 
     const partIds = screen.getByTestId("magic-resistance-part-ids") as HTMLInputElement;
     const partialScope = screen.getByTestId("magic-resistance-partial-scope");
@@ -170,7 +171,7 @@ describe("MagicResistanceInput", () => {
       },
     };
 
-    render(<MagicResistanceInput value={value} onChange={() => {}} damageKind="none" />);
+    render(<MagicResistanceInput value={value} onChange={() => { }} damageKind="none" />);
 
     const partIds = screen.getByTestId("magic-resistance-part-ids") as HTMLInputElement;
     const helperText = screen.getByText(
@@ -192,7 +193,7 @@ describe("MagicResistanceInput", () => {
       },
     };
 
-    render(<MagicResistanceInput value={value} onChange={() => {}} damageKind="modeled" />);
+    render(<MagicResistanceInput value={value} onChange={() => { }} damageKind="modeled" />);
 
     const partIds = screen.getByTestId("magic-resistance-part-ids") as HTMLInputElement;
 

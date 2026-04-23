@@ -17,6 +17,7 @@ const selectSurfaceClass =
 const inputSurfaceClass =
   "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 
+// H-002: keep interactive input borders on the named light/dark palette roles.
 const inputBorderNeutral = "border-neutral-400 dark:border-neutral-700";
 const inputBorderInvalid = "border-red-600 dark:border-red-600";
 const inputBorderAdvisory = "border-amber-600 dark:border-amber-500";

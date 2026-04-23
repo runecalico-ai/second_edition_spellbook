@@ -4,6 +4,12 @@ import type { SpellDetail } from "../../types/spell";
 import { useNotifications } from "../../store/useNotifications";
 import { useModal } from "../../store/useModal";
 import { useNavigate } from "react-router-dom";
+import { spellbookE2EHarness } from "../spellbookE2EHarness";
+
+const SPELL_DETAIL_LOADING_DELAY_MS = 150;
+const SPELL_SAVE_LABEL_DELAY_MS = 300;
+const SPELL_LOAD_ERROR_MESSAGE =
+  "Failed to load spell. Please return to the library and try again.";
 
 export function useSpellPersistence({
   id,
@@ -16,14 +22,16 @@ export function useSpellPersistence({
   isNew: boolean;
   resetEditorUiState: () => void;
   resetStructuredLoadState: () => void;
-  onLoadSuccess: (data: SpellDetail) => void;
+  onLoadSuccess: (data: SpellDetail, isActive: () => boolean) => void;
 }) {
   const navigate = useNavigate();
   const { alert: modalAlert, confirm: modalConfirm } = useModal();
   const pushNotification = useNotifications((state) => state.pushNotification);
+  const requestedSpellId = !isNew && id ? Number.parseInt(id, 10) : null;
 
   const [loading, setLoading] = useState(() => !isNew && Boolean(id));
   const [showLoading, setShowLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [savePending, setSavePending] = useState(false);
   const [saveShowsDelayedLabel, setSaveShowsDelayedLabel] = useState(false);
   const saveInFlightRef = useRef(false);
@@ -55,8 +63,8 @@ export function useSpellPersistence({
   useEffect(() => {
     clearDetailLoadingTimer();
 
-    // Synchronous state resets when ID changes
     if (isNew) {
+      setLoadError(null);
       setShowLoading(false);
       setLoading(false);
       resetStructuredLoadState();
@@ -64,12 +72,23 @@ export function useSpellPersistence({
     }
 
     if (!id) {
+      setLoadError(null);
       setShowLoading(false);
       setLoading(false);
       return;
     }
 
+    if (requestedSpellId !== null && Number.isNaN(requestedSpellId)) {
+      setLoadError(SPELL_LOAD_ERROR_MESSAGE);
+      setShowLoading(false);
+      setLoading(false);
+      resetStructuredLoadState();
+      return;
+    }
+
     let isActive = true;
+    const requestedId = requestedSpellId as number;
+    setLoadError(null);
     setLoading(true);
     setShowLoading(false);
     resetEditorUiState();
@@ -78,22 +97,38 @@ export function useSpellPersistence({
       if (!isActive) return;
       resetStructuredLoadState();
       setShowLoading(true);
-    }, 150);
+    }, SPELL_DETAIL_LOADING_DELAY_MS);
 
-    invoke<SpellDetail>("get_spell", { id: Number.parseInt(id) })
+    invoke<SpellDetail | null>("get_spell", { id: requestedId })
       .then((data) => {
         if (!isActive) return;
         clearDetailLoadingTimer();
-        resetStructuredLoadState(); // Reset before applying new data
-        if (data) {
-          onLoadSuccess(data);
+        resetStructuredLoadState();
+
+        if (!data) {
+          console.error("Failed to load spell: no spell returned for id", requestedId);
+          setLoadError(SPELL_LOAD_ERROR_MESSAGE);
+          return;
         }
+
+        if (data.id !== requestedId) {
+          console.error("Failed to load spell: loaded spell id did not match request", {
+            requestedId,
+            loadedId: data.id,
+          });
+          setLoadError(SPELL_LOAD_ERROR_MESSAGE);
+          return;
+        }
+
+        onLoadSuccess(data, () => isActive);
+        setLoadError(null);
       })
       .catch((e) => {
         if (!isActive) return;
         console.error("Failed to load spell:", e);
-        // Ensure UI is cleared on error
+        clearDetailLoadingTimer();
         resetStructuredLoadState();
+        setLoadError(SPELL_LOAD_ERROR_MESSAGE);
       })
       .finally(() => {
         if (!isActive) return;
@@ -106,9 +141,20 @@ export function useSpellPersistence({
       isActive = false;
       clearDetailLoadingTimer();
     };
-  }, [id, isNew, resetEditorUiState, resetStructuredLoadState, onLoadSuccess, clearDetailLoadingTimer]);
+  }, [
+    clearDetailLoadingTimer,
+    id,
+    isNew,
+    onLoadSuccess,
+    requestedSpellId,
+    resetEditorUiState,
+    resetStructuredLoadState,
+  ]);
 
-  const saveSpell = async (normalizedSpellData: SpellDetail, preSaveLogic: () => Promise<void>, postSaveLogic: () => void) => {
+  const saveSpell = useCallback(async (
+    normalizedSpellData: SpellDetail,
+    onSaveSuccess?: () => void,
+  ) => {
     if (loading || saveInFlightRef.current) return;
     try {
       saveInFlightRef.current = true;
@@ -118,9 +164,9 @@ export function useSpellPersistence({
       saveDelayedLabelTimerRef.current = setTimeout(() => {
         saveDelayedLabelTimerRef.current = null;
         setSaveShowsDelayedLabel(true);
-      }, 300);
+      }, SPELL_SAVE_LABEL_DELAY_MS);
 
-      await preSaveLogic();
+      await spellbookE2EHarness.spellEditor.waitForSaveInvokeDelay();
 
       if (isNew) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -132,7 +178,7 @@ export function useSpellPersistence({
         await invoke("update_spell", { spell: updateData });
       }
 
-      postSaveLogic();
+      onSaveSuccess?.();
       pushNotification("success", "Spell saved.");
       navigate("/");
     } catch (e) {
@@ -143,11 +189,14 @@ export function useSpellPersistence({
       setSavePending(false);
       saveInFlightRef.current = false;
     }
-  };
+  }, [clearSaveDelayedLabelTimer, isNew, loading, modalAlert, navigate, pushNotification]);
 
-  const deleteSpell = async (spellId: number | undefined) => {
-    if (savePending) return;
-    const confirmed = await modalConfirm("Are you sure you want to delete this spell?", "Delete Spell");
+  const deleteSpell = useCallback(async (spellId: number | undefined) => {
+    if (savePending || saveInFlightRef.current) return;
+    const confirmed = await modalConfirm(
+      "Are you sure you want to delete this spell?",
+      "Delete Spell",
+    );
     if (!confirmed) return;
     try {
       if (spellId) {
@@ -157,11 +206,13 @@ export function useSpellPersistence({
     } catch (e) {
       await modalAlert(`Failed to delete: ${e}`, "Delete Error", "error");
     }
-  };
+  }, [modalAlert, modalConfirm, navigate, savePending]);
 
   return {
     loading,
     showLoading,
+    loadError,
+    requestedSpellId,
     savePending,
     saveShowsDelayedLabel,
     saveSpell,

@@ -249,6 +249,7 @@ export function DamageForm({ value, onChange, visibleFieldErrors }: DamageFormPr
     [spec, updateSpec],
   );
 
+  // M-003: grouped semantics contract uses a fieldset root plus an sr-only legend label.
   return (
     <fieldset className={rootSurfaceClass} data-testid="damage-form">
       <legend className="sr-only">Damage</legend>

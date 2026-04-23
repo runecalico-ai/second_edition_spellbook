@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// C-002 regression coverage: structured contract checks for layout, theme tokens, and onChange plumbing.
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SpellDamageSpec } from "../../../types/spell";
@@ -79,7 +80,7 @@ const ANNOTATION_CLASSES = [
 ];
 
 describe("DamageForm", () => {
-  it("renders the root, notes field, and source text annotation", () => {
+  it("C-001/M-003: renders dual-theme root, grouped semantics, notes field, and source text annotation", () => {
     render(
       <DamageForm
         value={{
@@ -88,7 +89,7 @@ describe("DamageForm", () => {
           notes: "Overall damage notes",
           sourceText: "1d6 per level, maximum 10d6",
         }}
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -137,7 +138,7 @@ describe("DamageForm", () => {
       ],
     };
 
-    render(<DamageForm value={value} onChange={() => {}} />);
+    render(<DamageForm value={value} onChange={() => { }} />);
 
     expect(screen.getByTestId("damage-form-combine-mode")).not.toBeNull();
     expect(screen.getByTestId("damage-form-add-part")).not.toBeNull();
@@ -283,7 +284,7 @@ describe("DamageForm", () => {
             message: "Damage formula must be valid",
           },
         ]}
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 

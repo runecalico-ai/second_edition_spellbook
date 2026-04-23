@@ -22,6 +22,19 @@ function expectClasses(node: HTMLElement, classes: string[]) {
 }
 
 describe("ScalarInput", () => {
+  it("H-002: uses named interactive border role tokens", () => {
+    render(
+      <ScalarInput value={{ mode: "fixed", value: 3 }} onChange={vi.fn()} data-testid="scalar" />,
+    );
+
+    expect(screen.getByTestId("scalar-mode").className.split(/\s+/)).toContain(
+      "border-neutral-400",
+    );
+    expect(screen.getByTestId("range-base-value").className.split(/\s+/)).toContain(
+      "border-neutral-400",
+    );
+  });
+
   it("applies the standard focus-visible ring to the mode select and numeric input", () => {
     render(
       <ScalarInput value={{ mode: "fixed", value: 3 }} onChange={vi.fn()} data-testid="scalar" />,

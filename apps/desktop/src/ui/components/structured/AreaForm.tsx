@@ -14,6 +14,7 @@ import type {
 } from "../../spellEditorValidation";
 import { ScalarInput, type ScalarFieldValidationError } from "./ScalarInput";
 
+// H-002: interactive selects/inputs must use named border roles in light mode.
 const areaSelectClass =
   "rounded border border-neutral-400 bg-white px-2 py-1 text-sm text-neutral-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus-visible:ring-offset-neutral-900";
 
@@ -215,33 +216,33 @@ export function AreaForm({ value, onChange, onValidationBlur, visibleFieldErrors
       {(["radius_circle", "radius_sphere"] as const).includes(
         spec.kind as "radius_circle" | "radius_sphere",
       ) && (
-        <div className="flex flex-wrap items-center gap-2">
-          <ScalarInput
-            onFieldBlur={onValidationBlur}
-            value={spec.radius ?? { mode: "fixed", value: 0 }}
-            onChange={(r) => updateSpec({ radius: r })}
-            data-testid="area-form-radius"
-            accessibleNamePrefix="Area radius "
-            baseValueTestId="area-form-radius-value"
-            perLevelTestId="area-form-radius-per-level"
-            fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-value")}
-            perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-per-level")}
-          />
-          <select
-            data-testid="area-form-shape-unit"
-            aria-label="Shape unit"
-            value={spec.shapeUnit ?? "ft"}
-            onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
-            className={areaSelectClass}
-          >
-            {SHAPE_UNIT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+          <div className="flex flex-wrap items-center gap-2">
+            <ScalarInput
+              onFieldBlur={onValidationBlur}
+              value={spec.radius ?? { mode: "fixed", value: 0 }}
+              onChange={(r) => updateSpec({ radius: r })}
+              data-testid="area-form-radius"
+              accessibleNamePrefix="Area radius "
+              baseValueTestId="area-form-radius-value"
+              perLevelTestId="area-form-radius-per-level"
+              fixedFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-value")}
+              perLevelFieldError={pickAreaScalarErr(visibleFieldErrors, "area-form-radius-per-level")}
+            />
+            <select
+              data-testid="area-form-shape-unit"
+              aria-label="Shape unit"
+              value={spec.shapeUnit ?? "ft"}
+              onChange={(e) => updateSpec({ shapeUnit: e.target.value as ShapeUnit })}
+              className={areaSelectClass}
+            >
+              {SHAPE_UNIT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
       {/* cone / line */}
       {(["cone", "line"] as const).includes(spec.kind as "cone" | "line") && (

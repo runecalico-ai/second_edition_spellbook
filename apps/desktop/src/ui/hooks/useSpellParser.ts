@@ -2,9 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useState, useCallback } from "react";
 import type { SpellDetail, RangeSpec, DurationSpec, SpellCastingTime, AreaSpec, SpellDamageSpec, SavingThrowSpec, MagicResistanceSpec, MaterialComponentSpec, SpellComponents, LevelBand, ScalingDriver, ScalingKind, ScalingRule, SaveKind, ApplicationScope, DamagePart, SaveOutcome, SaveType, SingleSave, SaveOutcomeEffect, ScalarMode, DicePool, DiceTerm } from "../../types/spell";
 import { validateAreaSpec, validateDurationSpec, validateRangeSpec, validateSpellCastingTime, validateSpellDamageSpec } from "../../lib/parserValidation";
-import { RANGE_DISTANCE_KINDS } from "../../types/spell";
 import { decideCanonicalField } from "../canonicalFieldDecision";
 import type { DetailFieldKey } from "../detailDirty";
+import { spellbookE2EHarness } from "../spellbookE2EHarness";
 
 
 const spellFocusVisibleRing = "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
@@ -13,33 +13,6 @@ const spellInvalidFocusVisibleRing = "focus-visible:ring-2 focus-visible:ring-re
 
 function getSpellFocusVisibleRing(isInvalid: boolean): string {
   return isInvalid ? spellInvalidFocusVisibleRing : spellFocusVisibleRing;
-}
-
-function applyPlaywrightRangeDistanceCorruption(spec: RangeSpec): RangeSpec {
-  if (typeof window === "undefined" || !window.__IS_PLAYWRIGHT__) return spec;
-  const probe = window.__SPELLBOOK_E2E_CORRUPT_RANGE_BASE;
-  if (
-    !probe ||
-    probe.consumed === true ||
-    !RANGE_DISTANCE_KINDS.includes(spec.kind as (typeof RANGE_DISTANCE_KINDS)[number])
-  ) {
-    return spec;
-  }
-  probe.consumed = true;
-  return {
-    ...spec,
-    distance: {
-      mode: "fixed",
-      value: probe.value,
-    },
-  };
-}
-
-async function sleepPlaywrightSaveInvokeDelay(): Promise<void> {
-  if (typeof window === "undefined" || !window.__IS_PLAYWRIGHT__) return;
-  const ms = window.__SPELLBOOK_E2E_SAVE_INVOKE_DELAY_MS;
-  if (typeof ms !== "number" || Number.isNaN(ms) || ms <= 0) return;
-  await new Promise((r) => setTimeout(r, Math.min(Math.floor(ms), 30_000)));
 }
 
 type DetailTextOverrides = Partial<Pick<SpellDetail, DetailFieldKey>>;
@@ -730,7 +703,7 @@ export function useSpellParser() {
           invoke<RangeSpec>("parse_range_to_spec", { input: legacyRange })
             .then((r) => {
               if (!r) { setters.setStructuredRange(toSpecialRangeSpec(legacyRange)); setParserFallbackFields((prev) => new Set([...prev, "Range"])); return; }
-              const spec = applyPlaywrightRangeDistanceCorruption(r);
+              const spec = spellbookE2EHarness.spellEditor.applyRangeDistanceCorruption(r);
               setters.setStructuredRange(spec);
               setters.setSuppressExpandParse((prev) => ({ ...prev, range: true }));
               if (spec.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Range"]));
@@ -767,8 +740,6 @@ export function useSpellParser() {
 
 export {
   getSpellFocusVisibleRing,
-  applyPlaywrightRangeDistanceCorruption,
-  sleepPlaywrightSaveInvokeDelay,
   getParserFallbackLabel,
   toSpecialRangeSpec,
   toSpecialDurationSpec,

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { useEffect, type ComponentType, type ReactNode } from "react";
+import { useLayoutEffect, type ComponentType, type ReactNode } from "react";
 import { ComponentCheckboxes } from "./ComponentCheckboxes";
 import { fn } from "./storybook-utils";
 
@@ -12,7 +12,7 @@ function StoryThemeFrame({
   theme: StoryTheme;
   children: ReactNode;
 }) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     const previousHasDarkClass = root.classList.contains("dark");
     const previousColorScheme = root.style.colorScheme;
@@ -29,7 +29,8 @@ function StoryThemeFrame({
   return (
     <div
       className={
-        theme === "dark" ? "dark rounded-2xl bg-neutral-950 p-4" : "rounded-2xl bg-white p-4"
+        // NEW-001: Keep dark verification wrapper on the approved neutral palette.
+        theme === "dark" ? "dark rounded-2xl bg-neutral-900 p-4" : "rounded-2xl bg-white p-4"
       }
     >
       <div className="max-w-4xl">{children}</div>
@@ -44,6 +45,7 @@ const withTheme = (theme: StoryTheme) => (Story: ComponentType) => (
 );
 
 const darkStory = {
+  // H-003: Keep explicit dark-mode story coverage for chunk-4 visual verification.
   parameters: {
     backgrounds: {
       default: "dark",
@@ -90,6 +92,11 @@ export const VsmOnly: Story = {
     materialComponents: [],
     onChange: fn(),
   },
+};
+
+export const VsmOnlyDark: Story = {
+  ...darkStory,
+  args: VsmOnly.args,
 };
 
 export const VerbalOnly: Story = {
@@ -235,6 +242,11 @@ export const WithComplexMaterial: Story = {
     ],
     onChange: fn(),
   },
+};
+
+export const WithComplexMaterialDark: Story = {
+  ...darkStory,
+  args: WithComplexMaterial.args,
 };
 
 export const WithQuantityGreaterThanOne: Story = {

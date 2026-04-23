@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// C-002 regression coverage: structured contract checks for layout, theme tokens, and onChange plumbing.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SavingThrowSpec } from "../../../types/spell";
@@ -59,7 +60,7 @@ const ANNOTATION_CLASSES = [
 ];
 
 describe("SavingThrowInput", () => {
-  it("renders the root controls and raw legacy annotation", () => {
+  it("C-001/M-003: renders dual-theme root controls, grouped semantics, and raw legacy annotation", () => {
     render(
       <SavingThrowInput
         value={{
@@ -67,7 +68,7 @@ describe("SavingThrowInput", () => {
           notes: "Keep this note",
           rawLegacyValue: "Save vs. spell for half",
         }}
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -108,7 +109,7 @@ describe("SavingThrowInput", () => {
       notes: "Overall notes",
     };
 
-    render(<SavingThrowInput value={value} onChange={() => {}} />);
+    render(<SavingThrowInput value={value} onChange={() => { }} />);
 
     const id = screen.getByTestId("saving-throw-single-id");
     const saveType = screen.getByTestId("saving-throw-single-save-type");

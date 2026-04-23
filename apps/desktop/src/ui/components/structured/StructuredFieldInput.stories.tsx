@@ -36,7 +36,8 @@ function StoryThemeFrame({
   return (
     <div
       className={
-        theme === "dark" ? "dark rounded-2xl bg-neutral-950 p-4" : "rounded-2xl bg-white p-4"
+        // NEW-001: Keep dark verification wrapper on the approved neutral palette.
+        theme === "dark" ? "dark rounded-2xl bg-neutral-900 p-4" : "rounded-2xl bg-white p-4"
       }
     >
       <div className="max-w-4xl">{children}</div>
@@ -51,6 +52,7 @@ const withTheme = (theme: StoryTheme) => (Story: ComponentType) => (
 );
 
 const darkStory = {
+  // H-003: Keep explicit dark-mode story coverage for chunk-4 visual verification.
   parameters: {
     backgrounds: {
       default: "dark",
@@ -103,6 +105,11 @@ export const RangeDistance: Story = {
     },
     onChange: fn(),
   },
+};
+
+export const RangeDistanceDark: Story = {
+  ...darkStory,
+  args: RangeDistance.args,
 };
 
 export const RangeDistancePerLevel: Story = {
@@ -187,6 +194,11 @@ export const DurationTime: Story = {
     },
     onChange: fn(),
   },
+};
+
+export const DurationTimeDark: Story = {
+  ...darkStory,
+  args: DurationTime.args,
 };
 
 export const DurationWithNotes: Story = {
@@ -285,6 +297,11 @@ export const CastingTimeSimple: Story = {
     },
     onChange: fn(),
   },
+};
+
+export const CastingTimeSimpleDark: Story = {
+  ...darkStory,
+  args: CastingTimeSimple.args,
 };
 
 export const CastingTimeWithPerLevel: Story = {

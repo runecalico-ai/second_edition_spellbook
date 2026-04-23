@@ -116,6 +116,7 @@ export function SavingThrowInput({ value, onChange }: SavingThrowInputProps) {
     }
   };
 
+  // M-003: grouped semantics contract uses a fieldset root plus an sr-only legend label.
   return (
     <fieldset className={rootSurfaceClass} data-testid="saving-throw-input">
       <legend className="sr-only">Saving Throw</legend>

@@ -22,6 +22,48 @@ function expectClasses(node: HTMLElement, classes: string[]) {
 }
 
 describe("AreaForm", () => {
+  it("M-002: area preview uses semantic output with accessible label", () => {
+    render(
+      <AreaForm
+        value={{
+          kind: "special",
+          rawLegacyValue: "legacy area",
+          text: "legacy area",
+          notes: "area notes",
+        }}
+        onChange={() => { }}
+      />,
+    );
+
+    const preview = screen.getByTestId("area-text-preview");
+    expect(preview.tagName).toBe("OUTPUT");
+    expect(preview.getAttribute("aria-label")).toBe("Computed area text");
+  });
+
+  it("H-002: area interactive controls use named border role tokens", () => {
+    render(
+      <AreaForm
+        value={{
+          kind: "special",
+          rawLegacyValue: "legacy area",
+          text: "legacy area",
+          notes: "area notes",
+        }}
+        onChange={() => { }}
+      />,
+    );
+
+    expect(screen.getByTestId("area-form-kind").className.split(/\s+/)).toContain(
+      "border-neutral-400",
+    );
+    expect(screen.getByTestId("area-form-raw-legacy").className.split(/\s+/)).toContain(
+      "border-neutral-400",
+    );
+    expect(screen.getByTestId("area-form-notes").className.split(/\s+/)).toContain(
+      "border-neutral-400",
+    );
+  });
+
   it("applies the standard focus-visible ring to rendered area controls", () => {
     const { rerender } = render(
       <AreaForm
@@ -31,7 +73,7 @@ describe("AreaForm", () => {
           shapeUnit: "ft",
           notes: "area notes",
         }}
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 
@@ -49,7 +91,7 @@ describe("AreaForm", () => {
           notes: "special notes",
           text: "special area",
         }}
-        onChange={() => {}}
+        onChange={() => { }}
       />,
     );
 

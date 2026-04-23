@@ -35,7 +35,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-checkboxes")).not.toBeNull();
@@ -46,7 +46,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const root = screen.getByTestId("component-checkboxes");
@@ -61,7 +61,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const verbal = screen.getByTestId("component-checkbox-verbal");
@@ -77,7 +77,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-checkbox-verbal")).not.toBeNull();
@@ -88,7 +88,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-checkbox-somatic")).not.toBeNull();
@@ -99,7 +99,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-checkbox-material")).not.toBeNull();
@@ -110,7 +110,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.queryByTestId("component-checkbox-focus")).toBeNull();
@@ -123,7 +123,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-text-preview")).not.toBeNull();
@@ -134,7 +134,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const preview = screen.getByTestId("component-text-preview");
@@ -146,7 +146,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-text-preview").getAttribute("aria-label")).toBe(
@@ -159,7 +159,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const root = screen.getByTestId("component-checkboxes");
@@ -172,7 +172,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const preview = screen.getByTestId("component-text-preview");
@@ -187,7 +187,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const root = screen.getByTestId("component-checkboxes");
@@ -203,7 +203,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const strip = screen.getByTestId("component-checkbox-strip");
@@ -217,7 +217,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-text-preview").textContent).toBe("—");
@@ -228,7 +228,7 @@ describe("ComponentCheckboxes – vsm variant", () => {
       <ComponentCheckboxes
         components={{ ...noMaterialComponents, verbal: true, somatic: true }}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-text-preview").textContent).toBe("V, S");
@@ -244,7 +244,7 @@ describe("ComponentCheckboxes – all variant", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
         variant="all"
       />,
     );
@@ -265,7 +265,7 @@ describe("ComponentCheckboxes – all variant", () => {
           experience: true,
         }}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
         variant="all"
       />,
     );
@@ -284,7 +284,7 @@ describe("ComponentCheckboxes – all variant", () => {
           experience: false,
         }}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
         variant="all"
       />,
     );
@@ -303,7 +303,7 @@ describe("ComponentCheckboxes – all variant", () => {
           experience: false,
         }}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
         variant="all"
       />,
     );
@@ -317,14 +317,14 @@ describe("ComponentCheckboxes – all variant", () => {
 describe("ComponentCheckboxes – material subform", () => {
   it("material-component-add button is present when material=true", () => {
     render(
-      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => { }} />,
+      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => {}} />,
     );
     expect(screen.getByTestId("material-component-add")).not.toBeNull();
   });
 
   it("material-component-add button is a descendant of component-checkboxes root", () => {
     render(
-      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => { }} />,
+      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => {}} />,
     );
     const root = screen.getByTestId("component-checkboxes");
     const addBtn = screen.getByTestId("material-component-add");
@@ -336,7 +336,7 @@ describe("ComponentCheckboxes – material subform", () => {
       <ComponentCheckboxes
         components={noMaterialComponents}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.queryByTestId("material-component-add")).toBeNull();
@@ -350,7 +350,7 @@ describe("ComponentCheckboxes – material subform", () => {
           { name: "Bat fur", quantity: 1, isConsumed: false },
           { name: "Sulphur", quantity: 1, isConsumed: true },
         ]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getAllByTestId("material-component-row")).toHaveLength(2);
@@ -364,7 +364,7 @@ describe("ComponentCheckboxes – material subform", () => {
           { name: "Bat fur", quantity: 1, isConsumed: false },
           { name: "Sulphur", quantity: 1, isConsumed: true },
         ]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const subform = screen.getByTestId("material-subform");
@@ -374,7 +374,7 @@ describe("ComponentCheckboxes – material subform", () => {
 
   it("material subform uses theme-aware surface classes (H-001 palette tokens)", () => {
     render(
-      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => { }} />,
+      <ComponentCheckboxes components={withMaterial} materialComponents={[]} onChange={() => {}} />,
     );
     const subform = screen.getByTestId("material-subform");
     const tokens = new Set(subform.className.split(/\s+/).filter(Boolean));
@@ -388,7 +388,7 @@ describe("ComponentCheckboxes – material subform", () => {
       <ComponentCheckboxes
         components={withMaterial}
         materialComponents={[{ name: "Bat fur", quantity: 1, isConsumed: false }]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("material-component-name").className.split(/\s+/)).toContain(
@@ -407,7 +407,7 @@ describe("ComponentCheckboxes – material subform", () => {
       <ComponentCheckboxes
         components={withMaterial}
         materialComponents={[{ name: "Bat fur", quantity: 1, isConsumed: false }]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const row = screen.getAllByTestId("material-component-row")[0] as HTMLElement;
@@ -428,7 +428,7 @@ describe("ComponentCheckboxes – material subform", () => {
           experience: false,
         }}
         materialComponents={[]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.queryByTestId("material-subform")).not.toBeNull();
@@ -446,7 +446,7 @@ describe("ComponentCheckboxes – material subform", () => {
           experience: false,
         }}
         materialComponents={[{ name: "Eye of newt", quantity: 1, isConsumed: false }]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getByTestId("component-text-preview")).not.toBeNull();
@@ -464,7 +464,7 @@ describe("ComponentCheckboxes – material subform", () => {
           experience: false,
         }}
         materialComponents={[{ name: "Eye of newt", quantity: 1, isConsumed: false }]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(screen.getAllByTestId("material-component-row")).toHaveLength(1);
@@ -475,7 +475,7 @@ describe("ComponentCheckboxes – material subform", () => {
       <ComponentCheckboxes
         components={withMaterial}
         materialComponents={[{ name: "Bat fur", quantity: 1, isConsumed: false }]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -485,7 +485,7 @@ describe("ComponentCheckboxes – material subform", () => {
       <ComponentCheckboxes
         components={withMaterial}
         materialComponents={[{ name: "Bat guano", quantity: 1, isConsumed: false }]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 

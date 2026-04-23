@@ -90,9 +90,10 @@ export const spellbookE2EHarness = {
         return Promise.resolve();
       }
 
-      const ms = window.__SPELLBOOK_E2E_SPELL_PICKER_SEARCH_DELAYS__?.[
-        buildSpellPickerDelayKey(listType, query)
-      ];
+      const ms =
+        window.__SPELLBOOK_E2E_SPELL_PICKER_SEARCH_DELAYS__?.[
+          buildSpellPickerDelayKey(listType, query)
+        ];
       return waitForDelay(ms);
     },
   },

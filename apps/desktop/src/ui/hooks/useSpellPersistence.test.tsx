@@ -33,8 +33,9 @@ vi.mock("../../store/useModal", () => ({
 }));
 
 vi.mock("../../store/useNotifications", () => ({
-  useNotifications: (selector: (state: { pushNotification: typeof pushNotificationMock }) => unknown) =>
-    selector({ pushNotification: pushNotificationMock }),
+  useNotifications: (
+    selector: (state: { pushNotification: typeof pushNotificationMock }) => unknown,
+  ) => selector({ pushNotification: pushNotificationMock }),
 }));
 
 function baseLoadedSpell(overrides: Partial<SpellDetail> = {}): SpellDetail {

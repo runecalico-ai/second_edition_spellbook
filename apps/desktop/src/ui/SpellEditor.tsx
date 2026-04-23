@@ -244,7 +244,7 @@ export default function SpellEditor() {
     unsavedRef.current = false;
     expandedDetailRef.current = null;
     prevExpandedDetailRef.current = null;
-  }, []);
+  }, [setParserFallbackFields, setParsersPending]);
 
   const resetStructuredLoadState = useCallback(() => {
     setForm(createEmptySpellForm());
@@ -1042,7 +1042,7 @@ export default function SpellEditor() {
         : undefined;
     const validMagicResistanceSpec =
       structuredMagicResistance !== null &&
-        validateMagicResistanceSpecShape(structuredMagicResistance)
+      validateMagicResistanceSpecShape(structuredMagicResistance)
         ? structuredMagicResistance
         : undefined;
     const shouldSendSavingThrowSpec =
@@ -1089,7 +1089,8 @@ export default function SpellEditor() {
     const normalizedSphere = (spellData.sphere ?? "").trim();
     const componentsEditedInExpandedMode =
       detailDirty.components || detailDirty.materialComponents || hasExpandedComponentsEdit;
-    const shouldSendComponentsSpec = structuredComponents !== null || componentsEditedInExpandedMode;
+    const shouldSendComponentsSpec =
+      structuredComponents !== null || componentsEditedInExpandedMode;
     const shouldSendMaterialComponentsSpec =
       hasLoadedMaterialComponentsSpec ||
       structuredMaterialComponents.length > 0 ||
@@ -1666,8 +1667,9 @@ export default function SpellEditor() {
               <input
                 id="spell-name"
                 data-testid="spell-name-input"
-                className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-name"))} ${isNameInvalid ? spellInputBorderInvalid : spellInputBorderOk
-                  }`}
+                className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-name"))} ${
+                  isNameInvalid ? spellInputBorderInvalid : spellInputBorderOk
+                }`}
                 placeholder="Spell Name"
                 value={form.name}
                 onChange={(e) => handleChange("name", e.target.value)}
@@ -1695,8 +1697,9 @@ export default function SpellEditor() {
               <input
                 id="spell-level"
                 data-testid="spell-level-input"
-                className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isLevelControlInvalid)} ${isLevelControlInvalid ? spellInputBorderInvalid : spellInputBorderOk
-                  }`}
+                className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isLevelControlInvalid)} ${
+                  isLevelControlInvalid ? spellInputBorderInvalid : spellInputBorderOk
+                }`}
                 type="number"
                 value={form.level}
                 onChange={(e) => {
@@ -1751,10 +1754,11 @@ export default function SpellEditor() {
                     className={`h-4 w-4 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-900 ${spellFocusVisibleRing}`}
                   />
                   <span
-                    className={`text-sm ${form.level !== 0
-                      ? "text-neutral-600 dark:text-neutral-500"
-                      : "text-neutral-500 group-hover:text-neutral-600 dark:text-neutral-400 dark:group-hover:text-neutral-300"
-                      }`}
+                    className={`text-sm ${
+                      form.level !== 0
+                        ? "text-neutral-600 dark:text-neutral-500"
+                        : "text-neutral-500 group-hover:text-neutral-600 dark:text-neutral-400 dark:group-hover:text-neutral-300"
+                    }`}
                   >
                     Cantrip
                   </span>
@@ -1775,10 +1779,11 @@ export default function SpellEditor() {
                     className={`h-4 w-4 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-900 ${spellFocusVisibleRing}`}
                   />
                   <span
-                    className={`text-sm ${form.level !== 8
-                      ? "text-neutral-600 dark:text-neutral-500"
-                      : "text-neutral-500 group-hover:text-neutral-600 dark:text-neutral-400 dark:group-hover:text-neutral-300"
-                      }`}
+                    className={`text-sm ${
+                      form.level !== 8
+                        ? "text-neutral-600 dark:text-neutral-500"
+                        : "text-neutral-500 group-hover:text-neutral-600 dark:text-neutral-400 dark:group-hover:text-neutral-300"
+                    }`}
                   >
                     Quest Spell
                   </span>
@@ -1859,10 +1864,11 @@ export default function SpellEditor() {
                   }
                   revealFieldValidation("spell-tradition", "spell-school", "spell-sphere");
                 }}
-                className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-tradition"))} ${isFieldInvalid("spell-tradition")
-                  ? "border-amber-400 dark:border-amber-600"
-                  : spellInputBorderOk
-                  }`}
+                className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-tradition"))} ${
+                  isFieldInvalid("spell-tradition")
+                    ? "border-amber-400 dark:border-amber-600"
+                    : spellInputBorderOk
+                }`}
                 aria-invalid={ariaInvalidForField("spell-tradition")}
                 aria-describedby={describedByByField.get("spell-tradition")}
               >
@@ -1893,8 +1899,9 @@ export default function SpellEditor() {
                 <input
                   id="spell-school"
                   data-testid="spell-school-input"
-                  className={`w-full border p-2 disabled:bg-neutral-100 disabled:text-neutral-600 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-school"))} ${isFieldInvalid("spell-school") ? spellInputBorderInvalid : spellInputBorderOk
-                    }`}
+                  className={`w-full border p-2 disabled:bg-neutral-100 disabled:text-neutral-600 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-school"))} ${
+                    isFieldInvalid("spell-school") ? spellInputBorderInvalid : spellInputBorderOk
+                  }`}
                   value={form.school || ""}
                   onChange={(e) => handleChange("school", e.target.value)}
                   onBlur={() => revealFieldValidation("spell-school")}
@@ -1937,8 +1944,9 @@ export default function SpellEditor() {
                 <input
                   id="spell-sphere"
                   data-testid="spell-sphere-input"
-                  className={`w-full border p-2 disabled:bg-neutral-100 disabled:text-neutral-600 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-sphere"))} ${isFieldInvalid("spell-sphere") ? spellInputBorderInvalid : spellInputBorderOk
-                    }`}
+                  className={`w-full border p-2 disabled:bg-neutral-100 disabled:text-neutral-600 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-sphere"))} ${
+                    isFieldInvalid("spell-sphere") ? spellInputBorderInvalid : spellInputBorderOk
+                  }`}
                   value={form.sphere || ""}
                   onChange={(e) => handleChange("sphere", e.target.value)}
                   onBlur={() => revealFieldValidation("spell-sphere")}
@@ -1976,8 +1984,9 @@ export default function SpellEditor() {
               <input
                 id="spell-classes"
                 data-testid="spell-classes-input"
-                className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-classes"))} ${isFieldInvalid("spell-classes") ? spellInputBorderInvalid : spellInputBorderOk
-                  }`}
+                className={`w-full border p-2 ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-classes"))} ${
+                  isFieldInvalid("spell-classes") ? spellInputBorderInvalid : spellInputBorderOk
+                }`}
                 value={form.classList || ""}
                 onChange={(e) => {
                   handleChange("classList", e.target.value);
@@ -2127,8 +2136,9 @@ export default function SpellEditor() {
           <textarea
             id="spell-description"
             data-testid="spell-description-textarea"
-            className={`min-h-[200px] w-full flex-1 border p-2 font-mono ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-description"))} ${isDescriptionInvalid ? spellInputBorderInvalid : spellInputBorderOk
-              }`}
+            className={`min-h-[200px] w-full flex-1 border p-2 font-mono ${spellInputSurface} ${getSpellFocusVisibleRing(isFieldInvalid("spell-description"))} ${
+              isDescriptionInvalid ? spellInputBorderInvalid : spellInputBorderOk
+            }`}
             value={form.description}
             onChange={(e) => handleChange("description", e.target.value)}
             onBlur={() => revealFieldValidation("spell-description")}

@@ -151,62 +151,65 @@ export function useSpellPersistence({
     resetStructuredLoadState,
   ]);
 
-  const saveSpell = useCallback(async (
-    normalizedSpellData: SpellDetail,
-    onSaveSuccess?: () => void,
-  ) => {
-    if (loading || saveInFlightRef.current) return;
-    try {
-      saveInFlightRef.current = true;
-      setSavePending(true);
-      setSaveShowsDelayedLabel(false);
-      clearSaveDelayedLabelTimer();
-      saveDelayedLabelTimerRef.current = setTimeout(() => {
-        saveDelayedLabelTimerRef.current = null;
-        setSaveShowsDelayedLabel(true);
-      }, SPELL_SAVE_LABEL_DELAY_MS);
+  const saveSpell = useCallback(
+    async (normalizedSpellData: SpellDetail, onSaveSuccess?: () => void) => {
+      if (loading || saveInFlightRef.current) return;
+      try {
+        saveInFlightRef.current = true;
+        setSavePending(true);
+        setSaveShowsDelayedLabel(false);
+        clearSaveDelayedLabelTimer();
+        saveDelayedLabelTimerRef.current = setTimeout(() => {
+          saveDelayedLabelTimerRef.current = null;
+          setSaveShowsDelayedLabel(true);
+        }, SPELL_SAVE_LABEL_DELAY_MS);
 
-      await spellbookE2EHarness.spellEditor.waitForSaveInvokeDelay();
+        await spellbookE2EHarness.spellEditor.waitForSaveInvokeDelay();
 
-      if (isNew) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { id, ...createData } = normalizedSpellData;
-        await invoke("create_spell", { spell: createData });
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { artifacts, ...updateData } = normalizedSpellData;
-        await invoke("update_spell", { spell: updateData });
-      }
+        if (isNew) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { id, ...createData } = normalizedSpellData;
+          await invoke("create_spell", { spell: createData });
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { artifacts, ...updateData } = normalizedSpellData;
+          await invoke("update_spell", { spell: updateData });
+        }
 
-      onSaveSuccess?.();
-      pushNotification("success", "Spell saved.");
-      navigate("/");
-    } catch (e) {
-      await modalAlert(`Failed to save: ${e}`, "Save Error", "error");
-    } finally {
-      clearSaveDelayedLabelTimer();
-      setSaveShowsDelayedLabel(false);
-      setSavePending(false);
-      saveInFlightRef.current = false;
-    }
-  }, [clearSaveDelayedLabelTimer, isNew, loading, modalAlert, navigate, pushNotification]);
-
-  const deleteSpell = useCallback(async (spellId: number | undefined) => {
-    if (savePending || saveInFlightRef.current) return;
-    const confirmed = await modalConfirm(
-      "Are you sure you want to delete this spell?",
-      "Delete Spell",
-    );
-    if (!confirmed) return;
-    try {
-      if (spellId) {
-        await invoke("delete_spell", { id: spellId });
+        onSaveSuccess?.();
+        pushNotification("success", "Spell saved.");
         navigate("/");
+      } catch (e) {
+        await modalAlert(`Failed to save: ${e}`, "Save Error", "error");
+      } finally {
+        clearSaveDelayedLabelTimer();
+        setSaveShowsDelayedLabel(false);
+        setSavePending(false);
+        saveInFlightRef.current = false;
       }
-    } catch (e) {
-      await modalAlert(`Failed to delete: ${e}`, "Delete Error", "error");
-    }
-  }, [modalAlert, modalConfirm, navigate, savePending]);
+    },
+    [clearSaveDelayedLabelTimer, isNew, loading, modalAlert, navigate, pushNotification],
+  );
+
+  const deleteSpell = useCallback(
+    async (spellId: number | undefined) => {
+      if (savePending || saveInFlightRef.current) return;
+      const confirmed = await modalConfirm(
+        "Are you sure you want to delete this spell?",
+        "Delete Spell",
+      );
+      if (!confirmed) return;
+      try {
+        if (spellId) {
+          await invoke("delete_spell", { id: spellId });
+          navigate("/");
+        }
+      } catch (e) {
+        await modalAlert(`Failed to delete: ${e}`, "Delete Error", "error");
+      }
+    },
+    [modalAlert, modalConfirm, navigate, savePending],
+  );
 
   return {
     loading,

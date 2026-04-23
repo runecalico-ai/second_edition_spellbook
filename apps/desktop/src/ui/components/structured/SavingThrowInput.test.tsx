@@ -68,7 +68,7 @@ describe("SavingThrowInput", () => {
           notes: "Keep this note",
           rawLegacyValue: "Save vs. spell for half",
         }}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -109,7 +109,7 @@ describe("SavingThrowInput", () => {
       notes: "Overall notes",
     };
 
-    render(<SavingThrowInput value={value} onChange={() => { }} />);
+    render(<SavingThrowInput value={value} onChange={() => {}} />);
 
     const id = screen.getByTestId("saving-throw-single-id");
     const saveType = screen.getByTestId("saving-throw-single-save-type");

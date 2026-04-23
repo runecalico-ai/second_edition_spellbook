@@ -31,7 +31,7 @@ describe("AreaForm", () => {
           text: "legacy area",
           notes: "area notes",
         }}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -49,7 +49,7 @@ describe("AreaForm", () => {
           text: "legacy area",
           notes: "area notes",
         }}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -73,7 +73,7 @@ describe("AreaForm", () => {
           shapeUnit: "ft",
           notes: "area notes",
         }}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -91,7 +91,7 @@ describe("AreaForm", () => {
           notes: "special notes",
           text: "special area",
         }}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 

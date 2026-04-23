@@ -100,7 +100,7 @@ describe("StructuredFieldInput", () => {
         value={
           { kind: "distance", unit: "ft", distance: { mode: "fixed", value: 10 } } as RangeSpec
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     const root = getRoot();
@@ -122,7 +122,7 @@ describe("StructuredFieldInput", () => {
             notes: "range notes",
           } as RangeSpec
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -140,7 +140,7 @@ describe("StructuredFieldInput", () => {
             notes: "duration notes",
           } as DurationSpec
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -161,7 +161,7 @@ describe("StructuredFieldInput", () => {
             rawLegacyValue: "legacy ct",
           } as SpellCastingTime
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -181,7 +181,7 @@ describe("StructuredFieldInput", () => {
             distance: { mode: "fixed", value: 30 },
           } as RangeSpec
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -216,7 +216,7 @@ describe("StructuredFieldInput", () => {
       <StructuredFieldInput
         fieldType="range"
         value={{ kind: "special", rawLegacyValue: "legacy range" } as RangeSpec}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -263,7 +263,7 @@ describe("StructuredFieldInput", () => {
       <StructuredFieldInput
         fieldType="duration"
         value={{ kind: "time", unit: "round", duration: { mode: "fixed", value: 3 } }}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -296,7 +296,7 @@ describe("StructuredFieldInput", () => {
             notes: "notes",
           } as DurationSpec
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -320,7 +320,7 @@ describe("StructuredFieldInput", () => {
             condition: "When cast",
           } as DurationSpec
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -344,7 +344,7 @@ describe("StructuredFieldInput", () => {
             uses: { mode: "fixed", value: 2 },
           } as DurationSpec
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -401,7 +401,7 @@ describe("StructuredFieldInput", () => {
             rawLegacyValue: "legacy ct",
           } as SpellCastingTime
         }
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -490,7 +490,7 @@ describe("StructuredFieldInput", () => {
       <StructuredFieldInput
         fieldType="casting_time"
         value={null}
-        onChange={() => { }}
+        onChange={() => {}}
         visibleFieldErrors={errors}
       />,
     );

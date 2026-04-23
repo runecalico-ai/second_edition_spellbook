@@ -87,11 +87,11 @@ describe("spellbookE2EHarness", () => {
     ]);
 
     let settled = false;
-    const pending = spellbookE2EHarness.spellPicker.waitForSearchDelay("KNOWN", "Fireball").then(
-      () => {
+    const pending = spellbookE2EHarness.spellPicker
+      .waitForSearchDelay("KNOWN", "Fireball")
+      .then(() => {
         settled = true;
-      },
-    );
+      });
 
     await vi.advanceTimersByTimeAsync(24);
     expect(settled).toBe(false);

@@ -1,15 +1,46 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState, useCallback } from "react";
-import type { SpellDetail, RangeSpec, DurationSpec, SpellCastingTime, AreaSpec, SpellDamageSpec, SavingThrowSpec, MagicResistanceSpec, MaterialComponentSpec, SpellComponents, LevelBand, ScalingDriver, ScalingKind, ScalingRule, SaveKind, ApplicationScope, DamagePart, SaveOutcome, SaveType, SingleSave, SaveOutcomeEffect, ScalarMode, DicePool, DiceTerm } from "../../types/spell";
-import { validateAreaSpec, validateDurationSpec, validateRangeSpec, validateSpellCastingTime, validateSpellDamageSpec } from "../../lib/parserValidation";
+import type {
+  SpellDetail,
+  RangeSpec,
+  DurationSpec,
+  SpellCastingTime,
+  AreaSpec,
+  SpellDamageSpec,
+  SavingThrowSpec,
+  MagicResistanceSpec,
+  MaterialComponentSpec,
+  SpellComponents,
+  LevelBand,
+  ScalingDriver,
+  ScalingKind,
+  ScalingRule,
+  SaveKind,
+  ApplicationScope,
+  DamagePart,
+  SaveOutcome,
+  SaveType,
+  SingleSave,
+  SaveOutcomeEffect,
+  ScalarMode,
+  DicePool,
+  DiceTerm,
+} from "../../types/spell";
+import {
+  validateAreaSpec,
+  validateDurationSpec,
+  validateRangeSpec,
+  validateSpellCastingTime,
+  validateSpellDamageSpec,
+} from "../../lib/parserValidation";
 import { decideCanonicalField } from "../canonicalFieldDecision";
 import type { DetailFieldKey } from "../detailDirty";
 import { spellbookE2EHarness } from "../spellbookE2EHarness";
 
-
-const spellFocusVisibleRing = "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
-const spellInvalidFocusVisibleRing = "focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
-
+const spellFocusVisibleRing =
+  "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
+const spellInvalidFocusVisibleRing =
+  "focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
 
 function getSpellFocusVisibleRing(isInvalid: boolean): string {
   return isInvalid ? spellInvalidFocusVisibleRing : spellFocusVisibleRing;
@@ -521,14 +552,21 @@ function getParserFallbackLabel(field: DetailFieldKey): string {
   }
 }
 
-
-
-
 export function emptySpellComponents(): SpellComponents {
-  return { verbal: false, somatic: false, material: false, focus: false, divineFocus: false, experience: false };
+  return {
+    verbal: false,
+    somatic: false,
+    material: false,
+    focus: false,
+    divineFocus: false,
+    experience: false,
+  };
 }
 
-export function inferSpellComponentsFromLegacy(componentsLegacy: string, hasMaterialText: boolean): SpellComponents {
+export function inferSpellComponentsFromLegacy(
+  componentsLegacy: string,
+  hasMaterialText: boolean,
+): SpellComponents {
   const normalized = componentsLegacy.toUpperCase();
   const tokens = normalized.split(/[^A-Z]+/).filter(Boolean);
   const inferred = emptySpellComponents();
@@ -536,15 +574,37 @@ export function inferSpellComponentsFromLegacy(componentsLegacy: string, hasMate
     const token = tokens[index];
     const nextToken = tokens[index + 1];
     const prevToken = tokens[index - 1];
-    if (token === "DIVINE" && nextToken === "FOCUS") { inferred.divineFocus = true; continue; }
+    if (token === "DIVINE" && nextToken === "FOCUS") {
+      inferred.divineFocus = true;
+      continue;
+    }
     switch (token) {
-      case "V": case "VERBAL": inferred.verbal = true; continue;
-      case "S": case "SOMATIC": inferred.somatic = true; continue;
-      case "M": case "MATERIAL": inferred.material = true; continue;
-      case "F": inferred.focus = true; continue;
-      case "FOCUS": if (prevToken !== "DIVINE") inferred.focus = true; continue;
-      case "DF": inferred.divineFocus = true; continue;
-      case "XP": case "EXP": case "EXPERIENCE": inferred.experience = true; continue;
+      case "V":
+      case "VERBAL":
+        inferred.verbal = true;
+        continue;
+      case "S":
+      case "SOMATIC":
+        inferred.somatic = true;
+        continue;
+      case "M":
+      case "MATERIAL":
+        inferred.material = true;
+        continue;
+      case "F":
+        inferred.focus = true;
+        continue;
+      case "FOCUS":
+        if (prevToken !== "DIVINE") inferred.focus = true;
+        continue;
+      case "DF":
+        inferred.divineFocus = true;
+        continue;
+      case "XP":
+      case "EXP":
+      case "EXPERIENCE":
+        inferred.experience = true;
+        continue;
     }
     if (/^[VSMF]+$/.test(token)) {
       if (token.includes("V")) inferred.verbal = true;
@@ -570,172 +630,293 @@ export interface HydrationSetters {
   setHasLoadedMaterialComponentsSpec: (v: boolean) => void;
   setHasLoadedSavingThrowSpec: (v: boolean) => void;
   setHasLoadedMagicResistanceSpec: (v: boolean) => void;
-  setSuppressExpandParse: (v: React.SetStateAction<Partial<Record<DetailFieldKey, boolean>>>) => void;
+  setSuppressExpandParse: (
+    v: React.SetStateAction<Partial<Record<DetailFieldKey, boolean>>>,
+  ) => void;
 }
 
 export function useSpellParser() {
   const [parsersPending, setParsersPending] = useState(false);
   const [parserFallbackFields, setParserFallbackFields] = useState<Set<string>>(new Set());
 
-  const hydrateSpell = useCallback((data: SpellDetail, isActive: () => boolean, setters: HydrationSetters) => {
-    let shouldLoadLegacyFallbacks = true;
-    if (data.canonicalData) {
-      try {
-        const canonicalRaw = JSON.parse(data.canonicalData) as Record<string, unknown>;
-// biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
-        const canonical = canonicalRaw as any;
-        const canonicalHasMaterialComponentsSpec = canonicalRaw.material_components != null;
-        setters.setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
-        const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
+  const hydrateSpell = useCallback(
+    (data: SpellDetail, isActive: () => boolean, setters: HydrationSetters) => {
+      let shouldLoadLegacyFallbacks = true;
+      if (data.canonicalData) {
+        try {
+          const canonicalRaw = JSON.parse(data.canonicalData) as Record<string, unknown>;
+          // biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
+          const canonical = canonicalRaw as any;
+          const canonicalHasMaterialComponentsSpec = canonicalRaw.material_components != null;
+          setters.setHasLoadedMaterialComponentsSpec(canonicalHasMaterialComponentsSpec);
+          const nextSuppressExpandParse: Partial<Record<DetailFieldKey, boolean>> = {};
 
-        const rangeDecision = decideCanonicalField<RangeSpec>(
-          canonicalRaw, "range",
-          // biome-ignore lint/suspicious/noExplicitAny: Legacy untyped
-          (r: any) => ({
-            kind: r.kind, text: r.text, unit: r.unit, rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
-            distance: r.distance ? { mode: r.distance.mode ?? "fixed", value: r.distance.value, perLevel: r.distance.per_level ?? r.distance.perLevel } : undefined,
-          }), validateRangeSpec
-        );
-        if (rangeDecision.structuredValue) setters.setStructuredRange(rangeDecision.structuredValue);
-        if (rangeDecision.suppressExpandParse) nextSuppressExpandParse.range = true;
+          const rangeDecision = decideCanonicalField<RangeSpec>(
+            canonicalRaw,
+            "range",
+            // biome-ignore lint/suspicious/noExplicitAny: Legacy untyped
+            (r: any) => ({
+              kind: r.kind,
+              text: r.text,
+              unit: r.unit,
+              rawLegacyValue: r.raw_legacy_value ?? r.rawLegacyValue,
+              distance: r.distance
+                ? {
+                    mode: r.distance.mode ?? "fixed",
+                    value: r.distance.value,
+                    perLevel: r.distance.per_level ?? r.distance.perLevel,
+                  }
+                : undefined,
+            }),
+            validateRangeSpec,
+          );
+          if (rangeDecision.structuredValue)
+            setters.setStructuredRange(rangeDecision.structuredValue);
+          if (rangeDecision.suppressExpandParse) nextSuppressExpandParse.range = true;
 
-        const durationDecision = decideCanonicalField<DurationSpec>(
-          canonicalRaw, "duration",
-          // biome-ignore lint/suspicious/noExplicitAny: Legacy untyped
-          (d: any) => ({
-            kind: d.kind, unit: d.unit, text: d.text, condition: d.condition, uses: normalizeScalar(d.uses), rawLegacyValue: d.raw_legacy_value ?? d.rawLegacyValue,
-            duration: d.duration ? { mode: d.duration.mode ?? "fixed", value: d.duration.value, perLevel: d.duration.per_level ?? d.duration.perLevel } : undefined,
-          }), validateDurationSpec
-        );
-        if (durationDecision.structuredValue) setters.setStructuredDuration(durationDecision.structuredValue);
-        if (durationDecision.suppressExpandParse) nextSuppressExpandParse.duration = true;
+          const durationDecision = decideCanonicalField<DurationSpec>(
+            canonicalRaw,
+            "duration",
+            // biome-ignore lint/suspicious/noExplicitAny: Legacy untyped
+            (d: any) => ({
+              kind: d.kind,
+              unit: d.unit,
+              text: d.text,
+              condition: d.condition,
+              uses: normalizeScalar(d.uses),
+              rawLegacyValue: d.raw_legacy_value ?? d.rawLegacyValue,
+              duration: d.duration
+                ? {
+                    mode: d.duration.mode ?? "fixed",
+                    value: d.duration.value,
+                    perLevel: d.duration.per_level ?? d.duration.perLevel,
+                  }
+                : undefined,
+            }),
+            validateDurationSpec,
+          );
+          if (durationDecision.structuredValue)
+            setters.setStructuredDuration(durationDecision.structuredValue);
+          if (durationDecision.suppressExpandParse) nextSuppressExpandParse.duration = true;
 
-        const castingTimeDecision = decideCanonicalField<SpellCastingTime>(
-          canonicalRaw, "casting_time",
-          // biome-ignore lint/suspicious/noExplicitAny: Legacy untyped
-          (c: any) => ({ text: c.text ?? "", unit: c.unit, baseValue: c.baseValue ?? c.base_value, perLevel: c.perLevel ?? c.per_level ?? 0, levelDivisor: c.levelDivisor ?? c.level_divisor ?? 1, rawLegacyValue: c.rawLegacyValue ?? c.raw_legacy_value }),
-          validateSpellCastingTime
-        );
-        if (castingTimeDecision.structuredValue) setters.setStructuredCastingTime(castingTimeDecision.structuredValue);
-        if (castingTimeDecision.suppressExpandParse) nextSuppressExpandParse.castingTime = true;
+          const castingTimeDecision = decideCanonicalField<SpellCastingTime>(
+            canonicalRaw,
+            "casting_time",
+            // biome-ignore lint/suspicious/noExplicitAny: Legacy untyped
+            (c: any) => ({
+              text: c.text ?? "",
+              unit: c.unit,
+              baseValue: c.baseValue ?? c.base_value,
+              perLevel: c.perLevel ?? c.per_level ?? 0,
+              levelDivisor: c.levelDivisor ?? c.level_divisor ?? 1,
+              rawLegacyValue: c.rawLegacyValue ?? c.raw_legacy_value,
+            }),
+            validateSpellCastingTime,
+          );
+          if (castingTimeDecision.structuredValue)
+            setters.setStructuredCastingTime(castingTimeDecision.structuredValue);
+          if (castingTimeDecision.suppressExpandParse) nextSuppressExpandParse.castingTime = true;
 
-        const areaDecision = decideCanonicalField<AreaSpec>(canonicalRaw, "area", normalizeAreaSpec, validateAreaSpec);
-        if (areaDecision.structuredValue) setters.setStructuredArea(areaDecision.structuredValue);
-        if (areaDecision.suppressExpandParse) nextSuppressExpandParse.area = true;
+          const areaDecision = decideCanonicalField<AreaSpec>(
+            canonicalRaw,
+            "area",
+            normalizeAreaSpec,
+            validateAreaSpec,
+          );
+          if (areaDecision.structuredValue) setters.setStructuredArea(areaDecision.structuredValue);
+          if (areaDecision.suppressExpandParse) nextSuppressExpandParse.area = true;
 
-        const damageDecision = decideCanonicalField<SpellDamageSpec>(canonicalRaw, "damage", normalizeDamageSpec, validateSpellDamageSpec);
-        if (damageDecision.structuredValue) setters.setStructuredDamage(damageDecision.structuredValue);
-        if (damageDecision.suppressExpandParse) nextSuppressExpandParse.damage = true;
+          const damageDecision = decideCanonicalField<SpellDamageSpec>(
+            canonicalRaw,
+            "damage",
+            normalizeDamageSpec,
+            validateSpellDamageSpec,
+          );
+          if (damageDecision.structuredValue)
+            setters.setStructuredDamage(damageDecision.structuredValue);
+          if (damageDecision.suppressExpandParse) nextSuppressExpandParse.damage = true;
 
-        const savingThrowDecision = decideCanonicalField<SavingThrowSpec>(canonicalRaw, "saving_throw", normalizeSavingThrowSpec, validateSavingThrowSpecShape);
-        if (savingThrowDecision.suppressExpandParse) { setters.setHasLoadedSavingThrowSpec(true); nextSuppressExpandParse.savingThrow = true; }
-        if (savingThrowDecision.structuredValue) setters.setStructuredSavingThrow(savingThrowDecision.structuredValue);
+          const savingThrowDecision = decideCanonicalField<SavingThrowSpec>(
+            canonicalRaw,
+            "saving_throw",
+            normalizeSavingThrowSpec,
+            validateSavingThrowSpecShape,
+          );
+          if (savingThrowDecision.suppressExpandParse) {
+            setters.setHasLoadedSavingThrowSpec(true);
+            nextSuppressExpandParse.savingThrow = true;
+          }
+          if (savingThrowDecision.structuredValue)
+            setters.setStructuredSavingThrow(savingThrowDecision.structuredValue);
 
-        const magicResistanceDecision = decideCanonicalField<MagicResistanceSpec>(canonicalRaw, "magic_resistance", normalizeMagicResistanceSpec, validateMagicResistanceSpecShape);
-        if (magicResistanceDecision.suppressExpandParse) { setters.setHasLoadedMagicResistanceSpec(true); nextSuppressExpandParse.magicResistance = true; }
-        if (magicResistanceDecision.structuredValue) setters.setStructuredMagicResistance(magicResistanceDecision.structuredValue);
+          const magicResistanceDecision = decideCanonicalField<MagicResistanceSpec>(
+            canonicalRaw,
+            "magic_resistance",
+            normalizeMagicResistanceSpec,
+            validateMagicResistanceSpecShape,
+          );
+          if (magicResistanceDecision.suppressExpandParse) {
+            setters.setHasLoadedMagicResistanceSpec(true);
+            nextSuppressExpandParse.magicResistance = true;
+          }
+          if (magicResistanceDecision.structuredValue)
+            setters.setStructuredMagicResistance(magicResistanceDecision.structuredValue);
 
-        if (canonical.components || (canonical.material_components && canonical.material_components.length > 0)) {
-          const hasMaterialData = (canonical.material_components?.length ?? 0) > 0;
-          const comp = canonical.components ? {
-            verbal: canonical.components.verbal ?? false, somatic: canonical.components.somatic ?? false, material: (canonical.components.material ?? false) || hasMaterialData,
-            focus: canonical.components.focus ?? false, divineFocus: canonical.components.divine_focus ?? false, experience: canonical.components.experience ?? false,
-          } : { verbal: false, somatic: false, material: true, focus: false, divineFocus: false, experience: false };
-          setters.setStructuredComponents(comp);
-          const rawMats = (canonical.material_components ?? []) as unknown[];
-          const mats: MaterialComponentSpec[] = rawMats.map(// biome-ignore lint/suspicious/noExplicitAny: Legacy untyped
-          (m: any) => ({
-            name: (m.name as string) ?? "", quantity: m.quantity as number | undefined, unit: (m.unit as string) ?? undefined, gpValue: (m.gpValue ?? m.gp_value) as number | undefined,
-            isConsumed: (m.isConsumed ?? m.is_consumed) as boolean | undefined, description: (m.description as string) ?? undefined,
-          }));
-          setters.setStructuredMaterialComponents(mats);
+          if (
+            canonical.components ||
+            (canonical.material_components && canonical.material_components.length > 0)
+          ) {
+            const hasMaterialData = (canonical.material_components?.length ?? 0) > 0;
+            const comp = canonical.components
+              ? {
+                  verbal: canonical.components.verbal ?? false,
+                  somatic: canonical.components.somatic ?? false,
+                  material: (canonical.components.material ?? false) || hasMaterialData,
+                  focus: canonical.components.focus ?? false,
+                  divineFocus: canonical.components.divine_focus ?? false,
+                  experience: canonical.components.experience ?? false,
+                }
+              : {
+                  verbal: false,
+                  somatic: false,
+                  material: true,
+                  focus: false,
+                  divineFocus: false,
+                  experience: false,
+                };
+            setters.setStructuredComponents(comp);
+            const rawMats = (canonical.material_components ?? []) as unknown[];
+            const mats: MaterialComponentSpec[] = rawMats.map(
+              // biome-ignore lint/suspicious/noExplicitAny: Legacy untyped
+              (m: any) => ({
+                name: (m.name as string) ?? "",
+                quantity: m.quantity as number | undefined,
+                unit: (m.unit as string) ?? undefined,
+                gpValue: (m.gpValue ?? m.gp_value) as number | undefined,
+                isConsumed: (m.isConsumed ?? m.is_consumed) as boolean | undefined,
+                description: (m.description as string) ?? undefined,
+              }),
+            );
+            setters.setStructuredMaterialComponents(mats);
+          }
+          setters.setSuppressExpandParse(nextSuppressExpandParse);
+
+          const parserTasks = buildParserTasks(
+            data,
+            () => isActive(),
+            {
+              // biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
+              setStructuredRange: setters.setStructuredRange as any,
+              // biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
+              setStructuredDuration: setters.setStructuredDuration as any,
+              // biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
+              setStructuredCastingTime: setters.setStructuredCastingTime as any,
+              // biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
+              setStructuredArea: setters.setStructuredArea as any,
+              // biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
+              setStructuredDamage: setters.setStructuredDamage as any,
+              // biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
+              setSuppressExpandParse: setters.setSuppressExpandParse as any,
+              addParserFallback: (f) => setParserFallbackFields((prev) => new Set([...prev, f])),
+            },
+            {
+              range: rangeDecision.suppressExpandParse,
+              duration: durationDecision.suppressExpandParse,
+              castingTime: castingTimeDecision.suppressExpandParse,
+              area: areaDecision.suppressExpandParse,
+              damage: damageDecision.suppressExpandParse,
+            },
+          );
+
+          if (!savingThrowDecision.suppressExpandParse && data.savingThrow?.trim()) {
+            const stResult = mapLegacySavingThrow(data.savingThrow);
+            setters.setStructuredSavingThrow(stResult);
+            setters.setHasLoadedSavingThrowSpec(true);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
+            if (stResult.kind === "dm_adjudicated")
+              setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+          }
+
+          if (!magicResistanceDecision.suppressExpandParse && data.magicResistance?.trim()) {
+            const mrResult = mapLegacyMagicResistance(data.magicResistance);
+            setters.setStructuredMagicResistance(mrResult);
+            setters.setHasLoadedMagicResistanceSpec(true);
+            setters.setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
+            if (mrResult.kind === "special")
+              setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+          }
+
+          if (parserTasks.length > 0) {
+            setParsersPending(true);
+            Promise.all(parserTasks).finally(() => {
+              if (isActive()) setParsersPending(false);
+            });
+          }
+          shouldLoadLegacyFallbacks = false;
+        } catch {}
+      }
+
+      if (shouldLoadLegacyFallbacks) {
+        const parserTasks: Promise<unknown>[] = [];
+        if (data.range?.trim()) {
+          const legacyRange = data.range;
+          parserTasks.push(
+            invoke<RangeSpec>("parse_range_to_spec", { input: legacyRange })
+              .then((r) => {
+                if (!r) {
+                  setters.setStructuredRange(toSpecialRangeSpec(legacyRange));
+                  setParserFallbackFields((prev) => new Set([...prev, "Range"]));
+                  return;
+                }
+                const spec = spellbookE2EHarness.spellEditor.applyRangeDistanceCorruption(r);
+                setters.setStructuredRange(spec);
+                setters.setSuppressExpandParse((prev) => ({ ...prev, range: true }));
+                if (spec.kind === "special")
+                  setParserFallbackFields((prev) => new Set([...prev, "Range"]));
+              })
+              .catch(() => {
+                setters.setStructuredRange(toSpecialRangeSpec(legacyRange));
+                setParserFallbackFields((prev) => new Set([...prev, "Range"]));
+              }),
+          );
         }
-        setters.setSuppressExpandParse(nextSuppressExpandParse);
 
-        const parserTasks = buildParserTasks(data, () => isActive(), {
-// biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
-          setStructuredRange: setters.setStructuredRange as any,
-// biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
-          setStructuredDuration: setters.setStructuredDuration as any,
-// biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
-          setStructuredCastingTime: setters.setStructuredCastingTime as any,
-// biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
-          setStructuredArea: setters.setStructuredArea as any,
-// biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
-          setStructuredDamage: setters.setStructuredDamage as any,
-// biome-ignore lint/suspicious/noExplicitAny: Required for parsing untyped JSON from legacy canonical_data string
-          setSuppressExpandParse: setters.setSuppressExpandParse as any,
-          addParserFallback: (f) => setParserFallbackFields((prev) => new Set([...prev, f])),
-        }, {
-          range: rangeDecision.suppressExpandParse, duration: durationDecision.suppressExpandParse, castingTime: castingTimeDecision.suppressExpandParse,
-          area: areaDecision.suppressExpandParse, damage: damageDecision.suppressExpandParse,
-        });
-
-        if (!savingThrowDecision.suppressExpandParse && data.savingThrow?.trim()) {
+        if (data.savingThrow?.trim()) {
           const stResult = mapLegacySavingThrow(data.savingThrow);
           setters.setStructuredSavingThrow(stResult);
           setters.setHasLoadedSavingThrowSpec(true);
           setters.setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
-          if (stResult.kind === "dm_adjudicated") setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
+          if (stResult.kind === "dm_adjudicated")
+            setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
         }
 
-        if (!magicResistanceDecision.suppressExpandParse && data.magicResistance?.trim()) {
+        if (data.magicResistance?.trim()) {
           const mrResult = mapLegacyMagicResistance(data.magicResistance);
           setters.setStructuredMagicResistance(mrResult);
           setters.setHasLoadedMagicResistanceSpec(true);
           setters.setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
-          if (mrResult.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
+          if (mrResult.kind === "special")
+            setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
         }
 
         if (parserTasks.length > 0) {
           setParsersPending(true);
-          Promise.all(parserTasks).finally(() => { if (isActive()) setParsersPending(false); });
+          Promise.all(parserTasks).finally(() => {
+            if (isActive()) setParsersPending(false);
+          });
         }
-        shouldLoadLegacyFallbacks = false;
-      } catch { }
-    }
-
-    if (shouldLoadLegacyFallbacks) {
-      const parserTasks: Promise<unknown>[] = [];
-      if (data.range?.trim()) {
-        const legacyRange = data.range;
-        parserTasks.push(
-          invoke<RangeSpec>("parse_range_to_spec", { input: legacyRange })
-            .then((r) => {
-              if (!r) { setters.setStructuredRange(toSpecialRangeSpec(legacyRange)); setParserFallbackFields((prev) => new Set([...prev, "Range"])); return; }
-              const spec = spellbookE2EHarness.spellEditor.applyRangeDistanceCorruption(r);
-              setters.setStructuredRange(spec);
-              setters.setSuppressExpandParse((prev) => ({ ...prev, range: true }));
-              if (spec.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Range"]));
-            })
-            .catch(() => { setters.setStructuredRange(toSpecialRangeSpec(legacyRange)); setParserFallbackFields((prev) => new Set([...prev, "Range"])); })
-        );
       }
+    },
+    [],
+  );
 
-      if (data.savingThrow?.trim()) {
-        const stResult = mapLegacySavingThrow(data.savingThrow);
-        setters.setStructuredSavingThrow(stResult);
-        setters.setHasLoadedSavingThrowSpec(true);
-        setters.setSuppressExpandParse((prev) => ({ ...prev, savingThrow: true }));
-        if (stResult.kind === "dm_adjudicated") setParserFallbackFields((prev) => new Set([...prev, "Saving throw"]));
-      }
-
-      if (data.magicResistance?.trim()) {
-        const mrResult = mapLegacyMagicResistance(data.magicResistance);
-        setters.setStructuredMagicResistance(mrResult);
-        setters.setHasLoadedMagicResistanceSpec(true);
-        setters.setSuppressExpandParse((prev) => ({ ...prev, magicResistance: true }));
-        if (mrResult.kind === "special") setParserFallbackFields((prev) => new Set([...prev, "Magic resistance"]));
-      }
-
-      if (parserTasks.length > 0) {
-        setParsersPending(true);
-        Promise.all(parserTasks).finally(() => { if (isActive()) setParsersPending(false); });
-      }
-    }
-  }, []);
-
-  return { hydrateSpell, parsersPending, setParsersPending, parserFallbackFields, setParserFallbackFields };
+  return {
+    hydrateSpell,
+    parsersPending,
+    setParsersPending,
+    parserFallbackFields,
+    setParserFallbackFields,
+  };
 }
 
 export {
@@ -751,5 +932,5 @@ export {
   toV2SavingThrowSpec,
   buildParserTasks,
   validateSavingThrowSpecShape,
-  validateMagicResistanceSpecShape
+  validateMagicResistanceSpecShape,
 };

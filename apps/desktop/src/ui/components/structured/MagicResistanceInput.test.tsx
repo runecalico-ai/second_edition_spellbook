@@ -71,7 +71,7 @@ describe("MagicResistanceInput", () => {
           notes: "MR applies normally",
           sourceText: "Magic resistance applies",
         }}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -110,7 +110,7 @@ describe("MagicResistanceInput", () => {
       notes: "Partial MR",
     };
 
-    render(<MagicResistanceInput value={value} onChange={() => { }} damageKind="none" />);
+    render(<MagicResistanceInput value={value} onChange={() => {}} damageKind="none" />);
 
     const partIds = screen.getByTestId("magic-resistance-part-ids") as HTMLInputElement;
     const partialScope = screen.getByTestId("magic-resistance-partial-scope");
@@ -171,7 +171,7 @@ describe("MagicResistanceInput", () => {
       },
     };
 
-    render(<MagicResistanceInput value={value} onChange={() => { }} damageKind="none" />);
+    render(<MagicResistanceInput value={value} onChange={() => {}} damageKind="none" />);
 
     const partIds = screen.getByTestId("magic-resistance-part-ids") as HTMLInputElement;
     const helperText = screen.getByText(
@@ -193,7 +193,7 @@ describe("MagicResistanceInput", () => {
       },
     };
 
-    render(<MagicResistanceInput value={value} onChange={() => { }} damageKind="modeled" />);
+    render(<MagicResistanceInput value={value} onChange={() => {}} damageKind="modeled" />);
 
     const partIds = screen.getByTestId("magic-resistance-part-ids") as HTMLInputElement;
 

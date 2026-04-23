@@ -89,7 +89,7 @@ describe("DamageForm", () => {
           notes: "Overall damage notes",
           sourceText: "1d6 per level, maximum 10d6",
         }}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 
@@ -138,7 +138,7 @@ describe("DamageForm", () => {
       ],
     };
 
-    render(<DamageForm value={value} onChange={() => { }} />);
+    render(<DamageForm value={value} onChange={() => {}} />);
 
     expect(screen.getByTestId("damage-form-combine-mode")).not.toBeNull();
     expect(screen.getByTestId("damage-form-add-part")).not.toBeNull();
@@ -284,7 +284,7 @@ describe("DamageForm", () => {
             message: "Damage formula must be valid",
           },
         ]}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
 

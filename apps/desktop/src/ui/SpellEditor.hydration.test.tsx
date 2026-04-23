@@ -108,14 +108,16 @@ describe("SpellEditor hydration", () => {
     };
 
     hydrateSpellMock.mockImplementation(
-      (_data: SpellDetail, isActive: () => boolean, setters: {
-        setStructuredRange: (value: RangeSpec | null) => void;
-        setSuppressExpandParse: (
-          updater: (
-            prev: Partial<Record<string, boolean>>,
-          ) => Partial<Record<string, boolean>>,
-        ) => void;
-      }) => {
+      (
+        _data: SpellDetail,
+        isActive: () => boolean,
+        setters: {
+          setStructuredRange: (value: RangeSpec | null) => void;
+          setSuppressExpandParse: (
+            updater: (prev: Partial<Record<string, boolean>>) => Partial<Record<string, boolean>>,
+          ) => void;
+        },
+      ) => {
         if (!isActive()) return;
         setters.setStructuredRange(hydratedRange);
         setters.setSuppressExpandParse((prev) => ({ ...prev, range: true }));

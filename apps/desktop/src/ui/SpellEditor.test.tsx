@@ -1741,7 +1741,7 @@ describe("SpellEditor save progress and success feedback (Task 4)", () => {
   });
 
   it("shows an explicit load error and blocks stale saves after a fast spell-detail load failure", async () => {
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
       vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {

@@ -4,14 +4,15 @@ The Spellbook application contains a rich spell database but offers no way for u
 
 ## What Changes
 
-- **New `llm-chat` capability**: Download-on-demand TinyLlama 1.1B (Q4_K_M, ~700 MB) stored in `SpellbookVault/models/`; lazy-loaded into memory on first chat and kept resident for the session
-- **RAG pipeline**: User query → extract search terms → FTS5 spell search → inject top-N results into ChatML prompt → generate streamed response
-- **Tauri commands**: `llm_status`, `llm_download_model`, `llm_chat` (streaming via Tauri events)
-- **React Chat UI**: Dedicated Chat panel with message history, streaming token display, spell-link affordances, and download/progress UX
-- **Real embedding generation**: `fastembed-rs` (all-MiniLM-L6-v2, 384-dim) replaces the Python sidecar's zero-vector stub; embeddings generated on every spell write and on import batch completion
-- **Semantic search**: `sqlite-vec` table populated with real vectors for the first time; new `search_spells_semantic` Tauri command; backfill command for existing library
-- **Python ML stubs removed**: `handle_embed` (zero-vector stub) and `handle_llm_answer` (string stub) deleted from `spellbook_sidecar.py`
-- **Error handling**: Graceful messaging for download failures, insufficient RAM, model timeout, and inference errors
+- **New `llm-chat` capability**: Download-on-demand TinyLlama 1.1B (Q4_K_M, ~700 MB) stored in a configurable path (defaulting to `SpellbookVault/models/`); lazy-loaded into memory on first chat and kept resident for the session.
+- **RAG pipeline**: User query → extract search terms (robust heuristic) → FTS5 spell search → inject top-N results into ChatML prompt → generate streamed response.
+- **Tauri commands**: `llm_status`, `llm_download_model`, `llm_chat` (replaces `chat_answer`, streaming via Tauri events).
+- **React Chat UI**: Premium Chat panel with message history, streaming token display, "grounded in" indicator, spell-link affordances, and download/progress UX.
+- **Real embedding generation**: `fastembed-rs` (all-MiniLM-L6-v2, 384-dim) replaces the Python sidecar's zero-vector stub; embeddings generated on every spell write and on import batch completion. Both model and binary stored in `SpellbookVault/models/` for portability.
+- **Semantic search**: `sqlite-vec` table populated with real vectors; `search_spells_semantic` command replaces existing `search_semantic`; backfill command for existing library.
+- **Library UI compatibility**: `Library.tsx` updated to use the new semantic search backend and response structure.
+- **Python ML stubs removed**: `handle_embed` (zero-vector stub) and `handle_llm_answer` (string stub) deleted from `spellbook_sidecar.py`.
+- **Error handling**: Consolidated "System Requirements" check; graceful messaging for download failures, insufficient RAM, and inference errors.
 
 ## Capabilities
 
@@ -20,14 +21,14 @@ The Spellbook application contains a rich spell database but offers no way for u
 
 ### Modified Capabilities
 - `architecture`: The "Python Sidecar for ML" requirement currently delegates all ML to Python; this change moves both LLM inference (`llama-cpp-rs`) and embedding generation (`fastembed-rs`) to native Rust. The Python sidecar is retained only for document import/export (Markdown, PDF, DOCX parsing and HTML rendering)
-- `search`: The existing FTS5 search requirement is augmented with semantic vector search via `sqlite-vec` and `fastembed-rs`; the search capability gains a `search_spells_semantic` command and embedding-indexing requirements
+- `search`: The existing FTS5 search requirement is augmented with semantic vector search via `sqlite-vec` and `fastembed-rs`; `search_spells_semantic` replaces the placeholder `search_semantic` command.
 
 ## Impact
 
 - **Backend**: New modules `src-tauri/src/commands/llm.rs` and `src-tauri/src/commands/embeddings.rs`; adds `llama-cpp-rs`, `fastembed`, and `reqwest` (with `stream` feature) to `Cargo.toml`
-- **Frontend**: New `ChatPanel` component subtree; semantic search UI is backend-only in this change (no Library UI changes)
-- **Vault**: New `SpellbookVault/models/` sub-directory for the LLM GGUF file; the fastembed embedding model is stored in the platform's HuggingFace cache directory
+- **Frontend**: New `ChatPanel` component subtree (replaces `Chat.tsx`); `Library.tsx` updated for backend compatibility.
+- **Vault**: New `SpellbookVault/models/` sub-directory for both LLM GGUF and `fastembed` ONNX models (configurable path).
 - **Python sidecar**: Two stub handlers removed; remaining handlers (import, export) unchanged
-- **No database schema changes** — `sqlite-vec` table already exists; backfill populates it
-- **No breaking changes** to existing commands or UI
+- **No database schema changes** — `sqlite-vec` table already exists; backfill populates it.
+- **Breaking changes**: Replaces `search_semantic` and `chat_answer` commands with improved native Rust implementations.
 - **Dependencies**: `llama-cpp-rs`, `fastembed` (Rust crates); both model files fetched from Hugging Face at runtime

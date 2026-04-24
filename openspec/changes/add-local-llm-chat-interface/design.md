@@ -11,15 +11,14 @@ This design introduces two features in a single change: (1) a conversational cha
 ## Goals / Non-Goals
 
 **Goals:**
-- Download TinyLlama 1.1B Q4_K_M on demand from Hugging Face (~700 MB)
-- Load LLM lazily on first chat request; keep in memory for the session
-- Run a RAG pipeline: extract search terms → FTS5 query → inject top-N spell results → generate response
-- Stream tokens back to the frontend via Tauri events
-- Provide a React Chat UI with message history, spinner/progress, and clickable spell links
-- Comprehensive error handling: download failure, disk full, insufficient RAM, inference timeout
-- Generate real 384-dim embeddings via `fastembed-rs` (all-MiniLM-L6-v2) on every spell write
-- Populate `sqlite-vec` with real vectors, activating semantic search for the first time
-- Expose `search_spells_semantic` Tauri command for vector similarity queries
+- Download TinyLlama 1.1B and MiniLM-L6-v2 on demand; store both in `SpellbookVault/models/` (configurable path)
+- Load models lazily or eagerly with a consolidated "System Requirements" check (RAM, disk)
+- Run a RAG pipeline: extract search terms via robust heuristic → FTS5 query → inject top-N spell results → generate response
+- Stream tokens via Tauri events using frontend-generated `stream_id`
+- Provide a Premium React Chat UI with message history, glassmorphism aesthetics, "grounded in" indicators, and clickable spell links
+- Lightweight `DownloadState` manager to prevent concurrent high-bandwidth operations
+- Replace `search_semantic` and `chat_answer` commands with `search_spells_semantic` and `llm_chat`
+- Update `Library.tsx` to maintain compatibility with new semantic search structure
 - Backfill existing library with a `reindex_embeddings` command
 - Remove Python sidecar ML stubs (`handle_embed`, `handle_llm_answer`)
 
@@ -28,7 +27,6 @@ This design introduces two features in a single change: (1) a conversational cha
 - Conversation persistence across sessions (chat history is in-memory only)
 - Fine-tuning or custom models
 - Hybrid FTS5 + vector RAG retrieval (FTS5 only for RAG in v1; semantic search available as standalone)
-- Semantic search UI integration in the Library panel (backend command only)
 - Python sidecar involvement in LLM inference or embeddings
 
 ## Decisions
@@ -61,28 +59,27 @@ This design introduces two features in a single change: (1) a conversational cha
 - Mistral 7B: Better quality but requires 4–5 GB RAM; excludes low-end machines
 - Q2 quantization: Too much quality loss for domain-specific spell reasoning
 
-### Decision 3: Download-on-demand with progress events
+### Decision 3: Download-on-demand with progress events and DownloadManager
 
-**What**: Model is not bundled with the app. On first use, the backend downloads the GGUF file from Hugging Face, streaming progress events to the frontend. Download is resumable (range requests).
+**What**: Models are not bundled. On first use, the backend downloads the required GGUF or ONNX files, streaming progress to the frontend. A lightweight `DownloadState` guard in the backend prevents concurrent downloads or re-indexing during a download.
 
 **Why**:
-- Keeps installer size small (~30 MB vs ~730 MB)
-- Users who never use chat never pay the download cost
-- Progress events reuse the existing Tauri `emit` pattern
+- Keeps installer size small.
+- `DownloadState` (simple `AtomicBool` or `Mutex<Option<active_task>>`) prevents bandwidth saturation and race conditions.
+- Progress events are consistent for both LLM and Embedding models.
 
 **Alternatives considered**:
 - Bundle with installer: Bloats every install; most users may not use chat
 - Background download at startup: Wastes bandwidth; surprised users
 
-### Decision 4: RAG pipeline using existing FTS5 infrastructure
+### Decision 4: RAG pipeline with robust term extraction
 
-**What**: Before calling the LLM, extract 1–3 search terms from the user query (simple heuristic: nouns/keywords, not another LLM call) and run `search_spells` against the existing FTS5 index. Top 5 results (name + school + level + description summary) are injected into the system prompt.
+**What**: Before calling the LLM, extract keywords from the user query using a robust heuristic (stripping common stopwords like "spell", "level", "list", but preserving domain terms like "fire", "holy"). Run `search_spells` against the FTS5 index. Top 5 results are injected into the system prompt.
 
 **Why**:
-- Keeps responses grounded in the actual library (no hallucinated spell stats)
-- Reuses battle-tested search code with no new query path
-- Term extraction via regex/heuristic avoids a second LLM call (low latency)
-- FTS5 already handles boolean and phrase search so complex queries work
+- Keeps responses grounded.
+- Robust heuristic improves retrieval quality compared to simple regex.
+- Preserves domain context while eliminating query noise.
 
 **Alternatives considered**:
 - No RAG (pure LLM): Hallucinates spell details; not useful for a domain-specific tool
@@ -102,14 +99,13 @@ This design introduces two features in a single change: (1) a conversational cha
 - Instruct format: TinyLlama supports it but ChatML produces better structured outputs
 - Persistent history (SQLite): Out of scope; adds migration complexity
 
-### Decision 6: Streaming via Tauri event channel
+### Decision 6: Streaming via Tauri event channel with frontend-generated IDs
 
-**What**: The `llm_chat` command accepts a `stream_id` parameter. Tokens are emitted as `llm://token/<stream_id>` events. A final `llm://done/<stream_id>` event signals completion.
+**What**: The `llm_chat` command accepts a `stream_id` generated by the frontend. Tokens are emitted as `llm://token/<stream_id>` events.
 
 **Why**:
-- TinyLlama generates ~10–20 tokens/s on CPU; streaming prevents the UI from appearing frozen
-- Tauri's `emit` is already used for long-running operations (e.g., import progress)
-- `stream_id` uniquely identifies each generation session, allowing the frontend to associate streaming events with the correct message and to cancel an in-progress generation before starting a new one.
+- Streaming prevents the UI from appearing frozen.
+- Frontend-generated IDs allow the UI to safely ignore tokens from stale/aborted sessions if a new one is started rapidly.
 
 **Alternatives considered**:
 - Polling: Adds unnecessary complexity and latency
@@ -129,30 +125,27 @@ This design introduces two features in a single change: (1) a conversational cha
 - `Arc<RwLock<...>>`: Inference is write-heavy; no benefit over Mutex
 - Unload after N minutes: Complicates state machine; not required for v1
 
-### Decision 8: `fastembed-rs` for embedding generation
+### Decision 8: `fastembed-rs` with unified storage
 
-**What**: Use the `fastembed` Rust crate, which bundles all-MiniLM-L6-v2 as an ONNX model and provides a high-level `embed(texts, batch_size)` API. The model (~90 MB) is downloaded from Hugging Face on first use via `hf-hub`.
+**What**: Use `fastembed-rs` with models stored in `SpellbookVault/models/` (configurable). Like the LLM, the embedding model has a `download_status` and progress UI.
 
 **Why**:
-- Highest-level API in the Rust embedding ecosystem: one call, no manual tokenization or pooling
-- Ships all-MiniLM-L6-v2 out of the box — 384 dimensions, exactly matching the existing `sqlite-vec` schema
-- ONNX runtime (`ort` crate) is cross-platform and well-tested on Windows/macOS/Linux
-- ~90 MB model is small enough to download automatically without explicit user consent
+- Unified storage in the Vault makes the app more portable and transparent.
+- Providing download UI for embeddings ensures a smooth first-run experience if the model is missing.
 
 **Alternatives considered**:
 - `candle` (HuggingFace): More control but requires manual mean-pooling; ~100 extra lines, more risk
 - Raw `ort` + ONNX model file: Maximum flexibility but high boilerplate; no meaningful benefit here
 
-> The embedding model is stored in the platform's HuggingFace cache directory (managed by `hf-hub`), not in `SpellbookVault/models/`. Only the LLM GGUF file is stored in the vault.
+> Both models are stored in a path determined by the `models_dir` vault setting, defaulting to `SpellbookVault/models/`.
 
-### Decision 9: Embedding model loads eagerly at app startup
+### Decision 9: Consolidated System Requirements Check
 
-**What**: Unlike the LLM (lazy on first chat), the embedding model is loaded at app startup in a background `spawn_blocking` task. Spell writes that arrive before loading completes queue behind a `Mutex`.
+**What**: Before loading either model, the backend performs a check for RAM (≥ 1.5 GB free) and Disk Space.
 
 **Why**:
-- Embeddings are needed on every spell write (create, update) and on every import batch; lazy loading would cause unpredictable latency spikes mid-import
-- 90 MB model loads in ~1–2 s — acceptable startup cost, not noticeable to users
-- Eager load simplifies write path: no "is the model ready?" check needed in spell commands
+- Prevents crashes on low-resource machines.
+- Unified check simplifies the loading state machine.
 
 **Alternatives considered**:
 - Lazy like LLM: Inconsistent UX; first spell import after a cold start would pause unexpectedly
@@ -171,15 +164,13 @@ This design introduces two features in a single change: (1) a conversational cha
 - Background async reindex: Adds complexity around index consistency; not needed for a local app
 - User-triggered reindex only: Would leave new installs with no vectors until the user discovers the command
 
-### Decision 11: Remove Python ML stubs, retain import/export
+### Decision 11: Explicitly replace existing commands
 
-**What**: Delete `handle_embed` (returns `[0.0] * 384`) and `handle_llm_answer` (returns stub string) from `spellbook_sidecar.py`. The `handle_import` and `handle_export` handlers are untouched.
+**What**: `search_spells_semantic` and `llm_chat` replace the existing `search_semantic` and `chat_answer` commands. `Library.tsx` is updated to use the new backend and response structure.
 
 **Why**:
-- The stubs have never provided value; they produce meaningless output that could mislead future developers
-- Removing them shrinks the sidecar's surface area and makes its true role (document I/O) clearer
-- No feature regression: embeddings now come from `fastembed-rs`, LLM from `llama-cpp-rs`
-- The `method` dispatch in `main()` should return an error for unknown methods — removing the stubs naturally triggers this
+- Eliminates "placebo" features and IPC debt.
+- Ensures the existing Library UI benefits from the real embeddings immediately.
 
 **Alternatives considered**:
 - Keep stubs as fallback: No value; Rust path is always preferred and always available
@@ -332,11 +323,12 @@ interface ReindexResult {
 ## UI Architecture
 
 ```
-ChatPanel
+ChatPanel (Premium Aesthetics: Glassmorphism, animations)
 ├── ChatHeader (title, model status badge)
 ├── MessageList
 │   ├── UserMessage
 │   └── AssistantMessage
+│       ├── GroundedInIndicator (shows search terms/spells used)
 │       └── SpellLink (clickable → navigates to SpellDetail)
 ├── StreamingMessagePlaceholder (while generating)
 └── ChatInputBar

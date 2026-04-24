@@ -3,48 +3,47 @@
 - [ ] 1.1 Verify `llama-cpp-rs` compiles on Windows with MSVC toolchain (spike — blocking)
 - [ ] 1.2 Verify `llama-cpp-rs` cancellation / interrupt API is available (check crate docs/source)
 - [ ] 1.3 Verify `fastembed` crate compiles on Windows (ONNX runtime pre-built binaries — spike)
-- [ ] 1.4 Add `llama-cpp-rs` to `apps/desktop/src-tauri/Cargo.toml` under a `llm` feature flag
-- [ ] 1.5 Add `fastembed` to `Cargo.toml` (same `llm` feature flag or standalone)
-- [ ] 1.6 Add HTTP download dependency (`reqwest` with `stream` feature) to `Cargo.toml` if not already present
+- [ ] 1.4 Add `llama-cpp-rs` and `fastembed` to `apps/desktop/src-tauri/Cargo.toml` under a `llm` feature flag
+- [ ] 1.5 Add `sys-info` or similar crate for system resource checks (RAM/Disk)
+- [ ] 1.6 Add HTTP download dependency (`reqwest` with `stream` feature) to `Cargo.toml`
 - [ ] 1.7 Update `DEVELOPMENT.md` with C++ toolchain requirements and fastembed/ONNX notes
+- [ ] 1.8 Implement `DownloadManager` (lightweight state guard) to prevent concurrent downloads
 
 ## 2. Backend — LLM Model Lifecycle
 
 - [ ] 2.1 Create `apps/desktop/src-tauri/src/commands/llm.rs` module
-- [ ] 2.2 Define `LlmState` struct (`Mutex<Option<LlamaModel>>`, download progress channel) and register in `main.rs`/`lib.rs`
-- [ ] 2.3 Implement `llm_status` command: return enum `{ not_downloaded | downloading | ready | loaded | error }` plus optional RAM check
-- [ ] 2.4 Implement model download helper: HTTP Range-based resumable download, emit `llm://download-progress` events
-- [ ] 2.5 Implement SHA-256 integrity check after download completes; delete file and return error on mismatch
-- [ ] 2.6 Implement disk-space pre-check (require ≥ 800 MB free) before starting download
-- [ ] 2.7 Implement `llm_download_model` command: orchestrate download, integrity check, status transitions
-- [ ] 2.8 Implement lazy model load inside `llm_chat` command: check RAM (≥ 1.5 GB free), load model, transition state to `loaded`
-- [ ] 2.9 Register `llm_status`, `llm_download_model`, and `llm_chat` in Tauri command list
+- [ ] 2.2 Define `LlmState` struct (`Mutex<Option<LlamaModel>>`, download progress channel)
+- [ ] 2.3 Implement consolidated `system_requirements_check` helper (RAM ≥ 1.5 GB, Disk ≥ 1 GB)
+- [ ] 2.4 Implement `llm_status` command: return enum `{ not_downloaded | downloading | ready | loaded | error }`
+- [ ] 2.5 Implement model download helper: HTTP Range-based resumable download, emit progress events, integrated with `DownloadManager`
+- [ ] 2.6 Implement SHA-256 integrity check and unified storage in `Vault/models/`
+- [ ] 2.7 Implement `llm_download_model` command
+- [ ] 2.8 Implement `llm_cancel` command to abort active inference or download
+- [ ] 2.9 Implement lazy model load inside `llm_chat` command with system requirements check
+- [ ] 2.10 Register `llm_status`, `llm_download_model`, `llm_chat`, and `llm_cancel` (replaces `chat_answer`)
 
 ## 3. Backend — Embeddings & Semantic Search
 
 - [ ] 3.1 Create `apps/desktop/src-tauri/src/commands/embeddings.rs` module
-- [ ] 3.2 Define `EmbeddingState` struct (`Mutex<Option<TextEmbedding>>`) and register in `main.rs`/`lib.rs`
-- [ ] 3.3 Implement background startup task: load `fastembed` all-MiniLM-L6-v2 model; set state to ready when complete
-- [ ] 3.4 Implement `embed_spell_text(name, description) -> Vec<f32>` internal helper (single spell)
-- [ ] 3.5 Implement `embed_spell_texts_batch(items) -> Vec<Vec<f32>>` internal helper (N spells, single fastembed batch call)
-- [ ] 3.6 Add post-write embedding hook to `create_spell` command: call `embed_spell_text`, upsert into `sqlite-vec`; log and continue on failure
-- [ ] 3.7 Add post-write embedding hook to `update_spell` command (name or description change): regenerate and upsert vector
-- [ ] 3.8 Add batch embedding call to import completion path: embed all newly inserted spells in one batch; bulk upsert into `sqlite-vec`
-- [ ] 3.9 Implement `search_spells_semantic` command: embed query → cosine similarity query on `sqlite-vec` → fetch spell summaries → return ranked list
-- [ ] 3.10 Implement `reindex_embeddings` command: enumerate spells missing vectors (or all if `force=true`), batch embed, bulk upsert, emit `embeddings://reindex-progress` events, return `ReindexResult`
-- [ ] 3.11 Register `search_spells_semantic` and `reindex_embeddings` in Tauri command list
-- [ ] 3.12 Add startup call to `reindex_embeddings(force=false)` as background task (fills gaps for users upgrading from zero-vector era)
-- [ ] 3.13 Implement EmbeddingState error variant: if fastembed initialization fails at startup, set state to Failed(reason); spell writes log and skip embedding; search_spells_semantic returns error
+- [ ] 3.2 Define `EmbeddingState` struct with download status and unified storage path
+- [ ] 3.3 Implement `embeddings_status` and `embeddings_download_model` (similar to LLM lifecycle)
+- [ ] 3.4 Implement `embed_spell_text` and `embed_spell_texts_batch` internal helpers
+- [ ] 3.5 Add post-write embedding hooks to `create_spell` and `update_spell`
+- [ ] 3.6 Add batch embedding call to import completion path
+- [ ] 3.7 Implement `search_spells_semantic` command (replaces existing `search_semantic`)
+- [ ] 3.8 Implement `reindex_embeddings` command with `DownloadManager` guard
+- [ ] 3.9 Update `Library.tsx` to handle the new `search_spells_semantic` command and ranking results
+- [ ] 3.10 Add idle-time background task for `reindex_embeddings(force=false)`
+- [ ] 3.11 Register all embedding commands in Tauri command list
 
 ## 4. Backend — RAG Pipeline & LLM Inference
 
-- [ ] 4.1 Implement search term extractor: strip stop words, extract up to 3 content nouns from user query (regex-based)
-- [ ] 4.2 Implement RAG retrieval: call existing FTS5 search infrastructure, return top 5 spell results (name, school, level, description ≤ 200 chars)
-- [ ] 4.3 Implement ChatML prompt assembler: system prompt + RAG context + conversation history + current user query
-- [ ] 4.4 Implement history truncation: drop oldest non-system turns when total token count approaches 2048
-- [ ] 4.5 Implement `llm_chat` command: extract terms → RAG → assemble prompt → `spawn_blocking` inference loop → emit `llm://token/<stream_id>` per token → emit `llm://done/<stream_id>` on completion
-- [ ] 4.6 Implement inference timeout (120 s): abort loop and emit `llm://done` with partial response + `[Response timed out]` note
-- [ ] 4.7 Implement concurrent request guard: return error if inference already running
+- [ ] 4.1 Implement robust search term extractor: strip stopwords (AD&D noise), preserve domain keywords
+- [ ] 4.2 Implement RAG retrieval: top 5 results with "grounded in" metadata
+- [ ] 4.3 Implement ChatML prompt assembler with history truncation
+- [ ] 4.4 Implement `llm_chat` command (replaces `chat_answer`): uses frontend-generated `stream_id`
+- [ ] 4.5 Implement inference timeout and interruptible loop
+- [ ] 4.6 Implement concurrent request guard (one inference at a time)
 
 ## 5. Python Sidecar Cleanup
 
@@ -64,17 +63,15 @@
 
 ## 7. Frontend — Chat UI Components
 
-- [ ] 7.1 Create `ChatPanel` container component: manages message list state, loading/error states, dispatches IPC calls
-- [ ] 7.2 Create `ChatHeader` component: title + `LlmStatusBadge` (shows `not_downloaded` / `downloading` / `ready` / `loaded` / `error`)
-- [ ] 7.3 Create `ModelDownloadPrompt` component: feature explanation, model size (~700 MB), "Download Model" button, shown when `not_downloaded`
-- [ ] 7.4 Create `ModelDownloadModal` component: progress bar, bytes downloaded / total, cancel button, shown during `downloading`
-- [ ] 7.5 Create `MessageList` component: scrollable list of `UserMessage` and `AssistantMessage` items, auto-scrolls to bottom
-- [ ] 7.6 Create `UserMessage` component: displays user query text
-- [ ] 7.7 Create `AssistantMessage` component: displays streamed/completed text, supports `SpellLink` sub-components; shows spinner while streaming
-- [ ] 7.8 Implement spell link post-processing: after `llm://done`, detect spell names from RAG results in response text, wrap with `<SpellLink>` that navigates to spell detail view
-- [ ] 7.9 Create `ChatInputBar` component: multi-line textarea, Send button (disabled while streaming), displays inline error system messages
-- [ ] 7.10 Add `ChatPanel` to main navigation / routing (new tab or sidebar entry)
-- [ ] 7.11 Add `data-testid` attributes to all interactive elements per frontend AGENTS.md conventions
+- [ ] 7.1 Create `ChatPanel` container: Glassmorphism aesthetics, entrance animations
+- [ ] 7.2 Create `ChatHeader` with integrated LLM and Embedding status badges
+- [ ] 7.3 Create `ModelDownloadPrompt` and `ModelDownloadModal` (shared for both models)
+- [ ] 7.4 Create `MessageList` with auto-scroll and premium bubble styling
+- [ ] 7.5 Create `AssistantMessage` with `GroundedInIndicator` (shows search terms used)
+- [ ] 7.6 Implement spell link detection and `SpellLink` navigation
+- [ ] 7.7 Create `ChatInputBar` with multi-line support and Send/Cancel buttons
+- [ ] 7.8 Replace existing `Chat.tsx` route with the new `ChatPanel`
+- [ ] 7.9 Add `data-testid` attributes to all interactive elements
 
 ## 8. Error Handling & Edge Cases
 

@@ -2,31 +2,36 @@
 
 ## Context
 
-The Spellbook app is a local-first Tauri desktop app backed by SQLite with an FTS5 spell search index and a Python sidecar. The sidecar's two ML handlers (`handle_embed`, `handle_llm_answer`) are both stubs — `handle_embed` returns 384-dimensional zero vectors, `handle_llm_answer` returns a hardcoded string. The `sqlite-vec` virtual table exists in the schema but has never held real vector data. There is currently no conversational AI capability and no working semantic search.
+The Spellbook app is a local-first Tauri desktop app with SQLite, FTS5 spell search, and a Python sidecar. Today, the sidecar ML handlers are stubs: `handle_embed` returns zero vectors, `handle_llm_answer` returns a hardcoded string, and `sqlite-vec` has no real vector data. The app therefore has no working chat or semantic search.
 
-This design introduces two features in a single change: (1) a conversational chat UI powered by TinyLlama 1.1B Q4_K_M via `llama-cpp-rs`, and (2) real embedding generation via `fastembed-rs` that activates `sqlite-vec` for the first time and enables semantic spell search. Both run entirely in native Rust, eliminating the Python sidecar's ML stubs.
+The current app already exposes a Chat tab and a Library semantic mode, but both flows are placeholders. This change upgrades those existing paths instead of adding new entry points.
 
-**Key constraint**: The Python sidecar is NOT used for either feature. It is retained only for import/export (Markdown, PDF, DOCX parsing; HTML/Markdown rendering), which has no suitable Rust replacement in this change.
+This change adds two Rust-native features: chat via TinyLlama 1.1B Q4_K_M and embeddings via `fastembed-rs`. Those features replace the sidecar ML stubs and activate `sqlite-vec` for real semantic search.
+
+**Key constraint**: The Python sidecar stays in scope only for document import and export (Markdown, PDF, DOCX parsing, and HTML and Markdown rendering). It does not handle embeddings or inference.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Download TinyLlama 1.1B and MiniLM-L6-v2 on demand; store both in `SpellbookVault/models/` (configurable path)
-- Load models lazily or eagerly with a consolidated "System Requirements" check (RAM, disk)
-- Run a RAG pipeline: extract search terms via robust heuristic → FTS5 query → inject top-N spell results → generate response
-- Stream tokens via Tauri events using frontend-generated `stream_id`
-- Provide a Premium React Chat UI with message history, glassmorphism aesthetics, "grounded in" indicators, and clickable spell links
-- Lightweight `DownloadState` manager to prevent concurrent high-bandwidth operations
-- Replace `search_semantic` and `chat_answer` commands with `search_spells_semantic` and `llm_chat`
-- Update `Library.tsx` to maintain compatibility with new semantic search structure
-- Backfill existing library with a `reindex_embeddings` command
-- Remove Python sidecar ML stubs (`handle_embed`, `handle_llm_answer`)
+- Provision the approved TinyLlama model by explicit download or verified side-load into `SpellbookVault/models/`
+- Provision the approved MiniLM-L6-v2 embedding model the same way, then initialize it automatically on startup
+- Load the LLM lazily and gate provisioning and loading with shared RAM and disk checks
+- Run an FTS5-based RAG pipeline: extract terms, retrieve top spells, inject context, and generate a response
+- Stream tokens through Tauri events with frontend-generated `stream_id` values
+- Provide the chat UI with message history, grounding indicators, and clickable spell links
+- Turn the existing Library semantic mode into a real feature, including a semantic-mode empty state with install actions
+- Prevent concurrent high-bandwidth provisioning work
+- Replace `search_semantic` and `chat_answer` with `search_spells_semantic` and `llm_chat`
+- Update `Library.tsx` for the new semantic result shape
+- Backfill existing libraries with `reindex_embeddings`
+- Remove the Python sidecar ML stubs (`handle_embed`, `handle_llm_answer`)
 
 **Non-Goals (this change):**
 - Multiple model support or model selection UI
 - Conversation persistence across sessions (chat history is in-memory only)
 - Fine-tuning or custom models
 - Hybrid FTS5 + vector RAG retrieval (FTS5 only for RAG in v1; semantic search available as standalone)
+- Configurable model storage paths
 - Python sidecar involvement in LLM inference or embeddings
 
 ## Decisions
@@ -59,22 +64,24 @@ This design introduces two features in a single change: (1) a conversational cha
 - Mistral 7B: Better quality but requires 4–5 GB RAM; excludes low-end machines
 - Q2 quantization: Too much quality loss for domain-specific spell reasoning
 
-### Decision 3: Download-on-demand with progress events and DownloadManager
+### Decision 3: Hybrid provisioning with exact approved files
 
-**What**: Models are not bundled. On first use, the backend downloads the required GGUF or ONNX files, streaming progress to the frontend. A lightweight `DownloadState` guard in the backend prevents concurrent downloads or re-indexing during a download.
+**What**: Users can provision either model by explicit in-app download or verified side-load of the exact approved file or bundle. The app copies each asset into `SpellbookVault/models/` after it validates file identity and SHA-256.
 
 **Why**:
-- Keeps installer size small.
-- `DownloadState` (simple `AtomicBool` or `Mutex<Option<active_task>>`) prevents bandwidth saturation and race conditions.
-- Progress events are consistent for both LLM and Embedding models.
+- Keeps normal operation offline after setup.
+- Preserves an easy first-run path for users who want one-click download.
+- Supports strict offline workflows and machine-to-machine transfer through side-loading.
+- Avoids the support burden of arbitrary compatible models in v1.
 
 **Alternatives considered**:
-- Bundle with installer: Bloats every install; most users may not use chat
-- Background download at startup: Wastes bandwidth; surprised users
+- Download only: Conflicts with the product's offline-first story and makes air-gapped use awkward.
+- Side-load only: Keeps the product strict, but adds too much friction for first-time setup.
+- Accept arbitrary compatible models: Too much validation and support scope for a v1 without model-selection UX.
 
-### Decision 4: RAG pipeline with robust term extraction
+### Decision 4: FTS-only RAG pipeline with robust term extraction
 
-**What**: Before calling the LLM, extract keywords from the user query using a robust heuristic (stripping common stopwords like "spell", "level", "list", but preserving domain terms like "fire", "holy"). Run `search_spells` against the FTS5 index. Top 5 results are injected into the system prompt.
+**What**: Before each LLM call, extract keywords with a heuristic, run `search_spells` against FTS5, and inject the top 5 results into the system prompt. Chat does not depend on the embedding model in v1.
 
 **Why**:
 - Keeps responses grounded.
@@ -83,7 +90,7 @@ This design introduces two features in a single change: (1) a conversational cha
 
 **Alternatives considered**:
 - No RAG (pure LLM): Hallucinates spell details; not useful for a domain-specific tool
-- Vector/semantic search for RAG retrieval: Better recall but adds sidecar dependency; deferred to v2
+- Vector or hybrid RAG: Better recall in theory, but couples chat availability to the embedding model in v1
 - Second LLM call for term extraction: Doubles latency; overkill for keyword extraction
 
 ### Decision 5: ChatML format with system prompt injection
@@ -125,23 +132,23 @@ This design introduces two features in a single change: (1) a conversational cha
 - `Arc<RwLock<...>>`: Inference is write-heavy; no benefit over Mutex
 - Unload after N minutes: Complicates state machine; not required for v1
 
-### Decision 8: `fastembed-rs` with unified storage
+### Decision 8: `fastembed-rs` with startup initialization after provisioning
 
-**What**: Use `fastembed-rs` with models stored in `SpellbookVault/models/` (configurable). Like the LLM, the embedding model has a `download_status` and progress UI.
+**What**: Use `fastembed-rs` with the approved embedding model provisioned once into `SpellbookVault/models/` by download or verified side-load. After provisioning, `EmbeddingState` initializes in a background task during app startup.
 
 **Why**:
-- Unified storage in the Vault makes the app more portable and transparent.
-- Providing download UI for embeddings ensures a smooth first-run experience if the model is missing.
+- Matches the user's chosen lifecycle: provision once, then initialize automatically.
+- Keeps semantic search responsive after startup without making every write wait on model loading.
+- Gives the existing Library semantic mode a clear availability state (`notProvisioned`, `downloading`, `initializing`, `ready`, `error`).
 
 **Alternatives considered**:
-- `candle` (HuggingFace): More control but requires manual mean-pooling; ~100 extra lines, more risk
-- Raw `ort` + ONNX model file: Maximum flexibility but high boilerplate; no meaningful benefit here
-
-> Both models are stored in a path determined by the `models_dir` vault setting, defaulting to `SpellbookVault/models/`.
+- Lazy-load the embedding model on first semantic query: Simpler, but makes the first semantic search or reindex feel unexpectedly slow.
+- Queue writes until embeddings are ready: Preserves perfect index freshness, but turns ML startup into a hidden write lock.
+- Use a configurable models directory: Out of scope for v1 and not supported by current vault settings.
 
 ### Decision 9: Consolidated System Requirements Check
 
-**What**: Before loading either model, the backend performs a check for RAM (≥ 1.5 GB free) and Disk Space.
+**What**: Before it loads either model, the backend checks free RAM (≥ 1.5 GB) and disk space.
 
 **Why**:
 - Prevents crashes on low-resource machines.
@@ -151,18 +158,18 @@ This design introduces two features in a single change: (1) a conversational cha
 - Lazy like LLM: Inconsistent UX; first spell import after a cold start would pause unexpectedly
 - Skip embedding for the first few writes: Leaves gaps in the vector index; harder to reason about
 
-### Decision 10: Embedding triggers and backfill
+### Decision 10: Non-blocking embedding writes plus backfill
 
-**What**: Embeddings are generated in three situations: (1) individual spell create/update via a post-write hook in the spell commands, (2) import batch completion (embed all newly imported spells in one `fastembed` batch call), and (3) a `reindex_embeddings` Tauri command that backfills the entire existing library.
+**What**: Generate embeddings in three cases: single spell create or update, import batch completion, and later repair through `reindex_embeddings` plus startup partial backfill. If the model is initializing, missing, or failed, spell writes still succeed and the app records a gap for later repair.
 
 **Why**:
-- Batching on import is critical for performance: embedding 1,000 spells individually would be slow; `fastembed` is optimized for batches
-- The backfill command is a one-time operation for users upgrading from a version with zero-vector stubs; it is also useful after any future model change
-- Post-write hook on single spell operations keeps the index current without extra user action
+- Import batching is critical for performance; `fastembed` is optimized for it.
+- Non-blocking writes preserve the current spell CRUD experience while the model starts.
+- Startup backfill and explicit reindexing keep the index convergent without hiding an ML dependency in every write path.
 
 **Alternatives considered**:
-- Background async reindex: Adds complexity around index consistency; not needed for a local app
-- User-triggered reindex only: Would leave new installs with no vectors until the user discovers the command
+- Queue writes until startup initialization completes: Higher consistency, but worse UX.
+- User-triggered reindex only: Would leave gaps in new or recently changed libraries until the user discovers the command.
 
 ### Decision 11: Explicitly replace existing commands
 
@@ -176,7 +183,62 @@ This design introduces two features in a single change: (1) a conversational cha
 - Keep stubs as fallback: No value; Rust path is always preferred and always available
 - Deprecation warning only: Unnecessary complexity for dead code
 
+### Decision 12: Fixed model storage under the vault root, excluded from backup by default
+
+**What**: Both approved model assets live under the fixed path `SpellbookVault/models/`. Backup and restore exclude those assets by default. Restore preserves any model assets that are already on the machine.
+
+**Why**:
+- Keeps ownership and side-loading transparent because model assets stay inside the vault root.
+- Avoids turning every backup into a large model archive.
+- Preserves existing machine-local provisioning work during restore.
+
+**Alternatives considered**:
+- Store models outside the vault in an unmanaged cache: Simpler backup semantics, but less transparent to users.
+- Include models in every backup: More portable, but inflates archive size and slows backup/restore.
+
+### Decision 13: Spell links open the existing editor route
+
+**What**: Spell links rendered from chat responses navigate to the existing `/edit/:id` route rather than introducing a new read-only detail page.
+
+**Why**:
+- Matches the current application surface.
+- Avoids expanding the scope with a second spell-detail experience.
+
+**Alternatives considered**:
+- Create a new read-only detail route: Cleaner separation, but extra UI scope.
+- Show spell details in an inline modal: Keeps the user in chat, but adds another new surface.
+
+### Decision 14: Semantic mode is user-facing in v1, but ranking scores stay hidden
+
+**What**: The existing Library semantic mode becomes a real feature in v1. The backend returns a `cosineDistance` score for tests and future UI work, but the Library does not display that score yet. If the embedding model is not provisioned, the Library shows an empty state with a clear install action instead of a broken result list.
+
+**Why**:
+- The current app already exposes semantic mode to users, so backend-only delivery would leave a misleading product path.
+- Keeping the score hidden avoids adding ranking UI noise before the retrieval quality is proven.
+
+**Alternatives considered**:
+- Backend-only semantic search: Conflicts with the current UI surface.
+- Show cosine scores immediately: Useful for debugging, but too much UI noise for v1.
+
 ## Data Flow
+
+### Model provisioning flow
+```
+User chooses Download Model or Add Local Model
+      │
+      ▼
+[Frontend] llm_download_model / llm_import_model_file
+          or embeddings_download_model / embeddings_import_model_file
+      │
+      ▼
+[Backend] validate approved file identity and SHA-256
+      │
+      ▼
+[Backend] copy into SpellbookVault/models/
+      │
+      ▼
+[Backend] update *_status → ready (or initializing for embeddings on next startup)
+```
 
 ### Chat / RAG flow
 ```
@@ -186,7 +248,7 @@ User types query
 [Frontend] llm_chat(query, stream_id)
       │
       ▼
-[Backend] Extract search terms (regex heuristic)
+[Backend] Extract search terms (heuristic)
       │
       ▼
 [Backend] FTS5 search → top 5 spell results
@@ -213,39 +275,56 @@ Spell created / updated
 [Backend] spell command completes DB write
       │
       ▼
-[Backend] fastembed-rs: embed(description + name, batch=1)
+[Backend] embedding model ready?
       │
-      ▼
-[Backend] upsert vector into sqlite-vec (spell_id, 384-dim f32)
+      ├─ yes ─► fastembed-rs: embed(description + name, batch=1)
+      │           │
+      │           ▼
+      │        upsert vector into sqlite-vec (rowid = spell_id, 384-dim f32)
+      │
+      └─ no ───► record missing-vector gap and return success
 
 Import batch completes
       │
       ▼
-[Backend] collect all new spell IDs + text
+[Backend] embedding model ready?
       │
-      ▼
-[Backend] fastembed-rs: embed(texts, batch=N) — single batch call
+      ├─ yes ─► collect all new spell IDs + text
+      │           │
+      │           ▼
+      │        fastembed-rs: embed(texts, batch=N) — single batch call
+      │           │
+      │           ▼
+      │        bulk upsert vectors into sqlite-vec
       │
-      ▼
-[Backend] bulk upsert vectors into sqlite-vec
+      └─ no ───► record missing-vector gaps and let startup backfill repair them
 ```
 
 ### Semantic search flow
 ```
+[Frontend] semantic mode selected
+      │
+      ▼
+[Frontend] embeddings_status()
+      │
+      ├─ notProvisioned ─► show Library empty state with install action
+      │
+      └─ ready / initializing / error ─► continue UI flow
+
 [Frontend] search_spells_semantic(query, limit)
       │
       ▼
 [Backend] fastembed-rs: embed([query], batch=1) → 384-dim query vector
       │
       ▼
-[Backend] sqlite-vec: SELECT spell_id, distance FROM spell_vec
-          ORDER BY vec_distance_cosine(embedding, ?) LIMIT N
+[Backend] sqlite-vec: SELECT rowid, distance FROM spell_vec
+          ORDER BY vec_distance_cosine(v, ?) LIMIT N
       │
       ▼
-[Backend] fetch spell details for matched IDs
+[Backend] fetch spell details for matched rowids
       │
       ▼
-[Frontend] returns ranked SpellSummary[]
+[Frontend] returns ranked SemanticSearchResult[]
 ```
 
 ## API Design
@@ -266,6 +345,24 @@ pub async fn llm_download_model(
     state: State<'_, LlmState>,
 ) -> Result<(), AppError>
 
+// Register a verified local TinyLlama file by copying it into SpellbookVault/models/
+#[tauri::command]
+pub async fn llm_import_model_file(
+      state: State<'_, LlmState>,
+      source_path: String,
+) -> Result<(), AppError>
+
+// Cancel an active LLM model download
+#[tauri::command]
+pub async fn llm_cancel_download(state: State<'_, LlmState>) -> Result<(), AppError>
+
+// Cancel an active generation stream
+#[tauri::command]
+pub async fn llm_cancel_generation(
+      state: State<'_, LlmState>,
+      stream_id: String,
+) -> Result<(), AppError>
+
 // Send a chat message (streams "llm://token/<id>" + "llm://done/<id>" events)
 #[tauri::command]
 pub async fn llm_chat(
@@ -278,6 +375,32 @@ pub async fn llm_chat(
 ) -> Result<(), AppError>
 
 // ── Embedding commands (src/commands/embeddings.rs) ─────────────────────────
+
+// Check embedding model status for the Library semantic mode
+#[tauri::command]
+pub async fn embeddings_status(
+      state: State<'_, EmbeddingState>,
+) -> Result<EmbeddingsStatusResponse, AppError>
+
+// Download the approved embedding model bundle
+#[tauri::command]
+pub async fn embeddings_download_model(
+      app: AppHandle,
+      state: State<'_, EmbeddingState>,
+) -> Result<(), AppError>
+
+// Register a verified local embedding model bundle by copying it into SpellbookVault/models/
+#[tauri::command]
+pub async fn embeddings_import_model_file(
+      state: State<'_, EmbeddingState>,
+      source_path: String,
+) -> Result<(), AppError>
+
+// Cancel an active embedding model download
+#[tauri::command]
+pub async fn embeddings_cancel_download(
+      state: State<'_, EmbeddingState>,
+) -> Result<(), AppError>
 
 // Semantic similarity search — returns spells ranked by cosine distance
 #[tauri::command]
@@ -302,14 +425,24 @@ pub async fn reindex_embeddings(
 
 ```typescript
 interface LlmStatusResponse {
-  state: 'not_downloaded' | 'downloading' | 'ready' | 'loaded' | 'error';
-  download_progress?: number;  // 0.0–1.0
-  error_message?: string;
+      state: 'notProvisioned' | 'downloading' | 'ready' | 'loaded' | 'error';
+      downloadProgress?: number;  // 0.0–1.0
+      errorMessage?: string;
+}
+
+interface EmbeddingsStatusResponse {
+      state: 'notProvisioned' | 'downloading' | 'initializing' | 'ready' | 'error';
+      downloadProgress?: number;  // 0.0–1.0
+      errorMessage?: string;
 }
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+interface SemanticSearchResult extends SpellSummary {
+      cosineDistance: number;
 }
 
 interface ReindexResult {
@@ -323,79 +456,93 @@ interface ReindexResult {
 ## UI Architecture
 
 ```
-ChatPanel (Premium Aesthetics: Glassmorphism, animations)
-├── ChatHeader (title, model status badge)
+ChatPanel
+├── ChatHeader (title, model status badges)
 ├── MessageList
 │   ├── UserMessage
 │   └── AssistantMessage
 │       ├── GroundedInIndicator (shows search terms/spells used)
-│       └── SpellLink (clickable → navigates to SpellDetail)
+│       └── SpellLink (clickable → navigates to existing spell editor route)
 ├── StreamingMessagePlaceholder (while generating)
 └── ChatInputBar
     ├── TextArea (multi-line query input)
     ├── SendButton
-    └── DownloadPrompt (shown when model not yet downloaded)
+      └── ProvisioningPrompt (shown when model not yet provisioned)
 
 ModelDownloadModal
 ├── ProgressBar
 ├── BytesDownloaded / TotalBytes
 └── CancelButton
+
+LibrarySemanticEmptyState
+├── Explanation of semantic search
+├── Download Model button
+└── Add Local Model button
 ```
 
-**Spell link detection**: After generation completes, the assistant message is post-processed with a regex that matches spell names found in the FTS5 search results used for that turn. Matched names become `<SpellLink>` components.
+**Spell link detection**: After generation completes, the assistant message is post-processed with a regex that matches spell names from that turn's FTS5 results. Matches become `<SpellLink>` components.
 
 ## Risks / Trade-offs
 
-**Risk: RAM usage (~900 MB) crashes on low-memory machines**
-→ Mitigation: `llm_chat` checks available system RAM before loading the model. If < 1.5 GB free, the load is aborted and a clear error message is returned: "Not enough RAM to load the model. Close other applications and try again." `llm_status` will subsequently reflect the `error` state.
+**Risk: RAM usage (~900 MB) on low-memory machines**
+→ Mitigation: `llm_chat` checks free RAM before load. If RAM is below 1.5 GB, loading stops, the user gets a clear error, and `llm_status` moves to `error`.
 
-**Risk: First-time download UX is disruptive**
-→ Mitigation: Download is gated behind an explicit user action (button). Progress modal shows estimated time. Download is resumable via HTTP Range requests.
+**Risk: First-time provisioning feels disruptive**
+→ Mitigation: Provisioning starts only after an explicit user action. Download is resumable, and verified side-load is available.
 
-**Risk: Inference speed is too slow on older CPUs**
-→ Mitigation: Streaming makes the latency perceptible (tokens appear progressively). A cancel button allows aborting. No mitigation for raw hardware speed — documented in README.
+**Risk: Runtime downloads weaken the offline-first story**
+→ Mitigation: Downloads are setup-time convenience only. The app also supports verified side-load, and normal use stays offline after provisioning.
 
-**Risk: `llama-cpp-rs` compile-time complexity (C++ dependency, platform toolchains)**
-→ Mitigation: Add `llama-cpp-rs` to a dedicated Cargo feature flag (`llm`). The feature is enabled by default; CI must have C++ build tools. Document toolchain requirements in DEVELOPMENT.md.
+**Risk: Inference is slow on older CPUs**
+→ Mitigation: Streaming keeps progress visible, and a cancel button lets the user stop a slow run. Raw hardware limits are documented separately.
 
-**Risk: RAG term extraction misses domain terms (e.g., "fireball" vs "fire damage spells")**
-→ Mitigation: Heuristic is best-effort; RAG is supplemental not required. If search returns 0 results, the LLM proceeds with no grounding context (clearly noted in system prompt).
+**Risk: `llama-cpp-rs` adds C++ toolchain complexity**
+→ Mitigation: Gate it behind a dedicated Cargo feature (`llm`). CI must provide C++ build tools, and the toolchain requirement is documented in DEVELOPMENT.md.
 
-**Risk: `llama-cpp-rs` crate version incompatibility with future llama.cpp updates**
-→ Mitigation: Pin exact crate version in Cargo.toml. Upgrade as a separate maintenance task.
+**Risk: RAG term extraction misses domain terms**
+→ Mitigation: The heuristic is best-effort. If FTS5 returns no results, the model still answers and the system prompt notes the missing context.
 
-**Risk: `fastembed-rs` / ONNX runtime compile complexity on Windows**
-→ Mitigation: Spike task 1.1 validates this before full implementation. `fastembed` uses pre-built `ort` binaries for common platforms, reducing toolchain burden vs. `llama-cpp-rs`.
+**Risk: `llama-cpp-rs` may drift from future `llama.cpp` changes**
+→ Mitigation: Pin the crate version in Cargo.toml and handle upgrades as separate maintenance work.
 
-**Risk: Embedding model quality insufficient for spell domain**
-→ Mitigation: all-MiniLM-L6-v2 is a general-purpose embedding model; it performs well on short descriptive text. Spell descriptions are a good fit. Quality can be evaluated empirically post-implementation.
+**Risk: `fastembed-rs` and ONNX runtime add Windows build risk**
+→ Mitigation: Validate the toolchain in an early spike. `fastembed` uses prebuilt `ort` binaries on common platforms.
 
-**Risk: Backfill performance on large libraries**
-→ Mitigation: `fastembed-rs` is optimized for batches; 1,000 spells should complete in < 30 s on a modern CPU. Backfill emits progress events so users see status.
+**Risk: Embedding quality is not strong enough for spell data**
+→ Mitigation: all-MiniLM-L6-v2 is a reasonable fit for short descriptive text. Validate retrieval quality after implementation.
 
-**Trade-off: In-memory conversation history (no persistence)**
-→ Acceptable for v1. Users lose chat history on app restart, but no migration complexity is introduced. Persistence is a future proposal item.
+**Risk: Backfill is slow on large libraries**
+→ Mitigation: `fastembed-rs` is batch-oriented, and backfill emits progress events.
 
-**Trade-off: Semantic search backend-only (no Library UI changes)**
-→ The `search_spells_semantic` command is available for future Library UI integration. Shipping the backend first validates the feature before investing in UI.
+**Risk: Non-blocking writes create temporary vector gaps**
+→ Mitigation: Startup backfill repairs gaps automatically, and `reindex_embeddings` remains available for explicit repair.
+
+**Trade-off: In-memory conversation history**
+→ Users lose chat history on restart, but v1 avoids persistence and migration complexity.
+
+**Trade-off: Hidden ranking scores in the Library UI**
+→ The backend returns `cosineDistance`, but the Library does not show it in v1. The UI stays simpler while tests and future UI work keep access to the score.
+
+**Trade-off: Model assets stay out of backup and restore by default**
+→ Backups stay smaller, but a restored vault on a new machine can still require model provisioning.
 
 ## Migration Plan
 
-1. Add `llama-cpp-rs` and `fastembed` to `Cargo.toml` (feature-flagged under `llm`)
-2. Create `src-tauri/src/commands/llm.rs` (LLM lifecycle + chat)
-3. Create `src-tauri/src/commands/embeddings.rs` (`search_spells_semantic`, `reindex_embeddings`)
-4. Register commands, `LlmState`, and `EmbeddingState` in `main.rs` / `lib.rs`
-5. Add embedding generation calls to existing spell create/update commands (post-write hook)
-6. Add batch embedding call to import completion path
-7. Add startup backfill background task: run `reindex_embeddings(force=false)` on app startup to fill any gaps
-8. Create `SpellbookVault/models/` directory on first download (auto-created by `std::fs::create_dir_all`)
-9. Add `ChatPanel` React component tree (new route/tab)
-10. Wire frontend streaming listener
-11. Remove `handle_embed` and `handle_llm_answer` from `spellbook_sidecar.py`
-12. No database schema migrations required — `sqlite-vec` table pre-exists; backfill populates it
+1. Verify and approve the exact dependency set and model provenance before any manifest changes.
+2. Create `src-tauri/src/commands/llm.rs` for LLM provisioning, status, download cancellation, generation cancellation, and chat.
+3. Create `src-tauri/src/commands/embeddings.rs` for embedding provisioning, status, semantic search, and backfill.
+4. Register commands, `LlmState`, and `EmbeddingState` in `main.rs` / `lib.rs`.
+5. Use the fixed `SpellbookVault/models/` path for both approved model assets.
+6. Add non-blocking embedding hooks to spell create, update, and import paths.
+7. Add startup embedding initialization and startup partial backfill.
+8. Replace the current `Chat.tsx` route with the new `ChatPanel` and streaming listener.
+9. Update the existing Library semantic mode to use `embeddings_status`, `search_spells_semantic`, and the semantic-mode empty state with install actions.
+10. Remove `handle_embed` and `handle_llm_answer` from `spellbook_sidecar.py`.
+11. No database schema migrations are required; `sqlite-vec` already exists and backfill populates it.
 
 ## Open Questions
 
-- **Build CI**: Does the Windows CI runner have the MSVC C++ toolchain needed by `llama-cpp-rs`? → Verify in a spike before full implementation.
-- **Model URL stability**: Hugging Face model URLs can change if the repo is moved. Consider mirroring the model to a self-controlled URL or adding a fallback. → Out of scope for v1; hardcode primary URL, document override path.
-- **Cancel mid-stream**: The `llama-cpp-rs` inference loop must be interruptible. Verify the crate's cancellation API before implementing streaming. → Research task in sprint setup.
+- **Build CI**: Verify that the Windows CI runner has the MSVC C++ toolchain needed by `llama-cpp-rs`.
+- **Approved model identities**: Pin the exact download URLs, filenames, and SHA-256 values for both models.
+- **Model URL stability**: If URLs change, decide whether to mirror assets or rely on the documented side-load fallback.
+- **Generation cancellation mechanics**: Verify the exact `llama-cpp-rs` interruption approach before implementing `llm_cancel_generation`.

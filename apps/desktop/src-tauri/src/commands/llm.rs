@@ -1173,6 +1173,20 @@ enum DownloadFlowOutcome {
     PromotedFromRestart,
 }
 
+struct DownloadFlowError {
+    error: AppError,
+    post_promotion_failure: bool,
+}
+
+impl From<AppError> for DownloadFlowError {
+    fn from(error: AppError) -> Self {
+        Self {
+            error,
+            post_promotion_failure: false,
+        }
+    }
+}
+
 fn is_cancelled(cancel_rx: &watch::Receiver<bool>) -> bool {
     *cancel_rx.borrow()
 }
@@ -1206,7 +1220,7 @@ async fn run_download_chunks_verify_and_promote(
     target_prep: DownloadTargetPrep,
     temp_path: PathBuf,
     final_path: PathBuf,
-) -> Result<DownloadFlowOutcome, AppError> {
+) -> Result<DownloadFlowOutcome, DownloadFlowError> {
     if is_cancelled(&cancel_rx) {
         return Ok(DownloadFlowOutcome::Cancelled);
     }
@@ -1228,8 +1242,8 @@ async fn run_download_chunks_verify_and_promote(
         changed = send_cancel_rx.changed() => {
             match changed {
                 Ok(()) if is_cancelled(&send_cancel_rx) => return Ok(DownloadFlowOutcome::Cancelled),
-                Ok(()) => return Err(AppError::Llm("LLM download cancellation channel changed unexpectedly".to_string())),
-                Err(_) => return Err(AppError::Llm("LLM download cancellation channel closed before request dispatch".to_string())),
+                Ok(()) => return Err(AppError::Llm("LLM download cancellation channel changed unexpectedly".to_string()).into()),
+                Err(_) => return Err(AppError::Llm("LLM download cancellation channel closed before request dispatch".to_string()).into()),
             }
         }
         response = request.send() => response
@@ -1284,8 +1298,8 @@ async fn run_download_chunks_verify_and_promote(
                         cleanup_restart_if_needed(&active_download_path, &temp_path).await?;
                         return Ok(DownloadFlowOutcome::Cancelled);
                     }
-                    Ok(()) => return Err(AppError::Llm("LLM download cancellation channel changed unexpectedly".to_string())),
-                    Err(_) => return Err(AppError::Llm("LLM download cancellation channel closed before completion".to_string())),
+                    Ok(()) => return Err(AppError::Llm("LLM download cancellation channel changed unexpectedly".to_string()).into()),
+                    Err(_) => return Err(AppError::Llm("LLM download cancellation channel closed before completion".to_string()).into()),
                 }
             }
             chunk = response.chunk() => chunk,
@@ -1301,7 +1315,8 @@ async fn run_download_chunks_verify_and_promote(
                     temp_path.clone(),
                     app_error,
                 )
-                .await);
+                .await
+                .into());
             }
         };
 
@@ -1319,7 +1334,8 @@ async fn run_download_chunks_verify_and_promote(
                 temp_path.clone(),
                 error,
             )
-            .await);
+            .await
+            .into());
         }
 
         let progress = match update_download_progress(state, chunk.len() as u64, total_bytes) {
@@ -1330,7 +1346,8 @@ async fn run_download_chunks_verify_and_promote(
                     temp_path.clone(),
                     error,
                 )
-                .await)
+                .await
+                .into())
             }
         };
 
@@ -1340,7 +1357,8 @@ async fn run_download_chunks_verify_and_promote(
                 temp_path.clone(),
                 error,
             )
-            .await);
+            .await
+            .into());
         }
     }
 
@@ -1361,7 +1379,8 @@ async fn run_download_chunks_verify_and_promote(
             temp_path.clone(),
             error,
         )
-        .await);
+        .await
+        .into());
     }
 
     let sha_result = tokio::task::spawn_blocking({
@@ -1388,7 +1407,8 @@ async fn run_download_chunks_verify_and_promote(
 
             return Err(AppError::Validation(
                 "Downloaded model SHA-256 does not match the approved TinyLlama asset".to_string(),
-            ));
+            )
+            .into());
         }
         Err(error) => {
             return Err(finalize_non_sha_download_error(
@@ -1396,7 +1416,8 @@ async fn run_download_chunks_verify_and_promote(
                 temp_path.clone(),
                 error,
             )
-            .await);
+            .await
+            .into());
         }
     }
 
@@ -1423,16 +1444,12 @@ async fn run_download_chunks_verify_and_promote(
         .and_then(|result| result)
         .unwrap_or(true);
 
-        // If we cannot prove the staging artifact stayed in place, fail closed.
-        let error = if staged_was_promoted {
-            AppError::Llm(format!(
-                "Post-promotion cleanup failed after replacing approved model bytes: {error}"
-            ))
-        } else {
-            error
-        };
-
-        return Err(finalize_non_sha_download_error(active_download_path, temp_path, error).await);
+        let finalized_error =
+            finalize_non_sha_download_error(active_download_path, temp_path, error).await;
+        return Err(DownloadFlowError {
+            error: finalized_error,
+            post_promotion_failure: staged_was_promoted,
+        });
     }
 
     Ok(outcome_on_success)
@@ -1449,7 +1466,6 @@ impl LlmDownloadDriver for DefaultLlmDownloadDriver {
         final_path: PathBuf,
     ) -> LlmDownloadDriverFuture {
         Box::pin(async move {
-            let post_failure_probe = target_prep.clone();
             let flow_result = run_download_chunks_verify_and_promote(
                 app,
                 state.as_ref(),
@@ -1474,31 +1490,10 @@ impl LlmDownloadDriver for DefaultLlmDownloadDriver {
 
                     StartedReprovisionResult::Ready
                 }
-                Err(error) => {
-                    let invalidate_runtime = tokio::task::spawn_blocking({
-                        let temp_path = temp_path.clone();
-                        let restart_path = post_failure_probe.restart_path.clone();
-                        let final_path = final_path.clone();
-                        move || -> Result<bool, AppError> {
-                            let temp_promoted =
-                                staged_bytes_moved_to_final_path_blocking(&temp_path, &final_path)?;
-                            let restart_promoted = staged_bytes_moved_to_final_path_blocking(
-                                &restart_path,
-                                &final_path,
-                            )?;
-                            Ok(temp_promoted || restart_promoted)
-                        }
-                    })
-                    .await
-                    .ok()
-                    .and_then(Result::ok)
-                    .unwrap_or(true);
-
-                    StartedReprovisionResult::Error {
-                        invalidate_runtime,
-                        error,
-                    }
-                }
+                Err(flow_error) => StartedReprovisionResult::Error {
+                    invalidate_runtime: flow_error.post_promotion_failure,
+                    error: flow_error.error,
+                },
             }
         })
     }

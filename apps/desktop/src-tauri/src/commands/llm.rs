@@ -5,7 +5,7 @@ use crate::commands::provisioning::{
 };
 use crate::db::pool::app_data_dir;
 use crate::error::AppError;
-use crate::models::{DownloadProgressEvent, LlmStatus, LlmStatusResponse};
+use crate::models::{DoneEvent, DownloadProgressEvent, LlmStatus, LlmStatusResponse, TokenEvent};
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
 use std::path::{Path, PathBuf};
@@ -154,6 +154,14 @@ fn set_lifecycle_error(state: &LlmState, message: String) -> Result<(), AppError
             last_error: Some(message),
         },
     )
+}
+
+fn record_lifecycle_error(state: &LlmState, error: AppError) -> AppError {
+    let message = error.to_string();
+    if let Err(record_error) = set_lifecycle_error(state, message) {
+        tracing::warn!(?record_error, "Failed to record sticky LLM lifecycle error");
+    }
+    error
 }
 
 fn finish_lifecycle_recovery(state: &LlmState, status: LlmStatus) -> Result<(), AppError> {
@@ -768,6 +776,589 @@ fn begin_generation(state: &LlmState, stream_id: String) -> Result<Arc<AtomicBoo
         LifecycleArbitrationClaim::Generation { cancel } => Ok(cancel),
         LifecycleArbitrationClaim::Reprovision { .. } => unreachable!("generation claim expected"),
     }
+}
+
+fn finish_generation(state: &LlmState) -> Result<(), AppError> {
+    let mut active = state
+        .active_generation
+        .lock()
+        .map_err(|_| AppError::Llm("LLM generation state is poisoned".to_string()))?;
+    *active = None;
+    Ok(())
+}
+
+fn cancel_generation(state: &LlmState, stream_id: &str) -> Result<(), AppError> {
+    let active = state
+        .active_generation
+        .lock()
+        .map_err(|_| AppError::Llm("LLM generation state is poisoned".to_string()))?;
+    if let Some(active) = active.as_ref() {
+        if active.stream_id == stream_id {
+            active
+                .cancel
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    Ok(())
+}
+
+static COMPAT_STREAM_COUNTER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
+#[derive(Debug, Clone)]
+struct ChatRunOutput {
+    full_response: String,
+    cancelled: bool,
+}
+
+type LlmRuntimeFuture<T> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'static>>;
+
+trait LlmRuntimeDriver: Send + Sync {
+    fn ensure_loaded(
+        &self,
+        state: Arc<LlmState>,
+        preflight: ValidatedModelLoadPreflight,
+    ) -> LlmRuntimeFuture<Result<(), AppError>>;
+
+    fn generate(
+        &self,
+        state: Arc<LlmState>,
+        message: String,
+        cancel: Arc<AtomicBool>,
+        event_sink: Arc<dyn ChatEventSink>,
+    ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>>;
+}
+
+#[derive(Default)]
+struct DefaultLlmRuntimeDriver;
+
+impl LlmRuntimeDriver for DefaultLlmRuntimeDriver {
+    fn ensure_loaded(
+        &self,
+        state: Arc<LlmState>,
+        preflight: ValidatedModelLoadPreflight,
+    ) -> LlmRuntimeFuture<Result<(), AppError>> {
+        Box::pin(ensure_model_loaded_after_valid_preflight(state, preflight))
+    }
+
+    fn generate(
+        &self,
+        state: Arc<LlmState>,
+        message: String,
+        cancel: Arc<AtomicBool>,
+        event_sink: Arc<dyn ChatEventSink>,
+    ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+        Box::pin(generate_chat_completion(state, message, cancel, event_sink))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ModelLoadPreflight {
+    model_path: PathBuf,
+    approved_model_present: bool,
+    requirements: LlmSystemRequirementsSnapshot,
+}
+
+#[derive(Debug, Clone)]
+struct ValidatedModelLoadPreflight {
+    model_path: PathBuf,
+}
+
+#[cfg(test)]
+static TEST_RUNTIME_DRIVER: std::sync::Mutex<Option<Arc<dyn LlmRuntimeDriver>>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(test)]
+static TEST_MODEL_LOAD_PREFLIGHT: std::sync::Mutex<Option<ModelLoadPreflight>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(test)]
+struct TestRuntimeDriverGuard;
+
+#[cfg(test)]
+struct TestModelLoadPreflightGuard;
+
+#[cfg(test)]
+fn install_test_runtime_driver(driver: Arc<dyn LlmRuntimeDriver>) -> TestRuntimeDriverGuard {
+    *TEST_RUNTIME_DRIVER.lock().unwrap() = Some(driver);
+    TestRuntimeDriverGuard
+}
+
+#[cfg(test)]
+fn install_test_model_load_preflight(
+    preflight: ModelLoadPreflight,
+) -> TestModelLoadPreflightGuard {
+    *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = Some(preflight);
+    TestModelLoadPreflightGuard
+}
+
+#[cfg(test)]
+impl Drop for TestRuntimeDriverGuard {
+    fn drop(&mut self) {
+        *TEST_RUNTIME_DRIVER.lock().unwrap() = None;
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestModelLoadPreflightGuard {
+    fn drop(&mut self) {
+        *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = None;
+    }
+}
+
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub(crate) struct RecordingRuntimeDriver;
+
+#[cfg(test)]
+impl LlmRuntimeDriver for RecordingRuntimeDriver {
+    fn ensure_loaded(
+        &self,
+        state: Arc<LlmState>,
+        _preflight: ValidatedModelLoadPreflight,
+    ) -> LlmRuntimeFuture<Result<(), AppError>> {
+        Box::pin(async move {
+            finish_model_load_success(state.as_ref())?;
+            Ok(())
+        })
+    }
+
+    fn generate(
+        &self,
+        _state: Arc<LlmState>,
+        _message: String,
+        _cancel: Arc<AtomicBool>,
+        sink: Arc<dyn ChatEventSink>,
+    ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+        Box::pin(async move {
+            sink.emit_token("ok")?;
+            Ok(ChatRunOutput {
+                full_response: "ok".to_string(),
+                cancelled: false,
+            })
+        })
+    }
+}
+
+fn active_llm_runtime_driver() -> Arc<dyn LlmRuntimeDriver> {
+    #[cfg(test)]
+    if let Some(driver) = TEST_RUNTIME_DRIVER.lock().unwrap().as_ref() {
+        return Arc::clone(driver);
+    }
+
+    Arc::new(DefaultLlmRuntimeDriver)
+}
+
+fn build_done_event(run_result: &Result<ChatRunOutput, AppError>, cancelled: bool) -> DoneEvent {
+    match run_result {
+        Ok(output) => DoneEvent {
+            full_response: output.full_response.clone(),
+            cancelled: output.cancelled,
+        },
+        Err(_) => DoneEvent {
+            full_response: String::new(),
+            cancelled,
+        },
+    }
+}
+
+trait ChatEventSink: Send + Sync {
+    fn emit_token(&self, token: &str) -> Result<(), AppError>;
+    fn emit_done(&self, event: DoneEvent) -> Result<(), AppError>;
+}
+
+#[derive(Clone)]
+struct TauriChatEventSink {
+    app: tauri::AppHandle,
+    stream_id: String,
+}
+
+impl TauriChatEventSink {
+    fn new(app: tauri::AppHandle, stream_id: String) -> Self {
+        Self { app, stream_id }
+    }
+}
+
+impl ChatEventSink for TauriChatEventSink {
+    fn emit_token(&self, token: &str) -> Result<(), AppError> {
+        self.app
+            .emit(
+                &format!("llm://token/{}", self.stream_id),
+                TokenEvent {
+                    token: token.to_string(),
+                },
+            )
+            .map_err(|error| AppError::Llm(format!("Failed to emit token event: {error}")))
+    }
+
+    fn emit_done(&self, event: DoneEvent) -> Result<(), AppError> {
+        self.app
+            .emit(&format!("llm://done/{}", self.stream_id), event)
+            .map_err(|error| AppError::Llm(format!("Failed to emit terminal done event: {error}")))
+    }
+}
+
+#[derive(Default)]
+struct CompatChatEventSink;
+
+impl ChatEventSink for CompatChatEventSink {
+    fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct Utf8TokenAccumulator {
+    pending: Vec<u8>,
+}
+
+impl Utf8TokenAccumulator {
+    fn push(&mut self, bytes: &[u8]) -> String {
+        self.pending.extend_from_slice(bytes);
+        match std::str::from_utf8(&self.pending) {
+            Ok(text) => {
+                let output = text.to_string();
+                self.pending.clear();
+                output
+            }
+            Err(error) if error.error_len().is_none() => String::new(),
+            Err(error) => {
+                let valid_up_to = error.valid_up_to();
+                let output = String::from_utf8_lossy(&self.pending[..valid_up_to]).to_string();
+                self.pending = self.pending[valid_up_to..].to_vec();
+                output
+            }
+        }
+    }
+
+    fn finish(&mut self) -> String {
+        let output = String::from_utf8_lossy(&self.pending).to_string();
+        self.pending.clear();
+        output
+    }
+}
+
+fn collect_model_load_preflight(vault_root: &Path) -> Result<ModelLoadPreflight, AppError> {
+    #[cfg(test)]
+    if let Some(preflight) = TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap().clone() {
+        return Ok(preflight);
+    }
+
+    let (model_path, approved_model_present) = snapshot_model_file_presence_blocking(vault_root)?;
+    let probe = LiveResourceProbe::new(models_dir(vault_root));
+    let requirements = collect_llm_system_requirements(&probe)?;
+
+    Ok(ModelLoadPreflight {
+        model_path,
+        approved_model_present,
+        requirements,
+    })
+}
+
+fn validate_model_load_preflight(
+    state: &LlmState,
+    preflight: ModelLoadPreflight,
+) -> Result<ValidatedModelLoadPreflight, AppError> {
+    ensure_no_reprovision_in_progress(state)?;
+    validate_model_load_prerequisites(preflight.approved_model_present, preflight.requirements)?;
+
+    Ok(ValidatedModelLoadPreflight {
+        model_path: preflight.model_path,
+    })
+}
+
+async fn ensure_model_loaded_after_valid_preflight(
+    state: Arc<LlmState>,
+    preflight: ValidatedModelLoadPreflight,
+) -> Result<(), AppError> {
+    let load_result = tokio::task::spawn_blocking({
+        let state = Arc::clone(&state);
+        move || ensure_model_loaded_after_preflight_blocking(state.as_ref(), &preflight)
+    })
+    .await
+    .map_err(|error| AppError::Llm(format!("LLM load task failed: {error}")))?;
+
+    load_result.map_err(|error| record_lifecycle_error(state.as_ref(), error))
+}
+
+fn validate_model_load_prerequisites(
+    approved_model_present: bool,
+    requirements: LlmSystemRequirementsSnapshot,
+) -> Result<(), AppError> {
+    if !approved_model_present {
+        return Err(AppError::Validation(
+            "The approved TinyLlama model has not been provisioned yet".to_string(),
+        ));
+    }
+
+    if requirements.free_ram_bytes < BASELINE_MIN_FREE_RAM_BYTES {
+        return Err(AppError::Validation(
+            "Insufficient RAM: at least 1.5 GB free required to load the model".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn finish_model_load_success(state: &LlmState) -> Result<(), AppError> {
+    finish_lifecycle_recovery(state, LlmStatus::Loaded)
+}
+
+fn ensure_model_loaded_after_preflight_blocking(
+    state: &LlmState,
+    preflight: &ValidatedModelLoadPreflight,
+) -> Result<(), AppError> {
+    let model_path = &preflight.model_path;
+
+    let mut backend_guard = state
+        .backend
+        .lock()
+        .map_err(|_| AppError::Llm("LLM backend state is poisoned".to_string()))?;
+    if backend_guard.is_none() {
+        *backend_guard = Some(
+            LlamaBackend::init()
+                .map_err(|error| AppError::Llm(format!("Failed to initialize llama backend: {error}")))?,
+        );
+    }
+
+    let mut model_guard = state
+        .model
+        .lock()
+        .map_err(|_| AppError::Llm("LLM model state is poisoned".to_string()))?;
+    if model_guard.is_none() {
+        let params = llama_cpp_2::model::params::LlamaModelParams::default();
+        let backend = backend_guard.as_ref().ok_or_else(|| {
+            AppError::Llm("LLM backend should be initialized before model load".to_string())
+        })?;
+        let model = LlamaModel::load_from_file(backend, model_path, &params)
+            .map_err(|error| AppError::Llm(format!("Failed to load TinyLlama model: {error}")))?;
+        *model_guard = Some(model);
+    }
+
+    drop(model_guard);
+    drop(backend_guard);
+    finish_model_load_success(state)
+}
+
+async fn generate_chat_completion(
+    state: Arc<LlmState>,
+    message: String,
+    cancel: Arc<AtomicBool>,
+    event_sink: Arc<dyn ChatEventSink>,
+) -> Result<ChatRunOutput, AppError> {
+    tokio::task::spawn_blocking(move || -> Result<ChatRunOutput, AppError> {
+        let backend_guard = state
+            .backend
+            .lock()
+            .map_err(|_| AppError::Llm("LLM backend state is poisoned".to_string()))?;
+        let model_guard = state
+            .model
+            .lock()
+            .map_err(|_| AppError::Llm("LLM model state is poisoned".to_string()))?;
+        let backend = backend_guard
+            .as_ref()
+            .ok_or_else(|| AppError::Llm("LLM backend is not loaded".to_string()))?;
+        let model = model_guard
+            .as_ref()
+            .ok_or_else(|| AppError::Llm("LLM model is not loaded".to_string()))?;
+
+        let prompt = format!(
+            "<|im_start|>user\n{}\n<|im_end|>\n<|im_start|>assistant\n",
+            message
+        );
+        let tokens = model
+            .str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)
+            .map_err(|error| AppError::Llm(format!("Failed to tokenize prompt: {error}")))?;
+        let n_ctx = model.n_ctx_train().max(tokens.len() as u32 + 512);
+        let ctx_params = llama_cpp_2::context::params::LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(n_ctx))
+            .with_n_batch(n_ctx);
+        let mut ctx = model
+            .new_context(backend, ctx_params)
+            .map_err(|error| AppError::Llm(format!("Failed to create llama context: {error}")))?;
+
+        let mut batch = llama_cpp_2::llama_batch::LlamaBatch::new(n_ctx as usize, 1);
+        let last_index = tokens.len().saturating_sub(1) as i32;
+        for (i, token) in (0_i32..).zip(tokens.iter().copied()) {
+            batch
+                .add(token, i, &[0], i == last_index)
+                .map_err(|error| AppError::Llm(format!("Failed to build llama batch: {error}")))?;
+        }
+        ctx.decode(&mut batch)
+            .map_err(|error| AppError::Llm(format!("Initial llama decode failed: {error}")))?;
+
+        let mut utf8 = Utf8TokenAccumulator::default();
+        let mut sampler = llama_cpp_2::sampling::LlamaSampler::greedy();
+        let mut n_cur = batch.n_tokens();
+        let mut generated = String::new();
+
+        while n_cur <= n_ctx as i32 {
+            if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+
+            let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+            sampler.accept(token);
+            if model.is_eog_token(token) {
+                break;
+            }
+
+            let bytes = model
+                .token_to_bytes(token, llama_cpp_2::model::Special::Plaintext)
+                .map_err(|error| AppError::Llm(format!("Failed to decode token bytes: {error}")))?;
+            let piece = utf8.push(&bytes);
+            if !piece.is_empty() {
+                generated.push_str(&piece);
+                event_sink.emit_token(&piece)?;
+            }
+
+            batch.clear();
+            batch
+                .add(token, n_cur, &[0], true)
+                .map_err(|error| AppError::Llm(format!("Failed to queue next token: {error}")))?;
+            n_cur += 1;
+            ctx.decode(&mut batch)
+                .map_err(|error| AppError::Llm(format!("Token decode failed: {error}")))?;
+        }
+
+        let tail = utf8.finish();
+        if !tail.is_empty() {
+            generated.push_str(&tail);
+            event_sink.emit_token(&tail)?;
+        }
+
+        Ok(ChatRunOutput {
+            full_response: generated,
+            cancelled: cancel.load(std::sync::atomic::Ordering::SeqCst),
+        })
+    })
+    .await
+    .map_err(|error| AppError::Llm(format!("LLM generation task failed: {error}")))?
+}
+
+fn finalize_claimed_generation(
+    state: &LlmState,
+    stream_id: &str,
+    run_result: Result<ChatRunOutput, AppError>,
+    cancel: &Arc<AtomicBool>,
+    event_sink: &dyn ChatEventSink,
+) -> Result<ChatRunOutput, AppError> {
+    let done_event = build_done_event(
+        &run_result,
+        cancel.load(std::sync::atomic::Ordering::SeqCst),
+    );
+
+    let command_result = run_result;
+
+    finish_generation_best_effort(state, stream_id);
+
+    if let Err(error) = event_sink.emit_done(done_event) {
+        tracing::warn!(stream_id, ?error, "Failed to emit terminal LLM done event");
+    }
+
+    command_result
+}
+
+fn finish_generation_best_effort(state: &LlmState, stream_id: &str) {
+    if let Err(error) = finish_generation(state) {
+        tracing::warn!(stream_id, ?error, "Failed to clear active LLM generation claim");
+        let _ = set_lifecycle_error(state, error.to_string());
+    }
+}
+
+async fn run_claimed_llm_chat(
+    state: Arc<LlmState>,
+    message: String,
+    stream_id: String,
+    event_sink: Arc<dyn ChatEventSink>,
+) -> Result<ChatRunOutput, AppError> {
+    let vault_root = app_data_dir()?;
+    let cancel = begin_generation(state.as_ref(), stream_id.clone())?;
+    let runtime_driver = active_llm_runtime_driver();
+
+    let run_result = async {
+        let preflight = tokio::task::spawn_blocking({
+            let vault_root = vault_root.clone();
+            move || collect_model_load_preflight(&vault_root)
+        })
+        .await
+        .map_err(|error| AppError::Llm(format!("LLM preflight task failed: {error}")))??;
+
+        let validated_preflight = validate_model_load_preflight(state.as_ref(), preflight)?;
+
+        runtime_driver
+            .ensure_loaded(Arc::clone(&state), validated_preflight)
+            .await?;
+
+        runtime_driver
+            .generate(
+                Arc::clone(&state),
+                message,
+                Arc::clone(&cancel),
+                Arc::clone(&event_sink),
+            )
+            .await
+            .map_err(|error| record_lifecycle_error(state.as_ref(), error))
+    }
+    .await;
+
+    finalize_claimed_generation(
+        state.as_ref(),
+        &stream_id,
+        run_result,
+        &cancel,
+        event_sink.as_ref(),
+    )
+}
+
+pub(crate) async fn llm_chat_answer_compat(
+    state: Arc<LlmState>,
+    message: String,
+) -> Result<String, AppError> {
+    let stream_id = format!(
+        "compat-{}-{}",
+        std::process::id(),
+        COMPAT_STREAM_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+
+    run_claimed_llm_chat(
+        Arc::clone(&state),
+        message,
+        stream_id,
+        Arc::new(CompatChatEventSink),
+    )
+    .await
+    .map(|value| value.full_response)
+}
+
+#[tauri::command]
+pub async fn llm_chat(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<LlmState>>,
+    message: String,
+    stream_id: String,
+) -> Result<(), AppError> {
+    run_claimed_llm_chat(
+        Arc::clone(state.inner()),
+        message,
+        stream_id.clone(),
+        Arc::new(TauriChatEventSink::new(app, stream_id)),
+    )
+    .await
+    .map(|_| ())
+}
+
+#[tauri::command]
+pub async fn llm_cancel_generation(
+    state: State<'_, Arc<LlmState>>,
+    stream_id: String,
+) -> Result<(), AppError> {
+    cancel_generation(state.inner().as_ref(), &stream_id)
 }
 
 #[derive(Debug)]
@@ -2296,5 +2887,264 @@ mod tests {
         );
         assert!(partial.exists());
         assert!(backup.exists());
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct RuntimeMutationSnapshot {
+        status: LlmStatus,
+        last_error: Option<String>,
+        has_backend: bool,
+        has_model: bool,
+    }
+
+    fn runtime_mutation_snapshot(state: &LlmState) -> RuntimeMutationSnapshot {
+        RuntimeMutationSnapshot {
+            status: *state.status.lock().unwrap(),
+            last_error: state.last_error.lock().unwrap().clone(),
+            has_backend: state.backend.lock().unwrap().is_some(),
+            has_model: state.model.lock().unwrap().is_some(),
+        }
+    }
+
+    #[test]
+    fn collect_model_load_preflight_is_read_only_for_managed_state() {
+        let dir = test_temp_dir("collect-preflight-read-only");
+        let state = LlmState::default();
+        let before = runtime_mutation_snapshot(&state);
+
+        let preflight = collect_model_load_preflight(&dir).unwrap();
+
+        assert_eq!(preflight.model_path, approved_llm_model_path(&dir));
+        assert_eq!(runtime_mutation_snapshot(&state), before);
+    }
+
+    #[test]
+    fn validate_model_load_preflight_is_pure_for_managed_state() {
+        let state = LlmState::default();
+        let before = runtime_mutation_snapshot(&state);
+
+        let validated = validate_model_load_preflight(
+            &state,
+            ModelLoadPreflight {
+                model_path: std::path::PathBuf::from(
+                    "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+                ),
+                approved_model_present: true,
+                requirements: LlmSystemRequirementsSnapshot {
+                    free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                    free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+                },
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            validated.model_path,
+            std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            )
+        );
+        assert_eq!(runtime_mutation_snapshot(&state), before);
+    }
+
+    #[tokio::test]
+    async fn ensure_model_loaded_after_valid_preflight_is_first_runtime_mutator() {
+        struct MutatingTestRuntimeDriver;
+
+        impl LlmRuntimeDriver for MutatingTestRuntimeDriver {
+            fn ensure_loaded(
+                &self,
+                state: Arc<LlmState>,
+                _preflight: ValidatedModelLoadPreflight,
+            ) -> LlmRuntimeFuture<Result<(), AppError>> {
+                Box::pin(async move {
+                    finish_model_load_success(state.as_ref())?;
+                    Ok(())
+                })
+            }
+
+            fn generate(
+                &self,
+                _state: Arc<LlmState>,
+                _message: String,
+                _cancel: Arc<AtomicBool>,
+                _event_sink: Arc<dyn ChatEventSink>,
+            ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+                Box::pin(async {
+                    unreachable!("generation is not part of this phase-split test")
+                })
+            }
+        }
+
+        let state = Arc::new(LlmState::default());
+        let before = runtime_mutation_snapshot(state.as_ref());
+        let _driver_guard = install_test_runtime_driver(Arc::new(MutatingTestRuntimeDriver));
+
+        ensure_model_loaded_after_valid_preflight(
+            Arc::clone(&state),
+            ValidatedModelLoadPreflight {
+                model_path: std::path::PathBuf::from(
+                    "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+                ),
+            },
+        )
+        .await
+        .unwrap();
+
+        let after = runtime_mutation_snapshot(state.as_ref());
+        assert_eq!(before.status, LlmStatus::NotProvisioned);
+        assert_eq!(after.status, LlmStatus::Loaded);
+        assert_ne!(after, before);
+    }
+
+    #[test]
+    fn validate_model_load_prerequisites_rejects_missing_provisioned_model() {
+        let requirements = LlmSystemRequirementsSnapshot {
+            free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+            free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+        };
+
+        let err = validate_model_load_prerequisites(false, requirements).unwrap_err();
+        assert!(matches!(err, AppError::Validation(message) if message.contains("not been provisioned")));
+    }
+
+    #[test]
+    fn validate_model_load_prerequisites_rejects_low_ram_before_model_load() {
+        let requirements = LlmSystemRequirementsSnapshot {
+            free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+            free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES - 1,
+        };
+
+        let err = validate_model_load_prerequisites(true, requirements).unwrap_err();
+        assert!(matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required")));
+    }
+
+    #[test]
+    fn lazy_load_preflight_errors_leave_lifecycle_markers_unchanged() {
+        let state = LlmState::default();
+        let requirements = LlmSystemRequirementsSnapshot {
+            free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+            free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES - 1,
+        };
+
+        let err = validate_model_load_prerequisites(true, requirements).unwrap_err();
+        assert!(matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required")));
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::NotProvisioned);
+        assert!(state.last_error.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn begin_generation_rejects_second_active_stream() {
+        let state = LlmState::default();
+        begin_generation(&state, "stream-1".to_string()).unwrap();
+
+        let err = begin_generation(&state, "stream-2".to_string()).unwrap_err();
+        assert!(matches!(err, AppError::Validation(message) if message.contains("already being generated")));
+    }
+
+    #[test]
+    fn begin_generation_rejects_when_reprovision_is_active() {
+        let state = LlmState::default();
+        *state.reprovisioning.lock().unwrap() = Some(ReprovisionKind::Download);
+
+        let err = begin_generation(&state, "stream-1".to_string()).unwrap_err();
+        assert!(matches!(err, AppError::Validation(message) if message.contains("being provisioned")));
+    }
+
+    #[test]
+    fn cancel_generation_marks_active_stream_cancelled() {
+        let state = LlmState::default();
+        begin_generation(&state, "stream-1".to_string()).unwrap();
+
+        cancel_generation(&state, "stream-1").unwrap();
+
+        let active = state.active_generation.lock().unwrap();
+        assert!(active
+            .as_ref()
+            .unwrap()
+            .cancel
+            .load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn ensure_model_loaded_rejects_during_reprovision() {
+        let state = LlmState::default();
+        *state.reprovisioning.lock().unwrap() = Some(ReprovisionKind::Download);
+
+        let err = ensure_no_reprovision_in_progress(&state).unwrap_err();
+        assert!(matches!(err, AppError::Validation(message) if message.contains("being provisioned")));
+    }
+
+    #[test]
+    fn successful_lazy_load_recovery_clears_prior_error_and_marks_loaded() {
+        let state = LlmState::default();
+        set_lifecycle_error(&state, "load failed".to_string()).unwrap();
+
+        finish_model_load_success(&state).unwrap();
+
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::Loaded);
+        assert!(state.last_error.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn claimed_generation_finalizer_preserves_command_error_when_done_emit_fails() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct FailingDoneSink {
+            attempted: Arc<AtomicBool>,
+        }
+
+        impl ChatEventSink for FailingDoneSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+                self.attempted.store(true, Ordering::SeqCst);
+                Err(AppError::Llm("terminal done emit failed".to_string()))
+            }
+        }
+
+        let state = LlmState::default();
+        let cancel = begin_generation(&state, "stream-1".to_string()).unwrap();
+        let attempted = Arc::new(AtomicBool::new(false));
+
+        let result = finalize_claimed_generation(
+            &state,
+            "stream-1",
+            Err(AppError::Llm("preflight failed".to_string())),
+            &cancel,
+            &FailingDoneSink {
+                attempted: Arc::clone(&attempted),
+            },
+        )
+        .unwrap_err();
+
+        assert!(attempted.load(Ordering::SeqCst));
+        assert!(matches!(result, AppError::Llm(message) if message.contains("preflight failed")));
+        assert!(state.active_generation.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn blocking_generation_runner_uses_send_sync_event_sink_for_token_emission() {
+        #[derive(Default)]
+        struct RecordingSink {
+            tokens: Arc<Mutex<Vec<String>>>,
+        }
+
+        impl ChatEventSink for RecordingSink {
+            fn emit_token(&self, token: &str) -> Result<(), AppError> {
+                self.tokens.lock().unwrap().push(token.to_string());
+                Ok(())
+            }
+
+            fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+                Ok(())
+            }
+        }
+
+        fn assert_send_sync<T: Send + Sync>() {}
+
+        assert_send_sync::<RecordingSink>();
     }
 }

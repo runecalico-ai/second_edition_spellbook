@@ -6,6 +6,7 @@ pub mod sidecar;
 pub mod utils;
 
 use commands::vault::VaultMaintenanceState;
+use commands::ProvisioningState;
 use commands::*;
 use db::init_db;
 use std::path::PathBuf;
@@ -35,6 +36,7 @@ pub fn run() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
             app.manage(Arc::new(pool));
             app.manage(Arc::new(VaultMaintenanceState::default()));
+            app.manage(Arc::new(ProvisioningState::default()));
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())

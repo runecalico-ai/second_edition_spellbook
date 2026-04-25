@@ -236,16 +236,6 @@ fn status_snapshot(
             .map(|value| (value.bytes_downloaded, value.total_bytes))
     };
 
-    let loaded = {
-        match state.model.try_lock() {
-            Ok(model_guard) => model_guard.is_some(),
-            Err(std::sync::TryLockError::WouldBlock) => true,
-            Err(std::sync::TryLockError::Poisoned(_)) => {
-                return Err(AppError::Llm("LLM model state is poisoned".to_string()));
-            }
-        }
-    };
-
     let reprovision_active = {
         let reprovision_guard = state
             .reprovisioning
@@ -255,6 +245,18 @@ fn status_snapshot(
     };
 
     let lifecycle = snapshot_lifecycle_markers(state)?;
+
+    let loaded = {
+        match state.model.try_lock() {
+            Ok(model_guard) => model_guard.is_some(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                matches!(lifecycle.status, LlmStatus::Loaded)
+            }
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                return Err(AppError::Llm("LLM model state is poisoned".to_string()));
+            }
+        }
+    };
 
     Ok(build_status_response(
         model_path,

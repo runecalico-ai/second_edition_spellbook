@@ -118,15 +118,17 @@ fn snapshot_model_file_presence_blocking(vault_root: &Path) -> Result<(PathBuf, 
 }
 
 fn snapshot_lifecycle_markers(state: &LlmState) -> Result<LifecycleSnapshot, AppError> {
-    let status = *state
+    let status_guard = state
         .status
         .lock()
         .map_err(|_| AppError::Llm("LLM status state is poisoned".to_string()))?;
-    let last_error = state
+    let last_error_guard = state
         .last_error
         .lock()
-        .map_err(|_| AppError::Llm("LLM error state is poisoned".to_string()))?
-        .clone();
+        .map_err(|_| AppError::Llm("LLM error state is poisoned".to_string()))?;
+
+    let status = *status_guard;
+    let last_error = last_error_guard.clone();
 
     Ok(LifecycleSnapshot { status, last_error })
 }
@@ -136,13 +138,12 @@ fn apply_lifecycle_snapshot(state: &LlmState, snapshot: &LifecycleSnapshot) -> R
         .status
         .lock()
         .map_err(|_| AppError::Llm("LLM status state is poisoned".to_string()))?;
-    *status_guard = snapshot.status;
-    drop(status_guard);
-
     let mut last_error_guard = state
         .last_error
         .lock()
         .map_err(|_| AppError::Llm("LLM error state is poisoned".to_string()))?;
+
+    *status_guard = snapshot.status;
     *last_error_guard = snapshot.last_error.clone();
     Ok(())
 }
@@ -169,7 +170,9 @@ fn finish_lifecycle_recovery(state: &LlmState, status: LlmStatus) -> Result<(), 
 }
 
 fn record_lifecycle_error(state: &LlmState, error: AppError) -> AppError {
-    let _ = set_lifecycle_error(state, error.to_string());
+    if let Err(lifecycle_error) = set_lifecycle_error(state, error.to_string()) {
+        tracing::warn!(?error, ?lifecycle_error, "Failed to record LLM lifecycle error");
+    }
     error
 }
 

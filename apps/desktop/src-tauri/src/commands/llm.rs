@@ -802,8 +802,7 @@ fn cancel_generation(state: &LlmState, stream_id: &str) -> Result<(), AppError> 
     Ok(())
 }
 
-static COMPAT_STREAM_COUNTER: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(1);
+static COMPAT_STREAM_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
 struct ChatRunOutput {
@@ -811,8 +810,7 @@ struct ChatRunOutput {
     cancelled: bool,
 }
 
-type LlmRuntimeFuture<T> =
-    std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'static>>;
+type LlmRuntimeFuture<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'static>>;
 
 trait LlmRuntimeDriver: Send + Sync {
     fn ensure_loaded(
@@ -886,9 +884,7 @@ fn install_test_runtime_driver(driver: Arc<dyn LlmRuntimeDriver>) -> TestRuntime
 }
 
 #[cfg(test)]
-fn install_test_model_load_preflight(
-    preflight: ModelLoadPreflight,
-) -> TestModelLoadPreflightGuard {
+fn install_test_model_load_preflight(preflight: ModelLoadPreflight) -> TestModelLoadPreflightGuard {
     *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = Some(preflight);
     TestModelLoadPreflightGuard
 }
@@ -1120,10 +1116,9 @@ fn ensure_model_loaded_after_preflight_blocking(
         .lock()
         .map_err(|_| AppError::Llm("LLM backend state is poisoned".to_string()))?;
     if backend_guard.is_none() {
-        *backend_guard = Some(
-            LlamaBackend::init()
-                .map_err(|error| AppError::Llm(format!("Failed to initialize llama backend: {error}")))?,
-        );
+        *backend_guard = Some(LlamaBackend::init().map_err(|error| {
+            AppError::Llm(format!("Failed to initialize llama backend: {error}"))
+        })?);
     }
 
     let mut model_guard = state
@@ -1266,7 +1261,11 @@ fn finalize_claimed_generation(
 
 fn finish_generation_best_effort(state: &LlmState, stream_id: &str) {
     if let Err(error) = finish_generation(state) {
-        tracing::warn!(stream_id, ?error, "Failed to clear active LLM generation claim");
+        tracing::warn!(
+            stream_id,
+            ?error,
+            "Failed to clear active LLM generation claim"
+        );
         let _ = set_lifecycle_error(state, error.to_string());
     }
 }
@@ -1277,11 +1276,20 @@ async fn run_claimed_llm_chat(
     stream_id: String,
     event_sink: Arc<dyn ChatEventSink>,
 ) -> Result<ChatRunOutput, AppError> {
+    use std::sync::atomic::Ordering;
+
     let vault_root = app_data_dir()?;
     let cancel = begin_generation(state.as_ref(), stream_id.clone())?;
     let runtime_driver = active_llm_runtime_driver();
 
     let run_result = async {
+        if cancel.load(Ordering::SeqCst) {
+            return Ok(ChatRunOutput {
+                full_response: String::new(),
+                cancelled: true,
+            });
+        }
+
         let preflight = tokio::task::spawn_blocking({
             let vault_root = vault_root.clone();
             move || collect_model_load_preflight(&vault_root)
@@ -1291,9 +1299,23 @@ async fn run_claimed_llm_chat(
 
         let validated_preflight = validate_model_load_preflight(state.as_ref(), preflight)?;
 
+        if cancel.load(Ordering::SeqCst) {
+            return Ok(ChatRunOutput {
+                full_response: String::new(),
+                cancelled: true,
+            });
+        }
+
         runtime_driver
             .ensure_loaded(Arc::clone(&state), validated_preflight)
             .await?;
+
+        if cancel.load(Ordering::SeqCst) {
+            return Ok(ChatRunOutput {
+                full_response: String::new(),
+                cancelled: true,
+            });
+        }
 
         runtime_driver
             .generate(
@@ -1829,6 +1851,9 @@ async fn run_download_chunks_verify_and_promote(
     }
 
     let mut send_cancel_rx = cancel_rx.clone();
+    if is_cancelled(&send_cancel_rx) {
+        return Ok(DownloadFlowOutcome::Cancelled);
+    }
     let response = tokio::select! {
         changed = send_cancel_rx.changed() => {
             match changed {
@@ -1882,6 +1907,10 @@ async fn run_download_chunks_verify_and_promote(
     let mut response = response;
     loop {
         let mut chunk_cancel_rx = cancel_rx.clone();
+        if is_cancelled(&chunk_cancel_rx) {
+            cleanup_restart_if_needed(&active_download_path, &temp_path).await?;
+            return Ok(DownloadFlowOutcome::Cancelled);
+        }
         let maybe_chunk = tokio::select! {
             changed = chunk_cancel_rx.changed() => {
                 match changed {
@@ -2970,9 +2999,7 @@ mod tests {
                 _cancel: Arc<AtomicBool>,
                 _event_sink: Arc<dyn ChatEventSink>,
             ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
-                Box::pin(async {
-                    unreachable!("generation is not part of this phase-split test")
-                })
+                Box::pin(async { unreachable!("generation is not part of this phase-split test") })
             }
         }
 
@@ -3005,7 +3032,9 @@ mod tests {
         };
 
         let err = validate_model_load_prerequisites(false, requirements).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("not been provisioned")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("not been provisioned"))
+        );
     }
 
     #[test]
@@ -3016,7 +3045,9 @@ mod tests {
         };
 
         let err = validate_model_load_prerequisites(true, requirements).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required"))
+        );
     }
 
     #[test]
@@ -3028,7 +3059,9 @@ mod tests {
         };
 
         let err = validate_model_load_prerequisites(true, requirements).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required"))
+        );
         assert_eq!(*state.status.lock().unwrap(), LlmStatus::NotProvisioned);
         assert!(state.last_error.lock().unwrap().is_none());
     }
@@ -3039,7 +3072,9 @@ mod tests {
         begin_generation(&state, "stream-1".to_string()).unwrap();
 
         let err = begin_generation(&state, "stream-2".to_string()).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("already being generated")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("already being generated"))
+        );
     }
 
     #[test]
@@ -3048,7 +3083,9 @@ mod tests {
         *state.reprovisioning.lock().unwrap() = Some(ReprovisionKind::Download);
 
         let err = begin_generation(&state, "stream-1".to_string()).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("being provisioned")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("being provisioned"))
+        );
     }
 
     #[test]
@@ -3072,7 +3109,9 @@ mod tests {
         *state.reprovisioning.lock().unwrap() = Some(ReprovisionKind::Download);
 
         let err = ensure_no_reprovision_in_progress(&state).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("being provisioned")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("being provisioned"))
+        );
     }
 
     #[test]

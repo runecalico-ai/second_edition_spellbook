@@ -37,6 +37,7 @@ pub fn run() {
             app.manage(Arc::new(pool));
             app.manage(Arc::new(VaultMaintenanceState::default()));
             app.manage(Arc::new(ProvisioningState::default()));
+            app.manage(Arc::new(LlmState::default()));
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())

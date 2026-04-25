@@ -1,6 +1,7 @@
 pub mod characters;
 pub mod export;
 pub mod import;
+pub mod llm;
 pub mod provisioning;
 pub mod search;
 pub mod spells;
@@ -9,6 +10,7 @@ pub mod vault;
 pub use characters::*;
 pub use export::*;
 pub use import::*;
+pub use llm::*;
 pub use provisioning::*;
 pub use search::*;
 pub use spells::*;

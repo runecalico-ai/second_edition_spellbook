@@ -1322,8 +1322,26 @@ async fn run_download_chunks_verify_and_promote(
             .await);
         }
 
-        let progress = update_download_progress(state, chunk.len() as u64, total_bytes)?;
-        emit_download_progress_event(&app, progress)?;
+        let progress = match update_download_progress(state, chunk.len() as u64, total_bytes) {
+            Ok(progress) => progress,
+            Err(error) => {
+                return Err(finalize_non_sha_download_error(
+                    active_download_path.clone(),
+                    temp_path.clone(),
+                    error,
+                )
+                .await)
+            }
+        };
+
+        if let Err(error) = emit_download_progress_event(&app, progress) {
+            return Err(finalize_non_sha_download_error(
+                active_download_path.clone(),
+                temp_path.clone(),
+                error,
+            )
+            .await);
+        }
     }
 
     let length_result = tokio::task::spawn_blocking({

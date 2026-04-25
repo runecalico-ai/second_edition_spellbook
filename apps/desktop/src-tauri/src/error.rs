@@ -19,6 +19,9 @@ pub enum AppError {
     #[error("Sidecar error: {0}")]
     Sidecar(String),
 
+    #[error("LLM error: {0}")]
+    Llm(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

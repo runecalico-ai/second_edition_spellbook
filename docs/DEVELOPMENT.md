@@ -7,7 +7,7 @@ This document provides a centralized overview of the repository layout, developm
 ## Repository Layout
 
 *   `apps/desktop`: Tauri + React desktop application (Frontend & Backend).
-*   `services/ml`: Python sidecar services for embeddings and LLM inference.
+*   `services/ml`: Python sidecar services for document import/export workflows. Local LLM inference and embeddings for this stack live in the Rust/Tauri backend.
 *   `db/migrations`: SQLite schema migration files.
 *   `scripts/`: Helper scripts and build utilities.
 *   `spells_md/`: Markdown spell content used for seeding.
@@ -29,8 +29,26 @@ pnpm install
 pnpm tauri:dev
 ```
 
-### Python Sidecar (ML Services)
+## Local Model Provisioning
+
+Task Group 1 defines the approved local-model assets, thresholds, and shared backend provisioning guard for content staged under `SpellbookVault/models/`. Public Tauri download commands land in later tasks.
+
+*   Required Windows toolchain: `x86_64-pc-windows-msvc`, `rustc 1.95.0 (59807616e 2026-04-14)`, `cargo 1.95.0 (f2d3ce0bd 2026-03-21)`, Visual Studio Build Tools workload `Microsoft.VisualStudio.Workload.VCTools` version `18.5.11709.299`, Windows SDK `10.0.26100.0`, plus `LIBCLANG_PATH=C:\Program Files\LLVM\bin` and `CMAKE=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe` when compiling the local-model stack in a clean shell.
+*   Approved TinyLlama asset: `https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`, version `TinyLlama-1.1B-Chat-v1.0 / Q4_K_M`, verification strategy `SingleFileSHA256 9FECC3B3CD76BBA89D504F29B616EEDF7DA85B96540E490CA5824D3F7D2776A0`, download size `668788096`, installed size `668788096`, peak RAM `910843904`, destination `SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`.
+*   Approved embedding asset: `https://huggingface.co/Qdrant/all-MiniLM-L6-v2-onnx/tree/5f1b8cd78bc4fb444dd171e59b18f3a3af89a079`, version `5f1b8cd78bc4fb444dd171e59b18f3a3af89a079`, verification strategy `FileInventoryOnly @ 5f1b8cd78bc4fb444dd171e59b18f3a3af89a079 + UpstreamRevisionManifestSHA`, download size `91102069`, installed size `91102069`, peak RAM `121024512`, destination `SpellbookVault/models/embeddings/all-MiniLM-L6-v2/`.
+*   Enforced resource thresholds: free disk `>= 838860800` and free RAM `>= 1610612736` before either provisioning target starts.
+*   Provisioning flow: the approved assets are downloaded or verified via side-load into `SpellbookVault/models/`; after provisioning completes, normal local inference and embedding use stays offline.
+*   Shared download guard: one global provisioning guard is already registered for both asset types. Later download commands must reuse it so overlapping requests fail with the current target-specific validation errors, including `Provisioning for LLM is already in progress.` and `Provisioning for embeddings is unavailable while LLM is in progress.`
+*   Interruptibility finding: Task Group 1 accepted Outcome B for later inference cancellation; a dedicated inference worker owns the model/session and polls an `Arc<std::sync::atomic::AtomicBool>` before token sampling and optionally after decode.
+*   Python sidecar scope: the Python sidecar remains responsible for document import/export only; it does not provide LLM or embedding functionality for this stack.
+*   Scope note: embedding reindex concurrency and mid-download cancellation are not part of Task Group 1.
+
+See [dev/local_llm_infrastructure_spike.md](./dev/local_llm_infrastructure_spike.md) for the raw provenance notes, Windows compile evidence, and the exact embedding bundle file inventory.
+
+### Python Sidecar Services
 **Location**: `services/ml`
+
+The Python sidecar remains available for document import/export workflows. The approved local LLM and embedding runtime for this stack is provisioned and executed by the Rust/Tauri backend instead.
 
 Always use the virtual environment located in the **repository root**.
 

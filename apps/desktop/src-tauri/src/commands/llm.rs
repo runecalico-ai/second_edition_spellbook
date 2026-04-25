@@ -1423,8 +1423,11 @@ async fn run_download_chunks_verify_and_promote(
         .and_then(|result| result)
         .unwrap_or(true);
 
+        // If we cannot prove the staging artifact stayed in place, fail closed.
         let error = if staged_was_promoted {
-            AppError::Llm(format!("POST_PROMOTION_FAILURE: {error}"))
+            AppError::Llm(format!(
+                "Post-promotion cleanup failed after replacing approved model bytes: {error}"
+            ))
         } else {
             error
         };
@@ -1446,13 +1449,14 @@ impl LlmDownloadDriver for DefaultLlmDownloadDriver {
         final_path: PathBuf,
     ) -> LlmDownloadDriverFuture {
         Box::pin(async move {
+            let post_failure_probe = target_prep.clone();
             let flow_result = run_download_chunks_verify_and_promote(
                 app,
                 state.as_ref(),
                 cancel_rx,
                 target_prep,
                 temp_path.clone(),
-                final_path,
+                final_path.clone(),
             )
             .await;
 
@@ -1470,10 +1474,31 @@ impl LlmDownloadDriver for DefaultLlmDownloadDriver {
 
                     StartedReprovisionResult::Ready
                 }
-                Err(error) => StartedReprovisionResult::Error {
-                    invalidate_runtime: matches!(&error, AppError::Llm(message) if message.contains("POST_PROMOTION_FAILURE:")),
-                    error,
-                },
+                Err(error) => {
+                    let invalidate_runtime = tokio::task::spawn_blocking({
+                        let temp_path = temp_path.clone();
+                        let restart_path = post_failure_probe.restart_path.clone();
+                        let final_path = final_path.clone();
+                        move || -> Result<bool, AppError> {
+                            let temp_promoted =
+                                staged_bytes_moved_to_final_path_blocking(&temp_path, &final_path)?;
+                            let restart_promoted = staged_bytes_moved_to_final_path_blocking(
+                                &restart_path,
+                                &final_path,
+                            )?;
+                            Ok(temp_promoted || restart_promoted)
+                        }
+                    })
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                    .unwrap_or(true);
+
+                    StartedReprovisionResult::Error {
+                        invalidate_runtime,
+                        error,
+                    }
+                }
             }
         })
     }

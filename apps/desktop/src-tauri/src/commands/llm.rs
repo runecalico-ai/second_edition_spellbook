@@ -1637,7 +1637,10 @@ pub async fn llm_import_model_file(
             let promotion_result = tokio::task::spawn_blocking({
                 let staged_path = staged_path.clone();
                 let destination = destination.clone();
-                move || promote_staged_model_blocking(&staged_path, &destination)
+                move || {
+                    revalidate_staged_import_artifact_blocking(&staged_path)?;
+                    promote_staged_model_blocking(&staged_path, &destination)
+                }
             })
             .await;
 

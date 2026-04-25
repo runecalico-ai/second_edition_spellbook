@@ -237,11 +237,13 @@ fn status_snapshot(
     };
 
     let loaded = {
-        let model_guard = state
-            .model
-            .lock()
-            .map_err(|_| AppError::Llm("LLM model state is poisoned".to_string()))?;
-        model_guard.is_some()
+        match state.model.try_lock() {
+            Ok(model_guard) => model_guard.is_some(),
+            Err(std::sync::TryLockError::WouldBlock) => true,
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                return Err(AppError::Llm("LLM model state is poisoned".to_string()));
+            }
+        }
     };
 
     let reprovision_active = {
@@ -1192,7 +1194,7 @@ async fn generate_chat_completion(
         let mut n_cur = batch.n_tokens();
         let mut generated = String::new();
 
-        while n_cur <= n_ctx as i32 {
+        while n_cur < n_ctx as i32 {
             if cancel.load(std::sync::atomic::Ordering::SeqCst) {
                 break;
             }

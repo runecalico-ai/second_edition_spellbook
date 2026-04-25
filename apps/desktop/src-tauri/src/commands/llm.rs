@@ -128,7 +128,10 @@ fn snapshot_lifecycle_markers(state: &LlmState) -> Result<LifecycleSnapshot, App
     })
 }
 
-fn apply_lifecycle_snapshot(state: &LlmState, snapshot: &LifecycleSnapshot) -> Result<(), AppError> {
+fn apply_lifecycle_snapshot(
+    state: &LlmState,
+    snapshot: &LifecycleSnapshot,
+) -> Result<(), AppError> {
     let mut status_guard = state
         .status
         .lock()
@@ -293,9 +296,12 @@ fn sha256_file(path: &Path) -> Result<String, AppError> {
 }
 
 fn validate_selected_model_file(path: &Path) -> Result<(), AppError> {
-    let file_name = path.file_name().and_then(|value| value.to_str()).ok_or_else(|| {
-        AppError::Validation("Selected model path is missing a valid filename".to_string())
-    })?;
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| {
+            AppError::Validation("Selected model path is missing a valid filename".to_string())
+        })?;
 
     if file_name != TINY_LLAMA_DESTINATION {
         return Err(AppError::Validation(
@@ -332,25 +338,25 @@ enum DownloadResponsePlan {
 }
 
 fn parse_content_range(content_range: &str) -> Result<(u64, u64, u64), AppError> {
-    let value = content_range
-        .strip_prefix("bytes ")
-        .ok_or_else(|| AppError::Validation("Range response is missing the bytes unit".to_string()))?;
-    let (range, total) = value
-        .split_once('/')
-        .ok_or_else(|| AppError::Validation("Range response is missing the total size".to_string()))?;
-    let (start, end) = range
-        .split_once('-')
-        .ok_or_else(|| AppError::Validation("Range response is missing the byte range".to_string()))?;
+    let value = content_range.strip_prefix("bytes ").ok_or_else(|| {
+        AppError::Validation("Range response is missing the bytes unit".to_string())
+    })?;
+    let (range, total) = value.split_once('/').ok_or_else(|| {
+        AppError::Validation("Range response is missing the total size".to_string())
+    })?;
+    let (start, end) = range.split_once('-').ok_or_else(|| {
+        AppError::Validation("Range response is missing the byte range".to_string())
+    })?;
 
-    let start = start
-        .parse::<u64>()
-        .map_err(|_| AppError::Validation("Range response has an invalid start offset".to_string()))?;
-    let end = end
-        .parse::<u64>()
-        .map_err(|_| AppError::Validation("Range response has an invalid end offset".to_string()))?;
-    let total = total
-        .parse::<u64>()
-        .map_err(|_| AppError::Validation("Range response has an invalid total size".to_string()))?;
+    let start = start.parse::<u64>().map_err(|_| {
+        AppError::Validation("Range response has an invalid start offset".to_string())
+    })?;
+    let end = end.parse::<u64>().map_err(|_| {
+        AppError::Validation("Range response has an invalid end offset".to_string())
+    })?;
+    let total = total.parse::<u64>().map_err(|_| {
+        AppError::Validation("Range response has an invalid total size".to_string())
+    })?;
 
     if end < start {
         return Err(AppError::Validation(
@@ -415,14 +421,40 @@ fn classify_download_response(
                 ));
             }
 
-            Ok(DownloadResponsePlan::RestartFromFreshStaging {
-                total_bytes: TINY_LLAMA_SIZE_BYTES,
-            })
+            if existing_len == 0 {
+                Ok(DownloadResponsePlan::Append {
+                    total_bytes: TINY_LLAMA_SIZE_BYTES,
+                    remaining_bytes: TINY_LLAMA_SIZE_BYTES,
+                })
+            } else {
+                Ok(DownloadResponsePlan::RestartFromFreshStaging {
+                    total_bytes: TINY_LLAMA_SIZE_BYTES,
+                })
+            }
         }
         other => Err(AppError::Validation(format!(
             "Model download returned unsupported status {other}"
         ))),
     }
+}
+
+fn staged_bytes_moved_to_final_path_blocking(
+    staged_path: &Path,
+    final_path: &Path,
+) -> Result<bool, AppError> {
+    let staged_missing = match std::fs::metadata(staged_path) {
+        Ok(_) => false,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => return Err(AppError::from(error)),
+    };
+
+    let final_is_file = match std::fs::metadata(final_path) {
+        Ok(metadata) => metadata.is_file(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(AppError::from(error)),
+    };
+
+    Ok(staged_missing && final_is_file)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -431,7 +463,10 @@ struct DownloadTargetPrep {
     restart_path: PathBuf,
 }
 
-fn prepare_download_target(final_path: &Path, temp_path: &Path) -> Result<DownloadTargetPrep, AppError> {
+fn prepare_download_target(
+    final_path: &Path,
+    temp_path: &Path,
+) -> Result<DownloadTargetPrep, AppError> {
     let parent = final_path.parent().ok_or_else(|| {
         AppError::Llm("Approved LLM model path is missing a parent directory".to_string())
     })?;
@@ -649,9 +684,7 @@ fn verify_staged_model_length_blocking(
 }
 
 enum LifecycleArbitrationRequest {
-    BeginGeneration {
-        stream_id: String,
-    },
+    BeginGeneration { stream_id: String },
     BeginReprovision(ReprovisionKind),
 }
 
@@ -669,7 +702,9 @@ fn claim_generation_reprovision_arbitration(
     request: LifecycleArbitrationRequest,
 ) -> Result<LifecycleArbitrationClaim, AppError> {
     let lifecycle_before_reprovision = match request {
-        LifecycleArbitrationRequest::BeginReprovision(_) => Some(snapshot_lifecycle_markers(state)?),
+        LifecycleArbitrationRequest::BeginReprovision(_) => {
+            Some(snapshot_lifecycle_markers(state)?)
+        }
         LifecycleArbitrationRequest::BeginGeneration { .. } => None,
     };
 
@@ -964,7 +999,10 @@ fn current_download_control(
         .map_err(|_| AppError::Llm("LLM download state is poisoned".to_string()))?;
 
     Ok(download_guard.as_ref().map(|download| {
-        (download.cancel_tx.clone(), download.completion_tx.subscribe())
+        (
+            download.cancel_tx.clone(),
+            download.completion_tx.subscribe(),
+        )
     }))
 }
 
@@ -1098,8 +1136,9 @@ fn active_llm_download_driver() -> Arc<dyn LlmDownloadDriver> {
 }
 
 #[cfg(test)]
-static TEST_RUNTIME_INVALIDATION_OBSERVER: std::sync::Mutex<Option<Arc<std::sync::atomic::AtomicBool>>> =
-    std::sync::Mutex::new(None);
+static TEST_RUNTIME_INVALIDATION_OBSERVER: std::sync::Mutex<
+    Option<Arc<std::sync::atomic::AtomicBool>>,
+> = std::sync::Mutex::new(None);
 
 #[cfg(test)]
 struct TestRuntimeInvalidationObserverGuard;
@@ -1223,9 +1262,15 @@ async fn run_download_chunks_verify_and_promote(
                 move || prepare_fresh_restart_file(&restart_path)
             })
             .await
-            .map_err(|error| AppError::Llm(format!("LLM restart staging task failed: {error}")))??;
+            .map_err(|error| {
+                AppError::Llm(format!("LLM restart staging task failed: {error}"))
+            })??;
             reset_download_progress(state, total_bytes)?;
-            (restart_path, total_bytes, DownloadFlowOutcome::PromotedFromRestart)
+            (
+                restart_path,
+                total_bytes,
+                DownloadFlowOutcome::PromotedFromRestart,
+            )
         }
     };
 
@@ -1251,14 +1296,12 @@ async fn run_download_chunks_verify_and_promote(
             Ok(None) => break,
             Err(error) => {
                 let app_error = AppError::Llm(format!("LLM model download stream failed: {error}"));
-                return Err(
-                    finalize_non_sha_download_error(
-                        active_download_path.clone(),
-                        temp_path.clone(),
-                        app_error,
-                    )
-                    .await,
-                );
+                return Err(finalize_non_sha_download_error(
+                    active_download_path.clone(),
+                    temp_path.clone(),
+                    app_error,
+                )
+                .await);
             }
         };
 
@@ -1271,10 +1314,12 @@ async fn run_download_chunks_verify_and_promote(
         .map_err(|error| AppError::Llm(format!("LLM download chunk write task failed: {error}")))?;
 
         if let Err(error) = write_result {
-            return Err(
-                finalize_non_sha_download_error(active_download_path.clone(), temp_path.clone(), error)
-                    .await,
-            );
+            return Err(finalize_non_sha_download_error(
+                active_download_path.clone(),
+                temp_path.clone(),
+                error,
+            )
+            .await);
         }
 
         let progress = update_download_progress(state, chunk.len() as u64, total_bytes)?;
@@ -1286,10 +1331,19 @@ async fn run_download_chunks_verify_and_promote(
         move || verify_staged_model_length_blocking(&active_download_path, total_bytes)
     })
     .await
-    .map_err(|error| AppError::Llm(format!("LLM staged-length verification task failed: {error}")))?;
+    .map_err(|error| {
+        AppError::Llm(format!(
+            "LLM staged-length verification task failed: {error}"
+        ))
+    })?;
 
     if let Err(error) = length_result {
-        return Err(finalize_non_sha_download_error(active_download_path.clone(), temp_path.clone(), error).await);
+        return Err(finalize_non_sha_download_error(
+            active_download_path.clone(),
+            temp_path.clone(),
+            error,
+        )
+        .await);
     }
 
     let sha_result = tokio::task::spawn_blocking({
@@ -1307,21 +1361,24 @@ async fn run_download_chunks_verify_and_promote(
                 move || remove_corrupt_download_blocking(&active_download_path)
             })
             .await
-            .map_err(|error| AppError::Llm(format!("LLM corrupt-download cleanup task failed: {error}")))?;
+            .map_err(|error| {
+                AppError::Llm(format!("LLM corrupt-download cleanup task failed: {error}"))
+            })?;
             if let Err(error) = cleanup_result {
                 return Err(error);
             }
 
             return Err(AppError::Validation(
-                "Downloaded model SHA-256 does not match the approved TinyLlama asset"
-                    .to_string(),
+                "Downloaded model SHA-256 does not match the approved TinyLlama asset".to_string(),
             ));
         }
         Err(error) => {
-            return Err(
-                finalize_non_sha_download_error(active_download_path.clone(), temp_path.clone(), error)
-                    .await,
-            );
+            return Err(finalize_non_sha_download_error(
+                active_download_path.clone(),
+                temp_path.clone(),
+                error,
+            )
+            .await);
         }
     }
 
@@ -1334,6 +1391,26 @@ async fn run_download_chunks_verify_and_promote(
     .map_err(|error| AppError::Llm(format!("LLM download promotion task failed: {error}")))?;
 
     if let Err(error) = promotion_result {
+        let staged_was_promoted = tokio::task::spawn_blocking({
+            let active_download_path = active_download_path.clone();
+            let final_path = final_path.clone();
+            move || staged_bytes_moved_to_final_path_blocking(&active_download_path, &final_path)
+        })
+        .await
+        .map_err(|join_error| {
+            AppError::Llm(format!(
+                "LLM post-promotion state probe task failed: {join_error}"
+            ))
+        })
+        .and_then(|result| result)
+        .unwrap_or(false);
+
+        let error = if staged_was_promoted {
+            AppError::Llm(format!("POST_PROMOTION_FAILURE: {error}"))
+        } else {
+            error
+        };
+
         return Err(finalize_non_sha_download_error(active_download_path, temp_path, error).await);
     }
 
@@ -1365,7 +1442,8 @@ impl LlmDownloadDriver for DefaultLlmDownloadDriver {
                 Ok(DownloadFlowOutcome::Ready) => StartedReprovisionResult::Ready,
                 Ok(DownloadFlowOutcome::Cancelled) => StartedReprovisionResult::Cancelled,
                 Ok(DownloadFlowOutcome::PromotedFromRestart) => {
-                    if let Err(error) = remove_stale_partial_after_restart(temp_path.clone()).await {
+                    if let Err(error) = remove_stale_partial_after_restart(temp_path.clone()).await
+                    {
                         return StartedReprovisionResult::Error {
                             error,
                             invalidate_runtime: true,
@@ -1375,8 +1453,8 @@ impl LlmDownloadDriver for DefaultLlmDownloadDriver {
                     StartedReprovisionResult::Ready
                 }
                 Err(error) => StartedReprovisionResult::Error {
+                    invalidate_runtime: matches!(&error, AppError::Llm(message) if message.contains("POST_PROMOTION_FAILURE:")),
                     error,
-                    invalidate_runtime: false,
                 },
             }
         })
@@ -1411,7 +1489,8 @@ pub async fn llm_download_model(
     let reprovision = begin_reprovision(Arc::clone(llm_state.inner()), ReprovisionKind::Download)?;
 
     let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-    let (completion_tx, _completion_rx) = tokio::sync::watch::channel(DownloadCleanupState::Running);
+    let (completion_tx, _completion_rx) =
+        tokio::sync::watch::channel(DownloadCleanupState::Running);
     let download_driver = active_llm_download_driver();
 
     let started_result = {
@@ -1524,9 +1603,25 @@ pub async fn llm_import_model_file(
                     verified_bytes_promoted = true;
                 }
                 Ok(Err(error)) => {
+                    let staged_was_promoted = tokio::task::spawn_blocking({
+                        let staged_path = staged_path.clone();
+                        let destination = destination.clone();
+                        move || {
+                            staged_bytes_moved_to_final_path_blocking(&staged_path, &destination)
+                        }
+                    })
+                    .await
+                    .map_err(|join_error| {
+                        AppError::Llm(format!(
+                            "LLM import post-promotion state probe task failed: {join_error}"
+                        ))
+                    })
+                    .and_then(|result| result)
+                    .unwrap_or(false);
+
                     return StartedReprovisionResult::Error {
                         error,
-                        invalidate_runtime: false,
+                        invalidate_runtime: staged_was_promoted,
                     };
                 }
                 Err(error) => {
@@ -1543,7 +1638,9 @@ pub async fn llm_import_model_file(
             })
             .await
             .map_err(|join_error| {
-                AppError::Llm(format!("LLM import staging cleanup task failed: {join_error}"))
+                AppError::Llm(format!(
+                    "LLM import staging cleanup task failed: {join_error}"
+                ))
             })
             .and_then(|cleanup_result| cleanup_result)
             {
@@ -1598,9 +1695,18 @@ mod tests {
             serde_json::to_string(&LlmStatus::Downloading).unwrap(),
             "\"downloading\""
         );
-        assert_eq!(serde_json::to_string(&LlmStatus::Ready).unwrap(), "\"ready\"");
-        assert_eq!(serde_json::to_string(&LlmStatus::Loaded).unwrap(), "\"loaded\"");
-        assert_eq!(serde_json::to_string(&LlmStatus::Error).unwrap(), "\"error\"");
+        assert_eq!(
+            serde_json::to_string(&LlmStatus::Ready).unwrap(),
+            "\"ready\""
+        );
+        assert_eq!(
+            serde_json::to_string(&LlmStatus::Loaded).unwrap(),
+            "\"loaded\""
+        );
+        assert_eq!(
+            serde_json::to_string(&LlmStatus::Error).unwrap(),
+            "\"error\""
+        );
     }
 
     #[test]
@@ -1620,7 +1726,9 @@ mod tests {
         let path = approved_llm_model_path(std::path::Path::new("C:/SpellbookVault"));
         assert_eq!(
             path,
-            std::path::PathBuf::from("C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
+            std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+            )
         );
     }
 
@@ -1676,7 +1784,10 @@ mod tests {
 
         let snapshot = status_snapshot(&state, &model_path, true).unwrap();
         assert_eq!(snapshot.status, LlmStatus::Downloading);
-        assert_eq!(snapshot.last_error.as_deref(), Some("previous import failed"));
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("previous import failed")
+        );
         assert_eq!(snapshot.bytes_downloaded, None);
         assert_eq!(snapshot.total_bytes, None);
     }
@@ -1744,7 +1855,9 @@ mod tests {
         std::fs::write(&selected, vec![0_u8; 16]).unwrap();
 
         let err = validate_selected_model_file(&selected).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("approved TinyLlama file")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("approved TinyLlama file"))
+        );
     }
 
     #[test]
@@ -1786,6 +1899,25 @@ mod tests {
     }
 
     #[test]
+    fn resume_policy_keeps_part_path_for_fresh_full_body_downloads() {
+        let plan = classify_download_response(
+            0,
+            reqwest::StatusCode::OK,
+            None,
+            Some(TINY_LLAMA_SIZE_BYTES),
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan,
+            DownloadResponsePlan::Append {
+                total_bytes: TINY_LLAMA_SIZE_BYTES,
+                remaining_bytes: TINY_LLAMA_SIZE_BYTES,
+            }
+        );
+    }
+
+    #[test]
     fn resume_policy_rejects_mismatched_partial_response() {
         let err = classify_download_response(
             128,
@@ -1800,7 +1932,8 @@ mod tests {
 
     #[tokio::test]
     async fn download_cleanup_watch_is_non_lossy_for_late_cancel_waiters() {
-        let (completion_tx, completion_rx) = tokio::sync::watch::channel(DownloadCleanupState::Running);
+        let (completion_tx, completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
         completion_tx.send_replace(DownloadCleanupState::Finished);
 
         wait_for_download_cleanup(completion_rx).await.unwrap();
@@ -1814,7 +1947,9 @@ mod tests {
         std::fs::write(&staged, vec![0_u8; 32]).unwrap();
 
         let err = verify_staged_model_length_blocking(&staged, TINY_LLAMA_SIZE_BYTES).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("full approved asset length")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("full approved asset length"))
+        );
     }
 
     #[test]
@@ -1849,7 +1984,9 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(matches!(err, AppError::Validation(message) if message.contains("fallback length mismatch")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("fallback length mismatch"))
+        );
         assert!(partial.exists());
         assert!(!restart.exists());
     }
@@ -1874,9 +2011,11 @@ mod tests {
         std::fs::write(&partial, b"partial-bytes").unwrap();
 
         let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
-        let (completion_tx, _completion_rx) = tokio::sync::watch::channel(DownloadCleanupState::Running);
+        let (completion_tx, _completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
         let state = Arc::new(LlmState::default());
-        let mut reprovision = begin_reprovision(Arc::clone(&state), ReprovisionKind::Download).unwrap();
+        let mut reprovision =
+            begin_reprovision(Arc::clone(&state), ReprovisionKind::Download).unwrap();
         begin_download(
             state.as_ref(),
             ActiveDownload {
@@ -1905,10 +2044,12 @@ mod tests {
         std::fs::write(&partial, b"partial-bytes").unwrap();
 
         let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
-        let (completion_tx, _completion_rx) = tokio::sync::watch::channel(DownloadCleanupState::Running);
+        let (completion_tx, _completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
         let state = Arc::new(LlmState::default());
         set_lifecycle_error(state.as_ref(), "previous download failed".to_string()).unwrap();
-        let mut reprovision = begin_reprovision(Arc::clone(&state), ReprovisionKind::Download).unwrap();
+        let mut reprovision =
+            begin_reprovision(Arc::clone(&state), ReprovisionKind::Download).unwrap();
         begin_download(
             state.as_ref(),
             ActiveDownload {
@@ -1937,7 +2078,9 @@ mod tests {
         begin_generation(state.as_ref(), "stream-1".to_string()).unwrap();
 
         let err = begin_reprovision(Arc::clone(&state), ReprovisionKind::Import).unwrap_err();
-        assert!(matches!(err, AppError::Validation(message) if message.contains("generation is active")));
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("generation is active"))
+        );
     }
 
     #[test]
@@ -2022,7 +2165,9 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(matches!(err, AppError::Llm(message) if message.contains("post-promotion cleanup failed")));
+        assert!(
+            matches!(err, AppError::Llm(message) if message.contains("post-promotion cleanup failed"))
+        );
         assert!(invalidation_observed.load(Ordering::SeqCst));
         assert_eq!(*state.status.lock().unwrap(), LlmStatus::Error);
     }
@@ -2102,10 +2247,12 @@ mod tests {
         std::fs::write(&final_path, b"old-model").unwrap();
         std::fs::write(&partial, b"new-model").unwrap();
 
-        let err = promote_staged_model_with_fs(&RestoreFailingFs, &partial, &final_path)
-            .unwrap_err();
+        let err =
+            promote_staged_model_with_fs(&RestoreFailingFs, &partial, &final_path).unwrap_err();
 
-        assert!(matches!(err, AppError::Llm(message) if message.contains("promotion blocked") && message.contains("restore blocked")));
+        assert!(
+            matches!(err, AppError::Llm(message) if message.contains("promotion blocked") && message.contains("restore blocked"))
+        );
         assert!(partial.exists());
         assert!(backup.exists());
     }

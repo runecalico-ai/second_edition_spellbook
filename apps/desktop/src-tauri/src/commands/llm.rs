@@ -1403,7 +1403,7 @@ async fn run_download_chunks_verify_and_promote(
             ))
         })
         .and_then(|result| result)
-        .unwrap_or(false);
+        .unwrap_or(true);
 
         let error = if staged_was_promoted {
             AppError::Llm(format!("POST_PROMOTION_FAILURE: {error}"))
@@ -1617,7 +1617,7 @@ pub async fn llm_import_model_file(
                         ))
                     })
                     .and_then(|result| result)
-                    .unwrap_or(false);
+                    .unwrap_or(true);
 
                     return StartedReprovisionResult::Error {
                         error,

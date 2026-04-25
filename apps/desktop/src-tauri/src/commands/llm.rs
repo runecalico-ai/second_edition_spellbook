@@ -69,10 +69,10 @@ enum StartedReprovisionResult {
 }
 
 pub struct LlmState {
-    pub model: Mutex<Option<LlamaModel>>,
-    pub backend: Mutex<Option<LlamaBackend>>,
-    pub status: Mutex<LlmStatus>,
-    pub last_error: Mutex<Option<String>>,
+    pub(crate) model: Mutex<Option<LlamaModel>>,
+    pub(crate) backend: Mutex<Option<LlamaBackend>>,
+    pub(crate) status: Mutex<LlmStatus>,
+    pub(crate) last_error: Mutex<Option<String>>,
     active_generation: Mutex<Option<ActiveGeneration>>,
     download_state: Mutex<Option<ActiveDownload>>,
     reprovisioning: Mutex<Option<ReprovisionKind>>,

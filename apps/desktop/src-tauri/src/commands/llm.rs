@@ -43,9 +43,9 @@ struct ActiveDownload {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct LlmSystemRequirementsSnapshot {
-    free_disk_bytes: u64,
-    free_ram_bytes: u64,
+pub(crate) struct LlmSystemRequirementsSnapshot {
+    pub(crate) free_disk_bytes: u64,
+    pub(crate) free_ram_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +54,7 @@ struct LifecycleSnapshot {
     last_error: Option<String>,
 }
 
-enum StartedReprovisionResult {
+pub(crate) enum StartedReprovisionResult {
     Ready,
     Cancelled,
     Error {
@@ -470,7 +470,7 @@ fn staged_bytes_moved_to_final_path_blocking(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DownloadTargetPrep {
+pub(crate) struct DownloadTargetPrep {
     existing_len: u64,
     restart_path: PathBuf,
 }
@@ -856,10 +856,10 @@ impl LlmRuntimeDriver for DefaultLlmRuntimeDriver {
 }
 
 #[derive(Debug, Clone)]
-struct ModelLoadPreflight {
-    model_path: PathBuf,
-    approved_model_present: bool,
-    requirements: LlmSystemRequirementsSnapshot,
+pub(crate) struct ModelLoadPreflight {
+    pub(crate) model_path: PathBuf,
+    pub(crate) approved_model_present: bool,
+    pub(crate) requirements: LlmSystemRequirementsSnapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -882,13 +882,18 @@ struct TestRuntimeDriverGuard;
 struct TestModelLoadPreflightGuard;
 
 #[cfg(test)]
-fn install_test_runtime_driver(driver: Arc<dyn LlmRuntimeDriver>) -> TestRuntimeDriverGuard {
+fn install_test_runtime_driver_with(driver: Arc<dyn LlmRuntimeDriver>) -> TestRuntimeDriverGuard {
     *TEST_RUNTIME_DRIVER.lock().unwrap() = Some(driver);
     TestRuntimeDriverGuard
 }
 
 #[cfg(test)]
-fn install_test_model_load_preflight(preflight: ModelLoadPreflight) -> TestModelLoadPreflightGuard {
+pub(crate) fn install_test_runtime_driver(driver: Arc<RecordingRuntimeDriver>) -> impl Drop {
+    install_test_runtime_driver_with(driver)
+}
+
+#[cfg(test)]
+pub(crate) fn install_test_model_load_preflight(preflight: ModelLoadPreflight) -> impl Drop {
     *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = Some(preflight);
     TestModelLoadPreflightGuard
 }
@@ -1705,10 +1710,10 @@ async fn remove_stale_partial_after_restart(temp_path: PathBuf) -> Result<(), Ap
         .map_err(|error| AppError::Llm(format!("LLM stale-part cleanup task failed: {error}")))?
 }
 
-type LlmDownloadDriverFuture =
+pub(crate) type LlmDownloadDriverFuture =
     std::pin::Pin<Box<dyn std::future::Future<Output = StartedReprovisionResult> + Send + 'static>>;
 
-trait LlmDownloadDriver: Send + Sync {
+pub(crate) trait LlmDownloadDriver: Send + Sync {
     fn run_started_download(
         &self,
         app: tauri::AppHandle,
@@ -1731,7 +1736,7 @@ static TEST_DOWNLOAD_DRIVER: std::sync::Mutex<Option<Arc<dyn LlmDownloadDriver>>
 struct TestDownloadDriverGuard;
 
 #[cfg(test)]
-fn install_test_download_driver(driver: Arc<dyn LlmDownloadDriver>) -> TestDownloadDriverGuard {
+pub(crate) fn install_test_download_driver(driver: Arc<dyn LlmDownloadDriver>) -> impl Drop {
     *TEST_DOWNLOAD_DRIVER.lock().unwrap() = Some(driver);
     TestDownloadDriverGuard
 }
@@ -3009,7 +3014,7 @@ mod tests {
 
         let state = Arc::new(LlmState::default());
         let before = runtime_mutation_snapshot(state.as_ref());
-        let _driver_guard = install_test_runtime_driver(Arc::new(MutatingTestRuntimeDriver));
+        let _driver_guard = install_test_runtime_driver_with(Arc::new(MutatingTestRuntimeDriver));
 
         ensure_model_loaded_after_valid_preflight(
             Arc::clone(&state),

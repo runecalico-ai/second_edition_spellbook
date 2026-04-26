@@ -92,6 +92,12 @@ pub fn run() {
             list_saved_searches,
             delete_saved_search,
             chat_answer,
+            llm_status,
+            llm_download_model,
+            llm_import_model_file,
+            llm_cancel_download,
+            llm_cancel_generation,
+            llm_chat,
             preview_import,
             preview_import_spell_json,
             import_spell_json,
@@ -124,4 +130,268 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+pub(crate) struct LlmCommandSmokeApp {
+    _app: tauri::App<tauri::test::MockRuntime>,
+    webview: tauri::WebviewWindow<tauri::test::MockRuntime>,
+}
+
+#[cfg(test)]
+pub(crate) fn build_llm_command_smoke_app(
+    llm_state: Arc<LlmState>,
+    provisioning: Arc<ProvisioningState>,
+) -> LlmCommandSmokeApp {
+    let app = tauri::test::mock_builder()
+        .manage(llm_state)
+        .manage(provisioning)
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            chat_answer,
+            llm_status,
+            llm_download_model,
+            llm_import_model_file,
+            llm_cancel_download,
+            llm_cancel_generation,
+            llm_chat,
+        ])
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("failed to build LLM smoke app");
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "smoke-main", Default::default())
+        .build()
+        .expect("failed to build LLM smoke webview");
+
+    LlmCommandSmokeApp { _app: app, webview }
+}
+
+#[cfg(test)]
+pub(crate) async fn invoke_smoke_command<T>(
+    webview: tauri::WebviewWindow<tauri::test::MockRuntime>,
+    command: &str,
+    body: serde_json::Value,
+) -> Result<T, serde_json::Value>
+where
+    T: serde::de::DeserializeOwned + Send + 'static,
+{
+    let request = tauri::webview::InvokeRequest {
+        cmd: command.to_string(),
+        callback: tauri::ipc::CallbackFn(0),
+        error: tauri::ipc::CallbackFn(1),
+        url: "http://tauri.localhost".parse().unwrap(),
+        body: tauri::ipc::InvokeBody::Json(body),
+        headers: Default::default(),
+        invoke_key: tauri::test::INVOKE_KEY.to_string(),
+    };
+
+    tokio::task::spawn_blocking(move || tauri::test::get_ipc_response(&webview, request))
+        .await
+        .unwrap()
+        .map(|response_body| response_body.deserialize::<T>().unwrap())
+}
+
+#[cfg(test)]
+pub(crate) fn listen_smoke_event<T>(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    event_name: &str,
+) -> tokio::sync::mpsc::UnboundedReceiver<T>
+where
+    T: serde::de::DeserializeOwned + Send + 'static,
+{
+    use tauri::Listener;
+
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    webview.listen(event_name.to_string(), move |event| {
+        let payload = serde_json::from_str::<T>(event.payload()).unwrap();
+        tx.send(payload).unwrap();
+    });
+    rx
+}
+
+#[cfg(test)]
+mod llm_command_smoke_tests {
+    use super::{build_llm_command_smoke_app, invoke_smoke_command, listen_smoke_event};
+    use crate::commands::llm::{
+        install_test_download_driver, install_test_model_load_preflight,
+        install_test_runtime_driver, DownloadTargetPrep, LlmDownloadDriver,
+        LlmDownloadDriverFuture, LlmState, LlmSystemRequirementsSnapshot, ModelLoadPreflight,
+        RecordingRuntimeDriver, StartedReprovisionResult,
+    };
+    use crate::commands::provisioning::{
+        ProvisioningState, BASELINE_MIN_FREE_DISK_BYTES, BASELINE_MIN_FREE_RAM_BYTES,
+    };
+    use crate::models::{DoneEvent, LlmStatus, LlmStatusResponse, TokenEvent};
+    use std::sync::Arc;
+    use tokio::time::{timeout, Duration};
+
+    #[derive(Clone, Default)]
+    struct PausedSmokeDownloadDriver {
+        started_after_begin_download: Arc<tokio::sync::Notify>,
+        release_result: Arc<tokio::sync::Notify>,
+    }
+
+    impl LlmDownloadDriver for PausedSmokeDownloadDriver {
+        fn run_started_download(
+            &self,
+            _app: tauri::AppHandle,
+            _state: Arc<LlmState>,
+            mut cancel_rx: tokio::sync::watch::Receiver<bool>,
+            _target_prep: DownloadTargetPrep,
+            _temp_path: std::path::PathBuf,
+            _final_path: std::path::PathBuf,
+        ) -> LlmDownloadDriverFuture {
+            let driver = self.clone();
+            Box::pin(async move {
+                driver.started_after_begin_download.notify_waiters();
+                let _ = cancel_rx.changed().await;
+                driver.release_result.notified().await;
+                StartedReprovisionResult::Cancelled
+            })
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct ReadySmokeDownloadDriver;
+
+    impl LlmDownloadDriver for ReadySmokeDownloadDriver {
+        fn run_started_download(
+            &self,
+            _app: tauri::AppHandle,
+            _state: Arc<LlmState>,
+            _cancel_rx: tokio::sync::watch::Receiver<bool>,
+            _target_prep: DownloadTargetPrep,
+            _temp_path: std::path::PathBuf,
+            final_path: std::path::PathBuf,
+        ) -> LlmDownloadDriverFuture {
+            Box::pin(async move {
+                if let Some(parent) = final_path.parent() {
+                    std::fs::create_dir_all(parent).unwrap();
+                }
+                std::fs::write(&final_path, b"smoke").unwrap();
+                StartedReprovisionResult::Ready
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn llm_cancel_download_command_waits_for_in_flight_download_completion() {
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let driver = PausedSmokeDownloadDriver::default();
+        let _driver_guard = install_test_download_driver(Arc::new(driver.clone()));
+
+        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+
+        let started = driver.started_after_begin_download.notified();
+        let download_future = tokio::spawn(invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_download_model",
+            serde_json::json!({}),
+        ));
+        started.await;
+
+        let mut cancel_future = tokio::spawn(invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_cancel_download",
+            serde_json::json!({}),
+        ));
+        assert!(timeout(Duration::from_millis(10), &mut cancel_future)
+            .await
+            .is_err());
+
+        driver.release_result.notify_waiters();
+
+        assert!(download_future.await.unwrap().is_ok());
+        cancel_future.await.unwrap().unwrap();
+
+        let status = invoke_smoke_command::<LlmStatusResponse>(
+            smoke.webview.clone(),
+            "llm_status",
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert_ne!(status.status, LlmStatus::Downloading);
+    }
+
+    #[tokio::test]
+    async fn llm_chat_command_emits_token_and_done_events_through_app_event_sink() {
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        });
+        let _driver_guard =
+            install_test_runtime_driver(Arc::new(RecordingRuntimeDriver::default()));
+
+        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+        let mut token_events =
+            listen_smoke_event::<TokenEvent>(&smoke.webview, "llm://token/smoke-1");
+        let mut done_events = listen_smoke_event::<DoneEvent>(&smoke.webview, "llm://done/smoke-1");
+
+        invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_chat",
+            serde_json::json!({
+                "message": "hello",
+                "streamId": "smoke-1",
+            }),
+        )
+        .await
+        .unwrap();
+
+        let token = token_events.recv().await.unwrap();
+        assert_eq!(token.token, "ok");
+
+        let done = done_events.recv().await.unwrap();
+        assert_eq!(done.full_response, "ok");
+        assert!(!done.cancelled);
+    }
+
+    #[tokio::test]
+    async fn registered_llm_commands_observe_same_app_managed_llm_state() {
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let _download_driver_guard =
+            install_test_download_driver(Arc::new(ReadySmokeDownloadDriver::default()));
+
+        *llm_state.status.lock().unwrap() = LlmStatus::Error;
+        *llm_state.last_error.lock().unwrap() = Some("sticky".to_string());
+
+        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+
+        let status = invoke_smoke_command::<LlmStatusResponse>(
+            smoke.webview.clone(),
+            "llm_status",
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(status.status, LlmStatus::Error);
+
+        let download_future = tokio::spawn(invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_download_model",
+            serde_json::json!({}),
+        ));
+        assert!(download_future.await.unwrap().is_ok());
+
+        let status_after_download = invoke_smoke_command::<LlmStatusResponse>(
+            smoke.webview.clone(),
+            "llm_status",
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(status_after_download.status, LlmStatus::Ready);
+    }
 }

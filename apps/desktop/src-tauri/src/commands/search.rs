@@ -1,3 +1,4 @@
+use crate::commands::llm::{llm_chat_answer_compat, LlmState};
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::{
@@ -1333,25 +1334,17 @@ mod tests {
 }
 
 #[tauri::command]
-pub async fn chat_answer(prompt: String) -> Result<ChatResponse, AppError> {
-    let result = call_sidecar("chat", json!({"prompt": prompt})).await?;
-
-    let answer = result
-        .get("answer")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let citations = result
-        .get("citations")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-
-    let meta = result.get("meta").cloned().unwrap_or(json!({}));
+pub async fn chat_answer(
+    llm_state: State<'_, Arc<LlmState>>,
+    prompt: String,
+) -> Result<ChatResponse, AppError> {
+    // Temporary compatibility path for apps/desktop/src/ui/Chat.tsx.
+    // Remove this wrapper in the same branch where the frontend migrates to llm_chat + events.
+    let answer = llm_chat_answer_compat(Arc::clone(llm_state.inner()), prompt).await?;
 
     Ok(ChatResponse {
         answer,
-        citations,
-        meta,
+        citations: Vec::new(),
+        meta: json!({"source": "llm_chat_compat"}),
     })
 }

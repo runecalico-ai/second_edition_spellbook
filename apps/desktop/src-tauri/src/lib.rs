@@ -222,7 +222,7 @@ mod llm_command_smoke_tests {
     use crate::commands::provisioning::{
         ProvisioningState, BASELINE_MIN_FREE_DISK_BYTES, BASELINE_MIN_FREE_RAM_BYTES,
     };
-    use crate::models::{DoneEvent, LlmStatus, LlmStatusResponse, TokenEvent};
+    use crate::models::{ChatResponse, DoneEvent, LlmStatus, LlmStatusResponse, TokenEvent};
     use std::sync::Arc;
     use tokio::time::{timeout, Duration};
 
@@ -393,5 +393,41 @@ mod llm_command_smoke_tests {
         .await
         .unwrap();
         assert_eq!(status_after_download.status, LlmStatus::Ready);
+    }
+
+    #[tokio::test]
+    async fn chat_answer_compat_wrapper_returns_expected_payload_shape() {
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        });
+        let _driver_guard = install_test_runtime_driver(Arc::new(RecordingRuntimeDriver));
+
+        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+
+        let response = invoke_smoke_command::<ChatResponse>(
+            smoke.webview.clone(),
+            "chat_answer",
+            serde_json::json!({
+                "prompt": "hello",
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(response.answer, "ok");
+        assert!(response.citations.is_empty());
+        assert_eq!(
+            response.meta,
+            serde_json::json!({"source": "llm_chat_compat"})
+        );
     }
 }

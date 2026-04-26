@@ -485,7 +485,15 @@ fn prepare_download_target(
     std::fs::create_dir_all(parent)?;
 
     let existing_len = match std::fs::metadata(temp_path) {
-        Ok(metadata) if metadata.is_file() => metadata.len(),
+        Ok(metadata) if metadata.is_file() => {
+            let len = metadata.len();
+            if len >= TINY_LLAMA_SIZE_BYTES {
+                std::fs::remove_file(temp_path)?;
+                0
+            } else {
+                len
+            }
+        }
         Ok(_) => {
             return Err(AppError::Llm(format!(
                 "Resumable download path is not a file: {}",
@@ -2598,6 +2606,27 @@ mod tests {
         .unwrap_err();
 
         assert!(matches!(err, AppError::Validation(message) if message.contains("Range response")));
+    }
+
+    #[test]
+    fn prepare_download_target_resets_invalid_full_or_oversized_partial_file() {
+        let dir = test_temp_dir("invalid-partial-reset");
+        let final_path = approved_llm_model_path(&dir);
+        let partial_path = final_path.with_extension("gguf.part");
+        std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
+
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&partial_path)
+            .unwrap();
+        file.set_len(TINY_LLAMA_SIZE_BYTES + 1).unwrap();
+        drop(file);
+
+        let prep = prepare_download_target(&final_path, &partial_path).unwrap();
+        assert_eq!(prep.existing_len, 0);
+        assert!(!partial_path.exists());
     }
 
     #[tokio::test]

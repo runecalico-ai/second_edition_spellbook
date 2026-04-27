@@ -1,8 +1,10 @@
 use crate::commands::provisioning::{
-    models_dir, FixedResourceProbe, LiveResourceProbe, ProvisioningState, ProvisioningTarget,
-    ResourceProbe, ResourceSnapshot, BASELINE_MIN_FREE_DISK_BYTES, BASELINE_MIN_FREE_RAM_BYTES,
-    TINY_LLAMA_DESTINATION, TINY_LLAMA_SHA256, TINY_LLAMA_SIZE_BYTES, TINY_LLAMA_URL,
+    models_dir, LiveResourceProbe, ProvisioningState, ProvisioningTarget, ResourceProbe,
+    BASELINE_MIN_FREE_DISK_BYTES, BASELINE_MIN_FREE_RAM_BYTES, TINY_LLAMA_DESTINATION,
+    TINY_LLAMA_SHA256, TINY_LLAMA_SIZE_BYTES, TINY_LLAMA_URL,
 };
+#[cfg(test)]
+use crate::commands::provisioning::{FixedResourceProbe, ResourceSnapshot};
 use crate::db::pool::app_data_dir;
 use crate::error::AppError;
 use crate::models::{DoneEvent, DownloadProgressEvent, LlmStatus, LlmStatusResponse, TokenEvent};
@@ -40,13 +42,18 @@ enum DownloadCleanupState {
 #[derive(Debug)]
 struct ActiveDownload {
     session_epoch: u64,
-    temp_path: PathBuf,
-    final_path: PathBuf,
     bytes_downloaded: u64,
     total_bytes: u64,
     cancel_tx: watch::Sender<bool>,
     completion_tx: watch::Sender<DownloadCleanupState>,
 }
+
+type DownloadControl = (
+    u64,
+    watch::Sender<bool>,
+    watch::Receiver<DownloadCleanupState>,
+);
+type DownloadCancelControl = (watch::Sender<bool>, watch::Receiver<DownloadCleanupState>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LlmSystemRequirementsSnapshot {
@@ -58,6 +65,15 @@ pub(crate) struct LlmSystemRequirementsSnapshot {
 struct LifecycleSnapshot {
     status: LlmStatus,
     last_error: Option<String>,
+}
+
+struct StatusDerivationInputs {
+    reprovision_active: bool,
+    generation_active: bool,
+    loaded: bool,
+    explicit_status: LlmStatus,
+    last_error: Option<String>,
+    approved_model_present: bool,
 }
 
 pub(crate) enum StartedReprovisionResult {
@@ -211,20 +227,15 @@ fn derive_lifecycle_status(
 fn build_status_response(
     model_path: &Path,
     download_snapshot: Option<(u64, u64)>,
-    reprovision_active: bool,
-    generation_active: bool,
-    loaded: bool,
-    explicit_status: LlmStatus,
-    last_error: Option<String>,
-    approved_model_present: bool,
+    inputs: StatusDerivationInputs,
 ) -> LlmStatusResponse {
     let status = derive_lifecycle_status(
-        reprovision_active,
-        generation_active,
-        loaded,
-        explicit_status,
-        approved_model_present,
-        last_error.is_some(),
+        inputs.reprovision_active,
+        inputs.generation_active,
+        inputs.loaded,
+        inputs.explicit_status,
+        inputs.approved_model_present,
+        inputs.last_error.is_some(),
     );
 
     LlmStatusResponse {
@@ -232,7 +243,7 @@ fn build_status_response(
         model_path: model_path.display().to_string(),
         bytes_downloaded: download_snapshot.map(|value| value.0),
         total_bytes: download_snapshot.map(|value| value.1),
-        last_error,
+        last_error: inputs.last_error,
     }
 }
 
@@ -284,12 +295,14 @@ fn status_snapshot(
     Ok(build_status_response(
         model_path,
         download_snapshot,
-        reprovision_active,
-        generation_active,
-        loaded,
-        lifecycle.status,
-        lifecycle.last_error,
-        approved_model_present,
+        StatusDerivationInputs {
+            reprovision_active,
+            generation_active,
+            loaded,
+            explicit_status: lifecycle.status,
+            last_error: lifecycle.last_error,
+            approved_model_present,
+        },
     ))
 }
 
@@ -1152,6 +1165,7 @@ fn validate_model_load_preflight_typed(
     })
 }
 
+#[cfg(test)]
 fn validate_model_load_preflight(
     state: &LlmState,
     preflight: ModelLoadPreflight,
@@ -1194,6 +1208,7 @@ fn validate_model_load_prerequisites_typed(
     Ok(())
 }
 
+#[cfg(test)]
 fn validate_model_load_prerequisites(
     approved_model_present: bool,
     requirements: LlmSystemRequirementsSnapshot,
@@ -1305,7 +1320,7 @@ async fn generate_chat_completion(
             }
 
             let bytes = model
-                .token_to_bytes(token, llama_cpp_2::model::Special::Plaintext)
+                .token_to_piece_bytes(token, 4096, false, None)
                 .map_err(|error| AppError::Llm(format!("Failed to decode token bytes: {error}")))?;
             let piece = utf8.push(&bytes);
             if !piece.is_empty() {
@@ -1612,6 +1627,7 @@ fn begin_reprovision(
     })
 }
 
+#[cfg(test)]
 fn ensure_no_reprovision_in_progress(state: &LlmState) -> Result<(), AppError> {
     if is_reprovision_active(state)? {
         return Err(AppError::Validation(
@@ -1728,16 +1744,7 @@ fn finalize_reprovision(
     Ok(())
 }
 
-fn current_download_control(
-    state: &LlmState,
-) -> Result<
-    Option<(
-        u64,
-        watch::Sender<bool>,
-        watch::Receiver<DownloadCleanupState>,
-    )>,
-    AppError,
-> {
+fn current_download_control(state: &LlmState) -> Result<Option<DownloadControl>, AppError> {
     let download_guard = state
         .download_state
         .lock()
@@ -1768,7 +1775,7 @@ fn current_download_reprovision_epoch(state: &LlmState) -> Result<Option<u64>, A
 
 async fn wait_for_download_control_or_idle(
     state: &LlmState,
-) -> Result<Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>, AppError> {
+) -> Result<Option<DownloadCancelControl>, AppError> {
     let Some(target_epoch) = current_download_reprovision_epoch(state)? else {
         return Ok(None);
     };
@@ -1789,25 +1796,21 @@ async fn wait_for_download_control_or_idle(
     }
 }
 
-const DOWNLOAD_CANCEL_CONTROL_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg(test)]
 const DOWNLOAD_CANCEL_CONTROL_TIMEOUT_MESSAGE: &str =
     "Timed out waiting for LLM download cancel control";
 
+#[cfg(test)]
 async fn wait_for_download_cancel_control_with_timeout(
     state: &LlmState,
     timeout: std::time::Duration,
-) -> Result<Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>, AppError> {
+) -> Result<Option<DownloadCancelControl>, AppError> {
     tokio::time::timeout(timeout, wait_for_download_control_or_idle(state))
         .await
         .map_err(|_| AppError::Llm(DOWNLOAD_CANCEL_CONTROL_TIMEOUT_MESSAGE.to_string()))?
 }
 
-async fn wait_for_download_cancel_control(
-    state: &LlmState,
-) -> Result<Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>, AppError> {
-    wait_for_download_cancel_control_with_timeout(state, DOWNLOAD_CANCEL_CONTROL_WAIT_TIMEOUT).await
-}
-
+#[cfg(test)]
 async fn wait_for_download_cleanup(
     mut completion_rx: watch::Receiver<DownloadCleanupState>,
     timeout: std::time::Duration,
@@ -2415,8 +2418,6 @@ pub async fn llm_download_model(
         state.as_ref(),
         ActiveDownload {
             session_epoch,
-            temp_path: temp_path.clone(),
-            final_path: final_path.clone(),
             bytes_downloaded: target_prep.existing_len,
             total_bytes: TINY_LLAMA_SIZE_BYTES,
             cancel_tx: cancel_tx.clone(),
@@ -2492,7 +2493,6 @@ pub async fn llm_import_model_file(
                 }
             }
 
-            let mut verified_bytes_promoted = false;
             let promotion_result = tokio::task::spawn_blocking({
                 let staged_path = staged_path.clone();
                 let destination = destination.clone();
@@ -2504,9 +2504,7 @@ pub async fn llm_import_model_file(
             .await;
 
             match promotion_result {
-                Ok(Ok(())) => {
-                    verified_bytes_promoted = true;
-                }
+                Ok(Ok(())) => {}
                 Ok(Err(error)) => {
                     let staged_was_promoted = tokio::task::spawn_blocking({
                         let staged_path = staged_path.clone();
@@ -2546,7 +2544,7 @@ pub async fn llm_import_model_file(
             {
                 return StartedReprovisionResult::Error {
                     error,
-                    invalidate_runtime: verified_bytes_promoted,
+                    invalidate_runtime: true,
                 };
             }
 
@@ -2923,8 +2921,6 @@ mod tests {
             state.as_ref(),
             ActiveDownload {
                 session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
-                temp_path,
-                final_path,
                 bytes_downloaded: 0,
                 total_bytes: TINY_LLAMA_SIZE_BYTES,
                 cancel_tx: _seed_cancel_tx,
@@ -3007,8 +3003,6 @@ mod tests {
             state.as_ref(),
             ActiveDownload {
                 session_epoch: 2,
-                temp_path,
-                final_path,
                 bytes_downloaded: 0,
                 total_bytes: TINY_LLAMA_SIZE_BYTES,
                 cancel_tx: second_cancel_tx,
@@ -3087,8 +3081,6 @@ mod tests {
             state.as_ref(),
             ActiveDownload {
                 session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
-                temp_path,
-                final_path,
                 bytes_downloaded: 0,
                 total_bytes: TINY_LLAMA_SIZE_BYTES,
                 cancel_tx: seed_cancel_tx,
@@ -3145,8 +3137,6 @@ mod tests {
             state.as_ref(),
             ActiveDownload {
                 session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
-                temp_path,
-                final_path,
                 bytes_downloaded: 0,
                 total_bytes: TINY_LLAMA_SIZE_BYTES,
                 cancel_tx: seed_cancel_tx,
@@ -3253,8 +3243,6 @@ mod tests {
             state.as_ref(),
             ActiveDownload {
                 session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
-                temp_path: partial.clone(),
-                final_path: final_path.clone(),
                 bytes_downloaded: 13,
                 total_bytes: TINY_LLAMA_SIZE_BYTES,
                 cancel_tx,
@@ -3288,8 +3276,6 @@ mod tests {
             state.as_ref(),
             ActiveDownload {
                 session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
-                temp_path: partial,
-                final_path,
                 bytes_downloaded: 13,
                 total_bytes: TINY_LLAMA_SIZE_BYTES,
                 cancel_tx,

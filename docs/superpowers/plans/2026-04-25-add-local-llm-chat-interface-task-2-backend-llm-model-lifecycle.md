@@ -3551,47 +3551,47 @@ git commit -m "feat: register llm lifecycle commands"
 
 ## Verification Checklist
 
-- [ ] `cargo test llm_status_serializes_to_spec_values --lib`
-- [ ] `cargo test llm_state_defaults_to_empty_runtime_state --lib`
-- [ ] `cargo test approved_model_path_uses_vault_models_directory --lib`
-- [ ] `cargo test llm_system_requirements_snapshot_reads_probe_values --lib`
-- [ ] `cargo test derive_lifecycle_status_covers_all_required_runtime_states --lib`
-- [ ] `cargo test llm_status_reports_busy_during_verified_import_reprovision --lib`
-- [ ] `cargo test llm_status_is_ready_when_model_file_snapshot_exists_but_model_is_not_loaded --lib`
-- [ ] `cargo test llm_status_snapshot_reports_loaded_when_runtime_model_is_present --lib`
-- [ ] `cargo test llm_status_reports_error_and_last_error_until_recovered --lib`
-- [ ] `cargo test successful_ready_recovery_clears_prior_error_and_restores_ready_status --lib`
-- [ ] `cargo test import_rejects_wrong_filename_even_when_hash_matches --lib`
-- [ ] `cargo test resume_policy_accepts_matching_partial_response_and_preserves_total_asset_size --lib`
-- [ ] `cargo test resume_policy_restarts_into_fresh_staging_when_server_ignores_range --lib`
-- [ ] `cargo test resume_policy_rejects_mismatched_partial_response --lib`
-- [ ] `cargo test download_cleanup_watch_is_non_lossy_for_late_cancel_waiters --lib`
-- [ ] `cargo test final_staged_file_length_must_match_total_bytes_before_sha_verification --lib`
-- [ ] `cargo test cancelled_restart_staging_is_deleted_while_resumable_part_survives --lib`
-- [ ] `cargo test non_sha_restart_failures_delete_restart_staging_and_preserve_resumable_part --lib`
-- [ ] `cargo test import_staging_path_is_distinct_from_resumable_download_part_path --lib`
-- [ ] `cargo test cancelled_download_keeps_partial_file_and_restores_prior_not_provisioned_state --lib`
-- [ ] `cargo test begin_reprovision_rejects_while_generation_is_active --lib`
-- [ ] `cargo test reprovision_guard_drop_clears_busy_state_after_early_return --lib`
-- [ ] `cargo test started_reprovision_errors_finalize_to_sticky_lifecycle_error --lib`
-- [ ] `cargo test cancelled_download_restores_prior_lifecycle_error_snapshot --lib`
-- [ ] `cargo test sticky_lifecycle_error_survives_retry_start_until_successful_recovery --lib`
-- [ ] `cargo test import_model_file_happy_path_stages_revalidates_and_promotes_verified_bytes_into_vault --lib`
-- [ ] `cargo test promote_staged_model_replaces_existing_final_file_when_present --lib`
-- [ ] `cargo test promote_staged_model_reports_restore_failure_for_manual_recovery --lib`
-- [ ] `cargo test collect_model_load_preflight_is_read_only_for_managed_state --lib`
-- [ ] `cargo test validate_model_load_preflight_is_pure_for_managed_state --lib`
-- [ ] `cargo test ensure_model_loaded_after_valid_preflight_is_first_runtime_mutator --lib`
-- [ ] `cargo test validate_model_load_prerequisites_rejects_missing_provisioned_model --lib`
-- [ ] `cargo test validate_model_load_prerequisites_rejects_low_ram_before_model_load --lib`
-- [ ] `cargo test lazy_load_preflight_errors_leave_lifecycle_markers_unchanged --lib`
-- [ ] `cargo test begin_generation_rejects_second_active_stream --lib`
-- [ ] `cargo test begin_generation_rejects_when_reprovision_is_active --lib`
-- [ ] `cargo test cancel_generation_marks_active_stream_cancelled --lib`
-- [ ] `cargo test ensure_model_loaded_rejects_during_reprovision --lib`
-- [ ] `cargo test successful_lazy_load_recovery_clears_prior_error_and_marks_loaded --lib`
-- [ ] `cargo test claimed_generation_finalizer_preserves_command_error_when_done_emit_fails --lib`
-- [ ] `cargo test blocking_generation_runner_uses_send_sync_event_sink_for_token_emission --lib`
+- [x] `cargo test llm_status_serializes_to_spec_values --lib`
+- [x] `cargo test llm_state_defaults_to_empty_runtime_state --lib`
+- [x] `cargo test approved_model_path_uses_vault_models_directory --lib`
+- [x] `cargo test llm_system_requirements_snapshot_reads_probe_values --lib`
+- [x] `cargo test derive_lifecycle_status_covers_all_required_runtime_states --lib`
+- [x] `cargo test llm_status_reports_busy_during_verified_import_reprovision --lib`
+- [x] `cargo test llm_status_is_ready_when_model_file_snapshot_exists_but_model_is_not_loaded --lib`
+- [x] `cargo test llm_status_snapshot_reports_loaded_when_runtime_model_is_present --lib`
+- [x] `cargo test llm_status_reports_error_and_last_error_until_recovered --lib`
+- [x] `cargo test successful_ready_recovery_clears_prior_error_and_restores_ready_status --lib`
+- [x] `cargo test import_rejects_wrong_filename_even_when_hash_matches --lib`
+- [x] `cargo test resume_policy_accepts_matching_partial_response_and_preserves_total_asset_size --lib`
+- [x] `cargo test resume_policy_restarts_into_fresh_staging_when_server_ignores_range --lib`
+- [x] `cargo test resume_policy_rejects_mismatched_partial_response --lib`
+- [x] `cargo test download_cleanup_watch_is_non_lossy_for_late_cancel_waiters --lib`
+- [x] `cargo test final_staged_file_length_must_match_total_bytes_before_sha_verification --lib`
+- [x] `cargo test cancelled_restart_staging_is_deleted_while_resumable_part_survives --lib`
+- [x] `cargo test non_sha_restart_failures_delete_restart_staging_and_preserve_resumable_part --lib`
+- [x] `cargo test import_staging_path_is_distinct_from_resumable_download_part_path --lib`
+- [x] `cargo test cancelled_download_keeps_partial_file_and_restores_prior_not_provisioned_state --lib`
+- [x] `cargo test begin_reprovision_rejects_while_generation_is_active --lib`
+- [x] `cargo test reprovision_guard_drop_clears_busy_state_after_early_return --lib`
+- [x] `cargo test started_reprovision_errors_finalize_to_sticky_lifecycle_error --lib`
+- [x] `cargo test cancelled_download_restores_prior_lifecycle_error_snapshot --lib`
+- [x] `cargo test sticky_lifecycle_error_survives_retry_start_until_successful_recovery --lib`
+- [x] `cargo test import_model_file_happy_path_stages_revalidates_and_promotes_verified_bytes_into_vault --lib`
+- [x] `cargo test promote_staged_model_replaces_existing_final_file_when_present --lib`
+- [x] `cargo test promote_staged_model_reports_restore_failure_for_manual_recovery --lib`
+- [x] `cargo test collect_model_load_preflight_is_read_only_for_managed_state --lib`
+- [x] `cargo test validate_model_load_preflight_is_pure_for_managed_state --lib`
+- [x] `cargo test ensure_model_loaded_after_valid_preflight_is_first_runtime_mutator --lib`
+- [x] `cargo test validate_model_load_prerequisites_rejects_missing_provisioned_model --lib`
+- [x] `cargo test validate_model_load_prerequisites_rejects_low_ram_before_model_load --lib`
+- [x] `cargo test lazy_load_preflight_errors_leave_lifecycle_markers_unchanged --lib`
+- [x] `cargo test begin_generation_rejects_second_active_stream --lib`
+- [x] `cargo test begin_generation_rejects_when_reprovision_is_active --lib`
+- [x] `cargo test cancel_generation_marks_active_stream_cancelled --lib`
+- [x] `cargo test ensure_model_loaded_rejects_during_reprovision --lib`
+- [x] `cargo test successful_lazy_load_recovery_clears_prior_error_and_marks_loaded --lib`
+- [x] `cargo test claimed_generation_finalizer_preserves_command_error_when_done_emit_fails --lib`
+- [x] `cargo test blocking_generation_runner_uses_send_sync_event_sink_for_token_emission --lib`
 - [x] `cargo test llm_cancel_download_command_waits_for_in_flight_download_completion --lib`
 - [x] `cargo test llm_chat_command_emits_token_and_done_events_through_app_event_sink --lib`
 - [x] `cargo test registered_llm_commands_observe_same_app_managed_llm_state --lib`

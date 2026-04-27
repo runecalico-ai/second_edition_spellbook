@@ -9,10 +9,15 @@ use crate::models::{DoneEvent, DownloadProgressEvent, LlmStatus, LlmStatusRespon
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, State};
 use tokio::sync::watch;
+
+#[cfg(test)]
+pub(crate) type LlmCommandAppHandle = tauri::AppHandle<tauri::test::MockRuntime>;
+#[cfg(not(test))]
+pub(crate) type LlmCommandAppHandle = tauri::AppHandle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReprovisionKind {
@@ -34,6 +39,7 @@ enum DownloadCleanupState {
 
 #[derive(Debug)]
 struct ActiveDownload {
+    session_epoch: u64,
     temp_path: PathBuf,
     final_path: PathBuf,
     bytes_downloaded: u64,
@@ -71,6 +77,7 @@ pub struct LlmState {
     active_generation: Mutex<Option<ActiveGeneration>>,
     download_state: Mutex<Option<ActiveDownload>>,
     reprovisioning: Mutex<Option<ReprovisionKind>>,
+    reprovision_epoch: AtomicU64,
 }
 
 impl Default for LlmState {
@@ -83,9 +90,12 @@ impl Default for LlmState {
             active_generation: Mutex::new(None),
             download_state: Mutex::new(None),
             reprovisioning: Mutex::new(None),
+            reprovision_epoch: AtomicU64::new(0),
         }
     }
 }
+
+static COMPAT_STREAM_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn approved_llm_model_path(vault_root: &Path) -> PathBuf {
     models_dir(vault_root).join(TINY_LLAMA_DESTINATION)
@@ -177,6 +187,7 @@ fn finish_lifecycle_recovery(state: &LlmState, status: LlmStatus) -> Result<(), 
 
 fn derive_lifecycle_status(
     reprovision_active: bool,
+    generation_active: bool,
     model_loaded: bool,
     explicit_status: LlmStatus,
     approved_model_present: bool,
@@ -186,6 +197,8 @@ fn derive_lifecycle_status(
         LlmStatus::Downloading
     } else if explicit_status == LlmStatus::Error && has_last_error {
         LlmStatus::Error
+    } else if generation_active && !model_loaded {
+        LlmStatus::Downloading
     } else if model_loaded {
         LlmStatus::Loaded
     } else if approved_model_present {
@@ -199,6 +212,7 @@ fn build_status_response(
     model_path: &Path,
     download_snapshot: Option<(u64, u64)>,
     reprovision_active: bool,
+    generation_active: bool,
     loaded: bool,
     explicit_status: LlmStatus,
     last_error: Option<String>,
@@ -206,6 +220,7 @@ fn build_status_response(
 ) -> LlmStatusResponse {
     let status = derive_lifecycle_status(
         reprovision_active,
+        generation_active,
         loaded,
         explicit_status,
         approved_model_present,
@@ -244,6 +259,14 @@ fn status_snapshot(
         reprovision_guard.is_some()
     };
 
+    let generation_active = {
+        let generation_guard = state
+            .active_generation
+            .lock()
+            .map_err(|_| AppError::Llm("LLM generation state is poisoned".to_string()))?;
+        generation_guard.is_some()
+    };
+
     let lifecycle = snapshot_lifecycle_markers(state)?;
 
     let loaded = {
@@ -262,6 +285,7 @@ fn status_snapshot(
         model_path,
         download_snapshot,
         reprovision_active,
+        generation_active,
         loaded,
         lifecycle.status,
         lifecycle.last_error,
@@ -681,9 +705,13 @@ fn require_download_disk_headroom(
     requirements: LlmSystemRequirementsSnapshot,
 ) -> Result<(), AppError> {
     if requirements.free_disk_bytes < BASELINE_MIN_FREE_DISK_BYTES {
+        let required_mib = BASELINE_MIN_FREE_DISK_BYTES / (1024 * 1024);
+        let available_mib = requirements.free_disk_bytes / (1024 * 1024);
         return Err(AppError::Validation(
-            "Insufficient disk space: at least 800 MB free required to download the model"
-                .to_string(),
+            format!(
+                "Insufficient disk space: required {required_mib} MiB ({BASELINE_MIN_FREE_DISK_BYTES} bytes), available {available_mib} MiB ({} bytes)",
+                requirements.free_disk_bytes
+            ),
         ));
     }
 
@@ -752,6 +780,7 @@ fn claim_generation_reprovision_arbitration(
             }
 
             *reprovisioning = Some(kind);
+            state.reprovision_epoch.fetch_add(1, Ordering::SeqCst);
             Ok(LifecycleArbitrationClaim::Reprovision {
                 lifecycle_before_reprovision: lifecycle_before_reprovision
                     .expect("reprovision snapshot must exist"),
@@ -814,8 +843,6 @@ fn cancel_generation(state: &LlmState, stream_id: &str) -> Result<(), AppError> 
     Ok(())
 }
 
-static COMPAT_STREAM_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-
 #[derive(Debug, Clone)]
 struct ChatRunOutput {
     full_response: String,
@@ -873,6 +900,31 @@ pub(crate) struct ModelLoadPreflight {
 #[derive(Debug, Clone)]
 struct ValidatedModelLoadPreflight {
     model_path: PathBuf,
+}
+
+#[derive(Debug)]
+enum ModelLoadPreflightValidationError {
+    Internal(AppError),
+    ReprovisionInProgress,
+    NotProvisioned,
+    InsufficientRam,
+}
+
+impl ModelLoadPreflightValidationError {
+    fn into_app_error(self) -> AppError {
+        match self {
+            Self::Internal(error) => error,
+            Self::ReprovisionInProgress => AppError::Validation(
+                "The approved TinyLlama model is being provisioned right now".to_string(),
+            ),
+            Self::NotProvisioned => AppError::Validation(
+                "The approved TinyLlama model has not been provisioned yet".to_string(),
+            ),
+            Self::InsufficientRam => AppError::Validation(
+                "Insufficient RAM: at least 1.5 GB free required to load the model".to_string(),
+            ),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -983,12 +1035,12 @@ trait ChatEventSink: Send + Sync {
 
 #[derive(Clone)]
 struct TauriChatEventSink {
-    app: tauri::AppHandle,
+    app: LlmCommandAppHandle,
     stream_id: String,
 }
 
 impl TauriChatEventSink {
-    fn new(app: tauri::AppHandle, stream_id: String) -> Self {
+    fn new(app: LlmCommandAppHandle, stream_id: String) -> Self {
         Self { app, stream_id }
     }
 }
@@ -1012,7 +1064,6 @@ impl ChatEventSink for TauriChatEventSink {
     }
 }
 
-#[derive(Default)]
 struct CompatChatEventSink;
 
 impl ChatEventSink for CompatChatEventSink {
@@ -1023,6 +1074,16 @@ impl ChatEventSink for CompatChatEventSink {
     fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
         Ok(())
     }
+}
+
+fn synthesize_compat_stream_id() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let seq = COMPAT_STREAM_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    format!("compat-{}-{now}-{seq}", std::process::id())
 }
 
 #[derive(Default)]
@@ -1073,16 +1134,30 @@ fn collect_model_load_preflight(vault_root: &Path) -> Result<ModelLoadPreflight,
     })
 }
 
-fn validate_model_load_preflight(
+fn validate_model_load_preflight_typed(
     state: &LlmState,
     preflight: ModelLoadPreflight,
-) -> Result<ValidatedModelLoadPreflight, AppError> {
-    ensure_no_reprovision_in_progress(state)?;
-    validate_model_load_prerequisites(preflight.approved_model_present, preflight.requirements)?;
+) -> Result<ValidatedModelLoadPreflight, ModelLoadPreflightValidationError> {
+    if is_reprovision_active(state).map_err(ModelLoadPreflightValidationError::Internal)? {
+        return Err(ModelLoadPreflightValidationError::ReprovisionInProgress);
+    }
+
+    validate_model_load_prerequisites_typed(
+        preflight.approved_model_present,
+        preflight.requirements,
+    )?;
 
     Ok(ValidatedModelLoadPreflight {
         model_path: preflight.model_path,
     })
+}
+
+fn validate_model_load_preflight(
+    state: &LlmState,
+    preflight: ModelLoadPreflight,
+) -> Result<ValidatedModelLoadPreflight, AppError> {
+    validate_model_load_preflight_typed(state, preflight)
+        .map_err(ModelLoadPreflightValidationError::into_app_error)
 }
 
 async fn ensure_model_loaded_after_valid_preflight(
@@ -1094,28 +1169,37 @@ async fn ensure_model_loaded_after_valid_preflight(
         move || ensure_model_loaded_after_preflight_blocking(state.as_ref(), &preflight)
     })
     .await
-    .map_err(|error| AppError::Llm(format!("LLM load task failed: {error}")))?;
+    .map_err(|error| {
+        record_lifecycle_error(
+            state.as_ref(),
+            AppError::Llm(format!("LLM load task failed: {error}")),
+        )
+    })?;
 
     load_result.map_err(|error| record_lifecycle_error(state.as_ref(), error))
+}
+
+fn validate_model_load_prerequisites_typed(
+    approved_model_present: bool,
+    requirements: LlmSystemRequirementsSnapshot,
+) -> Result<(), ModelLoadPreflightValidationError> {
+    if !approved_model_present {
+        return Err(ModelLoadPreflightValidationError::NotProvisioned);
+    }
+
+    if requirements.free_ram_bytes < BASELINE_MIN_FREE_RAM_BYTES {
+        return Err(ModelLoadPreflightValidationError::InsufficientRam);
+    }
+
+    Ok(())
 }
 
 fn validate_model_load_prerequisites(
     approved_model_present: bool,
     requirements: LlmSystemRequirementsSnapshot,
 ) -> Result<(), AppError> {
-    if !approved_model_present {
-        return Err(AppError::Validation(
-            "The approved TinyLlama model has not been provisioned yet".to_string(),
-        ));
-    }
-
-    if requirements.free_ram_bytes < BASELINE_MIN_FREE_RAM_BYTES {
-        return Err(AppError::Validation(
-            "Insufficient RAM: at least 1.5 GB free required to load the model".to_string(),
-        ));
-    }
-
-    Ok(())
+    validate_model_load_prerequisites_typed(approved_model_present, requirements)
+        .map_err(ModelLoadPreflightValidationError::into_app_error)
 }
 
 fn finish_model_load_success(state: &LlmState) -> Result<(), AppError> {
@@ -1298,29 +1382,59 @@ async fn run_claimed_llm_chat(
     let vault_root = app_data_dir()?;
     let cancel = begin_generation(state.as_ref(), stream_id.clone())?;
     let runtime_driver = active_llm_runtime_driver();
+    let cancelled_output = || ChatRunOutput {
+        full_response: String::new(),
+        cancelled: true,
+    };
 
     let run_result = async {
         if cancel.load(Ordering::SeqCst) {
-            return Ok(ChatRunOutput {
-                full_response: String::new(),
-                cancelled: true,
-            });
+            return Ok(cancelled_output());
         }
 
-        let preflight = tokio::task::spawn_blocking({
+        let preflight_result = tokio::task::spawn_blocking({
             let vault_root = vault_root.clone();
             move || collect_model_load_preflight(&vault_root)
         })
-        .await
-        .map_err(|error| AppError::Llm(format!("LLM preflight task failed: {error}")))??;
-
-        let validated_preflight = validate_model_load_preflight(state.as_ref(), preflight)?;
+        .await;
 
         if cancel.load(Ordering::SeqCst) {
-            return Ok(ChatRunOutput {
-                full_response: String::new(),
-                cancelled: true,
-            });
+            return Ok(cancelled_output());
+        }
+
+        let preflight = match preflight_result {
+            Ok(Ok(preflight)) => preflight,
+            Ok(Err(error)) => {
+                if cancel.load(Ordering::SeqCst) {
+                    return Ok(cancelled_output());
+                }
+                return Err(error);
+            }
+            Err(error) => {
+                if cancel.load(Ordering::SeqCst) {
+                    return Ok(cancelled_output());
+                }
+                return Err(AppError::Llm(format!("LLM preflight task failed: {error}")));
+            }
+        };
+
+        if cancel.load(Ordering::SeqCst) {
+            return Ok(cancelled_output());
+        }
+
+        let validated_preflight =
+            match validate_model_load_preflight_typed(state.as_ref(), preflight) {
+                Ok(validated_preflight) => validated_preflight,
+                Err(error) => {
+                    if cancel.load(Ordering::SeqCst) {
+                        return Ok(cancelled_output());
+                    }
+                    return Err(error.into_app_error());
+                }
+            };
+
+        if cancel.load(Ordering::SeqCst) {
+            return Ok(cancelled_output());
         }
 
         runtime_driver
@@ -1328,10 +1442,7 @@ async fn run_claimed_llm_chat(
             .await?;
 
         if cancel.load(Ordering::SeqCst) {
-            return Ok(ChatRunOutput {
-                full_response: String::new(),
-                cancelled: true,
-            });
+            return Ok(cancelled_output());
         }
 
         runtime_driver
@@ -1355,29 +1466,9 @@ async fn run_claimed_llm_chat(
     )
 }
 
-pub(crate) async fn llm_chat_answer_compat(
-    state: Arc<LlmState>,
-    message: String,
-) -> Result<String, AppError> {
-    let stream_id = format!(
-        "compat-{}-{}",
-        std::process::id(),
-        COMPAT_STREAM_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    );
-
-    run_claimed_llm_chat(
-        Arc::clone(&state),
-        message,
-        stream_id,
-        Arc::new(CompatChatEventSink),
-    )
-    .await
-    .map(|value| value.full_response)
-}
-
 #[tauri::command]
 pub async fn llm_chat(
-    app: tauri::AppHandle,
+    app: LlmCommandAppHandle,
     state: State<'_, Arc<LlmState>>,
     message: String,
     stream_id: String,
@@ -1392,6 +1483,20 @@ pub async fn llm_chat(
     .map(|_| ())
 }
 
+pub(crate) async fn llm_chat_answer_compat(
+    state: Arc<LlmState>,
+    message: String,
+) -> Result<String, AppError> {
+    run_claimed_llm_chat(
+        Arc::clone(&state),
+        message,
+        synthesize_compat_stream_id(),
+        Arc::new(CompatChatEventSink),
+    )
+    .await
+    .map(|output| output.full_response)
+}
+
 #[tauri::command]
 pub async fn llm_cancel_generation(
     state: State<'_, Arc<LlmState>>,
@@ -1400,7 +1505,6 @@ pub async fn llm_cancel_generation(
     cancel_generation(state.inner().as_ref(), &stream_id)
 }
 
-#[derive(Debug)]
 struct ReprovisionGuard {
     state: Arc<LlmState>,
     lifecycle_before_reprovision: LifecycleSnapshot,
@@ -1509,17 +1613,21 @@ fn begin_reprovision(
 }
 
 fn ensure_no_reprovision_in_progress(state: &LlmState) -> Result<(), AppError> {
-    let reprovisioning = state
-        .reprovisioning
-        .lock()
-        .map_err(|_| AppError::Llm("LLM reprovision state is poisoned".to_string()))?;
-    if reprovisioning.is_some() {
+    if is_reprovision_active(state)? {
         return Err(AppError::Validation(
             "The approved TinyLlama model is being provisioned right now".to_string(),
         ));
     }
 
     Ok(())
+}
+
+fn is_reprovision_active(state: &LlmState) -> Result<bool, AppError> {
+    let reprovisioning = state
+        .reprovisioning
+        .lock()
+        .map_err(|_| AppError::Llm("LLM reprovision state is poisoned".to_string()))?;
+    Ok(reprovisioning.is_some())
 }
 
 fn clear_loaded_runtime(state: &LlmState) -> Result<(), AppError> {
@@ -1605,6 +1713,10 @@ fn finalize_reprovision(
 
     apply_lifecycle_snapshot(state, &lifecycle_after)?;
 
+    if let Some(completion_tx) = completion_tx {
+        completion_tx.send_replace(DownloadCleanupState::Finished);
+    }
+
     {
         let mut reprovisioning = state
             .reprovisioning
@@ -1613,16 +1725,19 @@ fn finalize_reprovision(
         *reprovisioning = None;
     }
 
-    if let Some(completion_tx) = completion_tx {
-        completion_tx.send_replace(DownloadCleanupState::Finished);
-    }
-
     Ok(())
 }
 
 fn current_download_control(
     state: &LlmState,
-) -> Result<Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>, AppError> {
+) -> Result<
+    Option<(
+        u64,
+        watch::Sender<bool>,
+        watch::Receiver<DownloadCleanupState>,
+    )>,
+    AppError,
+> {
     let download_guard = state
         .download_state
         .lock()
@@ -1630,28 +1745,132 @@ fn current_download_control(
 
     Ok(download_guard.as_ref().map(|download| {
         (
+            download.session_epoch,
             download.cancel_tx.clone(),
             download.completion_tx.subscribe(),
         )
     }))
 }
 
+fn current_download_reprovision_epoch(state: &LlmState) -> Result<Option<u64>, AppError> {
+    let reprovisioning = state
+        .reprovisioning
+        .lock()
+        .map_err(|_| AppError::Llm("LLM reprovision state is poisoned".to_string()))?;
+    Ok(
+        if matches!(*reprovisioning, Some(ReprovisionKind::Download)) {
+            Some(state.reprovision_epoch.load(Ordering::SeqCst))
+        } else {
+            None
+        },
+    )
+}
+
+async fn wait_for_download_control_or_idle(
+    state: &LlmState,
+) -> Result<Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>, AppError> {
+    let Some(target_epoch) = current_download_reprovision_epoch(state)? else {
+        return Ok(None);
+    };
+
+    loop {
+        if current_download_reprovision_epoch(state)? != Some(target_epoch) {
+            return Ok(None);
+        }
+
+        if let Some((control_epoch, cancel_tx, completion_rx)) = current_download_control(state)? {
+            if control_epoch == target_epoch {
+                return Ok(Some((cancel_tx, completion_rx)));
+            }
+            return Ok(None);
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+const DOWNLOAD_CANCEL_CONTROL_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const DOWNLOAD_CANCEL_CONTROL_TIMEOUT_MESSAGE: &str =
+    "Timed out waiting for LLM download cancel control";
+
+async fn wait_for_download_cancel_control_with_timeout(
+    state: &LlmState,
+    timeout: std::time::Duration,
+) -> Result<Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>, AppError> {
+    tokio::time::timeout(timeout, wait_for_download_control_or_idle(state))
+        .await
+        .map_err(|_| AppError::Llm(DOWNLOAD_CANCEL_CONTROL_TIMEOUT_MESSAGE.to_string()))?
+}
+
+async fn wait_for_download_cancel_control(
+    state: &LlmState,
+) -> Result<Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>, AppError> {
+    wait_for_download_cancel_control_with_timeout(state, DOWNLOAD_CANCEL_CONTROL_WAIT_TIMEOUT).await
+}
+
 async fn wait_for_download_cleanup(
     mut completion_rx: watch::Receiver<DownloadCleanupState>,
+    timeout: std::time::Duration,
 ) -> Result<(), AppError> {
-    if *completion_rx.borrow_and_update() == DownloadCleanupState::Finished {
-        return Ok(());
-    }
-
-    while completion_rx.changed().await.is_ok() {
+    let cleanup_wait = async {
         if *completion_rx.borrow_and_update() == DownloadCleanupState::Finished {
             return Ok(());
         }
-    }
 
-    Err(AppError::Llm(
-        "LLM download cleanup channel closed before finalization".to_string(),
-    ))
+        while completion_rx.changed().await.is_ok() {
+            if *completion_rx.borrow_and_update() == DownloadCleanupState::Finished {
+                return Ok(());
+            }
+        }
+
+        Err(AppError::Llm(
+            "LLM download cleanup channel closed before finalization".to_string(),
+        ))
+    };
+
+    tokio::time::timeout(timeout, cleanup_wait)
+        .await
+        .map_err(|_| {
+            AppError::Llm("Timed out waiting for LLM download cleanup completion".to_string())
+        })?
+}
+
+async fn wait_for_download_cleanup_or_idle(
+    state: &LlmState,
+    mut completion_rx: watch::Receiver<DownloadCleanupState>,
+) -> Result<(), AppError> {
+    let mut completion_channel_open = true;
+
+    loop {
+        if current_download_reprovision_epoch(state)?.is_none() {
+            return Ok(());
+        }
+
+        if !completion_channel_open {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            continue;
+        }
+
+        tokio::select! {
+            changed = completion_rx.changed() => {
+                if changed.is_err() {
+                    completion_channel_open = false;
+                }
+            }
+            _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
+        }
+    }
+}
+
+async fn cancel_download_and_wait_for_terminal_state(state: &LlmState) -> Result<(), AppError> {
+    let control = wait_for_download_control_or_idle(state).await?;
+
+    let Some((cancel_tx, completion_rx)) = control else {
+        return Ok(());
+    };
+
+    let _ = cancel_tx.send(true);
+    wait_for_download_cleanup_or_idle(state, completion_rx).await
 }
 
 fn stage_import_model_file_blocking<F>(
@@ -1724,7 +1943,7 @@ pub(crate) type LlmDownloadDriverFuture =
 pub(crate) trait LlmDownloadDriver: Send + Sync {
     fn run_started_download(
         &self,
-        app: tauri::AppHandle,
+        app: LlmCommandAppHandle,
         state: Arc<LlmState>,
         cancel_rx: watch::Receiver<bool>,
         target_prep: DownloadTargetPrep,
@@ -1817,6 +2036,22 @@ impl From<AppError> for DownloadFlowError {
     }
 }
 
+fn download_promotion_join_failure(error: tokio::task::JoinError) -> DownloadFlowError {
+    DownloadFlowError {
+        error: AppError::Llm(format!("LLM download promotion task failed: {error}")),
+        // Conservatively invalidate: join failures can hide unknown promotion side effects.
+        post_promotion_failure: true,
+    }
+}
+
+fn import_promotion_join_failure(error: tokio::task::JoinError) -> StartedReprovisionResult {
+    StartedReprovisionResult::Error {
+        error: AppError::Llm(format!("LLM import promotion task failed: {error}")),
+        // Conservatively invalidate: join failures can hide unknown promotion side effects.
+        invalidate_runtime: true,
+    }
+}
+
 fn is_cancelled(cancel_rx: &watch::Receiver<bool>) -> bool {
     *cancel_rx.borrow()
 }
@@ -1836,7 +2071,7 @@ async fn cleanup_restart_if_needed(
 }
 
 fn emit_download_progress_event(
-    app: &tauri::AppHandle,
+    app: &LlmCommandAppHandle,
     event: DownloadProgressEvent,
 ) -> Result<(), AppError> {
     app.emit("llm://download-progress", event)
@@ -1844,7 +2079,7 @@ fn emit_download_progress_event(
 }
 
 async fn run_download_chunks_verify_and_promote(
-    app: tauri::AppHandle,
+    app: LlmCommandAppHandle,
     state: &LlmState,
     cancel_rx: watch::Receiver<bool>,
     target_prep: DownloadTargetPrep,
@@ -2039,7 +2274,7 @@ async fn run_download_chunks_verify_and_promote(
                 AppError::Llm(format!("LLM corrupt-download cleanup task failed: {error}"))
             })?;
             if let Err(error) = cleanup_result {
-                return Err(error);
+                return Err(error.into());
             }
 
             return Err(AppError::Validation(
@@ -2063,8 +2298,12 @@ async fn run_download_chunks_verify_and_promote(
         let final_path = final_path.clone();
         move || promote_staged_model_blocking(&active_download_path, &final_path)
     })
-    .await
-    .map_err(|error| AppError::Llm(format!("LLM download promotion task failed: {error}")))?;
+    .await;
+
+    let promotion_result = match promotion_result {
+        Ok(result) => result,
+        Err(join_error) => return Err(download_promotion_join_failure(join_error)),
+    };
 
     if let Err(error) = promotion_result {
         let staged_was_promoted = tokio::task::spawn_blocking({
@@ -2095,7 +2334,7 @@ async fn run_download_chunks_verify_and_promote(
 impl LlmDownloadDriver for DefaultLlmDownloadDriver {
     fn run_started_download(
         &self,
-        app: tauri::AppHandle,
+        app: LlmCommandAppHandle,
         state: Arc<LlmState>,
         cancel_rx: watch::Receiver<bool>,
         target_prep: DownloadTargetPrep,
@@ -2138,7 +2377,7 @@ impl LlmDownloadDriver for DefaultLlmDownloadDriver {
 
 #[tauri::command]
 pub async fn llm_download_model(
-    app: tauri::AppHandle,
+    app: LlmCommandAppHandle,
     llm_state: State<'_, Arc<LlmState>>,
     provisioning: State<'_, Arc<ProvisioningState>>,
 ) -> Result<(), AppError> {
@@ -2166,45 +2405,33 @@ pub async fn llm_download_model(
     let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
     let (completion_tx, _completion_rx) =
         tokio::sync::watch::channel(DownloadCleanupState::Running);
+    let session_epoch = llm_state.inner().reprovision_epoch.load(Ordering::SeqCst);
     let download_driver = active_llm_download_driver();
+    let state = Arc::clone(llm_state.inner());
 
-    let started_result = {
-        let state = Arc::clone(llm_state.inner());
-        let app = app.clone();
-        let temp_path = temp_path.clone();
-        let final_path = final_path.clone();
-        let target_prep = target_prep.clone();
-        async move {
-            if let Err(error) = begin_download(
-                state.as_ref(),
-                ActiveDownload {
-                    temp_path: temp_path.clone(),
-                    final_path: final_path.clone(),
-                    bytes_downloaded: target_prep.existing_len,
-                    total_bytes: TINY_LLAMA_SIZE_BYTES,
-                    cancel_tx: cancel_tx.clone(),
-                    completion_tx: completion_tx.clone(),
-                },
-            ) {
-                return StartedReprovisionResult::Error {
-                    error,
-                    invalidate_runtime: false,
-                };
-            }
-
-            download_driver
-                .run_started_download(
-                    app,
-                    Arc::clone(&state),
-                    cancel_rx,
-                    target_prep,
-                    temp_path,
-                    final_path,
-                )
-                .await
+    let started_result = if is_cancelled(&cancel_rx) {
+        StartedReprovisionResult::Cancelled
+    } else if let Err(error) = begin_download(
+        state.as_ref(),
+        ActiveDownload {
+            session_epoch,
+            temp_path: temp_path.clone(),
+            final_path: final_path.clone(),
+            bytes_downloaded: target_prep.existing_len,
+            total_bytes: TINY_LLAMA_SIZE_BYTES,
+            cancel_tx: cancel_tx.clone(),
+            completion_tx: completion_tx.clone(),
+        },
+    ) {
+        StartedReprovisionResult::Error {
+            error,
+            invalidate_runtime: false,
         }
-    }
-    .await;
+    } else {
+        download_driver
+            .run_started_download(app, state, cancel_rx, target_prep, temp_path, final_path)
+            .await
+    };
 
     finalize_started_reprovision_result(reprovision, started_result)
 }
@@ -2302,12 +2529,7 @@ pub async fn llm_import_model_file(
                         invalidate_runtime: staged_was_promoted,
                     };
                 }
-                Err(error) => {
-                    return StartedReprovisionResult::Error {
-                        error: AppError::Llm(format!("LLM import promotion task failed: {error}")),
-                        invalidate_runtime: false,
-                    };
-                }
+                Err(error) => return import_promotion_join_failure(error),
             }
 
             if let Err(error) = tokio::task::spawn_blocking({
@@ -2338,12 +2560,7 @@ pub async fn llm_import_model_file(
 
 #[tauri::command]
 pub async fn llm_cancel_download(state: State<'_, Arc<LlmState>>) -> Result<(), AppError> {
-    let Some((cancel_tx, completion_rx)) = current_download_control(state.inner().as_ref())? else {
-        return Ok(());
-    };
-
-    let _ = cancel_tx.send(true);
-    wait_for_download_cleanup(completion_rx).await
+    cancel_download_and_wait_for_terminal_state(state.inner().as_ref()).await
 }
 
 #[cfg(test)]
@@ -2423,30 +2640,51 @@ mod tests {
     }
 
     #[test]
+    fn disk_headroom_error_reports_required_and_available_space() {
+        let err = require_download_disk_headroom(LlmSystemRequirementsSnapshot {
+            free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES - 1,
+            free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+        })
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            AppError::Validation(message)
+                if message.contains("required")
+                    && message.contains("available")
+                    && message.contains(&BASELINE_MIN_FREE_DISK_BYTES.to_string())
+        ));
+    }
+
+    #[test]
     fn derive_lifecycle_status_covers_all_required_runtime_states() {
         assert_eq!(
-            derive_lifecycle_status(false, false, LlmStatus::NotProvisioned, false, false),
+            derive_lifecycle_status(false, false, false, LlmStatus::NotProvisioned, false, false),
             LlmStatus::NotProvisioned,
         );
         assert_eq!(
-            derive_lifecycle_status(true, false, LlmStatus::NotProvisioned, true, false),
+            derive_lifecycle_status(true, false, false, LlmStatus::NotProvisioned, true, false),
             LlmStatus::Downloading,
         );
         assert_eq!(
-            derive_lifecycle_status(false, false, LlmStatus::NotProvisioned, true, false),
+            derive_lifecycle_status(false, false, false, LlmStatus::NotProvisioned, true, false),
             LlmStatus::Ready,
         );
         assert_eq!(
-            derive_lifecycle_status(false, true, LlmStatus::Ready, true, false),
+            derive_lifecycle_status(false, false, true, LlmStatus::Ready, true, false),
             LlmStatus::Loaded,
         );
         assert_eq!(
-            derive_lifecycle_status(false, true, LlmStatus::Error, true, true),
+            derive_lifecycle_status(false, false, true, LlmStatus::Error, true, true),
             LlmStatus::Error,
         );
         assert_eq!(
-            derive_lifecycle_status(false, false, LlmStatus::Error, true, true),
+            derive_lifecycle_status(false, false, false, LlmStatus::Error, true, true),
             LlmStatus::Error,
+        );
+        assert_eq!(
+            derive_lifecycle_status(false, true, false, LlmStatus::NotProvisioned, true, false),
+            LlmStatus::Downloading,
         );
     }
 
@@ -2486,6 +2724,7 @@ mod tests {
         let snapshot = build_status_response(
             std::path::Path::new("C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"),
             None,
+            false,
             false,
             true,
             LlmStatus::NotProvisioned,
@@ -2635,7 +2874,302 @@ mod tests {
             tokio::sync::watch::channel(DownloadCleanupState::Running);
         completion_tx.send_replace(DownloadCleanupState::Finished);
 
-        wait_for_download_cleanup(completion_rx).await.unwrap();
+        wait_for_download_cleanup(completion_rx, std::time::Duration::from_secs(1))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_cleanup_wait_times_out_with_deterministic_error() {
+        let (_completion_tx, completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
+
+        let err = wait_for_download_cleanup(completion_rx, std::time::Duration::from_millis(0))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            AppError::Llm(message)
+                if message == "Timed out waiting for LLM download cleanup completion"
+        ));
+    }
+
+    #[tokio::test]
+    async fn wait_for_download_control_or_idle_waits_for_download_publication() {
+        let dir = test_temp_dir("cancel-handoff-wait");
+        let final_path = approved_llm_model_path(&dir);
+        let temp_path = final_path.with_extension("gguf.part");
+        std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
+
+        let state = Arc::new(LlmState::default());
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = Some(ReprovisionKind::Download);
+        }
+
+        let waiter_state = Arc::clone(&state);
+        let waiter =
+            tokio::spawn(
+                async move { wait_for_download_control_or_idle(waiter_state.as_ref()).await },
+            );
+
+        tokio::task::yield_now().await;
+        assert!(!waiter.is_finished());
+
+        let (_seed_cancel_tx, mut seed_cancel_rx) = watch::channel(false);
+        let (completion_tx, _completion_rx) = watch::channel(DownloadCleanupState::Running);
+        begin_download(
+            state.as_ref(),
+            ActiveDownload {
+                session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
+                temp_path,
+                final_path,
+                bytes_downloaded: 0,
+                total_bytes: TINY_LLAMA_SIZE_BYTES,
+                cancel_tx: _seed_cancel_tx,
+                completion_tx,
+            },
+        )
+        .unwrap();
+
+        let Some((observed_cancel_tx, _)) = waiter.await.unwrap().unwrap() else {
+            panic!("download control should become visible during download reprovision");
+        };
+
+        observed_cancel_tx.send(true).unwrap();
+        seed_cancel_rx.changed().await.unwrap();
+        assert!(*seed_cancel_rx.borrow_and_update());
+    }
+
+    #[tokio::test]
+    async fn wait_for_download_control_or_idle_returns_none_after_reprovision_clears() {
+        let state = Arc::new(LlmState::default());
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = Some(ReprovisionKind::Download);
+        }
+
+        let waiter_state = Arc::clone(&state);
+        let waiter =
+            tokio::spawn(
+                async move { wait_for_download_control_or_idle(waiter_state.as_ref()).await },
+            );
+
+        tokio::task::yield_now().await;
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = None;
+        }
+
+        let control = waiter.await.unwrap().unwrap();
+        assert!(control.is_none());
+    }
+
+    #[tokio::test]
+    async fn wait_for_download_control_or_idle_does_not_follow_subsequent_download_session() {
+        let dir = test_temp_dir("cancel-handoff-session-scope");
+        let final_path = approved_llm_model_path(&dir);
+        let temp_path = final_path.with_extension("gguf.part");
+        std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
+
+        let state = Arc::new(LlmState::default());
+
+        state.reprovision_epoch.store(1, Ordering::SeqCst);
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = Some(ReprovisionKind::Download);
+        }
+
+        let waiter_state = Arc::clone(&state);
+        let waiter =
+            tokio::spawn(
+                async move { wait_for_download_control_or_idle(waiter_state.as_ref()).await },
+            );
+
+        tokio::task::yield_now().await;
+
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = None;
+        }
+
+        state.reprovision_epoch.store(2, Ordering::SeqCst);
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = Some(ReprovisionKind::Download);
+        }
+
+        let (second_cancel_tx, _second_cancel_rx) = watch::channel(false);
+        let (second_completion_tx, _second_completion_rx) =
+            watch::channel(DownloadCleanupState::Running);
+        begin_download(
+            state.as_ref(),
+            ActiveDownload {
+                session_epoch: 2,
+                temp_path,
+                final_path,
+                bytes_downloaded: 0,
+                total_bytes: TINY_LLAMA_SIZE_BYTES,
+                cancel_tx: second_cancel_tx,
+                completion_tx: second_completion_tx,
+            },
+        )
+        .unwrap();
+
+        let control = waiter.await.unwrap().unwrap();
+        assert!(control.is_none());
+    }
+
+    #[tokio::test]
+    async fn wait_for_download_control_or_idle_can_be_timeout_bounded() {
+        let state = Arc::new(LlmState::default());
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = Some(ReprovisionKind::Download);
+        }
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(25),
+            wait_for_download_control_or_idle(state.as_ref()),
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn download_cancel_control_timeout_is_deterministic() {
+        let state = Arc::new(LlmState::default());
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = Some(ReprovisionKind::Download);
+        }
+
+        let err = wait_for_download_cancel_control_with_timeout(
+            state.as_ref(),
+            std::time::Duration::from_millis(0),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            AppError::Llm(message) if message == DOWNLOAD_CANCEL_CONTROL_TIMEOUT_MESSAGE
+        ));
+    }
+
+    #[tokio::test]
+    async fn cancel_download_is_noop_when_no_active_download_exists() {
+        let state = Arc::new(LlmState::default());
+
+        cancel_download_and_wait_for_terminal_state(state.as_ref())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancel_download_waits_for_reprovision_idle_even_after_cleanup_finished() {
+        let dir = test_temp_dir("cancel-terminal-finished");
+        let final_path = approved_llm_model_path(&dir);
+        let temp_path = final_path.with_extension("gguf.part");
+        std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
+
+        let state = Arc::new(LlmState::default());
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = Some(ReprovisionKind::Download);
+        }
+
+        let (seed_cancel_tx, mut seed_cancel_rx) = watch::channel(false);
+        let (completion_tx, _completion_rx) = watch::channel(DownloadCleanupState::Running);
+        begin_download(
+            state.as_ref(),
+            ActiveDownload {
+                session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
+                temp_path,
+                final_path,
+                bytes_downloaded: 0,
+                total_bytes: TINY_LLAMA_SIZE_BYTES,
+                cancel_tx: seed_cancel_tx,
+                completion_tx,
+            },
+        )
+        .unwrap();
+
+        let waiter_state = Arc::clone(&state);
+        let mut waiter = tokio::spawn(async move {
+            cancel_download_and_wait_for_terminal_state(waiter_state.as_ref()).await
+        });
+
+        seed_cancel_rx.changed().await.unwrap();
+        assert!(*seed_cancel_rx.borrow_and_update());
+        assert!(!waiter.is_finished());
+
+        {
+            let download_guard = state.download_state.lock().unwrap();
+            let active = download_guard.as_ref().unwrap();
+            active
+                .completion_tx
+                .send_replace(DownloadCleanupState::Finished);
+        }
+
+        let completed_before_idle =
+            tokio::time::timeout(std::time::Duration::from_millis(50), &mut waiter).await;
+        assert!(completed_before_idle.is_err());
+
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = None;
+        }
+
+        waiter.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancel_download_returns_after_reprovision_becomes_idle() {
+        let dir = test_temp_dir("cancel-terminal-idle");
+        let final_path = approved_llm_model_path(&dir);
+        let temp_path = final_path.with_extension("gguf.part");
+        std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
+
+        let state = Arc::new(LlmState::default());
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = Some(ReprovisionKind::Download);
+        }
+
+        let (seed_cancel_tx, mut seed_cancel_rx) = watch::channel(false);
+        let (completion_tx, _completion_rx) = watch::channel(DownloadCleanupState::Running);
+        begin_download(
+            state.as_ref(),
+            ActiveDownload {
+                session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
+                temp_path,
+                final_path,
+                bytes_downloaded: 0,
+                total_bytes: TINY_LLAMA_SIZE_BYTES,
+                cancel_tx: seed_cancel_tx,
+                completion_tx,
+            },
+        )
+        .unwrap();
+
+        let waiter_state = Arc::clone(&state);
+        let waiter = tokio::spawn(async move {
+            cancel_download_and_wait_for_terminal_state(waiter_state.as_ref()).await
+        });
+
+        seed_cancel_rx.changed().await.unwrap();
+        assert!(*seed_cancel_rx.borrow_and_update());
+        assert!(!waiter.is_finished());
+
+        {
+            let mut reprovisioning = state.reprovisioning.lock().unwrap();
+            *reprovisioning = None;
+        }
+
+        waiter.await.unwrap().unwrap();
     }
 
     #[test]
@@ -2718,6 +3252,7 @@ mod tests {
         begin_download(
             state.as_ref(),
             ActiveDownload {
+                session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
                 temp_path: partial.clone(),
                 final_path: final_path.clone(),
                 bytes_downloaded: 13,
@@ -2752,6 +3287,7 @@ mod tests {
         begin_download(
             state.as_ref(),
             ActiveDownload {
+                session_epoch: state.reprovision_epoch.load(Ordering::SeqCst),
                 temp_path: partial,
                 final_path,
                 bytes_downloaded: 13,
@@ -2776,10 +3312,11 @@ mod tests {
         let state = Arc::new(LlmState::default());
         begin_generation(state.as_ref(), "stream-1".to_string()).unwrap();
 
-        let err = begin_reprovision(Arc::clone(&state), ReprovisionKind::Import).unwrap_err();
-        assert!(
-            matches!(err, AppError::Validation(message) if message.contains("generation is active"))
-        );
+        let result = begin_reprovision(Arc::clone(&state), ReprovisionKind::Import);
+        assert!(matches!(
+            result,
+            Err(AppError::Validation(message)) if message.contains("generation is active")
+        ));
     }
 
     #[test]
@@ -2869,6 +3406,38 @@ mod tests {
         );
         assert!(invalidation_observed.load(Ordering::SeqCst));
         assert_eq!(*state.status.lock().unwrap(), LlmStatus::Error);
+    }
+
+    #[tokio::test]
+    async fn download_promotion_join_failure_requests_conservative_runtime_invalidation() {
+        let join_error = tokio::task::spawn_blocking(|| panic!("download promotion panic"))
+            .await
+            .unwrap_err();
+
+        let flow_error = download_promotion_join_failure(join_error);
+
+        assert!(flow_error.post_promotion_failure);
+        assert!(matches!(
+            flow_error.error,
+            AppError::Llm(message) if message.contains("LLM download promotion task failed")
+        ));
+    }
+
+    #[tokio::test]
+    async fn import_promotion_join_failure_requests_conservative_runtime_invalidation() {
+        let join_error = tokio::task::spawn_blocking(|| panic!("import promotion panic"))
+            .await
+            .unwrap_err();
+
+        let started_result = import_promotion_join_failure(join_error);
+
+        assert!(matches!(
+            started_result,
+            StartedReprovisionResult::Error {
+                invalidate_runtime: true,
+                error: AppError::Llm(message)
+            } if message.contains("LLM import promotion task failed")
+        ));
     }
 
     #[test]
@@ -3016,7 +3585,12 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_model_loaded_after_valid_preflight_is_first_runtime_mutator() {
-        struct MutatingTestRuntimeDriver;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct MutatingTestRuntimeDriver {
+            ensure_loaded_calls: Arc<AtomicUsize>,
+            pre_mutation_snapshot: Arc<std::sync::Mutex<Option<RuntimeMutationSnapshot>>>,
+        }
 
         impl LlmRuntimeDriver for MutatingTestRuntimeDriver {
             fn ensure_loaded(
@@ -3024,7 +3598,12 @@ mod tests {
                 state: Arc<LlmState>,
                 _preflight: ValidatedModelLoadPreflight,
             ) -> LlmRuntimeFuture<Result<(), AppError>> {
+                let ensure_loaded_calls = Arc::clone(&self.ensure_loaded_calls);
+                let pre_mutation_snapshot = Arc::clone(&self.pre_mutation_snapshot);
                 Box::pin(async move {
+                    ensure_loaded_calls.fetch_add(1, Ordering::SeqCst);
+                    *pre_mutation_snapshot.lock().unwrap() =
+                        Some(runtime_mutation_snapshot(state.as_ref()));
                     finish_model_load_success(state.as_ref())?;
                     Ok(())
                 })
@@ -3037,28 +3616,53 @@ mod tests {
                 _cancel: Arc<AtomicBool>,
                 _event_sink: Arc<dyn ChatEventSink>,
             ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
-                Box::pin(async { unreachable!("generation is not part of this phase-split test") })
+                Box::pin(async {
+                    Ok(ChatRunOutput {
+                        full_response: "ok".to_string(),
+                        cancelled: false,
+                    })
+                })
             }
         }
 
         let state = Arc::new(LlmState::default());
         let before = runtime_mutation_snapshot(state.as_ref());
-        let _driver_guard = install_test_runtime_driver_with(Arc::new(MutatingTestRuntimeDriver));
-
-        ensure_model_loaded_after_valid_preflight(
-            Arc::clone(&state),
-            ValidatedModelLoadPreflight {
-                model_path: std::path::PathBuf::from(
-                    "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
-                ),
+        let ensure_loaded_calls = Arc::new(AtomicUsize::new(0));
+        let pre_mutation_snapshot = Arc::new(std::sync::Mutex::new(None));
+        let _driver_guard = install_test_runtime_driver_with(Arc::new(MutatingTestRuntimeDriver {
+            ensure_loaded_calls: Arc::clone(&ensure_loaded_calls),
+            pre_mutation_snapshot: Arc::clone(&pre_mutation_snapshot),
+        }));
+        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
             },
+        });
+
+        let output = run_claimed_llm_chat(
+            Arc::clone(&state),
+            "hello".to_string(),
+            "stream-phase-boundary".to_string(),
+            Arc::new(CompatChatEventSink),
         )
         .await
         .unwrap();
 
+        let ensure_loaded_snapshot = pre_mutation_snapshot.lock().unwrap().clone().unwrap();
         let after = runtime_mutation_snapshot(state.as_ref());
         assert_eq!(before.status, LlmStatus::NotProvisioned);
+        assert_eq!(ensure_loaded_snapshot, before);
+        assert_eq!(ensure_loaded_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(output.full_response, "ok");
+        assert!(!output.cancelled);
         assert_eq!(after.status, LlmStatus::Loaded);
+        assert!(!after.has_backend);
+        assert!(!after.has_model);
         assert_ne!(after, before);
     }
 
@@ -3069,10 +3673,11 @@ mod tests {
             free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
         };
 
-        let err = validate_model_load_prerequisites(false, requirements).unwrap_err();
-        assert!(
-            matches!(err, AppError::Validation(message) if message.contains("not been provisioned"))
-        );
+        let err = validate_model_load_prerequisites_typed(false, requirements).unwrap_err();
+        assert!(matches!(
+            err,
+            ModelLoadPreflightValidationError::NotProvisioned
+        ));
     }
 
     #[test]
@@ -3089,14 +3694,23 @@ mod tests {
     }
 
     #[test]
-    fn lazy_load_preflight_errors_leave_lifecycle_markers_unchanged() {
+    fn low_ram_preflight_validation_leaves_lifecycle_markers_unchanged() {
         let state = LlmState::default();
-        let requirements = LlmSystemRequirementsSnapshot {
-            free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
-            free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES - 1,
-        };
+        let err = validate_model_load_preflight(
+            &state,
+            ModelLoadPreflight {
+                model_path: std::path::PathBuf::from(
+                    "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+                ),
+                approved_model_present: true,
+                requirements: LlmSystemRequirementsSnapshot {
+                    free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                    free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES - 1,
+                },
+            },
+        )
+        .unwrap_err();
 
-        let err = validate_model_load_prerequisites(true, requirements).unwrap_err();
         assert!(
             matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required"))
         );
@@ -3123,6 +3737,231 @@ mod tests {
         let err = begin_generation(&state, "stream-1".to_string()).unwrap_err();
         assert!(
             matches!(err, AppError::Validation(message) if message.contains("being provisioned"))
+        );
+    }
+
+    #[test]
+    fn start_generation_loading_with_keepalive_changes_status_to_loading() {
+        let state = Arc::new(LlmState::default());
+        let model_path = std::path::PathBuf::from(
+            "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+        );
+
+        begin_generation(state.as_ref(), "stream-keepalive".to_string()).unwrap();
+
+        let snapshot = status_snapshot(state.as_ref(), &model_path, true).unwrap();
+        assert_eq!(snapshot.status, LlmStatus::Downloading);
+
+        finish_generation(state.as_ref()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn start_generation_preflight_failure_attempts_done_without_sticky_lifecycle_error() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        #[derive(Default)]
+        struct RecordingDoneSink {
+            done_emitted: Arc<AtomicBool>,
+            done_event: Arc<std::sync::Mutex<Option<DoneEvent>>>,
+        }
+
+        impl ChatEventSink for RecordingDoneSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, event: DoneEvent) -> Result<(), AppError> {
+                self.done_emitted.store(true, Ordering::SeqCst);
+                *self.done_event.lock().unwrap() = Some(event);
+                Ok(())
+            }
+        }
+
+        let state = Arc::new(LlmState::default());
+        let done_sink = Arc::new(RecordingDoneSink::default());
+        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: false,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        });
+
+        let err = run_claimed_llm_chat(
+            Arc::clone(&state),
+            "hello".to_string(),
+            "stream-provision-failure".to_string(),
+            Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            AppError::Validation(message) if message.contains("not been provisioned")
+        ));
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::NotProvisioned);
+        assert!(state.last_error.lock().unwrap().is_none());
+        assert!(state.model.lock().unwrap().is_none());
+        assert!(state.backend.lock().unwrap().is_none());
+        assert!(state.active_generation.lock().unwrap().is_none());
+        assert!(done_sink.done_emitted.load(Ordering::SeqCst));
+        assert_eq!(
+            *done_sink.done_event.lock().unwrap(),
+            Some(DoneEvent {
+                full_response: String::new(),
+                cancelled: false,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn preflight_failure_still_attempts_done_and_releases_generation_when_done_emit_fails() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct FailingDoneSink {
+            attempted: Arc<AtomicBool>,
+        }
+
+        impl ChatEventSink for FailingDoneSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+                self.attempted.store(true, Ordering::SeqCst);
+                Err(AppError::Llm("terminal done emit failed".to_string()))
+            }
+        }
+
+        let state = Arc::new(LlmState::default());
+        let attempted = Arc::new(AtomicBool::new(false));
+        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: false,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        });
+
+        let err = run_claimed_llm_chat(
+            Arc::clone(&state),
+            "hello".to_string(),
+            "stream-provision-failure-done-fail".to_string(),
+            Arc::new(FailingDoneSink {
+                attempted: Arc::clone(&attempted),
+            }) as Arc<dyn ChatEventSink>,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(attempted.load(Ordering::SeqCst));
+        assert!(matches!(
+            err,
+            AppError::Validation(message) if message.contains("not been provisioned")
+        ));
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::NotProvisioned);
+        assert!(state.last_error.lock().unwrap().is_none());
+        assert!(state.active_generation.lock().unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn init_failure_after_valid_preflight_sets_sticky_error_and_attempts_done() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        #[derive(Default)]
+        struct RecordingDoneSink {
+            done_emitted: Arc<AtomicBool>,
+            done_event: Arc<std::sync::Mutex<Option<DoneEvent>>>,
+        }
+
+        impl ChatEventSink for RecordingDoneSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, event: DoneEvent) -> Result<(), AppError> {
+                self.done_emitted.store(true, Ordering::SeqCst);
+                *self.done_event.lock().unwrap() = Some(event);
+                Ok(())
+            }
+        }
+
+        struct FailingInitRuntimeDriver;
+
+        impl LlmRuntimeDriver for FailingInitRuntimeDriver {
+            fn ensure_loaded(
+                &self,
+                state: Arc<LlmState>,
+                _preflight: ValidatedModelLoadPreflight,
+            ) -> LlmRuntimeFuture<Result<(), AppError>> {
+                Box::pin(async move {
+                    Err(record_lifecycle_error(
+                        state.as_ref(),
+                        AppError::Llm("runtime init failed".to_string()),
+                    ))
+                })
+            }
+
+            fn generate(
+                &self,
+                _state: Arc<LlmState>,
+                _message: String,
+                _cancel: Arc<AtomicBool>,
+                _event_sink: Arc<dyn ChatEventSink>,
+            ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+                Box::pin(async {
+                    unreachable!("generation should not run when runtime init fails")
+                })
+            }
+        }
+
+        let state = Arc::new(LlmState::default());
+        let done_sink = Arc::new(RecordingDoneSink::default());
+        let _driver_guard = install_test_runtime_driver_with(Arc::new(FailingInitRuntimeDriver));
+        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        });
+
+        let err = run_claimed_llm_chat(
+            Arc::clone(&state),
+            "hello".to_string(),
+            "stream-init-failure".to_string(),
+            Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            AppError::Llm(message) if message.contains("runtime init failed")
+        ));
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::Error);
+        assert!(matches!(
+            state.last_error.lock().unwrap().as_deref(),
+            Some(message) if message.contains("runtime init failed")
+        ));
+        assert!(state.active_generation.lock().unwrap().is_none());
+        assert!(done_sink.done_emitted.load(Ordering::SeqCst));
+        assert_eq!(
+            *done_sink.done_event.lock().unwrap(),
+            Some(DoneEvent {
+                full_response: String::new(),
+                cancelled: false,
+            })
         );
     }
 
@@ -3183,14 +4022,14 @@ mod tests {
         }
 
         let state = LlmState::default();
-        let cancel = begin_generation(&state, "stream-1".to_string()).unwrap();
+        begin_generation(&state, "stream-1".to_string()).unwrap();
         let attempted = Arc::new(AtomicBool::new(false));
 
         let result = finalize_claimed_generation(
             &state,
             "stream-1",
             Err(AppError::Llm("preflight failed".to_string())),
-            &cancel,
+            &Arc::new(AtomicBool::new(true)),
             &FailingDoneSink {
                 attempted: Arc::clone(&attempted),
             },
@@ -3199,6 +4038,40 @@ mod tests {
 
         assert!(attempted.load(Ordering::SeqCst));
         assert!(matches!(result, AppError::Llm(message) if message.contains("preflight failed")));
+        assert!(state.active_generation.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn claimed_generation_finalizer_preserves_success_when_done_emit_fails() {
+        struct FailingDoneSink;
+
+        impl ChatEventSink for FailingDoneSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+                Err(AppError::Llm("terminal done emit failed".to_string()))
+            }
+        }
+
+        let state = LlmState::default();
+        begin_generation(&state, "stream-1".to_string()).unwrap();
+
+        let result = finalize_claimed_generation(
+            &state,
+            "stream-1",
+            Ok(ChatRunOutput {
+                full_response: "ok".to_string(),
+                cancelled: false,
+            }),
+            &Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            &FailingDoneSink,
+        )
+        .unwrap();
+
+        assert_eq!(result.full_response, "ok");
+        assert!(!result.cancelled);
         assert!(state.active_generation.lock().unwrap().is_none());
     }
 
@@ -3223,5 +4096,35 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
 
         assert_send_sync::<RecordingSink>();
+    }
+
+    #[test]
+    fn done_event_payload_includes_cancellation_flag() {
+        let run_result = Ok(ChatRunOutput {
+            full_response: "ok".to_string(),
+            cancelled: true,
+        });
+
+        let event = build_done_event(&run_result, false);
+        let value = serde_json::to_value(event).unwrap();
+
+        assert_eq!(
+            value,
+            serde_json::json!({ "fullResponse": "ok", "cancelled": true })
+        );
+    }
+
+    #[test]
+    fn done_event_payload_marks_cancelled_errors() {
+        let run_result: Result<ChatRunOutput, AppError> =
+            Err(AppError::Llm("cancelled during preflight".to_string()));
+
+        let event = build_done_event(&run_result, true);
+        let value = serde_json::to_value(event).unwrap();
+
+        assert_eq!(
+            value,
+            serde_json::json!({ "fullResponse": "", "cancelled": true })
+        );
     }
 }

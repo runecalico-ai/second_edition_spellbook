@@ -22,6 +22,7 @@ fn init_logging() {
         .try_init();
 }
 
+#[cfg(not(test))]
 pub fn run() {
     init_logging();
     tauri::Builder::default()
@@ -147,7 +148,6 @@ pub(crate) fn build_llm_command_smoke_app(
         .manage(llm_state)
         .manage(provisioning)
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             chat_answer,
             llm_status,
@@ -215,16 +215,67 @@ mod llm_command_smoke_tests {
     use super::{build_llm_command_smoke_app, invoke_smoke_command, listen_smoke_event};
     use crate::commands::llm::{
         install_test_download_driver, install_test_model_load_preflight,
-        install_test_runtime_driver, DownloadTargetPrep, LlmDownloadDriver,
+        install_test_runtime_driver, DownloadTargetPrep, LlmCommandAppHandle, LlmDownloadDriver,
         LlmDownloadDriverFuture, LlmState, LlmSystemRequirementsSnapshot, ModelLoadPreflight,
         RecordingRuntimeDriver, StartedReprovisionResult,
     };
     use crate::commands::provisioning::{
         ProvisioningState, BASELINE_MIN_FREE_DISK_BYTES, BASELINE_MIN_FREE_RAM_BYTES,
     };
+    use crate::commands::vault::lock_vault_env_for_test;
     use crate::models::{ChatResponse, DoneEvent, LlmStatus, LlmStatusResponse, TokenEvent};
-    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, MutexGuard};
     use tokio::time::{timeout, Duration};
+
+    const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
+    static LLM_SMOKE_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    struct SmokeDataDirGuard {
+        _env_lock: MutexGuard<'static, ()>,
+        previous_data_dir: Option<std::ffi::OsString>,
+        temp_data_dir: std::path::PathBuf,
+    }
+
+    impl SmokeDataDirGuard {
+        fn acquire(test_name: &str) -> Self {
+            let env_lock = lock_vault_env_for_test();
+
+            let unique_id = LLM_SMOKE_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let sanitized_test_name: String = test_name
+                .chars()
+                .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+                .collect();
+            let temp_data_dir = std::env::temp_dir().join(format!(
+                "spellbook-llm-smoke-{}-{}-{}",
+                sanitized_test_name,
+                std::process::id(),
+                unique_id
+            ));
+            std::fs::create_dir_all(&temp_data_dir).unwrap();
+
+            let previous_data_dir = std::env::var_os(SPELLBOOK_DATA_DIR_ENV);
+            std::env::set_var(SPELLBOOK_DATA_DIR_ENV, &temp_data_dir);
+
+            Self {
+                _env_lock: env_lock,
+                previous_data_dir,
+                temp_data_dir,
+            }
+        }
+    }
+
+    impl Drop for SmokeDataDirGuard {
+        fn drop(&mut self) {
+            match &self.previous_data_dir {
+                Some(previous_data_dir) => {
+                    std::env::set_var(SPELLBOOK_DATA_DIR_ENV, previous_data_dir)
+                }
+                None => std::env::remove_var(SPELLBOOK_DATA_DIR_ENV),
+            }
+            let _ = std::fs::remove_dir_all(&self.temp_data_dir);
+        }
+    }
 
     #[derive(Clone, Default)]
     struct PausedSmokeDownloadDriver {
@@ -235,7 +286,7 @@ mod llm_command_smoke_tests {
     impl LlmDownloadDriver for PausedSmokeDownloadDriver {
         fn run_started_download(
             &self,
-            _app: tauri::AppHandle,
+            _app: LlmCommandAppHandle,
             _state: Arc<LlmState>,
             mut cancel_rx: tokio::sync::watch::Receiver<bool>,
             _target_prep: DownloadTargetPrep,
@@ -258,7 +309,7 @@ mod llm_command_smoke_tests {
     impl LlmDownloadDriver for ReadySmokeDownloadDriver {
         fn run_started_download(
             &self,
-            _app: tauri::AppHandle,
+            _app: LlmCommandAppHandle,
             _state: Arc<LlmState>,
             _cancel_rx: tokio::sync::watch::Receiver<bool>,
             _target_prep: DownloadTargetPrep,
@@ -277,6 +328,10 @@ mod llm_command_smoke_tests {
 
     #[tokio::test]
     async fn llm_cancel_download_command_waits_for_in_flight_download_completion() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "llm_cancel_download_command_waits_for_in_flight_download_completion",
+        );
+
         let llm_state = Arc::new(LlmState::default());
         let provisioning = Arc::new(ProvisioningState::default());
         let driver = PausedSmokeDownloadDriver::default();
@@ -314,10 +369,16 @@ mod llm_command_smoke_tests {
         .await
         .unwrap();
         assert_ne!(status.status, LlmStatus::Downloading);
+        assert!(status.bytes_downloaded.is_none());
+        assert!(status.total_bytes.is_none());
     }
 
     #[tokio::test]
     async fn llm_chat_command_emits_token_and_done_events_through_app_event_sink() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "llm_chat_command_emits_token_and_done_events_through_app_event_sink",
+        );
+
         let llm_state = Arc::new(LlmState::default());
         let provisioning = Arc::new(ProvisioningState::default());
         let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
@@ -359,6 +420,10 @@ mod llm_command_smoke_tests {
 
     #[tokio::test]
     async fn registered_llm_commands_observe_same_app_managed_llm_state() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "registered_llm_commands_observe_same_app_managed_llm_state",
+        );
+
         let llm_state = Arc::new(LlmState::default());
         let provisioning = Arc::new(ProvisioningState::default());
         let _download_driver_guard =
@@ -397,6 +462,9 @@ mod llm_command_smoke_tests {
 
     #[tokio::test]
     async fn chat_answer_compat_wrapper_returns_expected_payload_shape() {
+        let _data_dir_guard =
+            SmokeDataDirGuard::acquire("chat_answer_compat_wrapper_returns_expected_payload_shape");
+
         let llm_state = Arc::new(LlmState::default());
         let provisioning = Arc::new(ProvisioningState::default());
         let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
@@ -409,7 +477,8 @@ mod llm_command_smoke_tests {
                 free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
             },
         });
-        let _driver_guard = install_test_runtime_driver(Arc::new(RecordingRuntimeDriver));
+        let _driver_guard =
+            install_test_runtime_driver(Arc::new(RecordingRuntimeDriver::default()));
 
         let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
 
@@ -429,5 +498,67 @@ mod llm_command_smoke_tests {
             response.meta,
             serde_json::json!({"source": "llm_chat_compat"})
         );
+
+        let direct_internal_response = invoke_smoke_command::<serde_json::Value>(
+            smoke.webview.clone(),
+            "llm_chat_answer_compat",
+            serde_json::json!({
+                "message": "hello",
+            }),
+        )
+        .await;
+
+        assert!(direct_internal_response.is_err());
+    }
+
+    #[tokio::test]
+    async fn llm_import_model_file_command_returns_error_for_invalid_path() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "llm_import_model_file_command_returns_error_for_invalid_path",
+        );
+
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+
+        let missing_file_path = std::env::temp_dir().join(format!(
+            "spellbook-llm-smoke-missing-{}-{}-{}",
+            "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            std::process::id(),
+            LLM_SMOKE_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+
+        let import_result = invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_import_model_file",
+            serde_json::json!({
+                "filePath": missing_file_path.to_string_lossy(),
+            }),
+        )
+        .await;
+
+        assert!(import_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn llm_cancel_generation_command_succeeds_for_non_matching_stream_id() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "llm_cancel_generation_command_succeeds_for_non_matching_stream_id",
+        );
+
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+
+        let cancel_result = invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_cancel_generation",
+            serde_json::json!({
+                "streamId": "non-matching-stream-id",
+            }),
+        )
+        .await;
+
+        assert!(cancel_result.is_ok());
     }
 }

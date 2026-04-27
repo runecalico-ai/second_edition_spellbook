@@ -23,6 +23,22 @@ fn escape_fts_phrase_content(s: &str) -> String {
     s.replace('"', "\"\"")
 }
 
+#[tauri::command]
+pub async fn chat_answer(
+    llm_state: State<'_, Arc<LlmState>>,
+    prompt: String,
+) -> Result<ChatResponse, AppError> {
+    // Temporary compatibility path for apps/desktop/src/ui/Chat.tsx.
+    // Remove this wrapper in the same branch where the frontend migrates to llm_chat + events.
+    let answer = llm_chat_answer_compat(Arc::clone(llm_state.inner()), prompt).await?;
+
+    Ok(ChatResponse {
+        answer,
+        citations: Vec::new(),
+        meta: json!({"source": "llm_chat_compat"}),
+    })
+}
+
 /// Wraps a string as a single FTS5 quoted phrase term.
 fn wrap_as_fts_phrase(s: &str) -> String {
     format!("\"{}\"", escape_fts_phrase_content(s))
@@ -106,12 +122,12 @@ fn try_build_advanced_fts_query(tokens: &[&str]) -> Option<String> {
 /// The returned string is always bound as a single `?` parameter — raw user
 /// input is never concatenated into SQL.
 ///
-/// **Basic mode** (default):  
+/// **Basic mode** (default):
 ///   The entire query is wrapped as a single quoted phrase.  All FTS5 special
 ///   characters (`"`, `*`, `(`, `)`, `^`, `:`, `-`, `+`) are treated as
 ///   literal text.  Boolean keywords typed in any case are not operators.
 ///
-/// **Advanced mode** (opt-in):  
+/// **Advanced mode** (opt-in):
 ///   Activated when the trimmed query contains at least one standalone uppercase
 ///   boolean keyword (`AND`, `OR`, `NOT`) as a whitespace-delimited token.
 ///   Matched operators are kept as FTS5 boolean operators; all other tokens are
@@ -1331,20 +1347,4 @@ mod tests {
             "text-query results must match the direct bm25-ranked ordering for the same MATCH term"
         );
     }
-}
-
-#[tauri::command]
-pub async fn chat_answer(
-    llm_state: State<'_, Arc<LlmState>>,
-    prompt: String,
-) -> Result<ChatResponse, AppError> {
-    // Temporary compatibility path for apps/desktop/src/ui/Chat.tsx.
-    // Remove this wrapper in the same branch where the frontend migrates to llm_chat + events.
-    let answer = llm_chat_answer_compat(Arc::clone(llm_state.inner()), prompt).await?;
-
-    Ok(ChatResponse {
-        answer,
-        citations: Vec::new(),
-        meta: json!({"source": "llm_chat_compat"}),
-    })
 }

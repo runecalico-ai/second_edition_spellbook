@@ -20,20 +20,20 @@ pub struct LlmStatusResponse {
     pub last_error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "serde", rename_all = "camelCase")]
 pub struct DownloadProgressEvent {
     pub bytes_downloaded: u64,
     pub total_bytes: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "serde", rename_all = "camelCase")]
 pub struct TokenEvent {
     pub token: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "serde", rename_all = "camelCase")]
 pub struct DoneEvent {
     pub full_response: String,

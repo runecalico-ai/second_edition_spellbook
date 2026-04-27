@@ -87,7 +87,7 @@ Task Group 4 will replace that prompt builder with the full RAG/ChatML assembler
 - Read: `apps/desktop/src-tauri/Cargo.toml`
 - Read: `apps/desktop/src-tauri/src/commands/provisioning.rs`
 
-- [ ] **Step 0.1: Re-read the repository dependency policy and confirm Task Group 2 stays dependency-neutral**
+- [x] **Step 0.1: Re-read the repository dependency policy and confirm Task Group 2 stays dependency-neutral**
 
 Run:
 
@@ -98,7 +98,7 @@ rg -n "^# Dependency Security Policy|^## Absolute Principles|^### Rust \(Cargo\)
 
 Expected: The policy is explicitly re-checked before implementation and the worker confirms this task group must reuse existing crates only.
 
-- [ ] **Step 0.2: Verify the approved Task Group 1 crates already exist in `Cargo.toml` before any code changes**
+- [x] **Step 0.2: Verify the approved Task Group 1 crates already exist in `Cargo.toml` before any code changes**
 
 Run:
 
@@ -109,7 +109,7 @@ rg -n '^(llama-cpp-2|reqwest|sysinfo|sha2)\s*=' Cargo.toml
 
 Expected: Exact existing declarations are present for `llama-cpp-2 = { version = "=0.1.145", default-features = false }`, `reqwest = { version = "=0.13.2", default-features = false, features = ["rustls", "stream"] }`, `sysinfo = { version = "=0.38.4", default-features = false, features = ["disk", "system"] }`, and `sha2 = "0.10.9"`.
 
-- [ ] **Step 0.3: Verify the required Task Group 1 provisioning exports still exist before Task Group 2 reuses them**
+- [x] **Step 0.3: Verify the required Task Group 1 provisioning exports still exist before Task Group 2 reuses them**
 
 Run:
 
@@ -120,7 +120,7 @@ rg -n 'pub\s+(const|struct|enum|trait|fn)\s+(models_dir|FixedResourceProbe|LiveR
 
 Expected: The Task Group 1 provisioning surface still exports the exact constants, helper traits, and state types that this Task Group 2 plan imports and reuses.
 
-- [ ] **Step 0.4: Run one combined pass/fail gate before touching Task 1 so the stop condition is executable instead of implied**
+- [x] **Step 0.4: Run one combined pass/fail gate before touching Task 1 so the stop condition is executable instead of implied**
 
 Run:
 
@@ -169,7 +169,7 @@ All Rust test snippets in Tasks 1-4 live inside the same `#[cfg(test)] mod tests
 - Modify: `apps/desktop/src-tauri/src/commands/mod.rs`
 - Modify: `apps/desktop/src-tauri/src/lib.rs`
 
-- [ ] **Step 1: Write the failing inline tests for the new lifecycle types and state defaults**
+- [x] **Step 1: Write the failing inline tests for the new lifecycle types and state defaults**
 
 ```rust
 #[cfg(test)]
@@ -212,7 +212,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run the new Rust test target and confirm the missing module/types failure**
+- [x] **Step 2: Run the new Rust test target and confirm the missing module/types failure**
 
 Run:
 
@@ -223,7 +223,7 @@ cargo test llm_state_defaults_to_empty_runtime_state --lib
 
 Expected: FAIL with unresolved imports or missing `llm` module/type errors.
 
-- [ ] **Step 3: Add the new LLM serde models, foundational helper types, and state containers**
+- [x] **Step 3: Add the new LLM serde models, foundational helper types, and state containers**
 
 ```rust
 // apps/desktop/src-tauri/src/models/llm.rs
@@ -369,7 +369,7 @@ impl Default for LlmState {
 }
 ```
 
-- [ ] **Step 4: Export the module and register the managed state placeholder**
+- [x] **Step 4: Export the module and register the managed state placeholder**
 
 ```rust
 // apps/desktop/src-tauri/src/models/mod.rs
@@ -388,7 +388,7 @@ pub use llm::*;
 app.manage(Arc::new(LlmState::default()));
 ```
 
-- [ ] **Step 5: Re-run the scaffold tests and commit the module skeleton**
+- [x] **Step 5: Re-run the scaffold tests and commit the module skeleton**
 
 Run:
 
@@ -412,7 +412,7 @@ git commit -m "feat: scaffold llm lifecycle module"
 - Modify: `apps/desktop/src-tauri/src/commands/llm.rs`
 - Modify: `apps/desktop/src-tauri/src/error.rs`
 
-- [ ] **Step 1: Write the failing tests for path resolution, the shared requirements snapshot, and status derivation**
+- [x] **Step 1: Write the failing tests for path resolution, the shared requirements snapshot, and status derivation**
 
 ```rust
 #[test]
@@ -537,7 +537,7 @@ fn successful_ready_recovery_clears_prior_error_and_restores_ready_status() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and confirm the helper/status failures**
+- [x] **Step 2: Run the focused test and confirm the helper/status failures**
 
 Run:
 
@@ -548,7 +548,7 @@ cargo test approved_model_path_uses_vault_models_directory --lib
 
 Expected: FAIL because `approved_llm_model_path`, `collect_llm_system_requirements`, and `status_snapshot` do not exist yet.
 
-- [ ] **Step 3: Add the lifecycle-specific error, shared requirements snapshot, and pure status helpers**
+- [x] **Step 3: Add the lifecycle-specific error, shared requirements snapshot, and pure status helpers**
 
 ```rust
 // apps/desktop/src-tauri/src/error.rs
@@ -662,7 +662,7 @@ fn derive_lifecycle_status(
 }
 ```
 
-- [ ] **Step 4: Implement pure status derivation plus the `llm_status` command**
+- [x] **Step 4: Implement pure status derivation plus the `llm_status` command**
 
 ```rust
 fn build_status_response(
@@ -743,7 +743,7 @@ pub async fn llm_status(state: State<'_, Arc<LlmState>>) -> Result<LlmStatusResp
 }
 ```
 
-- [ ] **Step 5: Re-run the status tests and commit the status surface**
+- [x] **Step 5: Re-run the status tests and commit the status surface**
 
 Run:
 
@@ -766,7 +766,7 @@ git commit -m "feat: add llm status and requirement helpers"
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/llm.rs`
 
-- [ ] **Step 1: Write the failing tests for SHA validation, resume semantics, and cancellation state reset**
+- [x] **Step 1: Write the failing tests for SHA validation, resume semantics, and cancellation state reset**
 
 ```rust
 #[test]
@@ -1144,7 +1144,7 @@ fn promote_staged_model_reports_restore_failure_for_manual_recovery() {
 }
 ```
 
-- [ ] **Step 2: Run the cancellation/import tests and confirm the missing helper failures**
+- [x] **Step 2: Run the cancellation/import tests and confirm the missing helper failures**
 
 Run:
 
@@ -1155,7 +1155,7 @@ cargo test cancelled_download_keeps_partial_file_and_restores_prior_not_provisio
 
 Expected: FAIL because `validate_selected_model_file`, `classify_download_response`, `wait_for_download_cleanup`, `verify_staged_model_length_blocking`, `cleanup_restart_staging_blocking`, `finalize_failed_restart_download_blocking`, `import_staging_model_path`, `PromotionFs`, `promote_staged_model_with_fs`, `ReprovisionGuard`, `StartedReprovisionResult`, `finalize_started_reprovision_result`, `revalidate_staged_import_artifact_blocking`, `stage_import_model_file_blocking`, `LlmDownloadDriver`, `active_llm_download_driver`, `install_test_download_driver`, `install_test_runtime_invalidation_observer`, and the shared staged-promotion behavior in `promote_staged_model_blocking` do not exist yet.
 
-- [ ] **Step 3: Add the deterministic file-validation, response-classification, reprovision-finalizer adapters, and download/import test seams**
+- [x] **Step 3: Add the deterministic file-validation, response-classification, reprovision-finalizer adapters, and download/import test seams**
 
 ```rust
 fn sha256_file(path: &Path) -> Result<String, AppError> {
@@ -1991,7 +1991,7 @@ fn notify_runtime_invalidation_for_test() {
 
 These helper sketches now close both cleanup gaps and the missing seam/test-ownership gaps that the tests are exercising. `cleanup_restart_staging_blocking(...)` is the narrow primitive that deletes only the transient `*.gguf.restart` file, `finalize_failed_restart_download_blocking(...)` centralizes the required "delete restart, preserve .part, then return the original non-SHA error" behavior, and `finalize_non_sha_download_error(...)` is the async bridge the concrete download flow must call for every post-restart non-SHA failure branch. `remove_stale_partial_after_restart_blocking(...)` and `remove_stale_partial_after_restart(...)` are the separate post-promotion cleanup helpers that the `verified_bytes_promoted` branch calls after the approved file has already been replaced; they delete only the stale `*.part` resumable artifact, treat missing partials as success, and fail loudly if the path is anything other than a file so the finalizer can pair that cleanup failure with `invalidate_runtime: true`. `stage_import_model_file_blocking(...)` still centralizes the verified side-load rule split: validate the user-selected source file before the copy, then re-validate the staged `.import` artifact immediately before promotion so the bytes that will actually be promoted are re-checked in-place. The added `LlmDownloadDriver` seam is owned by Task 3 because the real `llm_download_model` command lives here; Task 5 smoke coverage reuses that seam instead of performing network IO. The runtime-invalidation observer is also owned by Task 3 because it exists only to make reprovision finalizer behavior directly testable. `StartedReprovisionResult::Error { invalidate_runtime }` remains the critical finalization change: once promotion has succeeded, later cleanup failures must set `invalidate_runtime: true` so `finalize_started_reprovision_result(...)` clears the loaded runtime before it records sticky error state. Together, those helpers cover restart-target creation, progress reset, chunk reads, chunk appends, progress-event emission, staged-length verification, SHA-task join/IO failures, staged-import verification, promotion failures, post-promotion stale-part cleanup, runtime invalidation, and the explicit download-command smoke seam so cleanup and validation behavior cannot drift across ad hoc exits.
 
-- [ ] **Step 4: Implement resumable download and explicit cancellation**
+- [x] **Step 4: Implement resumable download and explicit cancellation**
 
 ```rust
 #[tauri::command]
@@ -2125,7 +2125,7 @@ impl LlmDownloadDriver for DefaultLlmDownloadDriver {
 
 If the server ignores `Range` and replies with `200 OK`, the plan above keeps the existing `.part` file untouched and downloads the replacement body into `*.gguf.restart`. Only after the fallback body proves the full approved asset length, then passes a final staged-file length check, and then passes SHA-256 verification does promotion proceed and the stale partial get cleaned up. A valid resume still requires `206 Partial Content` with a matching `Content-Range`, where `Content-Range` supplies the total asset size and `Content-Length` only confirms the remaining bytes. Cancellation uses one `watch` channel for the cancel request and a second `watch` state for cleanup completion, so late waiters in `llm_cancel_download` still observe completion after `download_state` has been cleared. The fallback `*.gguf.restart` file is never resumable state: once restart staging exists, every non-SHA branch in the concrete flow now routes through `Err(AppError)` from `run_download_chunks_verify_and_promote(...)`, and the driver converts that one error into `StartedReprovisionResult::Error { ... }` before finalization. Keep the post-promotion cleanup branches mechanically separate from the pre-promotion failure branches: `run_download_chunks_verify_and_promote(...)` should return `Ok(DownloadFlowOutcome::PromotedFromRestart)` only after verified bytes have replaced the approved file, and the driver must then run `remove_stale_partial_after_restart(...)` plus any later cleanup in the `invalidate_runtime: true` branch. Most importantly, once reprovision has started, even the first post-start mutation in `begin_download(...)` now lives inside the single `StartedReprovisionResult` body returned by the download driver and finalized exactly once by `finalize_started_reprovision_result(...)`, so sticky lifecycle errors cannot escape through scattered `map_err(...)` calls, bare post-start `?` returns, or direct `Err(...)` exits.
 
-- [ ] **Step 5: Add the side-load and cancellation commands, then verify the tests**
+- [x] **Step 5: Add the side-load and cancellation commands, then verify the tests**
 
 ```rust
 #[tauri::command]
@@ -2269,7 +2269,7 @@ git commit -m "feat: add llm download and import lifecycle"
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/llm.rs`
 
-- [ ] **Step 1: Write the failing tests for the three-phase lazy-load split, generation gating, and concurrent-generation rejection**
+- [x] **Step 1: Write the failing tests for the three-phase lazy-load split, generation gating, and concurrent-generation rejection**
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2528,7 +2528,7 @@ fn blocking_generation_runner_uses_send_sync_event_sink_for_token_emission() {
 }
 ```
 
-- [ ] **Step 2: Run the generation tests and confirm the missing lifecycle helper failures**
+- [x] **Step 2: Run the generation tests and confirm the missing lifecycle helper failures**
 
 Run:
 
@@ -2539,7 +2539,7 @@ cargo test validate_model_load_prerequisites_rejects_missing_provisioned_model -
 
 Expected: FAIL because `collect_model_load_preflight`, `validate_model_load_preflight`, `ensure_model_loaded_after_valid_preflight`, `LlmRuntimeFuture`, `LlmRuntimeDriver`, `DefaultLlmRuntimeDriver`, `active_llm_runtime_driver`, `install_test_model_load_preflight`, `install_test_runtime_driver`, `finish_model_load_success`, `ChatEventSink`, `TauriChatEventSink`, `CompatChatEventSink`, `run_claimed_llm_chat`, `build_done_event`, `finish_generation_best_effort`, `finalize_claimed_generation`, and the generation-control helpers do not exist yet.
 
-- [ ] **Step 3: Implement blocking model load, generation control, and a minimal real streaming loop**
+- [x] **Step 3: Implement blocking model load, generation control, and a minimal real streaming loop**
 
 ```rust
 fn begin_generation(state: &LlmState, stream_id: String) -> Result<Arc<AtomicBool>, AppError> {
@@ -3143,7 +3143,7 @@ pub async fn llm_cancel_generation(
 
 This keeps the lazy-load phases mechanically testable before any `LlamaBackend::init` or `LlamaModel::load_from_file` work begins: `collect_model_load_preflight(...)` gathers plain preflight inputs and must stay read-only, `validate_model_load_preflight(...)` converts that raw preflight into a `ValidatedModelLoadPreflight` token and must stay pure, and the Task 4 seams make `ensure_loaded(...)` the first post-validation mutator that can initialize runtime state or record sticky lifecycle errors. The new seams are not only test-description artifacts: `run_claimed_llm_chat(...)`, `llm_chat`, and `llm_chat_answer_compat` all route through the same explicit preflight override plus `active_llm_runtime_driver()` in the planned runtime path, so Task 5 can inject both deterministic preflight state and a recording runtime driver into the real public `llm_chat` command without forking a parallel code path. `app_data_dir()` still happens before generation ownership is claimed, the claim still happens before lazy-load preflight so reprovision cannot slip into the gap, and both public chat entry points continue through `run_claimed_llm_chat(...)` plus `finalize_claimed_generation(...)` so lazy-load preflight/init failures still attempt a terminal done event instead of leaving either caller hanging. Task 4 also makes the async-boundary exception explicit: the blocking llama decode loop may emit token chunks through a `Send + Sync` `ChatEventSink` from inside `spawn_blocking`, while the final done event remains on the claimed-generation finalizer path. The checklist now includes both the three explicit phase-split tests and a real finalizer-path test where `emit_done(...)` fails, proving the terminal done-event failure path preserves the original command result while still clearing the active claim. Cleanup and terminal emit are both best-effort paths that can log and attempt lifecycle recording, but they cannot replace the already-determined command result.
 
-- [ ] **Step 4: Re-run the generation tests and commit the runtime shell**
+- [x] **Step 4: Re-run the generation tests and commit the runtime shell**
 
 Run:
 
@@ -3168,7 +3168,7 @@ git commit -m "feat: add llm load and generation lifecycle"
 - Modify: `apps/desktop/src-tauri/src/lib.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/search.rs`
 
-- [ ] **Step 1: Write the failing compile-level test by registering the new commands**
+- [x] **Step 1: Write the failing compile-level test by registering the new commands**
 
 Update the invoke list first so the compiler forces every command signature to be valid:
 
@@ -3191,7 +3191,7 @@ cargo check
 
 Expected: FAIL until every command signature and import is wired correctly.
 
-- [ ] **Step 2: Keep the current Chat UI working by redirecting `chat_answer` instead of deleting it immediately**
+- [x] **Step 2: Keep the current Chat UI working by redirecting `chat_answer` instead of deleting it immediately**
 
 ```rust
 // apps/desktop/src-tauri/src/commands/search.rs
@@ -3220,7 +3220,7 @@ pub async fn chat_answer(
 
 This bridge is executable without new dependencies because it only allocates a compatibility stream id and then reuses the same internal claimed-generation runner, lazy-load gates, and terminal-finalizer path as `llm_chat`, but returns a single `String` instead of building an event subscription layer inside the backend.
 
-- [ ] **Step 3: Finish the invoke-handler wiring and remove stale sidecar assumptions**
+- [x] **Step 3: Finish the invoke-handler wiring and remove stale sidecar assumptions**
 
 ```rust
 // apps/desktop/src-tauri/src/lib.rs
@@ -3241,7 +3241,7 @@ llm_chat,
 
 This is the minimum safe intermediate state: the new lifecycle commands exist, and the old UI keeps functioning until the frontend migration lands.
 
-- [ ] **Step 4: Add lightweight public-command smoke coverage now that wiring exists**
+- [x] **Step 4: Add lightweight public-command smoke coverage now that wiring exists**
 
 Keep these smoke tests lightweight and reproducible by using Tauri's built-in unit-test harness directly instead of hitting the network or the real filesystem/resource probes. In `src/lib.rs`, build a `MockRuntime` app with `tauri::test::{mock_builder, mock_context, noop_assets, get_ipc_response, INVOKE_KEY}` and a real `WebviewWindowBuilder`. Reuse the Task 3 `install_test_download_driver(...)` seam for `llm_download_model` smoke coverage so the test drives the real public command surface without real HTTP. Reuse the Task 4 `install_test_model_load_preflight(...)` and `install_test_runtime_driver(...)` seams so the public `llm_chat` smoke path uses a deterministic preflight/runtime setup instead of relying on ambient `app_data_dir()` or real model files. The cancel smoke must start `llm_download_model`, wait until the fake download driver reports that `begin_download(...)` has already populated public state, and only then invoke `llm_cancel_download`; that ordering is mandatory so the smoke proves the public cancel command is observing a real in-flight download path instead of racing an unstarted command.
 
@@ -3526,7 +3526,7 @@ mod llm_command_smoke_tests {
 
 The first smoke test now has the correct ordering and a deterministic seam: the fake download driver is installed first, `llm_download_model` is invoked through the real IPC surface, the test waits until the driver signals that `begin_download(...)` has already populated public state, and only then invokes `llm_cancel_download`. That fixes the prior race where the cancel assertion ran before a public download path could exist. The second test keeps both the `TestModelLoadPreflightGuard` and the `TestRuntimeDriverGuard` alive for the duration of the test and asserts observable `llm://token/{streamId}` and `llm://done/{streamId}` events from the smoke webview, not a side channel on the runtime driver. The third test uses the ready-result fake download seam to cover public `llm_download_model` success and then re-checks `llm_status` through the same smoke app instance so the smoke suite proves both registration and shared managed-state wiring without network IO.
 
-- [ ] **Step 5: Run the backend verification commands**
+- [x] **Step 5: Run the backend verification commands**
 
 Run:
 
@@ -3542,7 +3542,7 @@ Expected:
 - `cargo test --lib`: PASS for the full library suite, including the Task Group 2 lifecycle tests in `commands/llm.rs` covering status derivation, download admission/resume/promotion, restart-staging cleanup, staged-import re-validation before promotion, runtime invalidation on post-promotion cleanup failures, the explicit three-phase lazy-load split, generation control, and the deterministic public-command smoke coverage for `llm_download_model`/`llm_cancel_download` finalizer cleanup, `llm_chat` event emission through the real app-event path driven by the Task 4 runtime seam, and observable shared app-managed state across the registered command surface
 - `cargo check`: PASS with the new commands registered
 
-- [ ] **Step 6: Commit the registered backend surface**
+- [x] **Step 6: Commit the registered backend surface**
 
 ```bash
 git add src/commands/llm.rs src/lib.rs src/commands/search.rs
@@ -3592,12 +3592,12 @@ git commit -m "feat: register llm lifecycle commands"
 - [ ] `cargo test successful_lazy_load_recovery_clears_prior_error_and_marks_loaded --lib`
 - [ ] `cargo test claimed_generation_finalizer_preserves_command_error_when_done_emit_fails --lib`
 - [ ] `cargo test blocking_generation_runner_uses_send_sync_event_sink_for_token_emission --lib`
-- [ ] `cargo test llm_cancel_download_command_waits_for_in_flight_download_completion --lib`
-- [ ] `cargo test llm_chat_command_emits_token_and_done_events_through_app_event_sink --lib`
-- [ ] `cargo test registered_llm_commands_observe_same_app_managed_llm_state --lib`
-- [ ] `cargo test --lib`
-- [ ] `cargo fmt --check`
-- [ ] `cargo check`
+- [x] `cargo test llm_cancel_download_command_waits_for_in_flight_download_completion --lib`
+- [x] `cargo test llm_chat_command_emits_token_and_done_events_through_app_event_sink --lib`
+- [x] `cargo test registered_llm_commands_observe_same_app_managed_llm_state --lib`
+- [x] `cargo test --lib`
+- [x] `cargo fmt --check`
+- [x] `cargo check`
 
 ## Requirement Coverage Map
 

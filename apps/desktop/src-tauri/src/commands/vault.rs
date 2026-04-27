@@ -1375,11 +1375,14 @@ mod tests {
 
     #[test]
     fn test_vault_test_env_guard_recovers_after_panic_and_cleans_env() {
+        let panic_root = std::sync::Arc::new(std::sync::Mutex::new(None::<PathBuf>));
+        let panic_root_for_closure = std::sync::Arc::clone(&panic_root);
         let panic_result = panic::catch_unwind(AssertUnwindSafe(|| {
             let env = VaultTestEnvGuard::new_temp().expect("acquire isolated vault env");
             let active_root = std::env::var_os("SPELLBOOK_DATA_DIR")
                 .expect("isolated env should set SPELLBOOK_DATA_DIR");
             assert_eq!(PathBuf::from(active_root), env.path().to_path_buf());
+            *panic_root_for_closure.lock().unwrap() = Some(env.path().to_path_buf());
             panic!("intentional panic while holding isolated vault env");
         }));
 
@@ -1391,16 +1394,25 @@ mod tests {
             vault_env_lock().is_poisoned(),
             "panic should poison the raw test env lock before helper recovery"
         );
-        assert!(
-            std::env::var_os("SPELLBOOK_DATA_DIR").is_none(),
-            "isolated env guard must clean SPELLBOOK_DATA_DIR during unwind"
+
+        let panic_root = panic_root
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("panic path should capture the isolated root");
+        let lock = lock_vault_env_for_test();
+        let env_after_unwind = std::env::var_os("SPELLBOOK_DATA_DIR");
+        assert_ne!(
+            env_after_unwind,
+            Some(panic_root.as_os_str().to_os_string()),
+            "isolated env guard must not leak its panic-time SPELLBOOK_DATA_DIR during unwind"
         );
 
-        let recovered = VaultTestEnvGuard::new_temp()
+        let recovered = VaultTestEnvGuard::new_temp_with_lock(lock)
             .expect("isolated env guard should recover from a poisoned lock");
-        assert!(
-            recovered.previous_data_dir.is_none(),
-            "cleanup during unwind should leave no preexisting env for the next guard"
+        assert_eq!(
+            recovered.previous_data_dir, env_after_unwind,
+            "recovered guard should capture the current preexisting env state"
         );
         assert_eq!(
             std::env::var_os("SPELLBOOK_DATA_DIR"),

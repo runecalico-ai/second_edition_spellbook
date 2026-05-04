@@ -350,6 +350,15 @@ fn copy_directory_recursive(source: &std::path::Path, destination: &std::path::P
     for entry in std::fs::read_dir(source)? {
         let entry = entry?;
         let source_path = entry.path();
+        if std::fs::symlink_metadata(&source_path)?
+            .file_type()
+            .is_symlink()
+        {
+            return Err(AppError::Validation(format!(
+                "Symbolic links are not allowed in embedding bundle copy: {}",
+                source_path.display()
+            )));
+        }
         let destination_path = destination.join(entry.file_name());
         if source_path.is_dir() {
             copy_directory_recursive(&source_path, &destination_path)?;
@@ -414,7 +423,7 @@ async fn download_embedding_bundle_with_resume(
             let mut stream = response.bytes_stream();
             while let Some(next) = stream.next().await {
                 if *cancel_rx.borrow_and_update() {
-                    return Err(AppError::Search("Embedding download cancelled".to_string()));
+                    return Err(AppError::EmbeddingDownloadCancelled);
                 }
 
                 let chunk = next
@@ -446,7 +455,7 @@ async fn download_embedding_bundle_with_resume(
 
     match result {
         Ok(()) => set_embeddings_status(state.as_ref(), EmbeddingsStatus::Initializing, None),
-        Err(error) if error.to_string().contains("cancelled") => {
+        Err(AppError::EmbeddingDownloadCancelled) => {
             set_embeddings_status(state.as_ref(), EmbeddingsStatus::NotProvisioned, None)
         }
         Err(error) => {
@@ -463,14 +472,8 @@ async fn install_imported_embedding_bundle(
 ) -> Result<(), AppError> {
     ensure_no_active_embedding_download(state.as_ref())?;
 
-    tokio::task::spawn_blocking({
-        let source = source.clone();
-        move || validate_embedding_bundle_layout(&source)
-    })
-    .await
-    .map_err(|error| AppError::Search(format!("embedding import validation task failed: {error}")))??;
-
     tokio::task::spawn_blocking(move || {
+        validate_embedding_bundle_layout(&source)?;
         let models_root = app_models_dir()?;
         let destination = models_root.join(EMBEDDING_DESTINATION);
         if destination.exists() {

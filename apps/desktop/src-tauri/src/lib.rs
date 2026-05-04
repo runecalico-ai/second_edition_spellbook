@@ -39,6 +39,7 @@ pub fn run() {
             app.manage(Arc::new(VaultMaintenanceState::default()));
             app.manage(Arc::new(ProvisioningState::default()));
             app.manage(Arc::new(LlmState::default()));
+            app.manage(Arc::new(EmbeddingState::default()));
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())
@@ -99,6 +100,10 @@ pub fn run() {
             llm_cancel_download,
             llm_cancel_generation,
             llm_chat,
+            embeddings_status,
+            embeddings_download_model,
+            embeddings_import_model_file,
+            embeddings_cancel_download,
             preview_import,
             preview_import_spell_json,
             import_spell_json,

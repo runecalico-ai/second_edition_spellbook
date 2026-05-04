@@ -128,6 +128,7 @@ git commit -m "docs: add task 3 embeddings preflight gate"
 - Modify: `apps/desktop/src-tauri/src/commands/mod.rs`
 
 - [x] **Step 1.1: Write failing tests for status enum serialization and default state**
+- [x] **Step 1.1 follow-up: Expand Task 1 tests for DTO/event serialization shape coverage** (`EmbeddingsStatusResponse`, `EmbeddingsDownloadProgressEvent`, `ReindexProgressEvent`, `SemanticSearchResult` flatten + `cosineDistance`, `ReindexResult`)
 
 ```rust
 // apps/desktop/src-tauri/src/commands/embeddings.rs
@@ -155,7 +156,7 @@ mod tests {
 }
 ```
 
-- [x] **Step 1.2: Run tests to capture missing module/type failure**
+- [x] **Step 1.2: Run test to document pre-existing compile blocker before embeddings wiring**
 
 Run:
 
@@ -164,7 +165,9 @@ cd apps/desktop/src-tauri
 cargo test embeddings_status_serializes_to_spec_values --lib
 ```
 
-Expected: FAIL due to missing `embeddings` module/types.
+Expected: FAIL before reaching embeddings checks because of a pre-existing compile error in `llm.rs`.
+
+Evidence: `cargo test embeddings_status_serializes_to_spec_values --lib` failed due to an unrelated `llm.rs` compile error (external/pre-existing blocker), not missing `embeddings` module/types.
 
 - [x] **Step 1.3: Implement model DTOs and state skeleton**
 
@@ -293,7 +296,7 @@ cargo test embedding_state_defaults_to_not_provisioned --lib
 cargo check
 ```
 
-Expected: PASS for both tests and successful `cargo check`.
+Expected: `cargo check` succeeds. The two filtered `--lib` tests should pass when ONNX Runtime (ORT) link prerequisites are available; without them, `cargo test --lib` may fail at link time—confirm PASS in CI or an ORT-ready dev shell if local linking fails. For checklist/evidence, note whether local `--lib` completed vs link-blocked so `[x]` is not read as universal PASS on every machine.
 
 - [x] **Step 1.5: Commit Task 1**
 
@@ -308,8 +311,12 @@ git commit -m "feat: scaffold embeddings state and ipc models"
 
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/embeddings.rs`
+- Modify: `apps/desktop/src-tauri/src/lib.rs` (manage `EmbeddingState`, register embedding IPC commands)
+- Modify: `apps/desktop/src-tauri/Cargo.toml` / `Cargo.lock` (direct `futures-util` dependency for HTTP byte-stream iteration)
 
-- [ ] **Step 2.1: Add failing tests for command-state transitions and validation paths**
+**Evidence (local, 2026-05-04):** `cargo check` in `apps/desktop/src-tauri` succeeded. Filtered `cargo test … --lib` did not link on this Windows shell: MSVC linker `LNK2019` unresolved `OrtGetApiBase` / `ort-sys` ONNX Runtime (same class of ORT blocker noted under Task 1 Step 1.4). Confirm PASS in CI or an ORT-configured environment.
+
+- [x] **Step 2.1: Add failing tests for command-state transitions and validation paths**
 
 ```rust
 #[tokio::test]
@@ -344,7 +351,7 @@ fn embedding_bundle_validation_rejects_missing_required_file() {
 }
 ```
 
-- [ ] **Step 2.2: Run tests to verify failure first**
+- [x] **Step 2.2: Run tests to verify failure first**
 
 Run:
 
@@ -356,7 +363,9 @@ cargo test embedding_bundle_validation_rejects_missing_required_file --lib
 
 Expected: FAIL before lifecycle and validation helpers exist.
 
-- [ ] **Step 2.3: Implement status/download/import/cancel command surface**
+**Outcome:** Before implementation: `cargo test` failed at compile (`build_embeddings_status_response` / `validate_embedding_bundle_layout` missing). After implementation: same filtered tests reached link stage then failed with ORT (`OrtGetApiBase`), not assertion failures.
+
+- [x] **Step 2.3: Implement status/download/import/cancel command surface**
 
 ```rust
 type EmbeddingDownloadControl = (
@@ -860,7 +869,9 @@ cargo check
 
 Expected: PASS.
 
-- [ ] **Step 2.5: Commit Task 2**
+- [x] **Step 2.4: Run tests for status and import validation, then command compile checks** — `cargo check`: PASS. Filtered lib tests: blocked at link (ORT), not failing assertions.
+
+- [x] **Step 2.5: Commit Task 2**
 
 ```bash
 git add src/commands/embeddings.rs

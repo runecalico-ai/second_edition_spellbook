@@ -4589,6 +4589,7 @@ dependencies = [
  "chrono",
  "dirs",
  "fastembed",
+ "futures-util",
  "hex",
  "jsonschema",
  "llama-cpp-2",

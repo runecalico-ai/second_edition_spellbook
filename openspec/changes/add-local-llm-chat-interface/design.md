@@ -409,7 +409,7 @@ pub async fn search_spells_semantic(
     db: State<'_, Arc<Pool>>,
     query: String,
     limit: Option<u32>,         // default: 10
-) -> Result<Vec<SpellSummary>, AppError>
+) -> Result<Vec<SemanticSearchResult>, AppError>
 
 // Backfill all spells that lack a vector (or re-index all with force=true)
 #[tauri::command]

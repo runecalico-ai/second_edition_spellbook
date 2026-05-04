@@ -64,7 +64,9 @@ The application SHALL maintain a vector index of all spells in `sqlite-vec`. It 
 #### Scenario: Embed on spell create
 - **WHEN** a new spell is created via any command (`create_spell`, import, etc.)
 - **AND** the embedding model is ready
-- **THEN** the backend SHALL generate and upsert a 384-dim vector for that spell into `sqlite-vec` before returning
+- **THEN** the spell write SHALL succeed and return without waiting for embedding upsert
+- **AND** the backend SHALL enqueue or attempt embedding generation for that spell while model readiness is available
+- **AND** the backend SHALL upsert a 384-dim vector for that spell into `sqlite-vec` when generation succeeds
 
 #### Scenario: Create while model is initializing or unavailable
 - **WHEN** a new spell is created and the embedding model is still initializing, not yet provisioned, or in a failed state
@@ -75,7 +77,8 @@ The application SHALL maintain a vector index of all spells in `sqlite-vec`. It 
 #### Scenario: Embed on spell update
 - **WHEN** an existing spell's name or description is updated
 - **AND** the embedding model is ready
-- **THEN** the backend SHALL regenerate and upsert the spell's vector in `sqlite-vec`
+- **THEN** the spell update SHALL succeed without waiting for embedding upsert
+- **AND** the backend SHALL enqueue or attempt regeneration and upsert of the spell's vector in `sqlite-vec`
 
 #### Scenario: Update while model is initializing or unavailable
 - **WHEN** an existing spell is updated while the embedding model is still initializing, not yet provisioned, or in a failed state
@@ -85,8 +88,9 @@ The application SHALL maintain a vector index of all spells in `sqlite-vec`. It 
 #### Scenario: Batch embed on import
 - **WHEN** an import operation completes and N spells were inserted
 - **AND** the embedding model is ready
-- **THEN** the backend SHALL embed all N spells in a single `fastembed-rs` batch call
-- **AND** SHALL upsert all resulting vectors into `sqlite-vec` in a single transaction
+- **THEN** the import write path SHALL complete without waiting for embedding batch completion
+- **AND** the backend SHALL enqueue or attempt embedding for all N spells in a single `fastembed-rs` batch call
+- **AND** SHALL upsert all resulting vectors into `sqlite-vec` in a single transaction when batch generation succeeds
 
 #### Scenario: Import while model is initializing or unavailable
 - **WHEN** an import operation completes while the embedding model is still initializing, not yet provisioned, or in a failed state

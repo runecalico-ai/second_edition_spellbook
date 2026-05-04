@@ -12,6 +12,8 @@ pub use search::*;
 pub use spell::*;
 pub mod bundle;
 pub use bundle::*;
+pub mod embeddings;
+pub use embeddings::*;
 pub mod canonical_spell;
 pub use canonical_spell::*;
 

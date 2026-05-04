@@ -1,4 +1,5 @@
 pub mod characters;
+pub mod embeddings;
 pub mod export;
 pub mod import;
 pub mod llm;
@@ -8,6 +9,7 @@ pub mod spells;
 pub mod vault;
 
 pub use characters::*;
+pub use embeddings::*;
 pub use export::*;
 pub use import::*;
 pub use llm::*;

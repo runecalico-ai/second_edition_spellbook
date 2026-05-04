@@ -856,19 +856,6 @@ pub async fn embeddings_cancel_download(
 }
 ```
 
-- [ ] **Step 2.4: Run tests for status and import validation, then command compile checks**
-
-Run:
-
-```bash
-cd apps/desktop/src-tauri
-cargo test embeddings_status_reports_downloading_progress --lib
-cargo test embedding_bundle_validation_rejects_missing_required_file --lib
-cargo check
-```
-
-Expected: PASS.
-
 - [x] **Step 2.4: Run tests for status and import validation, then command compile checks** — `cargo check`: PASS. Filtered lib tests: blocked at link (ORT), not failing assertions.
 
 - [x] **Step 2.5: Commit Task 2**

@@ -2722,12 +2722,14 @@ mod tests {
         let snapshot = build_status_response(
             std::path::Path::new("C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"),
             None,
-            false,
-            false,
-            true,
-            LlmStatus::NotProvisioned,
-            None,
-            true,
+            StatusDerivationInputs {
+                reprovision_active: false,
+                generation_active: false,
+                loaded: true,
+                explicit_status: LlmStatus::NotProvisioned,
+                last_error: None,
+                approved_model_present: true,
+            },
         );
 
         assert_eq!(snapshot.status, LlmStatus::Loaded);

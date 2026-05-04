@@ -289,7 +289,7 @@ async fn emit_download_progress(
     .map_err(|e| AppError::Search(format!("failed to emit embedding download progress: {e}")))
 }
 
-async fn wait_for_download_control_or_idle(
+fn wait_for_download_control_or_idle(
     state: &EmbeddingState,
 ) -> Result<
     Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>,
@@ -299,15 +299,15 @@ async fn wait_for_download_control_or_idle(
         return Ok(None);
     };
 
-    loop {
-        if let Some((session_epoch, cancel_tx, completion_rx)) = current_download_control(state)? {
+    match current_download_control(state)? {
+        Some((session_epoch, cancel_tx, completion_rx)) => {
             if session_epoch == target_epoch {
-                return Ok(Some((cancel_tx, completion_rx)));
+                Ok(Some((cancel_tx, completion_rx)))
+            } else {
+                Ok(None)
             }
-            return Ok(None);
         }
-
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        None => Ok(None),
     }
 }
 
@@ -338,7 +338,7 @@ async fn wait_for_download_cleanup_or_idle(
 }
 
 async fn cancel_embedding_download_and_wait(state: &EmbeddingState) -> Result<(), AppError> {
-    let Some((cancel_tx, completion_rx)) = wait_for_download_control_or_idle(state).await? else {
+    let Some((cancel_tx, completion_rx)) = wait_for_download_control_or_idle(state)? else {
         return Ok(());
     };
     let _ = cancel_tx.send(true);
@@ -717,4 +717,30 @@ mod tests {
             .to_string()
             .contains("Missing required embedding bundle file"));
     }
+
+    #[test]
+    fn cancel_wait_returns_none_when_no_active_download() {
+        let state = EmbeddingState::default();
+        assert_eq!(wait_for_download_control_or_idle(&state).unwrap(), None);
+    }
+
+    #[test]
+    fn cancel_wait_returns_controls_when_download_matches_epoch() {
+        let state = EmbeddingState::default();
+        let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
+        let (completion_tx, _completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
+        {
+            *state.download_state.lock().unwrap() = Some(ActiveEmbeddingDownload {
+                session_epoch: 1,
+                bytes_downloaded: 0,
+                total_bytes: 1,
+                cancel_tx,
+                completion_tx,
+            });
+        }
+
+        assert!(wait_for_download_control_or_idle(&state).unwrap().is_some());
+    }
+
 }

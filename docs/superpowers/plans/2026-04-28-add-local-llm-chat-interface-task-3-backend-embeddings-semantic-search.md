@@ -67,7 +67,7 @@
 - Read: `apps/desktop/src-tauri/src/commands/provisioning.rs`
 - Read: `docs/dev/local_llm_infrastructure_spike.md`
 
-- [ ] **Step 0.1: Verify approved dependency lines exist and no manifest edits are required**
+- [x] **Step 0.1: Verify approved dependency lines exist and no manifest edits are required**
 
 Run:
 
@@ -77,8 +77,9 @@ rg -n "^(fastembed|reqwest|sha2|sysinfo|sqlite-vec)\s*=" Cargo.toml
 ```
 
 Expected: approved crates already present with pinned versions from Task Group 1.
+Outcome/Evidence: Verified in `apps/desktop/src-tauri/Cargo.toml` via `rg` — `fastembed (=5.13.3)`, `reqwest (=0.13.2)`, `sysinfo (=0.38.4)`, `sqlite-vec (0.1.6)`, and `sha2 (0.10.9)` are present; no manifest edit required.
 
-- [ ] **Step 0.2: Verify embedding provisioning constants and file inventory are present**
+- [x] **Step 0.2: Verify embedding provisioning constants and file inventory are present**
 
 Run:
 
@@ -87,8 +88,9 @@ cd apps/desktop/src-tauri
 rg -n "EMBEDDING_(URL|MANIFEST_SHA|SIZE_BYTES|DESTINATION|EXPECTED_FILES|ASSET)" src/commands/provisioning.rs
 ```
 Expected: all required embedding asset constants found.
+Outcome/Evidence: Verified in `apps/desktop/src-tauri/src/commands/provisioning.rs` via `rg` — `EMBEDDING_URL`, `EMBEDDING_MANIFEST_SHA`, `EMBEDDING_SIZE_BYTES`, `EMBEDDING_DESTINATION`, `EMBEDDING_EXPECTED_FILES`, and `EMBEDDING_ASSET` are present.
 
-- [ ] **Step 0.3: Verify model asset contract details match the spike ledger**
+- [x] **Step 0.3: Verify model asset contract details match the spike ledger**
 
 Run:
 
@@ -98,8 +100,9 @@ rg -n "all-MiniLM-L6-v2|5f1b8cd78bc4fb444dd171e59b18f3a3af89a079|FileInventoryOn
 ```
 
 Expected: frozen bundle revision/hash strategy is documented and available for Task 3 implementation.
+Outcome/Evidence: Verified in `docs/dev/local_llm_infrastructure_spike.md` via `rg` — `all-MiniLM-L6-v2`, revision/hash `5f1b8cd78bc4fb444dd171e59b18f3a3af89a079`, and `FileInventoryOnly` strategy are explicitly documented.
 
-- [ ] **Step 0.4: Record and sync semantic search mismatch in the delta search spec before implementation handoff**
+- [x] **Step 0.4: Record and sync semantic search mismatch in the delta search spec before implementation handoff**
 
 Run:
 
@@ -109,6 +112,7 @@ rg -n "search_semantic|search_spells_semantic|Vec<SpellSummary>|SemanticSearchRe
 ```
 
 Expected: `specs/search/spec.md` reflects `search_spells_semantic -> Vec<SemanticSearchResult>` with `cosineDistance`, stale `Vec<SpellSummary>` wording is removed, and any stale synchronous write-path wording (for example "embed before returning") is replaced with explicit non-blocking write semantics (write returns without waiting on embedding upsert) before handoff.
+Outcome/Evidence: Verified in `openspec/changes/add-local-llm-chat-interface/specs/search/spec.md` via `rg` — `search_spells_semantic` and `cosineDistance` are present, no `Vec<SpellSummary>` match appears, and write-path semantics explicitly state returns `without waiting` for embedding upsert/batch completion.
 
 - [ ] **Step 0.5: Commit preflight evidence**
 
@@ -165,9 +169,9 @@ cd apps/desktop/src-tauri
 cargo test embeddings_status_serializes_to_spec_values --lib
 ```
 
-Expected: FAIL before reaching embeddings checks because of a pre-existing compile error in `llm.rs`.
+Expected: FAIL at link time in this local Windows shell due to pre-existing ONNX Runtime (ORT) linker errors (`OrtGetApiBase` / `LNK2019` / `LNK1120`) before embeddings assertions execute.
 
-Evidence: `cargo test embeddings_status_serializes_to_spec_values --lib` failed due to an unrelated `llm.rs` compile error (external/pre-existing blocker), not missing `embeddings` module/types.
+Evidence: `cargo test embeddings_status_serializes_to_spec_values --lib` failed at the ORT link stage (`OrtGetApiBase` unresolved symbol; `LNK2019`/`LNK1120`) as an external/pre-existing environment blocker, not due to missing `embeddings` module/types.
 
 - [x] **Step 1.3: Implement model DTOs and state skeleton**
 
@@ -298,7 +302,12 @@ cargo check
 
 Expected: `cargo check` succeeds. The two filtered `--lib` tests should pass when ONNX Runtime (ORT) link prerequisites are available; without them, `cargo test --lib` may fail at link time—confirm PASS in CI or an ORT-ready dev shell if local linking fails. For checklist/evidence, note whether local `--lib` completed vs link-blocked so `[x]` is not read as universal PASS on every machine.
 
-- [x] **Step 1.5: Commit Task 1**
+Outcome/Evidence (2026-05-05, local Windows): fixed a local compile blocker in `src/commands/embeddings.rs` test (`assert_eq!(..., None)` on non-`PartialEq` watch tuple) by switching to `.is_none()`. Re-ran:
+- `cargo test embeddings_status_serializes_to_spec_values --lib` -> reached link stage, then failed with ORT linker errors (`OrtGetApiBase`, `LNK2019`/`LNK1120`), no embeddings assertion failure.
+- `cargo test embedding_state_defaults_to_not_provisioned --lib` -> same ORT link blocker.
+- `cargo check` -> PASS.
+
+- [ ] **Step 1.5: Commit Task 1**
 
 ```bash
 git add src/models/embeddings.rs src/models/mod.rs src/commands/embeddings.rs src/commands/mod.rs
@@ -314,7 +323,7 @@ git commit -m "feat: scaffold embeddings state and ipc models"
 - Modify: `apps/desktop/src-tauri/src/lib.rs` (manage `EmbeddingState`, register embedding IPC commands)
 - Modify: `apps/desktop/src-tauri/Cargo.toml` / `Cargo.lock` (direct `futures-util` dependency for HTTP byte-stream iteration)
 
-**Evidence (local, 2026-05-04):** `cargo check` in `apps/desktop/src-tauri` succeeded. Filtered `cargo test … --lib` did not link on this Windows shell: MSVC linker `LNK2019` unresolved `OrtGetApiBase` / `ort-sys` ONNX Runtime (same class of ORT blocker noted under Task 1 Step 1.4). Confirm PASS in CI or an ORT-configured environment.
+**Evidence (local, 2026-05-05 re-verification):** `cargo check` in `apps/desktop/src-tauri` succeeded. Filtered `cargo test … --lib` did not link on this Windows shell: MSVC linker `LNK2019` unresolved `OrtGetApiBase` / `ort-sys` ONNX Runtime (same class of ORT blocker noted under Task 1 Step 1.4). Confirm PASS in CI or an ORT-configured environment.
 
 - [x] **Step 2.1: Add failing tests for command-state transitions and validation paths**
 
@@ -856,9 +865,11 @@ pub async fn embeddings_cancel_download(
 }
 ```
 
-- [x] **Step 2.4: Run tests for status and import validation, then command compile checks** — `cargo check`: PASS. Filtered lib tests: blocked at link (ORT), not failing assertions.
+- [x] **Step 2.4: Run tests for status and import validation, then command compile checks** — Re-verified on 2026-05-05 (local Windows): `cargo test embeddings_status_reports_downloading_progress --lib` and `cargo test embedding_bundle_validation_rejects_missing_required_file --lib` both reached link stage and failed on the known ORT linker blocker (`OrtGetApiBase`, `LNK2019`/`LNK1120`), not assertions; `cargo check` passed.
 
-- [x] **Step 2.5: Commit Task 2**
+Task 2 implementation verification is complete through Step 2.4 evidence; Step 2.5 remains intentionally deferred and unchecked pending an explicit commit request.
+
+- [ ] **Step 2.5: Commit Task 2**
 
 ```bash
 git add src/commands/embeddings.rs

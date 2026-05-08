@@ -274,6 +274,18 @@ fn embedding_file_url(relative_path: &str) -> Result<String, AppError> {
     ))
 }
 
+fn initial_resumed_bytes(resume_from: u64, expected_size: u64) -> u64 {
+    resume_from.min(expected_size)
+}
+
+fn resumed_bytes_after_response(resume_from: u64, status: reqwest::StatusCode) -> u64 {
+    if resume_from > 0 && status == reqwest::StatusCode::OK {
+        0
+    } else {
+        resume_from
+    }
+}
+
 async fn emit_download_progress(
     app: &tauri::AppHandle,
     bytes_downloaded: u64,
@@ -393,11 +405,19 @@ async fn download_embedding_bundle_with_resume(
             }
 
             let staging = destination.with_extension("partial");
-            let resume_from = match tokio::fs::metadata(&staging).await {
+            let resume_from = initial_resumed_bytes(
+                match tokio::fs::metadata(&staging).await {
                 Ok(metadata) => metadata.len(),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
                 Err(error) => return Err(AppError::from(error)),
-            };
+            },
+                expected.size_bytes,
+            );
+
+            aggregate_downloaded = aggregate_downloaded.saturating_add(resume_from);
+            let current = aggregate_downloaded.min(total_bytes);
+            update_download_progress(state.as_ref(), current, total_bytes)?;
+            emit_download_progress(&app, current, total_bytes).await?;
 
             let mut request = client.get(embedding_file_url(expected.relative_path)?);
             if resume_from > 0 {
@@ -414,11 +434,20 @@ async fn download_embedding_bundle_with_resume(
                 )));
             }
 
+            let effective_resumed = resumed_bytes_after_response(resume_from, response.status());
             let mut file = if resume_from == 0 || response.status() == reqwest::StatusCode::OK {
                 tokio::fs::File::create(&staging).await?
             } else {
                 tokio::fs::OpenOptions::new().append(true).open(&staging).await?
             };
+
+            if effective_resumed < resume_from {
+                aggregate_downloaded =
+                    aggregate_downloaded.saturating_sub(resume_from - effective_resumed);
+                let current = aggregate_downloaded.min(total_bytes);
+                update_download_progress(state.as_ref(), current, total_bytes)?;
+                emit_download_progress(&app, current, total_bytes).await?;
+            }
 
             let mut stream = response.bytes_stream();
             while let Some(next) = stream.next().await {
@@ -724,7 +753,9 @@ mod tests {
     #[test]
     fn cancel_wait_returns_none_when_no_active_download() {
         let state = EmbeddingState::default();
-        assert_eq!(wait_for_download_control_or_idle(&state).unwrap(), None);
+        assert!(wait_for_download_control_or_idle(&state)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -744,6 +775,28 @@ mod tests {
         }
 
         assert!(wait_for_download_control_or_idle(&state).unwrap().is_some());
+    }
+
+    #[test]
+    fn initial_resumed_bytes_is_capped_to_expected_size() {
+        assert_eq!(initial_resumed_bytes(120, 500), 120);
+        assert_eq!(initial_resumed_bytes(700, 500), 500);
+    }
+
+    #[test]
+    fn resumed_bytes_after_response_keeps_partial_content_for_206() {
+        assert_eq!(
+            resumed_bytes_after_response(120, reqwest::StatusCode::PARTIAL_CONTENT),
+            120
+        );
+    }
+
+    #[test]
+    fn resumed_bytes_after_response_resets_for_200_restart() {
+        assert_eq!(
+            resumed_bytes_after_response(120, reqwest::StatusCode::OK),
+            0
+        );
     }
 
 }

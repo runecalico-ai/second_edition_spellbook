@@ -1430,7 +1430,7 @@ Expected: PASS.
 
 Outcome/Evidence: In this shell, `cargo test post_write_hook_skips_when_not_ready --lib` is blocked by ORT linker errors (`OrtGetApiBase` unresolved), while `cargo check` succeeds (`Finished dev profile`).
 
-- [ ] **Step 4.5: Commit Task 4**
+- [x] **Step 4.5: Commit Task 4**
 
 ```bash
 git add src/commands/spells.rs src/commands/embeddings.rs

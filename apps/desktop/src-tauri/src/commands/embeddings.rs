@@ -41,7 +41,7 @@ pub(crate) struct ActiveEmbeddingDownload {
 pub struct EmbeddingState {
     /// Populated when the embedding model is loaded (Task 3+).
     #[allow(dead_code)]
-    pub(crate) model: Mutex<Option<Arc<TextEmbedding>>>,
+    pub(crate) model: Mutex<Option<Arc<Mutex<TextEmbedding>>>>,
     pub(crate) status: Mutex<EmbeddingsStatus>,
     pub(crate) last_error: Mutex<Option<String>>,
     pub(crate) download_state: Mutex<Option<ActiveEmbeddingDownload>>,
@@ -70,6 +70,7 @@ const DOWNLOAD_CLEANUP_WAIT_POLL_INTERVAL: std::time::Duration = std::time::Dura
 const DOWNLOAD_CLEANUP_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 const DOWNLOAD_CONTROL_WAIT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
 const DOWNLOAD_CONTROL_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
+type SpellEmbeddingRow = (i64, String, String);
 
 fn set_embeddings_status(
     state: &EmbeddingState,
@@ -152,6 +153,312 @@ fn ensure_no_active_embedding_download(state: &EmbeddingState) -> Result<(), App
         ));
     }
     Ok(())
+}
+
+fn compose_spell_embedding_text(name: &str, description: &str) -> String {
+    format!("{}\n\n{}", name.trim(), description.trim())
+}
+
+fn require_embedding_dimension(vector: &[f32]) -> Result<(), AppError> {
+    if vector.len() != 384 {
+        return Err(AppError::Search(format!(
+            "Embedding dimension mismatch: expected 384, got {}",
+            vector.len()
+        )));
+    }
+    Ok(())
+}
+
+fn load_embedding_model_blocking(
+    models_root: &std::path::Path,
+) -> Result<std::sync::Arc<fastembed::TextEmbedding>, AppError> {
+    use fastembed::{
+        EmbeddingModel, InitOptionsUserDefined, Pooling, TextEmbedding, TokenizerFiles,
+        UserDefinedEmbeddingModel,
+    };
+
+    let model_dir = models_root.join(EMBEDDING_DESTINATION);
+    let read_required_file = |name: &str| -> Result<Vec<u8>, AppError> {
+        let path = model_dir.join(name);
+        std::fs::read(&path).map_err(|error| {
+            AppError::Search(format!(
+                "failed to read embedding model file {}: {error}",
+                path.display()
+            ))
+        })
+    };
+
+    let model = UserDefinedEmbeddingModel::new(
+        read_required_file("model.onnx")?,
+        TokenizerFiles {
+            tokenizer_file: read_required_file("tokenizer.json")?,
+            config_file: read_required_file("config.json")?,
+            special_tokens_map_file: read_required_file("special_tokens_map.json")?,
+            tokenizer_config_file: read_required_file("tokenizer_config.json")?,
+        },
+    )
+    .with_pooling(Pooling::Mean)
+    .with_quantization(TextEmbedding::get_quantization_mode(
+        &EmbeddingModel::AllMiniLML6V2,
+    ));
+
+    TextEmbedding::try_new_from_user_defined(model, InitOptionsUserDefined::default())
+        .map(std::sync::Arc::new)
+        .map_err(|e| AppError::Search(format!("failed to initialize fastembed runtime: {e}")))
+}
+
+async fn await_ready_model_with_timeout(
+    state: std::sync::Arc<EmbeddingState>,
+    timeout: std::time::Duration,
+) -> Result<std::sync::Arc<std::sync::Mutex<fastembed::TextEmbedding>>, AppError> {
+    let wait_for_ready = async move {
+        loop {
+            let status = *state
+                .status
+                .lock()
+                .map_err(|_| AppError::Search("embedding status lock poisoned".to_string()))?;
+
+            if status == EmbeddingsStatus::Ready {
+                if let Some(model) = state
+                    .model
+                    .lock()
+                    .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?
+                    .clone()
+                {
+                    return Ok(model);
+                }
+
+                // Treat transient Ready-without-model as an in-flight race and keep polling.
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                continue;
+            }
+
+            if status == EmbeddingsStatus::Error {
+                let last_error = state
+                    .last_error
+                    .lock()
+                    .map_err(|_| AppError::Search("embedding error lock poisoned".to_string()))?
+                    .clone()
+                    .unwrap_or_else(|| "embedding state entered error without message".to_string());
+                return Err(AppError::Search(last_error));
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    };
+
+    tokio::time::timeout(timeout, wait_for_ready)
+        .await
+        .map_err(|_| AppError::Search("timed out waiting for embedding model readiness".to_string()))?
+}
+
+fn embed_spell_text(model: &std::sync::Mutex<fastembed::TextEmbedding>, text: &str) -> Result<Vec<f32>, AppError> {
+    let mut model = model
+        .lock()
+        .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
+    let vectors = model
+        .embed(vec![text.to_string()], None)
+        .map_err(|e| AppError::Search(format!("failed to embed spell text: {e}")))?;
+    if vectors.len() != 1 {
+        return Err(AppError::Search(format!(
+            "embedding cardinality mismatch: expected 1, got {}",
+            vectors.len()
+        )));
+    }
+    let vector = vectors
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::Search("missing embedding vector output".to_string()))?;
+    require_embedding_dimension(&vector)?;
+    Ok(vector)
+}
+
+fn embed_spell_texts_batch(
+    model: &std::sync::Mutex<fastembed::TextEmbedding>,
+    texts: &[String],
+) -> Result<Vec<Vec<f32>>, AppError> {
+    let mut model = model
+        .lock()
+        .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
+    let vectors = model
+        .embed(texts.to_vec(), None)
+        .map_err(|e| AppError::Search(format!("failed to embed spell text batch: {e}")))?;
+    if vectors.len() != texts.len() {
+        return Err(AppError::Search(format!(
+            "embedding cardinality mismatch: expected {}, got {}",
+            texts.len(),
+            vectors.len()
+        )));
+    }
+    for vector in &vectors {
+        require_embedding_dimension(vector)?;
+    }
+    Ok(vectors)
+}
+
+fn load_reindex_candidates(
+    pool: &std::sync::Arc<crate::db::Pool>,
+    force: bool,
+) -> Result<Vec<SpellEmbeddingRow>, AppError> {
+    let conn = pool.get()?;
+    let sql = if force {
+        "SELECT s.id, s.name, s.description
+         FROM spell s
+         ORDER BY s.id"
+    } else {
+        "SELECT s.id, s.name, s.description
+         FROM spell s
+         LEFT JOIN spell_vec v ON v.rowid = s.id
+         WHERE v.rowid IS NULL
+         ORDER BY s.id"
+    };
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+async fn upsert_embedding_chunk(
+    pool: std::sync::Arc<crate::db::Pool>,
+    rows: &[SpellEmbeddingRow],
+    vectors: &[Vec<f32>],
+) -> Result<(), AppError> {
+    if rows.len() != vectors.len() {
+        return Err(AppError::Search(format!(
+            "upsert cardinality mismatch: rows={}, vectors={}",
+            rows.len(),
+            vectors.len()
+        )));
+    }
+
+    let owned_rows = rows.to_vec();
+    let owned_vectors = vectors.to_vec();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get()?;
+        let tx = conn.unchecked_transaction()?;
+        for (idx, row) in owned_rows.iter().enumerate() {
+            let vector_json = serde_json::to_string(&owned_vectors[idx]).map_err(|e| {
+                AppError::Search(format!("failed to serialize embedding vector: {e}"))
+            })?;
+            tx.execute("DELETE FROM spell_vec WHERE rowid = ?1", rusqlite::params![row.0])?;
+            tx.execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![row.0, vector_json],
+            )?;
+        }
+        tx.commit()?;
+        Ok::<(), AppError>(())
+    })
+    .await
+    .map_err(|e| AppError::Search(format!("embedding upsert task failed: {e}")))?
+}
+
+async fn embed_single_spell_row(
+    state: std::sync::Arc<EmbeddingState>,
+    pool: std::sync::Arc<crate::db::Pool>,
+    spell_id: i64,
+    name: String,
+    description: String,
+) -> Result<(), AppError> {
+    let model = await_ready_model_with_timeout(state, std::time::Duration::from_secs(5)).await?;
+    let text = compose_spell_embedding_text(&name, &description);
+
+    let vector = tokio::task::spawn_blocking(move || embed_spell_text(model.as_ref(), &text))
+        .await
+        .map_err(|e| AppError::Search(format!("single embedding task failed: {e}")))??;
+
+    let rows = vec![(spell_id, name, description)];
+    let vectors = vec![vector];
+    upsert_embedding_chunk(pool, &rows, &vectors).await
+}
+
+pub async fn enqueue_spell_embedding_if_ready(
+    state: Arc<EmbeddingState>,
+    pool: Arc<crate::db::Pool>,
+    spell_id: i64,
+    name: String,
+    description: String,
+) -> Result<(), AppError> {
+    let status = *state
+        .status
+        .lock()
+        .map_err(|_| AppError::Search("embedding status lock poisoned".to_string()))?;
+
+    if status != EmbeddingsStatus::Ready {
+        let pool_for_cleanup = Arc::clone(&pool);
+        tauri::async_runtime::spawn(async move {
+            let cleanup = tokio::task::spawn_blocking(move || {
+                let conn = pool_for_cleanup.get()?;
+                conn.execute(
+                    "DELETE FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![spell_id],
+                )?;
+                Ok::<(), AppError>(())
+            })
+            .await;
+
+            match cleanup {
+                Ok(Ok(())) => {
+                    tracing::info!(spell_id, ?status, "embedding skipped; stale vector invalidated")
+                }
+                Ok(Err(error)) => tracing::warn!(
+                    spell_id,
+                    ?status,
+                    ?error,
+                    "embedding skipped; stale vector invalidation failed (non-fatal)"
+                ),
+                Err(join_error) => tracing::warn!(
+                    spell_id,
+                    ?status,
+                    ?join_error,
+                    "embedding skipped; stale vector invalidation join failed (non-fatal)"
+                ),
+            }
+        });
+        return Ok(());
+    }
+
+    let state_for_task = Arc::clone(&state);
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = embed_single_spell_row(state_for_task, pool, spell_id, name, description).await
+        {
+            tracing::warn!(spell_id, ?error, "embedding write hook failed (non-fatal)");
+        }
+    });
+
+    Ok(())
+}
+
+async fn embed_import_batch_rows(
+    state: std::sync::Arc<EmbeddingState>,
+    pool: std::sync::Arc<crate::db::Pool>,
+    rows: Vec<SpellEmbeddingRow>,
+) -> Result<(), AppError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let model = await_ready_model_with_timeout(state, std::time::Duration::from_secs(10)).await?;
+    let texts: Vec<String> = rows
+        .iter()
+        .map(|(_, name, description)| compose_spell_embedding_text(name, description))
+        .collect();
+    let vectors =
+        tokio::task::spawn_blocking(move || embed_spell_texts_batch(model.as_ref(), &texts))
+            .await
+            .map_err(|e| AppError::Search(format!("batch embedding task failed: {e}")))??;
+
+    upsert_embedding_chunk(pool, &rows, &vectors).await
+}
+
+#[cfg(test)]
+fn test_pool() -> crate::db::Pool {
+    crate::db::init_db(None, false).expect("test pool")
 }
 
 /// Used by later tasks for vault-relative bundle detection.
@@ -856,6 +1163,18 @@ mod tests {
     }
 
     #[test]
+    fn embedding_text_composition_is_stable() {
+        let text = compose_spell_embedding_text(" Shield ", " Blocks attacks. ");
+        assert_eq!(text, "Shield\n\nBlocks attacks.");
+    }
+
+    #[test]
+    fn vector_dimension_guard_rejects_non_384_vectors() {
+        let err = require_embedding_dimension(&vec![0.0_f32; 128]).unwrap_err();
+        assert!(err.to_string().contains("384"));
+    }
+
+    #[test]
     fn m_004_embedding_bundle_validation_rejects_size_mismatch() {
         let tmp = tempfile::tempdir().unwrap();
         let expected = &EMBEDDING_EXPECTED_FILES[0];
@@ -1092,6 +1411,40 @@ mod tests {
         assert!(!is_embedding_download_cancelled(&AppError::Validation(
             EMBEDDING_DOWNLOAD_CANCELLED_MESSAGE.to_string()
         )));
+    }
+
+    #[tokio::test]
+    async fn await_ready_model_treats_ready_without_model_as_transient() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Ready;
+
+        let result =
+            await_ready_model_with_timeout(Arc::clone(&state), std::time::Duration::from_millis(50))
+                .await;
+        match result {
+            Err(AppError::Search(message)) => {
+                assert!(message.contains("timed out waiting for embedding model readiness"));
+            }
+            Ok(_) => panic!("expected timeout while model is absent, got model"),
+            Err(other) => panic!("expected Search timeout while model absent, got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn post_write_hook_skips_when_not_ready() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::NotProvisioned;
+
+        let result = enqueue_spell_embedding_if_ready(
+            state,
+            Arc::new(test_pool()),
+            42,
+            "Shield".to_string(),
+            "Protects against attacks".to_string(),
+        )
+        .await;
+
+        assert!(result.is_ok());
     }
 }
 

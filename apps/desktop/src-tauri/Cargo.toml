@@ -14,7 +14,12 @@ r2d2 = "0.8"
 r2d2_sqlite = "0.24"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
-fastembed = { version = "=5.13.3", default-features = false }
+# H-001: `TextEmbedding::try_new` / `InitOptions` path requires `hf-hub`; ORT
+# binaries match the prior default-runtime expectation for desktop builds.
+fastembed = { version = "=5.13.3", default-features = false, features = [
+    "hf-hub-native-tls",
+    "ort-download-binaries-native-tls",
+] }
 llama-cpp-2 = { version = "=0.1.145", default-features = false }
 reqwest = { version = "=0.13.2", default-features = false, features = ["rustls", "stream"] }
 sysinfo = { version = "=0.38.4", default-features = false, features = ["disk", "system"] }

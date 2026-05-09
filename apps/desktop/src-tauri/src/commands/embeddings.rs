@@ -15,10 +15,9 @@ use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 
-// M-005: use a runtime-generic `AppHandle` type alias so the
-// `embeddings_download_model` command can be dispatched through both the real
-// Wry runtime and `tauri::test::MockRuntime` in command-boundary tests below.
-// Mirrors the existing pattern in `commands/llm.rs::LlmCommandAppHandle`.
+// Runtime-generic `AppHandle` so `embeddings_download_model` can be dispatched
+// through both the real Wry runtime and `tauri::test::MockRuntime` in
+// command-boundary tests below (mirrors `commands/llm.rs::LlmCommandAppHandle`).
 #[cfg(test)]
 pub(crate) type EmbeddingsCommandAppHandle = tauri::AppHandle<tauri::test::MockRuntime>;
 #[cfg(not(test))]
@@ -174,40 +173,18 @@ fn require_embedding_dimension(vector: &[f32]) -> Result<(), AppError> {
     Ok(())
 }
 
+/// H-001: Task 3 Step 3.3 (`TextEmbedding::try_new` + `InitOptions` / `TextInitOptions`); startup wiring
+/// (`initialize_embeddings_after_startup`, Task 7 plan) will call this from `spawn_blocking`.
+#[allow(dead_code)]
 fn load_embedding_model_blocking(
     models_root: &std::path::Path,
 ) -> Result<std::sync::Arc<fastembed::TextEmbedding>, AppError> {
-    use fastembed::{
-        EmbeddingModel, InitOptionsUserDefined, Pooling, TextEmbedding, TokenizerFiles,
-        UserDefinedEmbeddingModel,
-    };
+    use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
-    let model_dir = models_root.join(EMBEDDING_DESTINATION);
-    let read_required_file = |name: &str| -> Result<Vec<u8>, AppError> {
-        let path = model_dir.join(name);
-        std::fs::read(&path).map_err(|error| {
-            AppError::Search(format!(
-                "failed to read embedding model file {}: {error}",
-                path.display()
-            ))
-        })
-    };
+    let mut options = InitOptions::new(EmbeddingModel::AllMiniLML6V2);
+    options.cache_dir = models_root.to_path_buf();
 
-    let model = UserDefinedEmbeddingModel::new(
-        read_required_file("model.onnx")?,
-        TokenizerFiles {
-            tokenizer_file: read_required_file("tokenizer.json")?,
-            config_file: read_required_file("config.json")?,
-            special_tokens_map_file: read_required_file("special_tokens_map.json")?,
-            tokenizer_config_file: read_required_file("tokenizer_config.json")?,
-        },
-    )
-    .with_pooling(Pooling::Mean)
-    .with_quantization(TextEmbedding::get_quantization_mode(
-        &EmbeddingModel::AllMiniLML6V2,
-    ));
-
-    TextEmbedding::try_new_from_user_defined(model, InitOptionsUserDefined::default())
+    TextEmbedding::try_new(options)
         .map(std::sync::Arc::new)
         .map_err(|e| AppError::Search(format!("failed to initialize fastembed runtime: {e}")))
 }
@@ -223,19 +200,20 @@ async fn await_ready_model_with_timeout(
                 .lock()
                 .map_err(|_| AppError::Search("embedding status lock poisoned".to_string()))?;
 
+            // M-001: Task 3 Step 3.3 — fail fast when status is Ready but the model slot is empty
+            // (plan lines 964–971).
             if status == EmbeddingsStatus::Ready {
-                if let Some(model) = state
+                let model = state
                     .model
                     .lock()
                     .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?
                     .clone()
-                {
-                    return Ok(model);
-                }
-
-                // Treat transient Ready-without-model as an in-flight race and keep polling.
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                continue;
+                    .ok_or_else(|| {
+                        AppError::Search(
+                            "embedding status is ready but model is not loaded".to_string(),
+                        )
+                    })?;
+                return Ok(model);
             }
 
             if status == EmbeddingsStatus::Error {
@@ -259,50 +237,46 @@ async fn await_ready_model_with_timeout(
         })?
 }
 
+/// M-002: Task 3 Step 3.3 — take `&mut TextEmbedding` (fastembed `embed` uses
+/// `&mut self`); callers lock the outer `Mutex` in `spawn_blocking` (plan lines
+/// 993–1003, adjusted for fastembed 5.13).
 fn embed_spell_text(
-    model: &std::sync::Mutex<fastembed::TextEmbedding>,
+    model: &mut fastembed::TextEmbedding,
     text: &str,
 ) -> Result<Vec<f32>, AppError> {
-    let mut model = model
-        .lock()
-        .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
     let vectors = model
-        .embed(vec![text.to_string()], None)
-        .map_err(|e| AppError::Search(format!("failed to embed spell text: {e}")))?;
-    if vectors.len() != 1 {
-        return Err(AppError::Search(format!(
-            "embedding cardinality mismatch: expected 1, got {}",
-            vectors.len()
-        )));
-    }
+        .embed(vec![text.to_owned()], None)
+        .map_err(|e| AppError::Search(format!("single embedding failed: {e}")))?;
+
     let vector = vectors
         .into_iter()
         .next()
-        .ok_or_else(|| AppError::Search("missing embedding vector output".to_string()))?;
+        .ok_or_else(|| AppError::Search("single embedding returned zero vectors".to_string()))?;
     require_embedding_dimension(&vector)?;
     Ok(vector)
 }
 
+/// M-002: Task 3 Step 3.3 — batch variant (plan lines 1005–1025).
 fn embed_spell_texts_batch(
-    model: &std::sync::Mutex<fastembed::TextEmbedding>,
+    model: &mut fastembed::TextEmbedding,
     texts: &[String],
 ) -> Result<Vec<Vec<f32>>, AppError> {
-    let mut model = model
-        .lock()
-        .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
     let vectors = model
         .embed(texts.to_vec(), None)
-        .map_err(|e| AppError::Search(format!("failed to embed spell text batch: {e}")))?;
+        .map_err(|e| AppError::Search(format!("batch embedding failed: {e}")))?;
+
     if vectors.len() != texts.len() {
         return Err(AppError::Search(format!(
-            "embedding cardinality mismatch: expected {}, got {}",
+            "batch embedding cardinality mismatch: expected {}, got {}",
             texts.len(),
             vectors.len()
         )));
     }
+
     for vector in &vectors {
         require_embedding_dimension(vector)?;
     }
+
     Ok(vectors)
 }
 
@@ -381,9 +355,14 @@ async fn embed_single_spell_row(
     let model = await_ready_model_with_timeout(state, std::time::Duration::from_secs(5)).await?;
     let text = compose_spell_embedding_text(&name, &description);
 
-    let vector = tokio::task::spawn_blocking(move || embed_spell_text(model.as_ref(), &text))
-        .await
-        .map_err(|e| AppError::Search(format!("single embedding task failed: {e}")))??;
+    let vector = tokio::task::spawn_blocking(move || {
+        let mut guard = model
+            .lock()
+            .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
+        embed_spell_text(&mut *guard, &text)
+    })
+    .await
+    .map_err(|e| AppError::Search(format!("single embedding task failed: {e}")))??;
 
     let rows = vec![(spell_id, name, description)];
     let vectors = vec![vector];
@@ -466,10 +445,14 @@ async fn embed_import_batch_rows(
         .iter()
         .map(|(_, name, description)| compose_spell_embedding_text(name, description))
         .collect();
-    let vectors =
-        tokio::task::spawn_blocking(move || embed_spell_texts_batch(model.as_ref(), &texts))
-            .await
-            .map_err(|e| AppError::Search(format!("batch embedding task failed: {e}")))??;
+    let vectors = tokio::task::spawn_blocking(move || {
+        let mut guard = model
+            .lock()
+            .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
+        embed_spell_texts_batch(&mut *guard, &texts)
+    })
+    .await
+    .map_err(|e| AppError::Search(format!("batch embedding task failed: {e}")))??;
 
     upsert_embedding_chunk(pool, &rows, &vectors).await
 }
@@ -568,11 +551,17 @@ pub async fn search_spells_semantic_internal(
     query: String,
     limit: Option<u32>,
 ) -> Result<Vec<SemanticSearchResult>, AppError> {
-    let model = await_ready_model_with_timeout(embedding_state, std::time::Duration::from_secs(30)).await?;
+    let model =
+        await_ready_model_with_timeout(embedding_state, std::time::Duration::from_secs(30)).await?;
     let query_text = query.trim().to_string();
-    let query_vector = tokio::task::spawn_blocking(move || embed_spell_text(model.as_ref(), &query_text))
-        .await
-        .map_err(|e| AppError::Search(format!("query embedding task failed: {e}")))??;
+    let query_vector = tokio::task::spawn_blocking(move || {
+        let mut guard = model
+            .lock()
+            .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
+        embed_spell_text(&mut *guard, &query_text)
+    })
+    .await
+    .map_err(|e| AppError::Search(format!("query embedding task failed: {e}")))??;
 
     let max_rows = limit.unwrap_or(10).clamp(1, 1000);
 
@@ -646,14 +635,16 @@ pub async fn reindex_embeddings_internal(
         .map_err(|e| AppError::Search(format!("reindex total-count query task failed: {e}")))??;
 
     let pool_for_candidate_count = Arc::clone(&db);
-    let candidate_count = tokio::task::spawn_blocking(move || load_reindex_candidate_count(&pool_for_candidate_count, force))
-        .await
-        .map_err(|e| AppError::Search(format!("reindex candidate-count query task failed: {e}")))??;
+    let candidate_count = tokio::task::spawn_blocking(move || {
+        load_reindex_candidate_count(&pool_for_candidate_count, force)
+    })
+    .await
+    .map_err(|e| AppError::Search(format!("reindex candidate-count query task failed: {e}")))??;
 
     let pool_for_rows = Arc::clone(&db);
-    let rows =
-        tokio::task::spawn_blocking(move || load_reindex_candidates(&pool_for_rows, force)).await
-            .map_err(|e| AppError::Search(format!("reindex candidate query task failed: {e}")))??;
+    let rows = tokio::task::spawn_blocking(move || load_reindex_candidates(&pool_for_rows, force))
+        .await
+        .map_err(|e| AppError::Search(format!("reindex candidate query task failed: {e}")))??;
 
     if rows.len() as u32 != candidate_count {
         return Err(AppError::Search(format!(
@@ -688,13 +679,25 @@ pub async fn reindex_embeddings_internal(
             .collect();
 
         let model_for_chunk = Arc::clone(&model);
-        match tokio::task::spawn_blocking(move || embed_spell_texts_batch(model_for_chunk.as_ref(), &texts)).await {
-            Ok(Ok(vectors)) => match upsert_embedding_chunk(Arc::clone(&db), chunk, &vectors).await {
+        match tokio::task::spawn_blocking(move || {
+            let mut guard = model_for_chunk
+                .lock()
+                .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
+            embed_spell_texts_batch(&mut *guard, &texts)
+        })
+        .await
+        {
+            Ok(Ok(vectors)) => match upsert_embedding_chunk(Arc::clone(&db), chunk, &vectors).await
+            {
                 Ok(()) => {
                     indexed += chunk.len() as u32;
                 }
                 Err(error) => {
-                    tracing::warn!(?error, chunk_len = chunk.len(), "reindex chunk upsert failed");
+                    tracing::warn!(
+                        ?error,
+                        chunk_len = chunk.len(),
+                        "reindex chunk upsert failed"
+                    );
                     failed += chunk.len() as u32;
                 }
             },
@@ -1416,7 +1419,10 @@ mod tests {
 
         assert_eq!(summary.skipped, 6);
         assert_eq!(summary.indexed + summary.failed, candidate_count);
-        assert_eq!(summary.total, summary.skipped + summary.indexed + summary.failed);
+        assert_eq!(
+            summary.total,
+            summary.skipped + summary.indexed + summary.failed
+        );
     }
 
     #[test]
@@ -1429,7 +1435,10 @@ mod tests {
         };
 
         assert_eq!(summary.skipped, 0);
-        assert_eq!(summary.total, summary.indexed + summary.skipped + summary.failed);
+        assert_eq!(
+            summary.total,
+            summary.indexed + summary.skipped + summary.failed
+        );
     }
 
     #[test]
@@ -1763,7 +1772,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn await_ready_model_treats_ready_without_model_as_transient() {
+    async fn await_ready_model_errors_when_ready_without_model() {
+        // M-001: matches Task 3 Step 3.3 fail-fast behavior (plan lines 964–971).
         let state = Arc::new(EmbeddingState::default());
         *state.status.lock().unwrap() = EmbeddingsStatus::Ready;
 
@@ -1774,28 +1784,99 @@ mod tests {
         .await;
         match result {
             Err(AppError::Search(message)) => {
-                assert!(message.contains("timed out waiting for embedding model readiness"));
+                assert_eq!(message, "embedding status is ready but model is not loaded");
             }
-            Ok(_) => panic!("expected timeout while model is absent, got model"),
-            Err(other) => panic!("expected Search timeout while model absent, got: {other}"),
+            Ok(_) => panic!("expected error while model is absent, got model"),
+            Err(other) => panic!("expected Search error while model absent, got: {other}"),
         }
     }
 
+    /// M-004: Task 4 Step 4.4 expects `cargo test` PASS; on matrices where ORT
+    /// blocks linking this crate's tests, `cargo check` remains the portable
+    /// compile gate until the link matrix includes ONNX Runtime.
+    ///
+    /// M-005: Asserts `spell_vec` invalidation after the async cleanup spawned from
+    /// `enqueue_spell_embedding_if_ready` when embeddings are not Ready.
     #[tokio::test]
     async fn post_write_hook_skips_when_not_ready() {
         let state = Arc::new(EmbeddingState::default());
         *state.status.lock().unwrap() = EmbeddingsStatus::NotProvisioned;
 
+        let pool = Arc::new(test_pool());
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        let spell_id: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                row.get(0)
+            })
+            .expect("next spell id")
+        };
+        {
+            let conn = pool.get().expect("test db connection");
+            let content_hash = format!("hash-embed-hook-test-{spell_id}");
+            conn.execute(
+                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Shield', 1, 'Protects against attacks', ?2)",
+                rusqlite::params![spell_id, content_hash],
+            )
+            .expect("insert spell for hook test");
+            // M-005: `vec_f32` exists only when sqlite-vec is loaded; tests may use blob-backed
+            // `spell_vec` from migration fallback (see `db/migrations` + `load_migrations`).
+            match conn.execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![spell_id, vector_json],
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    let bytes: Vec<u8> = vec![0.0_f32; 384]
+                        .into_iter()
+                        .flat_map(f32::to_le_bytes)
+                        .collect();
+                    conn.execute(
+                        "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+                        rusqlite::params![spell_id, bytes],
+                    )
+                    .expect("insert stale spell_vec row (blob fallback)");
+                }
+            }
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![spell_id],
+                    |row| row.get(0),
+                )
+                .expect("count before");
+            assert_eq!(count, 1, "precondition: stale vector row exists");
+        }
+
         let result = enqueue_spell_embedding_if_ready(
             state,
-            Arc::new(test_pool()),
-            42,
+            Arc::clone(&pool),
+            spell_id,
             "Shield".to_string(),
             "Protects against attacks".to_string(),
         )
         .await;
 
         assert!(result.is_ok());
+
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            let count: i64 = {
+                let conn = pool.get().expect("test db connection");
+                conn.query_row(
+                    "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![spell_id],
+                    |row| row.get(0),
+                )
+                .expect("count after")
+            };
+            if count == 0 {
+                return;
+            }
+        }
+
+        panic!("M-005: expected spell_vec row to be deleted after skip-path cleanup");
     }
 
     #[tokio::test]

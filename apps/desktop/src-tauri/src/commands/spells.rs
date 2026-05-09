@@ -1,5 +1,5 @@
-use crate::commands::vault::export_spell_to_vault_by_hash;
 use crate::commands::embeddings::{enqueue_spell_embedding_if_ready, EmbeddingState};
+use crate::commands::vault::export_spell_to_vault_by_hash;
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
@@ -932,21 +932,15 @@ pub async fn create_spell(
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
-    if let Err(error) = enqueue_spell_embedding_if_ready(
+    // M-003: Task 4 Step 4.3 — propagate enqueue errors (plan lines 1374–1381).
+    enqueue_spell_embedding_if_ready(
         Arc::clone(embedding_state.inner()),
         Arc::clone(state.inner()),
         spell_id,
         name,
         description,
     )
-    .await
-    {
-        tracing::warn!(
-            spell_id,
-            ?error,
-            "Failed to enqueue embedding after spell creation"
-        );
-    }
+    .await?;
 
     Ok(spell_id)
 }
@@ -971,21 +965,15 @@ pub async fn update_spell(
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
-    if let Err(error) = enqueue_spell_embedding_if_ready(
+    // M-003: Task 4 Step 4.3 — propagate enqueue errors (plan lines 1406–1413).
+    enqueue_spell_embedding_if_ready(
         Arc::clone(embedding_state.inner()),
         Arc::clone(state.inner()),
         spell_id,
         name,
         description,
     )
-    .await
-    {
-        tracing::warn!(
-            spell_id,
-            ?error,
-            "Failed to enqueue embedding after spell update"
-        );
-    }
+    .await?;
 
     Ok(spell_id)
 }

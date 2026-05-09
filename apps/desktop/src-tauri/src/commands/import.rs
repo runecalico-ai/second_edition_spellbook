@@ -1,3 +1,4 @@
+use crate::commands::embeddings::{enqueue_import_embeddings_if_ready, EmbeddingState};
 use crate::commands::spells::{
     apply_spell_update_with_conn, canonicalize_spell_detail, diff_spells, get_spell_from_conn,
     log_changes, validate_epic_and_quest_spells,
@@ -1713,6 +1714,7 @@ fn run_with_import_maintenance<T>(
 #[tauri::command]
 pub async fn import_spell_json(
     state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
     maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     payload: String,
     source_ref_url_policy: Option<String>,
@@ -1750,6 +1752,27 @@ pub async fn import_spell_json(
     let mut out = result;
     out.failures.extend(preview.failures);
     out.warnings.extend(preview.warnings);
+    let imported_for_embeddings: Vec<(i64, String, String)> = out
+        .imported_spells
+        .iter()
+        .filter_map(|spell| {
+            spell
+                .id
+                .map(|id| (id, spell.name.clone(), spell.description.clone()))
+        })
+        .collect();
+    if let Err(error) = enqueue_import_embeddings_if_ready(
+        Arc::clone(embedding_state.inner()),
+        Arc::clone(state.inner()),
+        imported_for_embeddings,
+    )
+    .await
+    {
+        tracing::warn!(
+            ?error,
+            "Failed to enqueue embeddings after JSON spell import"
+        );
+    }
     Ok(out)
 }
 
@@ -1758,6 +1781,7 @@ pub async fn import_spell_json(
 #[tauri::command]
 pub async fn resolve_import_spell_json(
     state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
     maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     payload: String,
     resolve_options: ImportSpellJsonResolveOptions,
@@ -1797,6 +1821,27 @@ pub async fn resolve_import_spell_json(
     let mut out = result;
     out.failures.extend(preview.failures);
     out.warnings.extend(preview.warnings);
+    let imported_for_embeddings: Vec<(i64, String, String)> = out
+        .imported_spells
+        .iter()
+        .filter_map(|spell| {
+            spell
+                .id
+                .map(|id| (id, spell.name.clone(), spell.description.clone()))
+        })
+        .collect();
+    if let Err(error) = enqueue_import_embeddings_if_ready(
+        Arc::clone(embedding_state.inner()),
+        Arc::clone(state.inner()),
+        imported_for_embeddings,
+    )
+    .await
+    {
+        tracing::warn!(
+            ?error,
+            "Failed to enqueue embeddings after resolved JSON spell import"
+        );
+    }
     Ok(out)
 }
 
@@ -2023,6 +2068,7 @@ pub async fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, App
 #[tauri::command]
 pub async fn import_files(
     state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
     maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     files: Vec<ImportFile>,
     allow_overwrite: bool,
@@ -2032,6 +2078,8 @@ pub async fn import_files(
 ) -> Result<ImportResult, AppError> {
     let pool = state.inner().clone();
     let gc_pool = pool.clone();
+    let embedding_pool = Arc::clone(&pool);
+    let embedding_state = embedding_state.inner().clone();
     let maintenance_state = maintenance_state.inner().clone();
     let import_guard = maintenance_state.start_import()?;
     let result = async move {
@@ -2543,6 +2591,22 @@ pub async fn import_files(
         Ok(value) => value,
         Err(err) => return Err(err),
     };
+
+    let imported_for_embeddings: Vec<(i64, String, String)> = result
+        .spells
+        .iter()
+        .filter_map(|spell| {
+            spell
+                .id
+                .map(|id| (id, spell.name.clone(), spell.description.clone()))
+        })
+        .collect();
+    if let Err(error) =
+        enqueue_import_embeddings_if_ready(embedding_state, embedding_pool, imported_for_embeddings)
+            .await
+    {
+        tracing::warn!(?error, "Failed to enqueue embeddings after file import");
+    }
 
     if changed_count == 0 {
         drop(import_guard);

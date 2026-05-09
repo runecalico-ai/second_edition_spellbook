@@ -259,10 +259,22 @@ export default function Library() {
       setResultsSettledForCurrentSearch(false);
 
       try {
-        const results =
-          nextMode === "semantic"
-            ? await invoke<SpellSummary[]>("search_semantic", { query: nextQuery })
-            : await invoke<SpellSummary[]>("search_keyword", { query: nextQuery, filters });
+        let results: SpellSummary[];
+        if (nextMode === "semantic") {
+          const raw = await invoke<
+            Array<
+              SpellSummary & {
+                cosineDistance?: number;
+              }
+            >
+          >("search_spells_semantic", { query: nextQuery });
+          results = raw.map(({ cosineDistance: _distance, ...spell }) => spell);
+        } else {
+          results = await invoke<SpellSummary[]>("search_keyword", {
+            query: nextQuery,
+            filters,
+          });
+        }
 
         if (requestId !== searchRequestIdRef.current) {
           return;

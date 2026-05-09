@@ -4,7 +4,6 @@ use crate::error::AppError;
 use crate::models::{
     ChatResponse, Facets, SavedSearch, SavedSearchPayload, SearchFilters, SpellSummary,
 };
-use crate::sidecar::call_sidecar;
 use rusqlite::params;
 use rusqlite::Connection;
 use serde_json::json;
@@ -343,66 +342,6 @@ pub async fn search_keyword(
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         search_keyword_with_conn(&conn, &query, filters)
-    })
-    .await
-    .map_err(|e| AppError::Unknown(e.to_string()))??;
-
-    Ok(result)
-}
-
-#[tauri::command]
-pub async fn search_semantic(
-    state: State<'_, Arc<Pool>>,
-    query: String,
-) -> Result<Vec<SpellSummary>, AppError> {
-    let embedding_resp = call_sidecar("embed", json!({"text": query})).await?;
-    let vector: Vec<f32> = serde_json::from_value(
-        embedding_resp
-            .get("embedding")
-            .cloned()
-            .unwrap_or(json!([])),
-    )
-    .map_err(|e| AppError::Sidecar(format!("Failed to parse embedding: {}", e)))?;
-
-    if vector.is_empty() {
-        return Err(AppError::Sidecar("Empty embedding returned".into()));
-    }
-
-    let pool = state.inner().clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let conn = pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT s.id, s.name, s.school, s.sphere, s.level, s.class_list, s.components, s.duration,
-                    s.source, s.is_quest_spell, s.is_cantrip, s.tags, vec_distance_cosine(v.v, ?) as distance
-             FROM spell_vec v
-             JOIN spell s ON s.id = v.rowid
-             ORDER BY distance ASC
-             LIMIT 50",
-        )?;
-
-        let vec_json = serde_json::to_string(&vector).unwrap();
-        let rows = stmt.query_map([vec_json], |row| {
-            Ok(SpellSummary {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                school: row.get(2)?,
-                sphere: row.get(3)?,
-                level: row.get(4)?,
-                class_list: row.get(5)?,
-                components: row.get(6)?,
-                duration: row.get(7)?,
-                source: row.get(8)?,
-                is_quest_spell: row.get(9)?,
-                is_cantrip: row.get(10)?,
-                tags: row.get(11)?,
-            })
-        })?;
-
-        let mut spells = vec![];
-        for spell in rows {
-            spells.push(spell?);
-        }
-        Ok::<Vec<SpellSummary>, AppError>(spells)
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;

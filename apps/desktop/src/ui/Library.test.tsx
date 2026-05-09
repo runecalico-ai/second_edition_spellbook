@@ -99,7 +99,7 @@ describe("Library heading hierarchy", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -136,7 +136,7 @@ describe("Library notifications (Task 5)", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -400,7 +400,7 @@ describe("Library empty states", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -427,7 +427,7 @@ describe("Library empty states", () => {
             return Promise.resolve([]);
           case "search_keyword":
             return searchDeferred.promise;
-          case "search_semantic":
+          case "search_spells_semantic":
             return Promise.resolve([]);
           default:
             return Promise.resolve(undefined);
@@ -488,7 +488,7 @@ describe("Library empty states", () => {
             return keywordSearchCalls === 1
               ? initialSearchDeferred.promise
               : latestSearchDeferred.promise;
-          case "search_semantic":
+          case "search_spells_semantic":
             return Promise.resolve([]);
           default:
             return Promise.resolve(undefined);
@@ -541,7 +541,7 @@ describe("Library empty states", () => {
             return Promise.resolve([]);
           case "search_keyword":
             return Promise.resolve([]);
-          case "search_semantic":
+          case "search_spells_semantic":
             return semanticDeferred.promise;
           default:
             return Promise.resolve(undefined);
@@ -560,7 +560,7 @@ describe("Library empty states", () => {
       fireEvent.click(screen.getByTestId("library-search-button"));
 
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledWith("search_semantic", { query: "find hidden lore" });
+        expect(invoke).toHaveBeenCalledWith("search_spells_semantic", { query: "find hidden lore" });
       });
       expect(screen.queryByText("No Results")).toBeNull();
 
@@ -636,7 +636,7 @@ describe("Library empty states", () => {
               return firstEmptySearchDeferred.promise;
             }
             return secondEmptySearchDeferred.promise;
-          case "search_semantic":
+          case "search_spells_semantic":
             return Promise.resolve([]);
           default:
             return Promise.resolve(undefined);
@@ -710,7 +710,7 @@ describe("Library empty states", () => {
 
             return defaultLibraryDeferred.promise;
           }
-          case "search_semantic":
+          case "search_spells_semantic":
             return Promise.resolve([]);
           default:
             return Promise.resolve(undefined);
@@ -781,7 +781,7 @@ describe("Library empty states", () => {
               },
             ];
           case "search_keyword":
-          case "search_semantic":
+          case "search_spells_semantic":
             return [];
           default:
             return undefined;
@@ -860,7 +860,7 @@ describe("Library focus indicators", () => {
               isCantrip: 0,
             },
           ];
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -913,7 +913,7 @@ describe("Library focus indicators", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -958,7 +958,7 @@ describe("Library explicit search behavior", () => {
           return [];
         case "search_keyword":
           return [];
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -1047,7 +1047,7 @@ describe("Library saved-search delete modal", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;

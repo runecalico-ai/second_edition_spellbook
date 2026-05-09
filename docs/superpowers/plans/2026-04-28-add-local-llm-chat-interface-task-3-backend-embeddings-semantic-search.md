@@ -56,13 +56,14 @@
 - Modify: `apps/desktop/src-tauri/src/commands/import.rs`
   Purpose: Add non-blocking batch embedding trigger after successful import completion.
 - Modify: `apps/desktop/src-tauri/src/commands/search.rs`
-    Purpose: Remove sidecar-based semantic search implementation, deprecate/remove legacy `search_semantic` IPC command, and keep keyword/chat compatibility paths.
+  Purpose: Remove sidecar-based semantic search implementation, deprecate/remove legacy `search_semantic` IPC command, and keep keyword/chat compatibility paths.
 
 ---
 
 ### Task 0: Preflight Gate (No New Dependencies, Approved Provisioning Surface Exists)
 
 **Files:**
+
 - Read: `apps/desktop/src-tauri/Cargo.toml`
 - Read: `apps/desktop/src-tauri/src/commands/provisioning.rs`
 - Read: `docs/dev/local_llm_infrastructure_spike.md`
@@ -87,6 +88,7 @@ Run:
 cd apps/desktop/src-tauri
 rg -n "EMBEDDING_(URL|MANIFEST_SHA|SIZE_BYTES|DESTINATION|EXPECTED_FILES|ASSET)" src/commands/provisioning.rs
 ```
+
 Expected: all required embedding asset constants found.
 Outcome/Evidence: Verified in `apps/desktop/src-tauri/src/commands/provisioning.rs` via `rg` — `EMBEDDING_URL`, `EMBEDDING_MANIFEST_SHA`, `EMBEDDING_SIZE_BYTES`, `EMBEDDING_DESTINATION`, `EMBEDDING_EXPECTED_FILES`, and `EMBEDDING_ASSET` are present.
 
@@ -126,6 +128,7 @@ git commit -m "docs: add task 3 embeddings preflight gate"
 ### Task 1: Add Embedding IPC Models and State Skeleton
 
 **Files:**
+
 - Create: `apps/desktop/src-tauri/src/models/embeddings.rs`
 - Create: `apps/desktop/src-tauri/src/commands/embeddings.rs`
 - Modify: `apps/desktop/src-tauri/src/models/mod.rs`
@@ -303,6 +306,7 @@ cargo check
 Expected: `cargo check` succeeds. The two filtered `--lib` tests should pass when ONNX Runtime (ORT) link prerequisites are available; without them, `cargo test --lib` may fail at link time—confirm PASS in CI or an ORT-ready dev shell if local linking fails. For checklist/evidence, note whether local `--lib` completed vs link-blocked so `[x]` is not read as universal PASS on every machine.
 
 Outcome/Evidence (2026-05-05, local Windows): fixed a local compile blocker in `src/commands/embeddings.rs` test (`assert_eq!(..., None)` on non-`PartialEq` watch tuple) by switching to `.is_none()`. Re-ran:
+
 - `cargo test embeddings_status_serializes_to_spec_values --lib` -> reached link stage, then failed with ORT linker errors (`OrtGetApiBase`, `LNK2019`/`LNK1120`), no embeddings assertion failure.
 - `cargo test embedding_state_defaults_to_not_provisioned --lib` -> same ORT link blocker.
 - `cargo check` -> PASS.
@@ -319,6 +323,7 @@ git commit -m "feat: scaffold embeddings state and ipc models"
 ### Task 2: Implement Embedding Status, Download, Import, and Cancel Commands
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/embeddings.rs`
 - Modify: `apps/desktop/src-tauri/src/lib.rs` (manage `EmbeddingState`, register embedding IPC commands)
 - Modify: `apps/desktop/src-tauri/Cargo.toml` / `Cargo.lock` (direct `futures-util` dependency for HTTP byte-stream iteration)
@@ -869,7 +874,7 @@ pub async fn embeddings_cancel_download(
 
 Task 2 implementation verification is complete through Step 2.4 evidence; Step 2.5 remains intentionally deferred and unchecked pending an explicit commit request.
 
-- [ ] **Step 2.5: Commit Task 2**
+- [x] **Step 2.5: Commit Task 2**
 
 ```bash
 git add src/commands/embeddings.rs
@@ -881,6 +886,7 @@ git commit -m "feat: add embeddings provisioning lifecycle commands"
 ### Task 3: Implement Runtime Load and Embedding Helper Functions
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/embeddings.rs`
 
 - [ ] **Step 3.1: Add failing tests for helper behavior and vector dimension checks**
@@ -1154,6 +1160,7 @@ git commit -m "feat: add embedding runtime and vector helper functions"
 ### Task 4: Add Non-Blocking Embedding Hooks to Spell Create and Update
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/spells.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/embeddings.rs`
 
@@ -1427,6 +1434,7 @@ git commit -m "feat: add non-blocking embedding hooks for spell writes"
 ### Task 5: Add Non-Blocking Batch Embedding Hook on Import Completion
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/import.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/embeddings.rs`
 
@@ -1519,7 +1527,7 @@ pub async fn enqueue_import_embeddings_if_ready(
 }
 ```
 
-```rust
+````rust
 // apps/desktop/src-tauri/src/commands/import.rs
 #[tauri::command]
 pub async fn import_spell_json(
@@ -1620,7 +1628,7 @@ Apply this portion in `apps/desktop/src-tauri/src/commands/import.rs` as determi
     resolve_options: ImportSpellJsonResolveOptions,
     source_ref_url_policy: Option<String>,
  ) -> Result<ImportSpellJsonResult, AppError> {
-```
+````
 
 For `import_files`, insert the following block immediately after the anchor `let (result, changed_count) = match result { ... };` and before the first `if changed_count == 0 {`:
 
@@ -1688,6 +1696,7 @@ git commit -m "feat: add non-blocking import embedding batch hook"
 ### Task 6: Implement Semantic Search and Reindex Commands
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/embeddings.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/search.rs`
 
@@ -2006,6 +2015,7 @@ git commit -m "feat: add semantic search and embedding reindex commands"
 ### Task 7: Startup Initialization, Startup Backfill, and Command Registration
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/lib.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/mod.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/embeddings.rs`
@@ -2205,6 +2215,7 @@ git commit -m "feat: register embeddings lifecycle and startup backfill"
 ### Task 8: End-to-End Verification for Task Group 3
 
 **Files:**
+
 - Modify as needed from previous tasks
 
 - [ ] **Step 8.1: Run targeted Rust tests for embedding lifecycle and semantic commands**

@@ -14,6 +14,15 @@ use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 
+// M-005: use a runtime-generic `AppHandle` type alias so the
+// `embeddings_download_model` command can be dispatched through both the real
+// Wry runtime and `tauri::test::MockRuntime` in command-boundary tests below.
+// Mirrors the existing pattern in `commands/llm.rs::LlmCommandAppHandle`.
+#[cfg(test)]
+pub(crate) type EmbeddingsCommandAppHandle = tauri::AppHandle<tauri::test::MockRuntime>;
+#[cfg(not(test))]
+pub(crate) type EmbeddingsCommandAppHandle = tauri::AppHandle;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DownloadCleanupState {
     Running,
@@ -56,6 +65,11 @@ type EmbeddingDownloadControl = (
     watch::Sender<bool>,
     watch::Receiver<DownloadCleanupState>,
 );
+const EMBEDDING_DOWNLOAD_CANCELLED_MESSAGE: &str = "Embedding download cancelled";
+const DOWNLOAD_CLEANUP_WAIT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
+const DOWNLOAD_CLEANUP_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const DOWNLOAD_CONTROL_WAIT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
+const DOWNLOAD_CONTROL_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
 
 fn set_embeddings_status(
     state: &EmbeddingState,
@@ -225,6 +239,44 @@ fn sha256_file(path: &std::path::Path) -> Result<String, AppError> {
 }
 
 fn validate_embedding_bundle_layout(path: &std::path::Path) -> Result<(), AppError> {
+    let expected_paths = EMBEDDING_EXPECTED_FILES
+        .iter()
+        .map(|expected| expected_relative_path(expected.relative_path))
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        for entry in std::fs::read_dir(&current)? {
+            let entry = entry?;
+            let entry_path = entry.path();
+            let file_type = std::fs::symlink_metadata(&entry_path)?.file_type();
+            if file_type.is_symlink() {
+                return Err(AppError::Validation(format!(
+                    "Symbolic links are not allowed in embedding bundle: {}",
+                    entry_path.display()
+                )));
+            }
+
+            let relative = entry_path.strip_prefix(path).map_err(|error| {
+                AppError::Search(format!(
+                    "Failed to derive embedding bundle relative path: {error}"
+                ))
+            })?;
+            if file_type.is_dir() {
+                stack.push(entry_path);
+                continue;
+            }
+
+            let relative_display = relative.to_string_lossy().replace('\\', "/");
+            if !expected_paths.contains(relative_display.as_str()) {
+                // M-002: enforce closed-set inventory for side-loaded bundles.
+                return Err(AppError::Validation(format!(
+                    "Unexpected embedding bundle file: {}",
+                    relative_display
+                )));
+            }
+        }
+    }
+
     for expected in EMBEDDING_EXPECTED_FILES {
         let relative = expected
             .relative_path
@@ -287,7 +339,7 @@ fn resumed_bytes_after_response(resume_from: u64, status: reqwest::StatusCode) -
 }
 
 async fn emit_download_progress(
-    app: &tauri::AppHandle,
+    app: &EmbeddingsCommandAppHandle,
     bytes_downloaded: u64,
     total_bytes: u64,
 ) -> Result<(), AppError> {
@@ -301,39 +353,85 @@ async fn emit_download_progress(
     .map_err(|e| AppError::Search(format!("failed to emit embedding download progress: {e}")))
 }
 
-fn wait_for_download_control_or_idle(
+async fn wait_for_download_control_or_idle(
     state: &EmbeddingState,
 ) -> Result<
     Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>,
     AppError,
 > {
-    let Some(target_epoch) = current_download_control(state)?.map(|value| value.0) else {
+    wait_for_download_control_or_idle_with_timeout(
+        || current_download_control(state),
+        DOWNLOAD_CONTROL_WAIT_TIMEOUT,
+        DOWNLOAD_CONTROL_WAIT_POLL_INTERVAL,
+    )
+    .await
+}
+
+async fn wait_for_download_control_or_idle_with_timeout<F>(
+    mut current_control: F,
+    timeout: std::time::Duration,
+    poll_interval: std::time::Duration,
+) -> Result<
+    Option<(watch::Sender<bool>, watch::Receiver<DownloadCleanupState>)>,
+    AppError,
+>
+where
+    F: FnMut() -> Result<Option<EmbeddingDownloadControl>, AppError>,
+{
+    let Some(target_epoch) = current_control()?.map(|value| value.0) else {
         return Ok(None);
     };
 
-    match current_download_control(state)? {
-        Some((session_epoch, cancel_tx, completion_rx)) => {
+    // M-001: bounded stabilization wait avoids hangs if the target session vanishes.
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if let Some((session_epoch, cancel_tx, completion_rx)) = current_control()? {
             if session_epoch == target_epoch {
-                Ok(Some((cancel_tx, completion_rx)))
-            } else {
-                Ok(None)
+                return Ok(Some((cancel_tx, completion_rx)));
             }
+            return Ok(None);
         }
-        None => Ok(None),
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(None);
+        }
+        tokio::time::sleep(poll_interval).await;
     }
 }
 
 async fn wait_for_download_cleanup_or_idle(
     state: &EmbeddingState,
-    mut completion_rx: watch::Receiver<DownloadCleanupState>,
+    completion_rx: watch::Receiver<DownloadCleanupState>,
 ) -> Result<(), AppError> {
+    wait_for_download_cleanup_or_idle_with_timeout(
+        state,
+        completion_rx,
+        DOWNLOAD_CLEANUP_WAIT_TIMEOUT,
+        DOWNLOAD_CLEANUP_WAIT_POLL_INTERVAL,
+    )
+    .await
+}
+
+async fn wait_for_download_cleanup_or_idle_with_timeout(
+    state: &EmbeddingState,
+    mut completion_rx: watch::Receiver<DownloadCleanupState>,
+    timeout: std::time::Duration,
+    poll_interval: std::time::Duration,
+) -> Result<(), AppError> {
+    // M-006: bounded wait to avoid indefinite spin if cleanup completion signal/state clear fails.
+    let deadline = tokio::time::Instant::now() + timeout;
     let mut channel_open = true;
     loop {
         if current_download_control(state)?.is_none() {
             return Ok(());
         }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(AppError::Search(format!(
+                "timed out waiting for embedding download cleanup after {:?}",
+                timeout
+            )));
+        }
         if !channel_open {
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            tokio::time::sleep(poll_interval).await;
             continue;
         }
         tokio::select! {
@@ -344,17 +442,22 @@ async fn wait_for_download_cleanup_or_idle(
                     return Ok(());
                 }
             }
-            _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
+            _ = tokio::time::sleep(poll_interval) => {}
         }
     }
 }
 
 async fn cancel_embedding_download_and_wait(state: &EmbeddingState) -> Result<(), AppError> {
-    let Some((cancel_tx, completion_rx)) = wait_for_download_control_or_idle(state)? else {
+    let Some((cancel_tx, completion_rx)) = wait_for_download_control_or_idle(state).await? else {
         return Ok(());
     };
     let _ = cancel_tx.send(true);
     wait_for_download_cleanup_or_idle(state, completion_rx).await
+}
+
+fn is_embedding_download_cancelled(error: &AppError) -> bool {
+    // M-003: normalize cancellation handling to planned Search variant usage.
+    matches!(error, AppError::Search(message) if message == EMBEDDING_DOWNLOAD_CANCELLED_MESSAGE)
 }
 
 fn copy_directory_recursive(source: &std::path::Path, destination: &std::path::Path) -> Result<(), AppError> {
@@ -382,7 +485,7 @@ fn copy_directory_recursive(source: &std::path::Path, destination: &std::path::P
 }
 
 async fn download_embedding_bundle_with_resume(
-    app: tauri::AppHandle,
+    app: EmbeddingsCommandAppHandle,
     state: Arc<EmbeddingState>,
     models_root: std::path::PathBuf,
 ) -> Result<(), AppError> {
@@ -452,7 +555,9 @@ async fn download_embedding_bundle_with_resume(
             let mut stream = response.bytes_stream();
             while let Some(next) = stream.next().await {
                 if *cancel_rx.borrow_and_update() {
-                    return Err(AppError::EmbeddingDownloadCancelled);
+                    return Err(AppError::Search(
+                        EMBEDDING_DOWNLOAD_CANCELLED_MESSAGE.to_string(),
+                    ));
                 }
 
                 let chunk = next
@@ -484,7 +589,7 @@ async fn download_embedding_bundle_with_resume(
 
     match result {
         Ok(()) => set_embeddings_status(state.as_ref(), EmbeddingsStatus::Initializing, None),
-        Err(AppError::EmbeddingDownloadCancelled) => {
+        Err(error) if is_embedding_download_cancelled(&error) => {
             set_embeddings_status(state.as_ref(), EmbeddingsStatus::NotProvisioned, None)
         }
         Err(error) => {
@@ -525,7 +630,7 @@ pub async fn embeddings_status(
 
 #[tauri::command]
 pub async fn embeddings_download_model(
-    app: tauri::AppHandle,
+    app: EmbeddingsCommandAppHandle,
     embeddings_state: tauri::State<'_, Arc<EmbeddingState>>,
     provisioning: tauri::State<'_, Arc<ProvisioningState>>,
 ) -> Result<(), AppError> {
@@ -751,15 +856,57 @@ mod tests {
     }
 
     #[test]
-    fn cancel_wait_returns_none_when_no_active_download() {
+    fn m_004_embedding_bundle_validation_rejects_size_mismatch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let expected = &EMBEDDING_EXPECTED_FILES[0];
+        let relative = expected_relative_path(expected.relative_path);
+        let file_path = tmp.path().join(relative);
+        std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+        std::fs::write(&file_path, b"tiny").unwrap();
+
+        let err = validate_embedding_bundle_layout(tmp.path()).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("Embedding file size mismatch for"));
+    }
+
+    #[test]
+    fn m_004_embedding_bundle_validation_rejects_hash_mismatch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let expected = &EMBEDDING_EXPECTED_FILES[0];
+        let relative = expected_relative_path(expected.relative_path);
+        let file_path = tmp.path().join(relative);
+        std::fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+        let file = std::fs::File::create(&file_path).unwrap();
+        // M-004: match expected size so validation must exercise hash mismatch branch.
+        file.set_len(expected.size_bytes).unwrap();
+
+        let err = validate_embedding_bundle_layout(tmp.path()).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("Embedding file hash mismatch for"));
+    }
+
+    #[test]
+    fn m_002_embedding_bundle_validation_rejects_extra_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("unexpected.bin"), b"not allowed").unwrap();
+
+        let err = validate_embedding_bundle_layout(tmp.path()).unwrap_err();
+        assert!(err.to_string().contains("Unexpected embedding bundle file"));
+    }
+
+    #[tokio::test]
+    async fn cancel_wait_returns_none_when_no_active_download() {
         let state = EmbeddingState::default();
         assert!(wait_for_download_control_or_idle(&state)
+            .await
             .unwrap()
             .is_none());
     }
 
-    #[test]
-    fn cancel_wait_returns_controls_when_download_matches_epoch() {
+    #[tokio::test]
+    async fn cancel_wait_returns_controls_when_download_matches_epoch() {
         let state = EmbeddingState::default();
         let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
         let (completion_tx, _completion_rx) =
@@ -774,7 +921,142 @@ mod tests {
             });
         }
 
-        assert!(wait_for_download_control_or_idle(&state).unwrap().is_some());
+        assert!(wait_for_download_control_or_idle(&state)
+            .await
+            .unwrap()
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn m_001_cancel_wait_returns_none_when_target_session_disappears() {
+        let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
+        let (completion_tx, _completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
+        let mut polls = vec![
+            Some((1_u64, cancel_tx.clone(), completion_tx.subscribe())),
+            None,
+            None,
+            None,
+        ]
+        .into_iter();
+
+        let controls = wait_for_download_control_or_idle_with_timeout(
+            move || Ok(polls.next().flatten()),
+            std::time::Duration::from_millis(5),
+            std::time::Duration::from_millis(1),
+        )
+        .await
+        .expect("M-001 wait-loop should return without AppError");
+        assert!(controls.is_none());
+    }
+
+    #[tokio::test]
+    async fn m_001_cancel_wait_observes_stabilizing_target_session() {
+        let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
+        let (completion_tx, _completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
+        let mut polls = vec![
+            Some((1_u64, cancel_tx.clone(), completion_tx.subscribe())),
+            None,
+            Some((1_u64, cancel_tx.clone(), completion_tx.subscribe())),
+        ]
+        .into_iter();
+
+        let controls = wait_for_download_control_or_idle_with_timeout(
+            move || Ok(polls.next().flatten()),
+            std::time::Duration::from_millis(20),
+            std::time::Duration::from_millis(1),
+        )
+        .await
+        .expect("M-001 wait-loop should return without AppError");
+        assert!(controls.is_some());
+    }
+
+    #[tokio::test]
+    async fn m_001_cancel_wait_returns_none_when_epoch_changes_during_stabilization() {
+        let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
+        let (completion_tx, _completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
+        let mut polls = vec![
+            Some((1_u64, cancel_tx.clone(), completion_tx.subscribe())),
+            None,
+            Some((2_u64, cancel_tx.clone(), completion_tx.subscribe())),
+        ]
+        .into_iter();
+
+        let controls = wait_for_download_control_or_idle_with_timeout(
+            move || Ok(polls.next().flatten()),
+            std::time::Duration::from_millis(20),
+            std::time::Duration::from_millis(1),
+        )
+        .await
+        .expect("M-001 wait-loop should return without AppError");
+        assert!(controls.is_none());
+    }
+
+    #[tokio::test]
+    async fn m_006_cancel_wait_times_out_when_cleanup_never_finishes() {
+        let state = EmbeddingState::default();
+        let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
+        let (completion_tx, completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
+        {
+            *state.download_state.lock().unwrap() = Some(ActiveEmbeddingDownload {
+                session_epoch: 1,
+                bytes_downloaded: 0,
+                total_bytes: 1,
+                cancel_tx,
+                completion_tx,
+            });
+        }
+
+        let result = wait_for_download_cleanup_or_idle_with_timeout(
+            &state,
+            completion_rx,
+            std::time::Duration::from_millis(30),
+            std::time::Duration::from_millis(1),
+        )
+        .await;
+
+        match result {
+            Err(AppError::Search(message)) => {
+                assert!(message.contains("timed out waiting for embedding download cleanup"));
+            }
+            other => panic!(
+                "M-006 expected Search timeout error when cleanup stalls, got: {other:?}"
+            ),
+        }
+    }
+
+    #[tokio::test]
+    async fn m_006_cancel_wait_preserves_successful_cleanup_behavior() {
+        let state = EmbeddingState::default();
+        let (cancel_tx, _cancel_rx) = tokio::sync::watch::channel(false);
+        let (completion_tx, completion_rx) =
+            tokio::sync::watch::channel(DownloadCleanupState::Running);
+        {
+            *state.download_state.lock().unwrap() = Some(ActiveEmbeddingDownload {
+                session_epoch: 1,
+                bytes_downloaded: 0,
+                total_bytes: 1,
+                cancel_tx,
+                completion_tx: completion_tx.clone(),
+            });
+        }
+
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            completion_tx.send_replace(DownloadCleanupState::Finished);
+        });
+
+        wait_for_download_cleanup_or_idle_with_timeout(
+            &state,
+            completion_rx,
+            std::time::Duration::from_millis(250),
+            std::time::Duration::from_millis(1),
+        )
+        .await
+        .expect("M-006 should still return Ok when cleanup completion is signaled");
     }
 
     #[test]
@@ -799,4 +1081,432 @@ mod tests {
         );
     }
 
+    #[test]
+    fn m_003_cancellation_detection_uses_search_variant_message() {
+        assert!(is_embedding_download_cancelled(&AppError::Search(
+            EMBEDDING_DOWNLOAD_CANCELLED_MESSAGE.to_string()
+        )));
+        assert!(!is_embedding_download_cancelled(&AppError::Search(
+            "some other search error".to_string()
+        )));
+        assert!(!is_embedding_download_cancelled(&AppError::Validation(
+            EMBEDDING_DOWNLOAD_CANCELLED_MESSAGE.to_string()
+        )));
+    }
+}
+
+// M-005: Command-boundary state-transition tests.
+//
+// Background: prior tests in the `tests` module above cover helper behavior
+// (`build_embeddings_status_response`, `wait_for_download_control_or_idle`,
+// `validate_embedding_bundle_layout`, ...) and one validation failure path,
+// but they do not exercise state transitions through the actual Tauri IPC
+// commands `embeddings_download_model`, `embeddings_import_model_file`,
+// `embeddings_cancel_download`. This module fills that gap by dispatching
+// real `#[tauri::command]` calls through `tauri::test`'s mock runtime + smoke
+// webview harness (the same shape used for the LLM smoke tests in
+// `crate::lib`), and asserts that observable `EmbeddingState` /
+// `ProvisioningState` transitions match the contract on each command path.
+#[cfg(test)]
+mod m005_command_boundary_tests {
+    use super::*;
+    use crate::commands::provisioning::{ProvisioningState, ProvisioningTarget};
+    use crate::commands::vault::lock_vault_env_for_test;
+    use crate::invoke_smoke_command;
+    use crate::models::{EmbeddingsStatus, EmbeddingsStatusResponse};
+    use std::ffi::OsString;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, MutexGuard};
+    use tokio::time::{timeout, Duration};
+
+    const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
+    static M005_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    // M-005: serialize env mutations across tests that exercise commands which
+    // resolve `SPELLBOOK_DATA_DIR` (download/import paths).
+    struct M005DataDirGuard {
+        _env_lock: MutexGuard<'static, ()>,
+        previous_data_dir: Option<OsString>,
+        temp_data_dir: std::path::PathBuf,
+    }
+
+    impl M005DataDirGuard {
+        fn acquire(test_name: &str) -> Self {
+            let env_lock = lock_vault_env_for_test();
+            let unique_id = M005_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let sanitized: String = test_name
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            let temp_data_dir = std::env::temp_dir().join(format!(
+                "spellbook-embeddings-m005-{}-{}-{}",
+                sanitized,
+                std::process::id(),
+                unique_id
+            ));
+            std::fs::create_dir_all(&temp_data_dir).unwrap();
+            let previous_data_dir = std::env::var_os(SPELLBOOK_DATA_DIR_ENV);
+            std::env::set_var(SPELLBOOK_DATA_DIR_ENV, &temp_data_dir);
+            Self {
+                _env_lock: env_lock,
+                previous_data_dir,
+                temp_data_dir,
+            }
+        }
+    }
+
+    impl Drop for M005DataDirGuard {
+        fn drop(&mut self) {
+            match &self.previous_data_dir {
+                Some(prev) => std::env::set_var(SPELLBOOK_DATA_DIR_ENV, prev),
+                None => std::env::remove_var(SPELLBOOK_DATA_DIR_ENV),
+            }
+            let _ = std::fs::remove_dir_all(&self.temp_data_dir);
+        }
+    }
+
+    struct EmbeddingsSmokeApp {
+        _app: tauri::App<tauri::test::MockRuntime>,
+        webview: tauri::WebviewWindow<tauri::test::MockRuntime>,
+    }
+
+    fn build_embeddings_smoke_app(
+        embedding_state: Arc<EmbeddingState>,
+        provisioning: Arc<ProvisioningState>,
+    ) -> EmbeddingsSmokeApp {
+        let app = tauri::test::mock_builder()
+            .manage(embedding_state)
+            .manage(provisioning)
+            .invoke_handler(tauri::generate_handler![
+                embeddings_status,
+                embeddings_download_model,
+                embeddings_import_model_file,
+                embeddings_cancel_download,
+            ])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("M-005: failed to build embeddings smoke app");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "m005-main", Default::default())
+            .build()
+            .expect("M-005: failed to build embeddings smoke webview");
+        EmbeddingsSmokeApp { _app: app, webview }
+    }
+
+    fn install_active_download(state: &EmbeddingState) -> watch::Receiver<bool> {
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let (completion_tx, _completion_rx) = watch::channel(DownloadCleanupState::Running);
+        *state.status.lock().unwrap() = EmbeddingsStatus::Downloading;
+        *state.download_state.lock().unwrap() = Some(ActiveEmbeddingDownload {
+            session_epoch: 1,
+            bytes_downloaded: 0,
+            total_bytes: 1024,
+            cancel_tx,
+            completion_tx,
+        });
+        cancel_rx
+    }
+
+    fn invoke_error_string(value: &serde_json::Value) -> String {
+        value
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| value.to_string())
+    }
+
+    // M-005: `embeddings_status` IPC dispatch reflects the default state
+    // transition (none yet) returned by `build_embeddings_status_response`.
+    #[tokio::test]
+    async fn m_005_embeddings_status_command_returns_default_state_through_ipc_boundary() {
+        let embedding_state = Arc::new(EmbeddingState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let smoke =
+            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+
+        let response = invoke_smoke_command::<EmbeddingsStatusResponse>(
+            smoke.webview.clone(),
+            "embeddings_status",
+            serde_json::json!({}),
+        )
+        .await
+        .expect("M-005: embeddings_status must succeed for default state");
+
+        assert_eq!(response.state, EmbeddingsStatus::NotProvisioned);
+        assert!(response.download_progress.is_none());
+        assert!(response.error_message.is_none());
+    }
+
+    // M-005: `embeddings_status` IPC dispatch surfaces the Downloading state
+    // and progress fraction set by an active `ActiveEmbeddingDownload`,
+    // proving the command boundary observes shared state mutations.
+    #[tokio::test]
+    async fn m_005_embeddings_status_command_reports_active_download_progress_through_ipc_boundary(
+    ) {
+        let embedding_state = Arc::new(EmbeddingState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let (cancel_tx, _cancel_rx) = watch::channel(false);
+        let (completion_tx, _completion_rx) = watch::channel(DownloadCleanupState::Running);
+        {
+            *embedding_state.status.lock().unwrap() = EmbeddingsStatus::Downloading;
+            *embedding_state.download_state.lock().unwrap() = Some(ActiveEmbeddingDownload {
+                session_epoch: 1,
+                bytes_downloaded: 256,
+                total_bytes: 1024,
+                cancel_tx,
+                completion_tx,
+            });
+        }
+
+        let smoke =
+            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+
+        let response = invoke_smoke_command::<EmbeddingsStatusResponse>(
+            smoke.webview.clone(),
+            "embeddings_status",
+            serde_json::json!({}),
+        )
+        .await
+        .expect("M-005: embeddings_status must succeed when download is active");
+
+        assert_eq!(response.state, EmbeddingsStatus::Downloading);
+        assert_eq!(response.download_progress, Some(0.25));
+    }
+
+    // M-005: `embeddings_cancel_download` is a no-op through the IPC boundary
+    // when there is no active download (idle -> idle transition).
+    #[tokio::test]
+    async fn m_005_embeddings_cancel_download_command_is_noop_when_no_active_download() {
+        let embedding_state = Arc::new(EmbeddingState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let smoke =
+            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+
+        invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "embeddings_cancel_download",
+            serde_json::json!({}),
+        )
+        .await
+        .expect("M-005: cancel command must succeed as no-op when idle");
+
+        assert!(embedding_state.download_state.lock().unwrap().is_none());
+        assert_eq!(
+            *embedding_state.status.lock().unwrap(),
+            EmbeddingsStatus::NotProvisioned
+        );
+    }
+
+    // M-005: `embeddings_cancel_download` drives the active download
+    // Running -> Finished -> cleared transition through the IPC boundary.
+    // An observer task simulates the download loop noticing the cancel
+    // signal and calling `finish_download_session` (the same effect the
+    // real download path produces), so the command awaits cleanup and
+    // returns only after `download_state` is cleared.
+    #[tokio::test]
+    async fn m_005_embeddings_cancel_download_command_signals_and_clears_active_download_state() {
+        let embedding_state = Arc::new(EmbeddingState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let mut cancel_rx = install_active_download(embedding_state.as_ref());
+
+        let observer_state = Arc::clone(&embedding_state);
+        let observer = tokio::spawn(async move {
+            cancel_rx
+                .changed()
+                .await
+                .expect("M-005: cancel watcher must observe cancel signal");
+            assert!(*cancel_rx.borrow_and_update());
+            finish_download_session(observer_state.as_ref())
+                .expect("M-005: finish_download_session must succeed");
+        });
+
+        let smoke =
+            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+
+        timeout(
+            Duration::from_secs(2),
+            invoke_smoke_command::<()>(
+                smoke.webview.clone(),
+                "embeddings_cancel_download",
+                serde_json::json!({}),
+            ),
+        )
+        .await
+        .expect("M-005: cancel command must complete after cleanup")
+        .expect("M-005: cancel command must succeed");
+
+        observer
+            .await
+            .expect("M-005: observer task must run to completion");
+
+        assert!(embedding_state.download_state.lock().unwrap().is_none());
+
+        let response = invoke_smoke_command::<EmbeddingsStatusResponse>(
+            smoke.webview.clone(),
+            "embeddings_status",
+            serde_json::json!({}),
+        )
+        .await
+        .expect("M-005: status after cancel must succeed");
+        assert!(response.download_progress.is_none());
+    }
+
+    // M-005: `embeddings_download_model` rejects through the IPC boundary
+    // when a cross-target provisioning lease (LLM) is already active; the
+    // command must surface a Validation error and leave embedding state
+    // unchanged (no Downloading transition).
+    #[tokio::test]
+    async fn m_005_embeddings_download_model_command_rejects_cross_target_provisioning_conflict() {
+        let _data_dir_guard = M005DataDirGuard::acquire(
+            "m_005_embeddings_download_model_command_rejects_cross_target_provisioning_conflict",
+        );
+        let embedding_state = Arc::new(EmbeddingState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let _llm_lease = provisioning
+            .start_download(ProvisioningTarget::Llm)
+            .expect("M-005: pre-acquired LLM provisioning lease must succeed");
+
+        let smoke =
+            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+
+        let result = invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "embeddings_download_model",
+            serde_json::json!({}),
+        )
+        .await;
+
+        let err = result
+            .expect_err("M-005: download must fail while LLM provisioning is active");
+        let err_str = invoke_error_string(&err);
+        assert!(
+            err_str.contains("Validation") && err_str.contains("LLM"),
+            "M-005: expected cross-target provisioning Validation error, got: {err_str}"
+        );
+
+        assert_eq!(
+            *embedding_state.status.lock().unwrap(),
+            EmbeddingsStatus::NotProvisioned,
+            "M-005: embedding status must not transition when download is rejected pre-flight"
+        );
+        assert!(
+            embedding_state.download_state.lock().unwrap().is_none(),
+            "M-005: no ActiveEmbeddingDownload must be installed when download is rejected"
+        );
+    }
+
+    // M-005: `embeddings_download_model` rejects through the IPC boundary
+    // when an embeddings provisioning lease is already active (re-entrant
+    // download); the command must surface a Validation error.
+    #[tokio::test]
+    async fn m_005_embeddings_download_model_command_rejects_when_embeddings_lease_already_held() {
+        let _data_dir_guard = M005DataDirGuard::acquire(
+            "m_005_embeddings_download_model_command_rejects_when_embeddings_lease_already_held",
+        );
+        let embedding_state = Arc::new(EmbeddingState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let _embeddings_lease = provisioning
+            .start_download(ProvisioningTarget::Embeddings)
+            .expect("M-005: pre-acquired embeddings provisioning lease must succeed");
+
+        let smoke =
+            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+
+        let result = invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "embeddings_download_model",
+            serde_json::json!({}),
+        )
+        .await;
+
+        let err = result
+            .expect_err("M-005: re-entrant download must fail while embeddings lease is active");
+        let err_str = invoke_error_string(&err);
+        assert!(
+            err_str.contains("Validation") && err_str.contains("embeddings"),
+            "M-005: expected re-entrant provisioning Validation error, got: {err_str}"
+        );
+    }
+
+    // M-005: `embeddings_import_model_file` rejects through the IPC boundary
+    // when an embedding download is already in flight; the command's own
+    // provisioning lease succeeds, then `ensure_no_active_embedding_download`
+    // fails inside `install_imported_embedding_bundle`, leaving the
+    // pre-existing download state untouched.
+    #[tokio::test]
+    async fn m_005_embeddings_import_model_file_command_rejects_when_active_download_present() {
+        let _data_dir_guard = M005DataDirGuard::acquire(
+            "m_005_embeddings_import_model_file_command_rejects_when_active_download_present",
+        );
+        let embedding_state = Arc::new(EmbeddingState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let _cancel_rx = install_active_download(embedding_state.as_ref());
+
+        let smoke =
+            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+
+        let result = invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "embeddings_import_model_file",
+            serde_json::json!({"filePath": "M-005-irrelevant-when-download-active"}),
+        )
+        .await;
+
+        let err = result.expect_err(
+            "M-005: import must fail while download is active (ensure_no_active_embedding_download)",
+        );
+        let err_str = invoke_error_string(&err);
+        assert!(
+            err_str.contains("Validation") && err_str.contains("download is active"),
+            "M-005: expected active-download conflict Validation error, got: {err_str}"
+        );
+
+        assert_eq!(
+            *embedding_state.status.lock().unwrap(),
+            EmbeddingsStatus::Downloading,
+            "M-005: embedding status must remain Downloading when import is rejected"
+        );
+        assert!(
+            embedding_state.download_state.lock().unwrap().is_some(),
+            "M-005: pre-existing ActiveEmbeddingDownload must not be cleared by failed import"
+        );
+    }
+
+    // M-005: `embeddings_import_model_file` propagates filesystem errors
+    // through the IPC boundary when the source path does not exist, and
+    // does not transition embedding status away from NotProvisioned.
+    #[tokio::test]
+    async fn m_005_embeddings_import_model_file_command_returns_error_for_missing_path() {
+        let _data_dir_guard = M005DataDirGuard::acquire(
+            "m_005_embeddings_import_model_file_command_returns_error_for_missing_path",
+        );
+        let embedding_state = Arc::new(EmbeddingState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let smoke =
+            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+
+        let missing = std::env::temp_dir().join(format!(
+            "spellbook-m005-missing-{}-{}",
+            std::process::id(),
+            M005_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+
+        let result = invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "embeddings_import_model_file",
+            serde_json::json!({"filePath": missing.to_string_lossy()}),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "M-005: import must fail when source bundle path does not exist"
+        );
+        assert_eq!(
+            *embedding_state.status.lock().unwrap(),
+            EmbeddingsStatus::NotProvisioned,
+            "M-005: embedding status must not transition on failed import"
+        );
+        assert!(
+            embedding_state.download_state.lock().unwrap().is_none(),
+            "M-005: failed import must not install an ActiveEmbeddingDownload"
+        );
+    }
 }

@@ -28,9 +28,6 @@ pub enum AppError {
     #[error("Search error: {0}")]
     Search(String),
 
-    #[error("Embedding download cancelled")]
-    EmbeddingDownloadCancelled,
-
     #[error("Export error: {0}")]
     Export(String),
 

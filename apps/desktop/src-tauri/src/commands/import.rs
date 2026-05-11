@@ -1761,18 +1761,12 @@ pub async fn import_spell_json(
                 .map(|id| (id, spell.name.clone(), spell.description.clone()))
         })
         .collect();
-    if let Err(error) = enqueue_import_embeddings_if_ready(
+    enqueue_import_embeddings_if_ready(
         Arc::clone(embedding_state.inner()),
         Arc::clone(state.inner()),
         imported_for_embeddings,
     )
-    .await
-    {
-        tracing::warn!(
-            ?error,
-            "Failed to enqueue embeddings after JSON spell import"
-        );
-    }
+    .await?;
     Ok(out)
 }
 
@@ -1830,18 +1824,12 @@ pub async fn resolve_import_spell_json(
                 .map(|id| (id, spell.name.clone(), spell.description.clone()))
         })
         .collect();
-    if let Err(error) = enqueue_import_embeddings_if_ready(
+    enqueue_import_embeddings_if_ready(
         Arc::clone(embedding_state.inner()),
         Arc::clone(state.inner()),
         imported_for_embeddings,
     )
-    .await
-    {
-        tracing::warn!(
-            ?error,
-            "Failed to enqueue embeddings after resolved JSON spell import"
-        );
-    }
+    .await?;
     Ok(out)
 }
 
@@ -2601,12 +2589,8 @@ pub async fn import_files(
                 .map(|id| (id, spell.name.clone(), spell.description.clone()))
         })
         .collect();
-    if let Err(error) =
-        enqueue_import_embeddings_if_ready(embedding_state, embedding_pool, imported_for_embeddings)
-            .await
-    {
-        tracing::warn!(?error, "Failed to enqueue embeddings after file import");
-    }
+    enqueue_import_embeddings_if_ready(embedding_state, embedding_pool, imported_for_embeddings)
+        .await?;
 
     if changed_count == 0 {
         drop(import_guard);

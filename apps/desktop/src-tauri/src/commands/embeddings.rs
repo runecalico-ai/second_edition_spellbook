@@ -280,11 +280,16 @@ fn embed_spell_texts_batch(
     Ok(vectors)
 }
 
-fn load_reindex_candidates(
-    pool: &std::sync::Arc<crate::db::Pool>,
+fn load_reindex_total_and_candidates(
+    pool: &Arc<crate::db::Pool>,
     force: bool,
-) -> Result<Vec<SpellEmbeddingRow>, AppError> {
+) -> Result<(u32, Vec<SpellEmbeddingRow>), AppError> {
     let conn = pool.get()?;
+    let total: u32 = {
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))?;
+        count.max(0) as u32
+    };
+
     let sql = if force {
         "SELECT s.id, s.name, s.description
          FROM spell s
@@ -304,7 +309,7 @@ fn load_reindex_candidates(
     for row in rows {
         out.push(row?);
     }
-    Ok(out)
+    Ok((total, out))
 }
 
 async fn upsert_embedding_chunk(
@@ -376,46 +381,47 @@ pub async fn enqueue_spell_embedding_if_ready(
     name: String,
     description: String,
 ) -> Result<(), AppError> {
-    let status = *state
-        .status
-        .lock()
-        .map_err(|_| AppError::Search("embedding status lock poisoned".to_string()))?;
+    let (status, status_lock_poisoned) = match state.status.lock() {
+        Ok(guard) => (*guard, false),
+        Err(poisoned) => (*poisoned.into_inner(), true),
+    };
+    if status_lock_poisoned {
+        tracing::warn!("embedding status mutex was poisoned; using last status for spell embedding hook");
+    }
 
     if status != EmbeddingsStatus::Ready {
         let pool_for_cleanup = Arc::clone(&pool);
-        tauri::async_runtime::spawn(async move {
-            let cleanup = tokio::task::spawn_blocking(move || {
-                let conn = pool_for_cleanup.get()?;
-                conn.execute(
-                    "DELETE FROM spell_vec WHERE rowid = ?1",
-                    rusqlite::params![spell_id],
-                )?;
-                Ok::<(), AppError>(())
-            })
-            .await;
+        let cleanup = tokio::task::spawn_blocking(move || {
+            let conn = pool_for_cleanup.get()?;
+            conn.execute(
+                "DELETE FROM spell_vec WHERE rowid = ?1",
+                rusqlite::params![spell_id],
+            )?;
+            Ok::<(), AppError>(())
+        })
+        .await;
 
-            match cleanup {
-                Ok(Ok(())) => {
-                    tracing::info!(
-                        spell_id,
-                        ?status,
-                        "embedding skipped; stale vector invalidated"
-                    )
-                }
-                Ok(Err(error)) => tracing::warn!(
+        match cleanup {
+            Ok(Ok(())) => {
+                tracing::info!(
                     spell_id,
                     ?status,
-                    ?error,
-                    "embedding skipped; stale vector invalidation failed (non-fatal)"
-                ),
-                Err(join_error) => tracing::warn!(
-                    spell_id,
-                    ?status,
-                    ?join_error,
-                    "embedding skipped; stale vector invalidation join failed (non-fatal)"
-                ),
+                    "embedding skipped; stale vector invalidated"
+                )
             }
-        });
+            Ok(Err(error)) => tracing::warn!(
+                spell_id,
+                ?status,
+                ?error,
+                "embedding skipped; stale vector invalidation failed (non-fatal)"
+            ),
+            Err(join_error) => tracing::warn!(
+                spell_id,
+                ?status,
+                ?join_error,
+                "embedding skipped; stale vector invalidation join failed (non-fatal)"
+            ),
+        }
         return Ok(());
     }
 
@@ -466,48 +472,49 @@ pub async fn enqueue_import_embeddings_if_ready(
         return Ok(());
     }
 
-    let status = *state
-        .status
-        .lock()
-        .map_err(|_| AppError::Search("embedding status lock poisoned".to_string()))?;
+    let (status, status_lock_poisoned) = match state.status.lock() {
+        Ok(guard) => (*guard, false),
+        Err(poisoned) => (*poisoned.into_inner(), true),
+    };
+    if status_lock_poisoned {
+        tracing::warn!("embedding status mutex was poisoned; using last status for import batch embedding hook");
+    }
 
     if status != EmbeddingsStatus::Ready {
         let stale_ids: Vec<i64> = rows.iter().map(|(id, _, _)| *id).collect();
         let count = stale_ids.len();
         let pool_for_cleanup = Arc::clone(&pool);
-        tauri::async_runtime::spawn(async move {
-            let cleanup = tokio::task::spawn_blocking(move || {
-                let conn = pool_for_cleanup.get()?;
-                for spell_id in stale_ids {
-                    conn.execute(
-                        "DELETE FROM spell_vec WHERE rowid = ?1",
-                        rusqlite::params![spell_id],
-                    )?;
-                }
-                Ok::<(), AppError>(())
-            })
-            .await;
-
-            match cleanup {
-                Ok(Ok(())) => tracing::info!(
-                    count,
-                    ?status,
-                    "import embeddings skipped; stale vectors invalidated"
-                ),
-                Ok(Err(error)) => tracing::warn!(
-                    count,
-                    ?status,
-                    ?error,
-                    "import embeddings skipped; stale vector invalidation failed (non-fatal)"
-                ),
-                Err(join_error) => tracing::warn!(
-                    count,
-                    ?status,
-                    ?join_error,
-                    "import embeddings skipped; stale vector invalidation join failed (non-fatal)"
-                ),
+        let cleanup = tokio::task::spawn_blocking(move || {
+            let conn = pool_for_cleanup.get()?;
+            for spell_id in stale_ids {
+                conn.execute(
+                    "DELETE FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![spell_id],
+                )?;
             }
-        });
+            Ok::<(), AppError>(())
+        })
+        .await;
+
+        match cleanup {
+            Ok(Ok(())) => tracing::info!(
+                count,
+                ?status,
+                "import embeddings skipped; stale vectors invalidated"
+            ),
+            Ok(Err(error)) => tracing::warn!(
+                count,
+                ?status,
+                ?error,
+                "import embeddings skipped; stale vector invalidation failed (non-fatal)"
+            ),
+            Err(join_error) => tracing::warn!(
+                count,
+                ?status,
+                ?join_error,
+                "import embeddings skipped; stale vector invalidation join failed (non-fatal)"
+            ),
+        }
         return Ok(());
     }
 
@@ -522,38 +529,19 @@ pub async fn enqueue_import_embeddings_if_ready(
     Ok(())
 }
 
-fn load_total_spell_count(pool: &Arc<crate::db::Pool>) -> Result<u32, AppError> {
-    let conn = pool.get()?;
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))?;
-    Ok(count.max(0) as u32)
-}
-
-fn load_reindex_candidate_count(pool: &Arc<crate::db::Pool>, force: bool) -> Result<u32, AppError> {
-    if force {
-        return load_total_spell_count(pool);
-    }
-
-    let conn = pool.get()?;
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*)
-         FROM spell s
-         LEFT JOIN spell_vec v ON v.rowid = s.id
-         WHERE v.rowid IS NULL",
-        [],
-        |row| row.get(0),
-    )?;
-    Ok(count.max(0) as u32)
-}
-
 pub async fn search_spells_semantic_internal(
     embedding_state: Arc<EmbeddingState>,
     db: Arc<crate::db::Pool>,
     query: String,
     limit: Option<u32>,
 ) -> Result<Vec<SemanticSearchResult>, AppError> {
+    let query_text = query.trim().to_string();
+    if query_text.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let model =
         await_ready_model_with_timeout(embedding_state, std::time::Duration::from_secs(30)).await?;
-    let query_text = query.trim().to_string();
     let query_vector = tokio::task::spawn_blocking(move || {
         let mut guard = model
             .lock()
@@ -629,30 +617,14 @@ pub async fn reindex_embeddings_internal(
     ensure_no_active_embedding_download(state.as_ref())?;
     let model = await_ready_model_with_timeout(state, std::time::Duration::from_secs(30)).await?;
 
-    let pool_for_total = Arc::clone(&db);
-    let total = tokio::task::spawn_blocking(move || load_total_spell_count(&pool_for_total))
-        .await
-        .map_err(|e| AppError::Search(format!("reindex total-count query task failed: {e}")))??;
-
-    let pool_for_candidate_count = Arc::clone(&db);
-    let candidate_count = tokio::task::spawn_blocking(move || {
-        load_reindex_candidate_count(&pool_for_candidate_count, force)
+    let pool_for_snapshot = Arc::clone(&db);
+    let (total, rows) = tokio::task::spawn_blocking(move || {
+        load_reindex_total_and_candidates(&pool_for_snapshot, force)
     })
     .await
-    .map_err(|e| AppError::Search(format!("reindex candidate-count query task failed: {e}")))??;
+    .map_err(|e| AppError::Search(format!("reindex snapshot query task failed: {e}")))??;
 
-    let pool_for_rows = Arc::clone(&db);
-    let rows = tokio::task::spawn_blocking(move || load_reindex_candidates(&pool_for_rows, force))
-        .await
-        .map_err(|e| AppError::Search(format!("reindex candidate query task failed: {e}")))??;
-
-    if rows.len() as u32 != candidate_count {
-        return Err(AppError::Search(format!(
-            "reindex candidate mismatch: count query={}, row query={}",
-            candidate_count,
-            rows.len()
-        )));
-    }
+    let candidate_count = rows.len() as u32;
 
     let initial_skipped = if force {
         0
@@ -1404,6 +1376,16 @@ mod tests {
         assert!(value.get("cosineDistance").is_some());
     }
 
+    #[tokio::test]
+    async fn semantic_search_returns_empty_for_blank_query_without_loading_model() {
+        let state = Arc::new(EmbeddingState::default());
+        let pool = Arc::new(test_pool());
+        let results = search_spells_semantic_internal(state, pool, " \t".to_string(), Some(10))
+            .await
+            .expect("semantic search");
+        assert!(results.is_empty());
+    }
+
     #[test]
     fn reindex_result_non_force_skipped_tracks_preexisting_vectors() {
         let total = 10;
@@ -1860,7 +1842,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        for _ in 0..50 {
+        for _ in 0..100 {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             let count: i64 = {
                 let conn = pool.get().expect("test db connection");
@@ -1879,41 +1861,103 @@ mod tests {
         panic!("M-005: expected spell_vec row to be deleted after skip-path cleanup");
     }
 
+    /// M-005 batch path: `enqueue_import_embeddings_if_ready` must delete existing `spell_vec`
+    /// rows for each imported spell id when embeddings are not Ready (parity with
+    /// `post_write_hook_skips_when_not_ready`).
     #[tokio::test]
     async fn import_hook_leaves_rows_for_reindex_when_embeddings_not_ready() {
         let state = Arc::new(EmbeddingState::default());
         *state.status.lock().unwrap() = EmbeddingsStatus::Initializing;
 
         let pool = Arc::new(test_pool());
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        let id_a: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| row.get(0))
+                .expect("next spell id")
+        };
+        let id_b = id_a + 1;
         {
             let conn = pool.get().expect("test db connection");
             conn.execute(
-                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (101, 'Shield', 1, 'Protects against attacks', 'hash-shield')",
-                [],
+                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Shield', 1, 'Protects against attacks', ?2)",
+                rusqlite::params![id_a, format!("hash-import-hook-test-{id_a}")],
             )
             .expect("insert first spell");
             conn.execute(
-                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (102, 'Light', 1, 'Creates light', 'hash-light')",
-                [],
+                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Light', 1, 'Creates light', ?2)",
+                rusqlite::params![id_b, format!("hash-import-hook-test-{id_b}")],
             )
             .expect("insert second spell");
+            for spell_id in [id_a, id_b] {
+                match conn.execute(
+                    "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                    rusqlite::params![spell_id, &vector_json],
+                ) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        let bytes: Vec<u8> = vec![0.0_f32; 384]
+                            .into_iter()
+                            .flat_map(f32::to_le_bytes)
+                            .collect();
+                        conn.execute(
+                            "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+                            rusqlite::params![spell_id, bytes],
+                        )
+                        .expect("insert stale spell_vec row (blob fallback)");
+                    }
+                }
+                let count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                        rusqlite::params![spell_id],
+                        |row| row.get(0),
+                    )
+                    .expect("count before");
+                assert_eq!(count, 1, "precondition: stale vector row exists");
+            }
         }
 
         let result = enqueue_import_embeddings_if_ready(
             state,
-            pool,
+            Arc::clone(&pool),
             vec![
                 (
-                    101,
+                    id_a,
                     "Shield".to_string(),
                     "Protects against attacks".to_string(),
                 ),
-                (102, "Light".to_string(), "Creates light".to_string()),
+                (id_b, "Light".to_string(), "Creates light".to_string()),
             ],
         )
         .await;
 
         assert!(result.is_ok());
+
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            let conn = pool.get().expect("test db connection");
+            let count_a: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![id_a],
+                    |row| row.get(0),
+                )
+                .expect("count a");
+            let count_b: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![id_b],
+                    |row| row.get(0),
+                )
+                .expect("count b");
+            if count_a == 0 && count_b == 0 {
+                return;
+            }
+        }
+
+        panic!("M-005: expected spell_vec rows deleted for both ids after batch skip-path cleanup");
     }
 }
 

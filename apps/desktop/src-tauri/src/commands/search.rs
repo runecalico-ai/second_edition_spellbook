@@ -2,7 +2,8 @@ use crate::commands::llm::{llm_chat_answer_compat, LlmState};
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::{
-    ChatResponse, Facets, SavedSearch, SavedSearchPayload, SearchFilters, SpellSummary,
+    llm::RagSpellContext, ChatResponse, Facets, SavedSearch, SavedSearchPayload, SearchFilters,
+    SpellSummary,
 };
 use rusqlite::params;
 use rusqlite::Connection;
@@ -163,6 +164,17 @@ fn build_fts_query(raw_query: &str) -> String {
 /// cap is an arbitrary completeness ceiling — silent truncation is possible for
 /// large result sets).
 const SEARCH_RESULT_LIMIT: usize = 100;
+
+/// Maximum spells returned for LLM chat RAG grounding.
+pub(crate) const RAG_RETRIEVAL_LIMIT: usize = 5;
+
+/// Truncates `s` to at most `max_chars` Unicode scalar values without splitting multibyte characters.
+fn truncate_to_chars(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    s.chars().take(max_chars).collect()
+}
 
 /// Escapes `\`, `%`, and `_` so they are treated as literals in a SQLite LIKE
 /// clause. The caller must append `ESCAPE '\'` to the SQL clause.
@@ -326,6 +338,56 @@ fn search_keyword_with_conn(
     })?;
 
     let mut spells = vec![];
+    for spell in rows {
+        spells.push(spell?);
+    }
+    Ok(spells)
+}
+
+/// FTS-only spell retrieval for LLM chat RAG: BM25-ranked matches with truncated descriptions.
+pub(crate) fn search_rag_spells_with_conn(
+    conn: &Connection,
+    terms: &[String],
+    limit: usize,
+) -> Result<Vec<RagSpellContext>, AppError> {
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let fts_query: String = terms
+        .iter()
+        .map(|t| build_fts_query(t))
+        .filter(|q| !q.is_empty())
+        .collect::<Vec<_>>()
+        .join(" OR ");
+
+    if fts_query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let sql = "SELECT s.id, s.name, s.school, s.level, s.description \
+               FROM spell s \
+               JOIN spell_fts ON spell_fts.rowid = s.id \
+               WHERE spell_fts MATCH ? \
+               ORDER BY bm25(spell_fts) ASC \
+               LIMIT ?";
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![fts_query, i64::try_from(limit).unwrap_or(i64::MAX)],
+        |row| {
+            let description: String = row.get(4)?;
+            Ok(RagSpellContext {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                school: row.get::<_, Option<String>>(2)?,
+                level: row.get(3)?,
+                description_snippet: truncate_to_chars(&description, 200),
+            })
+        },
+    )?;
+
+    let mut spells = Vec::new();
     for spell in rows {
         spells.push(spell?);
     }
@@ -1285,5 +1347,41 @@ mod tests {
             ids, expected_ids,
             "text-query results must match the direct bm25-ranked ordering for the same MATCH term"
         );
+    }
+
+    #[test]
+    fn search_rag_spells_returns_top_matches_with_snippets() {
+        use super::search_rag_spells_with_conn;
+
+        let conn = setup_fts_db();
+        insert_spell(
+            &conn,
+            1,
+            "Fireball",
+            "A blazing bead of fire streaks outward and blossoms into an explosion.",
+        );
+
+        let results = search_rag_spells_with_conn(&conn, &["fireball".to_string()], 5).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].name, "Fireball");
+        assert!(results[0].description_snippet.len() <= 200);
+    }
+
+    #[test]
+    fn search_rag_spells_empty_terms_returns_empty() {
+        use super::search_rag_spells_with_conn;
+
+        let conn = setup_fts_db();
+        insert_spell(&conn, 1, "Fireball", "fire");
+        assert!(search_rag_spells_with_conn(&conn, &[], 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn truncate_to_chars_respects_unicode_boundaries() {
+        use super::truncate_to_chars;
+
+        let s = "éclair"; // 6 chars
+        assert_eq!(truncate_to_chars(s, 10), "éclair");
+        assert_eq!(truncate_to_chars(s, 3), "écl");
     }
 }

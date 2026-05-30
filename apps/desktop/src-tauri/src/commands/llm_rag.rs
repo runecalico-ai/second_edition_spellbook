@@ -1,3 +1,6 @@
+use crate::commands::search::{search_rag_spells_with_conn, RAG_RETRIEVAL_LIMIT};
+use crate::error::AppError;
+use crate::models::llm::LlmChatGrounding;
 use std::collections::HashSet;
 
 const MAX_SEARCH_TERMS: usize = 3;
@@ -70,6 +73,20 @@ pub fn extract_search_terms(query: &str) -> Vec<String> {
     terms
 }
 
+/// Loads FTS-grounded spell context for a user chat message.
+pub fn retrieve_rag_context(
+    conn: &rusqlite::Connection,
+    user_query: &str,
+) -> Result<LlmChatGrounding, AppError> {
+    let search_terms = extract_search_terms(user_query);
+    let grounded_spells =
+        search_rag_spells_with_conn(conn, &search_terms, RAG_RETRIEVAL_LIMIT)?;
+    Ok(LlmChatGrounding {
+        search_terms,
+        grounded_spells,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,5 +135,51 @@ mod tests {
     fn extract_terms_handles_punctuation_boundaries() {
         let terms = extract_search_terms("fireball?");
         assert_eq!(terms, vec!["fireball"]);
+    }
+
+    #[test]
+    fn retrieve_rag_context_grounds_fireball_query() {
+        use super::retrieve_rag_context;
+        use rusqlite::Connection;
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE spell (
+                id               INTEGER PRIMARY KEY,
+                name             TEXT NOT NULL DEFAULT '',
+                description      TEXT NOT NULL DEFAULT '',
+                material_components TEXT DEFAULT '',
+                tags             TEXT DEFAULT '',
+                source           TEXT DEFAULT '',
+                author           TEXT DEFAULT '',
+                school           TEXT DEFAULT '',
+                sphere           TEXT DEFAULT '',
+                level            INTEGER DEFAULT 0,
+                class_list       TEXT DEFAULT '',
+                components       TEXT DEFAULT '',
+                duration         TEXT DEFAULT '',
+                is_quest_spell   INTEGER DEFAULT 0,
+                is_cantrip       INTEGER DEFAULT 0,
+                canonical_data   TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        let migration_sql =
+            include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
+        conn.execute_batch(migration_sql).unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, level, canonical_data) \
+             VALUES (1, 'Fireball', 'A blazing orb of fire', 'Evocation', 3, NULL)",
+            [],
+        )
+        .unwrap();
+
+        let grounding = retrieve_rag_context(&conn, "What does a fireball spell do?").unwrap();
+        assert_eq!(grounding.search_terms, vec!["fireball"]);
+        assert_eq!(grounding.grounded_spells.len(), 1);
+        assert_eq!(grounding.grounded_spells[0].name, "Fireball");
+        assert!(grounding.grounded_spells[0].description_snippet.len() <= 200);
     }
 }

@@ -9,7 +9,7 @@ use crate::models::{
 };
 use fastembed::TextEmbedding;
 use futures_util::StreamExt;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
@@ -46,6 +46,7 @@ pub struct EmbeddingState {
     pub(crate) last_error: Mutex<Option<String>>,
     pub(crate) download_state: Mutex<Option<ActiveEmbeddingDownload>>,
     download_epoch: AtomicU64,
+    reindex_in_progress: AtomicBool,
 }
 
 impl Default for EmbeddingState {
@@ -56,8 +57,47 @@ impl Default for EmbeddingState {
             last_error: Mutex::new(None),
             download_state: Mutex::new(None),
             download_epoch: AtomicU64::new(0),
+            reindex_in_progress: AtomicBool::new(false),
         }
     }
+}
+
+struct ReindexInProgressGuard {
+    state: Arc<EmbeddingState>,
+}
+
+impl ReindexInProgressGuard {
+    fn try_acquire(state: Arc<EmbeddingState>) -> Result<Self, AppError> {
+        if state
+            .reindex_in_progress
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .is_err()
+        {
+            return Err(AppError::Validation(
+                "Embedding reindex is already in progress".to_string(),
+            ));
+        }
+        Ok(Self { state })
+    }
+}
+
+impl Drop for ReindexInProgressGuard {
+    fn drop(&mut self) {
+        self.state
+            .reindex_in_progress
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+fn reindex_in_progress(state: &EmbeddingState) -> bool {
+    state
+        .reindex_in_progress
+        .load(std::sync::atomic::Ordering::SeqCst)
 }
 
 type EmbeddingDownloadControl = (
@@ -173,19 +213,17 @@ fn require_embedding_dimension(vector: &[f32]) -> Result<(), AppError> {
     Ok(())
 }
 
-/// H-001: Task 3 Step 3.3 (`TextEmbedding::try_new` + `InitOptions` / `TextInitOptions`); startup wiring
-/// (`initialize_embeddings_after_startup`, Task 7 plan) will call this from `spawn_blocking`.
-#[allow(dead_code)]
+/// H-001: Task 3 Step 3.3 (`TextEmbedding::try_new` + `InitOptions` / `TextInitOptions`).
 fn load_embedding_model_blocking(
     models_root: &std::path::Path,
-) -> Result<std::sync::Arc<fastembed::TextEmbedding>, AppError> {
+) -> Result<Arc<Mutex<fastembed::TextEmbedding>>, AppError> {
     use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
     let mut options = InitOptions::new(EmbeddingModel::AllMiniLML6V2);
     options.cache_dir = models_root.to_path_buf();
 
     TextEmbedding::try_new(options)
-        .map(std::sync::Arc::new)
+        .map(|model| Arc::new(Mutex::new(model)))
         .map_err(|e| AppError::Search(format!("failed to initialize fastembed runtime: {e}")))
 }
 
@@ -224,6 +262,15 @@ async fn await_ready_model_with_timeout(
                     .clone()
                     .unwrap_or_else(|| "embedding state entered error without message".to_string());
                 return Err(AppError::Search(last_error));
+            }
+
+            if matches!(
+                status,
+                EmbeddingsStatus::NotProvisioned | EmbeddingsStatus::Downloading
+            ) {
+                return Err(AppError::Search(
+                    "Embedding model is unavailable".to_string(),
+                ));
             }
 
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -389,39 +436,49 @@ pub async fn enqueue_spell_embedding_if_ready(
         tracing::warn!("embedding status mutex was poisoned; using last status for spell embedding hook");
     }
 
+    if status == EmbeddingsStatus::Ready && reindex_in_progress(state.as_ref()) {
+        tracing::info!(
+            spell_id,
+            "embedding write hook skipped while reindex in progress"
+        );
+        return Ok(());
+    }
+
     if status != EmbeddingsStatus::Ready {
         let pool_for_cleanup = Arc::clone(&pool);
-        let cleanup = tokio::task::spawn_blocking(move || {
-            let conn = pool_for_cleanup.get()?;
-            conn.execute(
-                "DELETE FROM spell_vec WHERE rowid = ?1",
-                rusqlite::params![spell_id],
-            )?;
-            Ok::<(), AppError>(())
-        })
-        .await;
+        tauri::async_runtime::spawn(async move {
+            let cleanup = tokio::task::spawn_blocking(move || {
+                let conn = pool_for_cleanup.get()?;
+                conn.execute(
+                    "DELETE FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![spell_id],
+                )?;
+                Ok::<(), AppError>(())
+            })
+            .await;
 
-        match cleanup {
-            Ok(Ok(())) => {
-                tracing::info!(
+            match cleanup {
+                Ok(Ok(())) => {
+                    tracing::info!(
+                        spell_id,
+                        ?status,
+                        "embedding skipped; stale vector invalidated"
+                    )
+                }
+                Ok(Err(error)) => tracing::warn!(
                     spell_id,
                     ?status,
-                    "embedding skipped; stale vector invalidated"
-                )
+                    ?error,
+                    "embedding skipped; stale vector invalidation failed (non-fatal)"
+                ),
+                Err(join_error) => tracing::warn!(
+                    spell_id,
+                    ?status,
+                    ?join_error,
+                    "embedding skipped; stale vector invalidation join failed (non-fatal)"
+                ),
             }
-            Ok(Err(error)) => tracing::warn!(
-                spell_id,
-                ?status,
-                ?error,
-                "embedding skipped; stale vector invalidation failed (non-fatal)"
-            ),
-            Err(join_error) => tracing::warn!(
-                spell_id,
-                ?status,
-                ?join_error,
-                "embedding skipped; stale vector invalidation join failed (non-fatal)"
-            ),
-        }
+        });
         return Ok(());
     }
 
@@ -447,20 +504,50 @@ async fn embed_import_batch_rows(
     }
 
     let model = await_ready_model_with_timeout(state, std::time::Duration::from_secs(10)).await?;
-    let texts: Vec<String> = rows
-        .iter()
-        .map(|(_, name, description)| compose_spell_embedding_text(name, description))
-        .collect();
-    let vectors = tokio::task::spawn_blocking(move || {
-        let mut guard = model
-            .lock()
-            .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
-        embed_spell_texts_batch(&mut *guard, &texts)
-    })
-    .await
-    .map_err(|e| AppError::Search(format!("batch embedding task failed: {e}")))??;
 
-    upsert_embedding_chunk(pool, &rows, &vectors).await
+    for chunk in rows.chunks(128) {
+        let texts: Vec<String> = chunk
+            .iter()
+            .map(|(_, name, description)| compose_spell_embedding_text(name, description))
+            .collect();
+        let model_for_chunk = Arc::clone(&model);
+        match tokio::task::spawn_blocking(move || {
+            let mut guard = model_for_chunk
+                .lock()
+                .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
+            embed_spell_texts_batch(&mut *guard, &texts)
+        })
+        .await
+        {
+            Ok(Ok(vectors)) => {
+                if let Err(error) =
+                    upsert_embedding_chunk(Arc::clone(&pool), chunk, &vectors).await
+                {
+                    tracing::warn!(
+                        ?error,
+                        chunk_len = chunk.len(),
+                        "import batch embedding chunk upsert failed (non-fatal)"
+                    );
+                }
+            }
+            Ok(Err(error)) => {
+                tracing::warn!(
+                    ?error,
+                    chunk_len = chunk.len(),
+                    "import batch embedding chunk failed (non-fatal)"
+                );
+            }
+            Err(join_error) => {
+                tracing::warn!(
+                    ?join_error,
+                    chunk_len = chunk.len(),
+                    "import batch embedding chunk join failed (non-fatal)"
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub async fn enqueue_import_embeddings_if_ready(
@@ -480,41 +567,53 @@ pub async fn enqueue_import_embeddings_if_ready(
         tracing::warn!("embedding status mutex was poisoned; using last status for import batch embedding hook");
     }
 
+    if status == EmbeddingsStatus::Ready && reindex_in_progress(state.as_ref()) {
+        tracing::info!(
+            count = rows.len(),
+            "import embeddings skipped while reindex in progress"
+        );
+        return Ok(());
+    }
+
     if status != EmbeddingsStatus::Ready {
         let stale_ids: Vec<i64> = rows.iter().map(|(id, _, _)| *id).collect();
         let count = stale_ids.len();
         let pool_for_cleanup = Arc::clone(&pool);
-        let cleanup = tokio::task::spawn_blocking(move || {
-            let conn = pool_for_cleanup.get()?;
-            for spell_id in stale_ids {
-                conn.execute(
-                    "DELETE FROM spell_vec WHERE rowid = ?1",
-                    rusqlite::params![spell_id],
-                )?;
-            }
-            Ok::<(), AppError>(())
-        })
-        .await;
+        tauri::async_runtime::spawn(async move {
+            let cleanup = tokio::task::spawn_blocking(move || {
+                let conn = pool_for_cleanup.get()?;
+                let tx = conn.unchecked_transaction()?;
+                for spell_id in stale_ids {
+                    tx.execute(
+                        "DELETE FROM spell_vec WHERE rowid = ?1",
+                        rusqlite::params![spell_id],
+                    )?;
+                }
+                tx.commit()?;
+                Ok::<(), AppError>(())
+            })
+            .await;
 
-        match cleanup {
-            Ok(Ok(())) => tracing::info!(
-                count,
-                ?status,
-                "import embeddings skipped; stale vectors invalidated"
-            ),
-            Ok(Err(error)) => tracing::warn!(
-                count,
-                ?status,
-                ?error,
-                "import embeddings skipped; stale vector invalidation failed (non-fatal)"
-            ),
-            Err(join_error) => tracing::warn!(
-                count,
-                ?status,
-                ?join_error,
-                "import embeddings skipped; stale vector invalidation join failed (non-fatal)"
-            ),
-        }
+            match cleanup {
+                Ok(Ok(())) => tracing::info!(
+                    count,
+                    ?status,
+                    "import embeddings skipped; stale vectors invalidated"
+                ),
+                Ok(Err(error)) => tracing::warn!(
+                    count,
+                    ?status,
+                    ?error,
+                    "import embeddings skipped; stale vector invalidation failed (non-fatal)"
+                ),
+                Err(join_error) => tracing::warn!(
+                    count,
+                    ?status,
+                    ?join_error,
+                    "import embeddings skipped; stale vector invalidation join failed (non-fatal)"
+                ),
+            }
+        });
         return Ok(());
     }
 
@@ -615,7 +714,10 @@ pub async fn reindex_embeddings_internal(
     force: bool,
 ) -> Result<ReindexResult, AppError> {
     ensure_no_active_embedding_download(state.as_ref())?;
-    let model = await_ready_model_with_timeout(state, std::time::Duration::from_secs(30)).await?;
+    let _reindex_guard = ReindexInProgressGuard::try_acquire(Arc::clone(&state))?;
+    let model =
+        await_ready_model_with_timeout(Arc::clone(&state), std::time::Duration::from_secs(30))
+            .await?;
 
     let pool_for_snapshot = Arc::clone(&db);
     let (total, rows) = tokio::task::spawn_blocking(move || {
@@ -678,9 +780,12 @@ pub async fn reindex_embeddings_internal(
                 failed += chunk.len() as u32;
             }
             Err(join_error) => {
-                return Err(AppError::Search(format!(
-                    "reindex embedding chunk task failed: {join_error}"
-                )));
+                tracing::warn!(
+                    ?join_error,
+                    chunk_len = chunk.len(),
+                    "reindex chunk join failed (non-fatal)"
+                );
+                failed += chunk.len() as u32;
             }
         }
 
@@ -717,13 +822,64 @@ pub async fn reindex_embeddings(
     reindex_embeddings_internal(app, state.inner().clone(), db.inner().clone(), force).await
 }
 
+pub async fn initialize_embeddings_after_startup(
+    app: EmbeddingsCommandAppHandle,
+    state: Arc<EmbeddingState>,
+    pool: Arc<crate::db::Pool>,
+) -> Result<(), AppError> {
+    ensure_no_active_embedding_download(state.as_ref())?;
+    let vault_root = crate::db::pool::app_data_dir()?;
+    if !approved_embedding_bundle_present(&vault_root)? {
+        set_embeddings_status(&state, EmbeddingsStatus::NotProvisioned, None)?;
+        return Ok(());
+    }
+
+    set_embeddings_status(&state, EmbeddingsStatus::Initializing, None)?;
+    let models_root = app_models_dir()?;
+    let model = match tokio::task::spawn_blocking(move || {
+        load_embedding_model_blocking(&models_root)
+    })
+    .await
+    {
+        Ok(Ok(model)) => model,
+        Ok(Err(error)) => {
+            let message = format!("embedding startup model load failed: {error}");
+            set_embeddings_status(&state, EmbeddingsStatus::Error, Some(message.clone()))?;
+            return Err(AppError::Search(message));
+        }
+        Err(join_error) => {
+            let message = format!("embedding startup load task failed: {join_error}");
+            set_embeddings_status(&state, EmbeddingsStatus::Error, Some(message.clone()))?;
+            return Err(AppError::Search(message));
+        }
+    };
+
+    {
+        *state
+            .model
+            .lock()
+            .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))? =
+            Some(model);
+    }
+
+    set_embeddings_status(&state, EmbeddingsStatus::Ready, None)?;
+
+    match reindex_embeddings_internal(app, Arc::clone(&state), pool, false).await {
+        Ok(_) => {}
+        Err(error) if error.to_string().contains("already in progress") => {
+            tracing::info!(?error, "startup embeddings backfill skipped; reindex already active");
+        }
+        Err(error) => tracing::warn!(?error, "startup embeddings backfill failed"),
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 fn test_pool() -> crate::db::Pool {
     crate::db::init_db(None, false).expect("test pool")
 }
 
-/// Used by later tasks for vault-relative bundle detection.
-#[allow(dead_code)]
 fn approved_embedding_bundle_present(vault_root: &std::path::Path) -> Result<bool, AppError> {
     let bundle_root = models_dir(vault_root).join(EMBEDDING_DESTINATION);
     match std::fs::metadata(bundle_root) {
@@ -1859,6 +2015,66 @@ mod tests {
         }
 
         panic!("M-005: expected spell_vec row to be deleted after skip-path cleanup");
+    }
+
+    #[tokio::test]
+    async fn initialize_embeddings_without_bundle_sets_not_provisioned() {
+        use crate::commands::vault::lock_vault_env_for_test;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static STARTUP_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let _env_lock = lock_vault_env_for_test();
+        let unique_id = STARTUP_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let temp_data_dir = std::env::temp_dir().join(format!(
+            "spellbook-embeddings-startup-{}-{}",
+            std::process::id(),
+            unique_id
+        ));
+        std::fs::create_dir_all(&temp_data_dir).unwrap();
+        let previous_data_dir = std::env::var_os("SPELLBOOK_DATA_DIR");
+        std::env::set_var("SPELLBOOK_DATA_DIR", &temp_data_dir);
+
+        let state = Arc::new(EmbeddingState::default());
+        let pool = Arc::new(test_pool());
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("startup init test app");
+        let app_handle = app.handle().clone();
+
+        let result =
+            initialize_embeddings_after_startup(app_handle, Arc::clone(&state), pool).await;
+
+        match &previous_data_dir {
+            Some(prev) => std::env::set_var("SPELLBOOK_DATA_DIR", prev),
+            None => std::env::remove_var("SPELLBOOK_DATA_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(&temp_data_dir);
+
+        assert!(result.is_ok());
+        assert_eq!(
+            *state.status.lock().expect("status lock"),
+            EmbeddingsStatus::NotProvisioned
+        );
+    }
+
+    #[tokio::test]
+    async fn import_hook_returns_immediately_when_ready_without_blocking_caller() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Ready;
+
+        let started = std::time::Instant::now();
+        let result = enqueue_import_embeddings_if_ready(
+            state,
+            Arc::new(test_pool()),
+            vec![(1_i64, "Shield".to_string(), "Protects".to_string())],
+        )
+        .await;
+
+        assert!(result.is_ok());
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(500),
+            "import enqueue should return before background embed work"
+        );
     }
 
     /// M-005 batch path: `enqueue_import_embeddings_if_ready` must delete existing `spell_vec`

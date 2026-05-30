@@ -1711,6 +1711,15 @@ fn run_with_import_maintenance<T>(
     operation()
 }
 
+/// Dedup spell embedding enqueue rows by spell id; later entries win.
+fn dedup_import_embedding_rows(rows: Vec<(i64, String, String)>) -> Vec<(i64, String, String)> {
+    let mut by_id: HashMap<i64, (i64, String, String)> = HashMap::new();
+    for row in rows {
+        by_id.insert(row.0, row);
+    }
+    by_id.into_values().collect()
+}
+
 #[tauri::command]
 pub async fn import_spell_json(
     state: State<'_, Arc<Pool>>,
@@ -1752,15 +1761,16 @@ pub async fn import_spell_json(
     let mut out = result;
     out.failures.extend(preview.failures);
     out.warnings.extend(preview.warnings);
-    let imported_for_embeddings: Vec<(i64, String, String)> = out
-        .imported_spells
-        .iter()
-        .filter_map(|spell| {
-            spell
-                .id
-                .map(|id| (id, spell.name.clone(), spell.description.clone()))
-        })
-        .collect();
+    let imported_for_embeddings = dedup_import_embedding_rows(
+        out.imported_spells
+            .iter()
+            .filter_map(|spell| {
+                spell
+                    .id
+                    .map(|id| (id, spell.name.clone(), spell.description.clone()))
+            })
+            .collect(),
+    );
     enqueue_import_embeddings_if_ready(
         Arc::clone(embedding_state.inner()),
         Arc::clone(state.inner()),
@@ -1815,15 +1825,16 @@ pub async fn resolve_import_spell_json(
     let mut out = result;
     out.failures.extend(preview.failures);
     out.warnings.extend(preview.warnings);
-    let imported_for_embeddings: Vec<(i64, String, String)> = out
-        .imported_spells
-        .iter()
-        .filter_map(|spell| {
-            spell
-                .id
-                .map(|id| (id, spell.name.clone(), spell.description.clone()))
-        })
-        .collect();
+    let imported_for_embeddings = dedup_import_embedding_rows(
+        out.imported_spells
+            .iter()
+            .filter_map(|spell| {
+                spell
+                    .id
+                    .map(|id| (id, spell.name.clone(), spell.description.clone()))
+            })
+            .collect(),
+    );
     enqueue_import_embeddings_if_ready(
         Arc::clone(embedding_state.inner()),
         Arc::clone(state.inner()),
@@ -2580,15 +2591,17 @@ pub async fn import_files(
         Err(err) => return Err(err),
     };
 
-    let imported_for_embeddings: Vec<(i64, String, String)> = result
-        .spells
-        .iter()
-        .filter_map(|spell| {
-            spell
-                .id
-                .map(|id| (id, spell.name.clone(), spell.description.clone()))
-        })
-        .collect();
+    let imported_for_embeddings = dedup_import_embedding_rows(
+        result
+            .spells
+            .iter()
+            .filter_map(|spell| {
+                spell
+                    .id
+                    .map(|id| (id, spell.name.clone(), spell.description.clone()))
+            })
+            .collect(),
+    );
     enqueue_import_embeddings_if_ready(embedding_state, embedding_pool, imported_for_embeddings)
         .await?;
 
@@ -2612,9 +2625,31 @@ pub async fn import_files(
 #[tauri::command]
 pub async fn resolve_import_conflicts(
     state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
     maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     resolutions: Vec<ImportConflictResolution>,
 ) -> Result<ResolveImportResult, AppError> {
+    let imported_for_embeddings = dedup_import_embedding_rows(
+        resolutions
+            .iter()
+            .filter(|resolution| {
+                matches!(
+                    resolution.action.as_str(),
+                    "overwrite" | "merge"
+                )
+            })
+            .filter_map(|resolution| {
+                resolution.spell.as_ref().map(|spell| {
+                    (
+                        spell.id,
+                        spell.name.clone(),
+                        spell.description.clone(),
+                    )
+                })
+            })
+            .collect(),
+    );
+
     let pool = state.inner().clone();
     let gc_pool = pool.clone();
     let maintenance_state = maintenance_state.inner().clone();
@@ -2626,6 +2661,13 @@ pub async fn resolve_import_conflicts(
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
+
+    enqueue_import_embeddings_if_ready(
+        Arc::clone(embedding_state.inner()),
+        Arc::clone(state.inner()),
+        imported_for_embeddings,
+    )
+    .await?;
 
     if result.resolved.is_empty() {
         drop(import_guard);
@@ -2806,6 +2848,23 @@ mod tests {
     };
     use crate::models::canonical_spell::{CanonicalSpell, SourceRef};
     use rusqlite::{params, Connection};
+
+    #[test]
+    fn dedup_import_embedding_rows_keeps_last_entry_per_spell_id() {
+        let rows = vec![
+            (1_i64, "First".to_string(), "A".to_string()),
+            (2_i64, "Two".to_string(), "B".to_string()),
+            (1_i64, "Last".to_string(), "C".to_string()),
+        ];
+        let deduped = dedup_import_embedding_rows(rows);
+        assert_eq!(deduped.len(), 2);
+        let spell_one = deduped
+            .iter()
+            .find(|(id, _, _)| *id == 1)
+            .expect("spell 1 present");
+        assert_eq!(spell_one.1, "Last");
+        assert_eq!(spell_one.2, "C");
+    }
 
     fn minimal_spell_json(name: &str) -> String {
         format!(

@@ -35,11 +35,30 @@ pub fn run() {
 
             let pool = init_db(resource_dir.as_deref(), true)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-            app.manage(Arc::new(pool));
+
+            let pool = Arc::new(pool);
+            let provisioning = Arc::new(ProvisioningState::default());
+            let embeddings = Arc::new(EmbeddingState::default());
+
+            app.manage(Arc::clone(&pool));
             app.manage(Arc::new(VaultMaintenanceState::default()));
-            app.manage(Arc::new(ProvisioningState::default()));
+            app.manage(Arc::clone(&provisioning));
             app.manage(Arc::new(LlmState::default()));
-            app.manage(Arc::new(EmbeddingState::default()));
+            app.manage(Arc::clone(&embeddings));
+
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = initialize_embeddings_after_startup(
+                    app_handle,
+                    Arc::clone(&embeddings),
+                    Arc::clone(&pool),
+                )
+                .await
+                {
+                    tracing::warn!(?error, "embedding startup initialization failed");
+                }
+            });
+
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())
@@ -169,6 +188,35 @@ pub(crate) fn build_llm_command_smoke_app(
     let webview = tauri::WebviewWindowBuilder::new(&app, "smoke-main", Default::default())
         .build()
         .expect("failed to build LLM smoke webview");
+
+    LlmCommandSmokeApp { _app: app, webview }
+}
+
+#[cfg(test)]
+pub(crate) fn build_embeddings_command_smoke_app(
+    embedding_state: Arc<EmbeddingState>,
+    provisioning: Arc<ProvisioningState>,
+    pool: Arc<db::Pool>,
+) -> LlmCommandSmokeApp {
+    let app = tauri::test::mock_builder()
+        .manage(embedding_state)
+        .manage(provisioning)
+        .manage(pool)
+        .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![
+            embeddings_status,
+            embeddings_download_model,
+            embeddings_import_model_file,
+            embeddings_cancel_download,
+            search_spells_semantic,
+            reindex_embeddings,
+        ])
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("failed to build embeddings smoke app");
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "smoke-main", Default::default())
+        .build()
+        .expect("failed to build embeddings smoke webview");
 
     LlmCommandSmokeApp { _app: app, webview }
 }
@@ -566,5 +614,55 @@ mod llm_command_smoke_tests {
         .await;
 
         assert!(cancel_result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod embeddings_command_smoke_tests {
+    use super::{build_embeddings_command_smoke_app, invoke_smoke_command};
+    use crate::commands::{EmbeddingState, ProvisioningState};
+    use crate::models::{EmbeddingsStatus, EmbeddingsStatusResponse, SemanticSearchResult};
+    use std::sync::Arc;
+
+    fn smoke_pool() -> Arc<crate::db::Pool> {
+        Arc::new(crate::db::init_db(None, false).expect("smoke pool"))
+    }
+
+    fn smoke_app() -> super::LlmCommandSmokeApp {
+        build_embeddings_command_smoke_app(
+            Arc::new(EmbeddingState::default()),
+            Arc::new(ProvisioningState::default()),
+            smoke_pool(),
+        )
+    }
+
+    #[tokio::test]
+    async fn embeddings_commands_are_registered_in_smoke_app() {
+        let app = smoke_app();
+
+        let status: EmbeddingsStatusResponse = invoke_smoke_command(
+            app.webview.clone(),
+            "embeddings_status",
+            serde_json::json!({}),
+        )
+        .await
+        .expect("embeddings_status invoke");
+
+        assert_eq!(status.state, EmbeddingsStatus::NotProvisioned);
+    }
+
+    #[tokio::test]
+    async fn search_spells_semantic_command_is_registered_in_smoke_app() {
+        let app = smoke_app();
+
+        let results: Vec<SemanticSearchResult> = invoke_smoke_command(
+            app.webview.clone(),
+            "search_spells_semantic",
+            serde_json::json!({ "query": "   ", "limit": 5 }),
+        )
+        .await
+        .expect("search_spells_semantic invoke");
+
+        assert!(results.is_empty());
     }
 }

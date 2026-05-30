@@ -137,9 +137,7 @@ mod tests {
         assert_eq!(terms, vec!["fireball"]);
     }
 
-    #[test]
-    fn retrieve_rag_context_grounds_fireball_query() {
-        use super::retrieve_rag_context;
+    fn setup_rag_test_db() -> rusqlite::Connection {
         use rusqlite::Connection;
 
         let conn = Connection::open_in_memory().unwrap();
@@ -169,6 +167,15 @@ mod tests {
         let migration_sql =
             include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
         conn.execute_batch(migration_sql).unwrap();
+        conn
+    }
+
+    #[test]
+    fn retrieve_rag_context_grounds_fireball_query() {
+        use super::retrieve_rag_context;
+        use crate::commands::search::RAG_DESCRIPTION_SNIPPET_MAX_CHARS;
+
+        let conn = setup_rag_test_db();
         conn.execute(
             "INSERT INTO spell (id, name, description, school, level, canonical_data) \
              VALUES (1, 'Fireball', 'A blazing orb of fire', 'Evocation', 3, NULL)",
@@ -180,6 +187,59 @@ mod tests {
         assert_eq!(grounding.search_terms, vec!["fireball"]);
         assert_eq!(grounding.grounded_spells.len(), 1);
         assert_eq!(grounding.grounded_spells[0].name, "Fireball");
-        assert!(grounding.grounded_spells[0].description_snippet.len() <= 200);
+        assert!(
+            grounding.grounded_spells[0]
+                .description_snippet
+                .chars()
+                .count()
+                <= RAG_DESCRIPTION_SNIPPET_MAX_CHARS
+        );
+    }
+
+    #[test]
+    fn retrieve_rag_context_multi_term_or_retrieval() {
+        use super::retrieve_rag_context;
+
+        let conn = setup_rag_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (1, 'Fireball', 'A blazing bead of fire', NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (2, 'Frost Ray', 'A ray of frost chills the target', NULL)",
+            [],
+        )
+        .unwrap();
+
+        let grounding = retrieve_rag_context(&conn, "fireball frost").unwrap();
+        assert_eq!(grounding.search_terms, vec!["fireball", "frost"]);
+
+        let names: Vec<&str> = grounding
+            .grounded_spells
+            .iter()
+            .map(|spell| spell.name.as_str())
+            .collect();
+        assert!(names.contains(&"Fireball"));
+        assert!(names.contains(&"Frost Ray"));
+    }
+
+    #[test]
+    fn retrieve_rag_context_no_fts_matches_returns_empty_grounded_spells() {
+        use super::retrieve_rag_context;
+
+        let conn = setup_rag_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, description, canonical_data) \
+             VALUES (1, 'Fireball', 'A blazing orb of fire', NULL)",
+            [],
+        )
+        .unwrap();
+
+        let grounding = retrieve_rag_context(&conn, "xyzzyplugh nonsense").unwrap();
+        assert_eq!(grounding.search_terms, vec!["xyzzyplugh", "nonsense"]);
+        assert!(grounding.grounded_spells.is_empty());
     }
 }

@@ -168,6 +168,9 @@ const SEARCH_RESULT_LIMIT: usize = 100;
 /// Maximum spells returned for LLM chat RAG grounding.
 pub(crate) const RAG_RETRIEVAL_LIMIT: usize = 5;
 
+/// Maximum Unicode scalar values in a RAG description snippet.
+pub(crate) const RAG_DESCRIPTION_SNIPPET_MAX_CHARS: usize = 200;
+
 /// Truncates `s` to at most `max_chars` Unicode scalar values without splitting multibyte characters.
 fn truncate_to_chars(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
@@ -382,7 +385,10 @@ pub(crate) fn search_rag_spells_with_conn(
                 name: row.get(1)?,
                 school: row.get::<_, Option<String>>(2)?,
                 level: row.get(3)?,
-                description_snippet: truncate_to_chars(&description, 200),
+                description_snippet: truncate_to_chars(
+                    &description,
+                    RAG_DESCRIPTION_SNIPPET_MAX_CHARS,
+                ),
             })
         },
     )?;
@@ -908,6 +914,22 @@ mod tests {
         .unwrap();
     }
 
+    fn insert_rag_spell(
+        conn: &Connection,
+        id: i64,
+        name: &str,
+        description: &str,
+        school: &str,
+        level: i64,
+    ) {
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, level, canonical_data) \
+             VALUES (?, ?, ?, ?, ?, NULL)",
+            rusqlite::params![id, name, description, school, level],
+        )
+        .unwrap();
+    }
+
     fn search_ids(conn: &Connection, query: &str) -> Vec<i64> {
         use super::search_keyword_with_conn;
         search_keyword_with_conn(conn, query, None)
@@ -1351,6 +1373,31 @@ mod tests {
 
     #[test]
     fn search_rag_spells_returns_top_matches_with_snippets() {
+        use super::{search_rag_spells_with_conn, RAG_DESCRIPTION_SNIPPET_MAX_CHARS};
+
+        let conn = setup_fts_db();
+        insert_rag_spell(
+            &conn,
+            1,
+            "Fireball",
+            "A blazing bead of fire streaks outward and blossoms into an explosion.",
+            "Evocation",
+            3,
+        );
+
+        let results = search_rag_spells_with_conn(&conn, &["fireball".to_string()], 5).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].name, "Fireball");
+        assert_eq!(results[0].school.as_deref(), Some("Evocation"));
+        assert_eq!(results[0].level, 3);
+        assert!(
+            results[0].description_snippet.chars().count()
+                <= RAG_DESCRIPTION_SNIPPET_MAX_CHARS
+        );
+    }
+
+    #[test]
+    fn search_rag_spells_multi_term_or_retrieval() {
         use super::search_rag_spells_with_conn;
 
         let conn = setup_fts_db();
@@ -1360,11 +1407,59 @@ mod tests {
             "Fireball",
             "A blazing bead of fire streaks outward and blossoms into an explosion.",
         );
+        insert_spell(
+            &conn,
+            2,
+            "Frost Ray",
+            "A ray of frost chills the target with icy damage.",
+        );
 
-        let results = search_rag_spells_with_conn(&conn, &["fireball".to_string()], 5).unwrap();
-        assert!(!results.is_empty());
-        assert_eq!(results[0].name, "Fireball");
-        assert!(results[0].description_snippet.len() <= 200);
+        let results = search_rag_spells_with_conn(
+            &conn,
+            &["fireball".to_string(), "frost".to_string()],
+            5,
+        )
+        .unwrap();
+
+        let names: Vec<&str> = results.iter().map(|spell| spell.name.as_str()).collect();
+        assert!(names.contains(&"Fireball"));
+        assert!(names.contains(&"Frost Ray"));
+    }
+
+    #[test]
+    fn search_rag_spells_top_five_cap() {
+        use super::{search_rag_spells_with_conn, RAG_RETRIEVAL_LIMIT};
+
+        let conn = setup_fts_db();
+        for id in 1..=8 {
+            insert_spell(
+                &conn,
+                id,
+                &format!("Arcane Bolt {id}"),
+                "arcane energy bolt spell",
+            );
+        }
+
+        let results =
+            search_rag_spells_with_conn(&conn, &["arcane".to_string()], RAG_RETRIEVAL_LIMIT)
+                .unwrap();
+        assert_eq!(results.len(), RAG_RETRIEVAL_LIMIT);
+    }
+
+    #[test]
+    fn search_rag_spells_truncates_description_to_max_chars() {
+        use super::{search_rag_spells_with_conn, RAG_DESCRIPTION_SNIPPET_MAX_CHARS};
+
+        let conn = setup_fts_db();
+        let long_description = "x".repeat(RAG_DESCRIPTION_SNIPPET_MAX_CHARS + 50);
+        insert_spell(&conn, 1, "Verbose Spell", &long_description);
+
+        let results = search_rag_spells_with_conn(&conn, &["verbose".to_string()], 5).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].description_snippet.chars().count(),
+            RAG_DESCRIPTION_SNIPPET_MAX_CHARS
+        );
     }
 
     #[test]

@@ -80,7 +80,19 @@ mod tests {
     #[test]
     fn extract_terms_caps_at_three() {
         let terms = extract_search_terms("fire cold lightning acid poison evocation");
-        assert!(terms.len() <= 3);
+        assert_eq!(terms, vec!["fire", "cold", "lightning"]);
+    }
+
+    #[test]
+    fn extract_terms_keeps_domain_short_tokens() {
+        let terms = extract_search_terms("hd hp ac mr");
+        assert_eq!(terms, vec!["hd", "hp", "ac"]);
+    }
+
+    #[test]
+    fn extract_terms_deduplicates_preserving_order() {
+        let terms = extract_search_terms("fireball fireball damage fireball");
+        assert_eq!(terms, vec!["fireball", "damage"]);
     }
 
     #[test]

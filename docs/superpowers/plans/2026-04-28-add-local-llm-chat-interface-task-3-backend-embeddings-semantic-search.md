@@ -2239,7 +2239,9 @@ cargo fmt --all -- --check
 
 Expected: PASS.
 
-- [ ] **Step 7.5: Commit Task 7** (in progress)
+- [x] **Step 7.5: Commit Task 7**
+
+Outcome/Evidence: `1c8ddf2` — `feat: register embeddings lifecycle and startup backfill` (`lib.rs`, plan doc); `commands/mod.rs` unchanged in this pass.
 
 ```bash
 git add src/lib.rs src/commands/embeddings.rs src/commands/mod.rs

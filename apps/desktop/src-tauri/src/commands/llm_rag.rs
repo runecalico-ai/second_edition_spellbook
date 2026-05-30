@@ -81,14 +81,33 @@ pub fn assemble_chatml_prompt(input: AssemblePromptInput<'_>) -> Result<String, 
         history_blocks.remove(0);
     }
 
-    let mut prompt = system_block;
-    for block in history_blocks {
-        prompt.push_str(&block);
+    let mut prompt = build_prompt_from_parts(&system_block, &history_blocks, &user_block, &assistant_header);
+    while (input.tokenize)(&prompt)? > input.context_limit {
+        if history_blocks.is_empty() {
+            return Err(AppError::Validation(
+                "Assembled chat prompt exceeds the model context limit".into(),
+            ));
+        }
+        history_blocks.remove(0);
+        prompt = build_prompt_from_parts(&system_block, &history_blocks, &user_block, &assistant_header);
     }
-    prompt.push_str(&user_block);
-    prompt.push_str(&assistant_header);
 
     Ok(prompt)
+}
+
+fn build_prompt_from_parts(
+    system_block: &str,
+    history_blocks: &[String],
+    user_block: &str,
+    assistant_header: &str,
+) -> String {
+    let mut prompt = system_block.to_string();
+    for block in history_blocks {
+        prompt.push_str(block);
+    }
+    prompt.push_str(user_block);
+    prompt.push_str(assistant_header);
+    prompt
 }
 
 const MAX_SEARCH_TERMS: usize = 3;

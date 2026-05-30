@@ -1,4 +1,6 @@
-use crate::commands::embeddings::{enqueue_spell_embedding_if_ready, EmbeddingState};
+use crate::commands::embeddings::{
+    cancel_spell_embedding_for_delete, enqueue_spell_embedding_if_ready, EmbeddingState,
+};
 use crate::commands::vault::export_spell_to_vault_by_hash;
 use crate::db::Pool;
 use crate::error::AppError;
@@ -979,7 +981,12 @@ pub async fn update_spell(
 }
 
 #[tauri::command]
-pub async fn delete_spell(state: State<'_, Arc<Pool>>, id: i64) -> Result<(), AppError> {
+pub async fn delete_spell(
+    state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
+    id: i64,
+) -> Result<(), AppError> {
+    cancel_spell_embedding_for_delete(embedding_state.inner().as_ref(), id);
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;

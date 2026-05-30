@@ -68,6 +68,10 @@ impl Default for EmbeddingState {
     }
 }
 
+pub(crate) fn cancel_spell_embedding_for_delete(state: &EmbeddingState, spell_id: i64) {
+    bump_spell_embed_generation(state, spell_id);
+}
+
 fn bump_spell_embed_generation(state: &EmbeddingState, spell_id: i64) -> u64 {
     let mut generations = state
         .spell_embed_generations
@@ -457,6 +461,16 @@ async fn upsert_embedding_chunk(
         let conn = pool.get()?;
         let tx = conn.unchecked_transaction()?;
         for (idx, row) in owned_rows.iter().enumerate() {
+            let spell_exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM spell WHERE id = ?1",
+                    rusqlite::params![row.0],
+                    |_| Ok(()),
+                )
+                .is_ok();
+            if !spell_exists {
+                continue;
+            }
             let vector_json = serde_json::to_string(&owned_vectors[idx]).map_err(|e| {
                 AppError::Search(format!("failed to serialize embedding vector: {e}"))
             })?;
@@ -1017,6 +1031,29 @@ pub async fn reindex_embeddings(
     reindex_embeddings_internal(app, state.inner().clone(), db.inner().clone(), force).await
 }
 
+fn spell_vec_uses_sqlite_vec(conn: &rusqlite::Connection) -> bool {
+    let Ok(sql): Result<String, _> = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'spell_vec'",
+        [],
+        |row| row.get(0),
+    ) else {
+        return false;
+    };
+    sql.contains("vec0") || sql.contains("float[")
+}
+
+fn ensure_spell_vec_sqlite_vec_ready(pool: &crate::db::Pool) -> Result<(), AppError> {
+    let conn = pool.get()?;
+    if spell_vec_uses_sqlite_vec(&conn) {
+        Ok(())
+    } else {
+        Err(AppError::Search(
+            "semantic search requires sqlite-vec; spell_vec is blob-backed in this database"
+                .to_string(),
+        ))
+    }
+}
+
 pub async fn finalize_embedding_provision(
     app: EmbeddingsCommandAppHandle,
     state: Arc<EmbeddingState>,
@@ -1024,6 +1061,7 @@ pub async fn finalize_embedding_provision(
 ) -> Result<(), AppError> {
     let _finalize_guard = state.finalize_lock.lock().await;
     ensure_no_active_embedding_download(state.as_ref())?;
+    ensure_spell_vec_sqlite_vec_ready(&pool)?;
     set_embeddings_status(&state, EmbeddingsStatus::Initializing, None)?;
     let models_root = app_models_dir()?;
     let state_for_errors = Arc::clone(&state);

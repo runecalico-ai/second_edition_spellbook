@@ -983,6 +983,7 @@ pub async fn delete_spell(state: State<'_, Arc<Pool>>, id: i64) -> Result<(), Ap
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
+        conn.execute("DELETE FROM spell_vec WHERE rowid = ?", [id])?;
         conn.execute("DELETE FROM spell WHERE id = ?", [id])?;
         Ok::<(), AppError>(())
     })

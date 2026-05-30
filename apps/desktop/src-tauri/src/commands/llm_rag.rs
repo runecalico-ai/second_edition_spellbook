@@ -43,6 +43,9 @@ fn keep_token(token: &str, stopwords: &HashSet<&'static str>) -> bool {
 }
 
 /// Extract up to three deduplicated FTS search terms from a user chat query.
+///
+/// Tokenization is ASCII-only (`is_ascii_alphanumeric`); non-ASCII letters are treated
+/// as delimiters. This matches the v1 English AD&D corpus expectation.
 pub fn extract_search_terms(query: &str) -> Vec<String> {
     let stopwords = stopword_set();
     let mut seen = HashSet::new();

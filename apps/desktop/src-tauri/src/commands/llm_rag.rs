@@ -1,7 +1,91 @@
 use crate::commands::search::{search_rag_spells_with_conn, RAG_RETRIEVAL_LIMIT};
 use crate::error::AppError;
-use crate::models::llm::LlmChatGrounding;
+use crate::models::llm::{ChatMessage, ChatRole, LlmChatGrounding};
 use std::collections::HashSet;
+
+pub const TINYLLAMA_CONTEXT_TOKENS: u32 = 2048;
+pub const CHATML_IM_END: &str = concat!("<", "|im_end|", ">");
+pub const SYSTEM_PROMPT_PREFIX: &str = "You are a helpful AD&D 2nd Edition spell expert. Answer questions about spells accurately using the provided library context. Be concise.\n\n";
+
+pub struct AssemblePromptInput<'a> {
+    pub system_without_context: &'a str,
+    pub grounding: LlmChatGrounding,
+    pub history: Vec<ChatMessage>,
+    pub user_message: String,
+    pub tokenize: &'a dyn Fn(&str) -> Result<u32, AppError>,
+    pub context_limit: u32,
+}
+
+pub fn format_rag_block(grounding: &LlmChatGrounding) -> String {
+    if grounding.grounded_spells.is_empty() {
+        return "No matching spells found in the library".to_string();
+    }
+    let mut out = String::from("Relevant spells from the library:\n");
+    for spell in &grounding.grounded_spells {
+        let school = spell.school.as_deref().unwrap_or("Unknown");
+        out.push_str(&format!(
+            "- {} (Level {} {}): {}\n",
+            spell.name, spell.level, school, spell.description_snippet
+        ));
+    }
+    out
+}
+
+fn chatml_block(role: &str, content: &str) -> String {
+    format!("<|im_start|>{role}\n{content}\n{CHATML_IM_END}\n")
+}
+
+fn chatml_role(role: ChatRole) -> &'static str {
+    match role {
+        ChatRole::User => "user",
+        ChatRole::Assistant => "assistant",
+    }
+}
+
+/// Assembles a TinyLlama ChatML prompt with system RAG context, truncated history, and the
+/// current user turn followed by an assistant header for generation.
+pub fn assemble_chatml_prompt(input: AssemblePromptInput<'_>) -> Result<String, AppError> {
+    let system_content = format!(
+        "{}{}",
+        input.system_without_context,
+        format_rag_block(&input.grounding)
+    );
+    let system_block = chatml_block("system", &system_content);
+    let user_block = chatml_block("user", &input.user_message);
+    let assistant_header = "<|im_start|>assistant\n".to_string();
+
+    let prefix_tokens = (input.tokenize)(&system_block)?;
+    let suffix_tokens =
+        (input.tokenize)(&user_block)? + (input.tokenize)(&assistant_header)?;
+    let remaining = input
+        .context_limit
+        .saturating_sub(prefix_tokens.saturating_add(suffix_tokens));
+
+    let mut history_blocks: Vec<String> = input
+        .history
+        .iter()
+        .map(|msg| chatml_block(chatml_role(msg.role), &msg.content))
+        .collect();
+
+    while !history_blocks.is_empty() {
+        let total: u32 = history_blocks
+            .iter()
+            .try_fold(0u32, |acc, block| (input.tokenize)(block).map(|t| acc + t))?;
+        if total <= remaining {
+            break;
+        }
+        history_blocks.remove(0);
+    }
+
+    let mut prompt = system_block;
+    for block in history_blocks {
+        prompt.push_str(&block);
+    }
+    prompt.push_str(&user_block);
+    prompt.push_str(&assistant_header);
+
+    Ok(prompt)
+}
 
 const MAX_SEARCH_TERMS: usize = 3;
 
@@ -241,5 +325,108 @@ mod tests {
         let grounding = retrieve_rag_context(&conn, "xyzzyplugh nonsense").unwrap();
         assert_eq!(grounding.search_terms, vec!["xyzzyplugh", "nonsense"]);
         assert!(grounding.grounded_spells.is_empty());
+    }
+
+    fn sample_grounding_with_one_spell() -> LlmChatGrounding {
+        use crate::models::llm::RagSpellContext;
+
+        LlmChatGrounding {
+            search_terms: vec!["fireball".to_string()],
+            grounded_spells: vec![RagSpellContext {
+                id: 1,
+                name: "Fireball".to_string(),
+                school: Some("Evocation".to_string()),
+                level: 3,
+                description_snippet: "A blazing orb of fire".to_string(),
+            }],
+        }
+    }
+
+    fn test_tokenize(text: &str) -> Result<u32, AppError> {
+        Ok(text.len() as u32 / 4)
+    }
+
+    #[test]
+    fn assemble_prompt_includes_system_rag_and_user_turn() {
+        use super::{
+            assemble_chatml_prompt, AssemblePromptInput, CHATML_IM_END, SYSTEM_PROMPT_PREFIX,
+        };
+
+        let tokenize = |text: &str| test_tokenize(text);
+        let prompt = assemble_chatml_prompt(AssemblePromptInput {
+            system_without_context: SYSTEM_PROMPT_PREFIX,
+            grounding: sample_grounding_with_one_spell(),
+            history: vec![],
+            user_message: "Explain fireball".to_string(),
+            tokenize: &tokenize,
+            context_limit: 2048,
+        })
+        .unwrap();
+        assert!(prompt.contains("<|im_start|>system"));
+        assert!(prompt.contains("Relevant spells from the library:"));
+        assert!(prompt.contains("Explain fireball"));
+        assert!(prompt.contains(CHATML_IM_END));
+    }
+
+    #[test]
+    fn assemble_prompt_truncates_oldest_history_first() {
+        use super::{
+            assemble_chatml_prompt, AssemblePromptInput, SYSTEM_PROMPT_PREFIX,
+        };
+        use crate::models::llm::{ChatMessage, ChatRole};
+
+        let long_content = "x".repeat(800);
+        let mut history = Vec::new();
+        for i in 0..10 {
+            let content = if i == 0 {
+                format!("OLDEST_TURN_MARKER_{long_content}")
+            } else {
+                format!("history turn {i} {long_content}")
+            };
+            history.push(ChatMessage {
+                role: if i % 2 == 0 {
+                    ChatRole::User
+                } else {
+                    ChatRole::Assistant
+                },
+                content,
+            });
+        }
+
+        let current_user = "latest user question kept".to_string();
+        let tokenize = |text: &str| test_tokenize(text);
+        let prompt = assemble_chatml_prompt(AssemblePromptInput {
+            system_without_context: SYSTEM_PROMPT_PREFIX,
+            grounding: sample_grounding_with_one_spell(),
+            history,
+            user_message: current_user.clone(),
+            tokenize: &tokenize,
+            context_limit: 2048,
+        })
+        .unwrap();
+
+        assert!(
+            !prompt.contains("OLDEST_TURN_MARKER"),
+            "oldest history turn should be dropped when over budget"
+        );
+        assert!(
+            prompt.contains(&current_user),
+            "current user message must always be present"
+        );
+        assert!(
+            prompt.contains("history turn 9"),
+            "recent history should remain when budget allows"
+        );
+    }
+
+    #[test]
+    fn format_rag_block_empty_grounding() {
+        use super::format_rag_block;
+
+        let block = format_rag_block(&LlmChatGrounding {
+            search_terms: vec!["xyzzy".to_string()],
+            grounded_spells: vec![],
+        });
+        assert_eq!(block, "No matching spells found in the library");
     }
 }

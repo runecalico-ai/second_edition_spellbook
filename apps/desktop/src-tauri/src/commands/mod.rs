@@ -3,6 +3,7 @@ pub mod embeddings;
 pub mod export;
 pub mod import;
 pub mod llm;
+pub mod llm_rag;
 pub mod provisioning;
 pub mod search;
 pub mod spells;

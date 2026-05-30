@@ -1033,10 +1033,16 @@ fn build_done_event(run_result: &Result<ChatRunOutput, AppError>, cancelled: boo
         Ok(output) => DoneEvent {
             full_response: output.full_response.clone(),
             cancelled: output.cancelled,
+            search_terms: Vec::new(),
+            grounded_spells: Vec::new(),
+            timed_out: false,
         },
         Err(_) => DoneEvent {
             full_response: String::new(),
             cancelled,
+            search_terms: Vec::new(),
+            grounded_spells: Vec::new(),
+            timed_out: false,
         },
     }
 }
@@ -3802,6 +3808,9 @@ mod tests {
             Some(DoneEvent {
                 full_response: String::new(),
                 cancelled: false,
+                search_terms: Vec::new(),
+                grounded_spells: Vec::new(),
+                timed_out: false,
             })
         );
     }
@@ -3949,6 +3958,9 @@ mod tests {
             Some(DoneEvent {
                 full_response: String::new(),
                 cancelled: false,
+                search_terms: Vec::new(),
+                grounded_spells: Vec::new(),
+                timed_out: false,
             })
         );
     }
@@ -4098,7 +4110,13 @@ mod tests {
 
         assert_eq!(
             value,
-            serde_json::json!({ "fullResponse": "ok", "cancelled": true })
+            serde_json::json!({
+                "fullResponse": "ok",
+                "cancelled": true,
+                "searchTerms": [],
+                "groundedSpells": [],
+                "timedOut": false,
+            })
         );
     }
 
@@ -4112,7 +4130,13 @@ mod tests {
 
         assert_eq!(
             value,
-            serde_json::json!({ "fullResponse": "", "cancelled": true })
+            serde_json::json!({
+                "fullResponse": "",
+                "cancelled": true,
+                "searchTerms": [],
+                "groundedSpells": [],
+                "timedOut": false,
+            })
         );
     }
 }

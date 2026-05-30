@@ -2064,6 +2064,7 @@ pub async fn preview_import(files: Vec<ImportFile>) -> Result<PreviewResult, App
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn import_files(
     state: State<'_, Arc<Pool>>,
@@ -2632,20 +2633,12 @@ pub async fn resolve_import_conflicts(
     let imported_for_embeddings = dedup_import_embedding_rows(
         resolutions
             .iter()
-            .filter(|resolution| {
-                matches!(
-                    resolution.action.as_str(),
-                    "overwrite" | "merge"
-                )
-            })
+            .filter(|resolution| matches!(resolution.action.as_str(), "overwrite" | "merge"))
             .filter_map(|resolution| {
-                resolution.spell.as_ref().map(|spell| {
-                    (
-                        spell.id,
-                        spell.name.clone(),
-                        spell.description.clone(),
-                    )
-                })
+                resolution
+                    .spell
+                    .as_ref()
+                    .map(|spell| (spell.id, spell.name.clone(), spell.description.clone()))
             })
             .collect(),
     );

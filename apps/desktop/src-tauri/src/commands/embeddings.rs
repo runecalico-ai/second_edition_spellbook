@@ -9,11 +9,12 @@ use crate::models::{
 };
 use fastembed::TextEmbedding;
 use futures_util::StreamExt;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::watch;
+use tokio::sync::{watch, Mutex as AsyncMutex};
 
 // Runtime-generic `AppHandle` so `embeddings_download_model` can be dispatched
 // through both the real Wry runtime and `tauri::test::MockRuntime` in
@@ -40,13 +41,16 @@ pub(crate) struct ActiveEmbeddingDownload {
 
 pub struct EmbeddingState {
     /// Populated when the embedding model is loaded (Task 3+).
-    #[allow(dead_code)]
     pub(crate) model: Mutex<Option<Arc<Mutex<TextEmbedding>>>>,
     pub(crate) status: Mutex<EmbeddingsStatus>,
     pub(crate) last_error: Mutex<Option<String>>,
     pub(crate) download_state: Mutex<Option<ActiveEmbeddingDownload>>,
     download_epoch: AtomicU64,
     reindex_in_progress: AtomicBool,
+    /// Monotonic per-spell generation to drop stale background embed tasks.
+    spell_embed_generations: Mutex<HashMap<i64, u64>>,
+    /// Single-flight guard for model load + Ready transition.
+    finalize_lock: AsyncMutex<()>,
 }
 
 impl Default for EmbeddingState {
@@ -58,7 +62,71 @@ impl Default for EmbeddingState {
             download_state: Mutex::new(None),
             download_epoch: AtomicU64::new(0),
             reindex_in_progress: AtomicBool::new(false),
+            spell_embed_generations: Mutex::new(HashMap::new()),
+            finalize_lock: AsyncMutex::new(()),
         }
+    }
+}
+
+fn bump_spell_embed_generation(state: &EmbeddingState, spell_id: i64) -> u64 {
+    let mut generations = state
+        .spell_embed_generations
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let next = generations.get(&spell_id).copied().unwrap_or(0) + 1;
+    generations.insert(spell_id, next);
+    next
+}
+
+fn is_spell_embed_generation_current(
+    state: &EmbeddingState,
+    spell_id: i64,
+    generation: u64,
+) -> bool {
+    state
+        .spell_embed_generations
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&spell_id)
+        .copied()
+        .unwrap_or(0)
+        == generation
+}
+
+fn invalidate_spell_vec_rows_blocking(
+    pool: &crate::db::Pool,
+    spell_ids: &[i64],
+) -> Result<(), AppError> {
+    if spell_ids.is_empty() {
+        return Ok(());
+    }
+    let conn = pool.get()?;
+    for spell_id in spell_ids {
+        conn.execute(
+            "DELETE FROM spell_vec WHERE rowid = ?1",
+            rusqlite::params![spell_id],
+        )?;
+    }
+    Ok(())
+}
+
+async fn invalidate_spell_vec_rows(pool: Arc<crate::db::Pool>, spell_ids: Vec<i64>) {
+    if spell_ids.is_empty() {
+        return;
+    }
+    let count = spell_ids.len();
+    let cleanup =
+        tokio::task::spawn_blocking(move || invalidate_spell_vec_rows_blocking(&pool, &spell_ids))
+            .await;
+    match cleanup {
+        Ok(Ok(())) => tracing::info!(count, "stale spell vectors invalidated"),
+        Ok(Err(error)) => {
+            tracing::warn!(?error, "stale spell vector invalidation failed (non-fatal)")
+        }
+        Err(join_error) => tracing::warn!(
+            ?join_error,
+            "stale spell vector invalidation join failed (non-fatal)"
+        ),
     }
 }
 
@@ -79,7 +147,7 @@ impl ReindexInProgressGuard {
             .is_err()
         {
             return Err(AppError::Validation(
-                "Embedding reindex is already in progress".to_string(),
+                EMBEDDING_REINDEX_ALREADY_IN_PROGRESS_MESSAGE.to_string(),
             ));
         }
         Ok(Self { state })
@@ -105,6 +173,8 @@ type EmbeddingDownloadControl = (
     watch::Sender<bool>,
     watch::Receiver<DownloadCleanupState>,
 );
+pub(crate) const EMBEDDING_REINDEX_ALREADY_IN_PROGRESS_MESSAGE: &str =
+    "Embedding reindex is already in progress";
 const EMBEDDING_DOWNLOAD_CANCELLED_MESSAGE: &str = "Embedding download cancelled";
 const DOWNLOAD_CLEANUP_WAIT_POLL_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(10);
@@ -194,6 +264,15 @@ fn ensure_no_active_embedding_download(state: &EmbeddingState) -> Result<(), App
     if active {
         return Err(AppError::Validation(
             "Cannot run embedding operation while download is active".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_no_active_embedding_reindex(state: &EmbeddingState) -> Result<(), AppError> {
+    if reindex_in_progress(state) {
+        return Err(AppError::Validation(
+            "Cannot run embedding download while reindex is in progress".to_string(),
         ));
     }
     Ok(())
@@ -309,7 +388,7 @@ fn embed_spell_texts_batch(
     texts: &[String],
 ) -> Result<Vec<Vec<f32>>, AppError> {
     let vectors = model
-        .embed(texts.to_vec(), None)
+        .embed(texts, None)
         .map_err(|e| AppError::Search(format!("batch embedding failed: {e}")))?;
 
     if vectors.len() != texts.len() {
@@ -403,18 +482,38 @@ async fn embed_single_spell_row(
     spell_id: i64,
     name: String,
     description: String,
+    generation: u64,
 ) -> Result<(), AppError> {
-    let model = await_ready_model_with_timeout(state, std::time::Duration::from_secs(5)).await?;
+    let model =
+        await_ready_model_with_timeout(state.clone(), std::time::Duration::from_secs(5)).await?;
     let text = compose_spell_embedding_text(&name, &description);
 
     let vector = tokio::task::spawn_blocking(move || {
         let mut guard = model
             .lock()
             .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
-        embed_spell_text(&mut *guard, &text)
+        embed_spell_text(&mut guard, &text)
     })
     .await
     .map_err(|e| AppError::Search(format!("single embedding task failed: {e}")))??;
+
+    if !is_spell_embed_generation_current(state.as_ref(), spell_id, generation) {
+        tracing::info!(
+            spell_id,
+            generation,
+            "embedding write hook dropped stale generation"
+        );
+        return Ok(());
+    }
+
+    if reindex_in_progress(state.as_ref()) {
+        tracing::info!(
+            spell_id,
+            "embedding write hook dropped because reindex started"
+        );
+        invalidate_spell_vec_rows(pool, vec![spell_id]).await;
+        return Ok(());
+    }
 
     let rows = vec![(spell_id, name, description)];
     let vectors = vec![vector];
@@ -433,7 +532,9 @@ pub async fn enqueue_spell_embedding_if_ready(
         Err(poisoned) => (*poisoned.into_inner(), true),
     };
     if status_lock_poisoned {
-        tracing::warn!("embedding status mutex was poisoned; using last status for spell embedding hook");
+        tracing::warn!(
+            "embedding status mutex was poisoned; using last status for spell embedding hook"
+        );
     }
 
     if status == EmbeddingsStatus::Ready && reindex_in_progress(state.as_ref()) {
@@ -441,6 +542,35 @@ pub async fn enqueue_spell_embedding_if_ready(
             spell_id,
             "embedding write hook skipped while reindex in progress"
         );
+        let pool_for_cleanup = Arc::clone(&pool);
+        tauri::async_runtime::spawn(async move {
+            let cleanup = tokio::task::spawn_blocking(move || {
+                let conn = pool_for_cleanup.get()?;
+                conn.execute(
+                    "DELETE FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![spell_id],
+                )?;
+                Ok::<(), AppError>(())
+            })
+            .await;
+
+            match cleanup {
+                Ok(Ok(())) => tracing::info!(
+                    spell_id,
+                    "embedding skipped during reindex; stale vector invalidated"
+                ),
+                Ok(Err(error)) => tracing::warn!(
+                    spell_id,
+                    ?error,
+                    "embedding skipped during reindex; stale vector invalidation failed (non-fatal)"
+                ),
+                Err(join_error) => tracing::warn!(
+                    spell_id,
+                    ?join_error,
+                    "embedding skipped during reindex; stale vector invalidation join failed (non-fatal)"
+                ),
+            }
+        });
         return Ok(());
     }
 
@@ -482,12 +612,25 @@ pub async fn enqueue_spell_embedding_if_ready(
         return Ok(());
     }
 
+    let generation = bump_spell_embed_generation(state.as_ref(), spell_id);
     let state_for_task = Arc::clone(&state);
+    let pool_for_failure = Arc::clone(&pool);
     tauri::async_runtime::spawn(async move {
-        if let Err(error) =
-            embed_single_spell_row(state_for_task, pool, spell_id, name, description).await
+        match embed_single_spell_row(
+            state_for_task,
+            pool.clone(),
+            spell_id,
+            name,
+            description,
+            generation,
+        )
+        .await
         {
-            tracing::warn!(spell_id, ?error, "embedding write hook failed (non-fatal)");
+            Ok(()) => {}
+            Err(error) => {
+                tracing::warn!(spell_id, ?error, "embedding write hook failed (non-fatal)");
+                invalidate_spell_vec_rows(pool_for_failure, vec![spell_id]).await;
+            }
         }
     });
 
@@ -503,31 +646,44 @@ async fn embed_import_batch_rows(
         return Ok(());
     }
 
-    let model = await_ready_model_with_timeout(state, std::time::Duration::from_secs(10)).await?;
+    let model =
+        await_ready_model_with_timeout(Arc::clone(&state), std::time::Duration::from_secs(10))
+            .await?;
 
     for chunk in rows.chunks(128) {
+        let chunk_spell_ids: Vec<i64> = chunk.iter().map(|(id, _, _)| *id).collect();
         let texts: Vec<String> = chunk
             .iter()
             .map(|(_, name, description)| compose_spell_embedding_text(name, description))
             .collect();
         let model_for_chunk = Arc::clone(&model);
+        let pool_for_invalidation = Arc::clone(&pool);
+        let state_for_reindex = Arc::clone(&state);
         match tokio::task::spawn_blocking(move || {
             let mut guard = model_for_chunk
                 .lock()
                 .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
-            embed_spell_texts_batch(&mut *guard, &texts)
+            embed_spell_texts_batch(&mut guard, &texts)
         })
         .await
         {
             Ok(Ok(vectors)) => {
-                if let Err(error) =
-                    upsert_embedding_chunk(Arc::clone(&pool), chunk, &vectors).await
+                if reindex_in_progress(state_for_reindex.as_ref()) {
+                    tracing::info!(
+                        chunk_len = chunk.len(),
+                        "import batch embedding chunk dropped because reindex started"
+                    );
+                    invalidate_spell_vec_rows(pool_for_invalidation, chunk_spell_ids).await;
+                    continue;
+                }
+                if let Err(error) = upsert_embedding_chunk(Arc::clone(&pool), chunk, &vectors).await
                 {
                     tracing::warn!(
                         ?error,
                         chunk_len = chunk.len(),
                         "import batch embedding chunk upsert failed (non-fatal)"
                     );
+                    invalidate_spell_vec_rows(pool_for_invalidation, chunk_spell_ids).await;
                 }
             }
             Ok(Err(error)) => {
@@ -536,6 +692,7 @@ async fn embed_import_batch_rows(
                     chunk_len = chunk.len(),
                     "import batch embedding chunk failed (non-fatal)"
                 );
+                invalidate_spell_vec_rows(pool_for_invalidation, chunk_spell_ids).await;
             }
             Err(join_error) => {
                 tracing::warn!(
@@ -543,6 +700,7 @@ async fn embed_import_batch_rows(
                     chunk_len = chunk.len(),
                     "import batch embedding chunk join failed (non-fatal)"
                 );
+                invalidate_spell_vec_rows(pool_for_invalidation, chunk_spell_ids).await;
             }
         }
     }
@@ -572,6 +730,41 @@ pub async fn enqueue_import_embeddings_if_ready(
             count = rows.len(),
             "import embeddings skipped while reindex in progress"
         );
+        let stale_ids: Vec<i64> = rows.iter().map(|(id, _, _)| *id).collect();
+        let count = stale_ids.len();
+        let pool_for_cleanup = Arc::clone(&pool);
+        tauri::async_runtime::spawn(async move {
+            let cleanup = tokio::task::spawn_blocking(move || {
+                let conn = pool_for_cleanup.get()?;
+                let tx = conn.unchecked_transaction()?;
+                for spell_id in stale_ids {
+                    tx.execute(
+                        "DELETE FROM spell_vec WHERE rowid = ?1",
+                        rusqlite::params![spell_id],
+                    )?;
+                }
+                tx.commit()?;
+                Ok::<(), AppError>(())
+            })
+            .await;
+
+            match cleanup {
+                Ok(Ok(())) => tracing::info!(
+                    count,
+                    "import embeddings skipped during reindex; stale vectors invalidated"
+                ),
+                Ok(Err(error)) => tracing::warn!(
+                    count,
+                    ?error,
+                    "import embeddings skipped during reindex; stale vector invalidation failed (non-fatal)"
+                ),
+                Err(join_error) => tracing::warn!(
+                    count,
+                    ?join_error,
+                    "import embeddings skipped during reindex; stale vector invalidation join failed (non-fatal)"
+                ),
+            }
+        });
         return Ok(());
     }
 
@@ -645,7 +838,7 @@ pub async fn search_spells_semantic_internal(
         let mut guard = model
             .lock()
             .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
-        embed_spell_text(&mut *guard, &query_text)
+        embed_spell_text(&mut guard, &query_text)
     })
     .await
     .map_err(|e| AppError::Search(format!("query embedding task failed: {e}")))??;
@@ -757,7 +950,7 @@ pub async fn reindex_embeddings_internal(
             let mut guard = model_for_chunk
                 .lock()
                 .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
-            embed_spell_texts_batch(&mut *guard, &texts)
+            embed_spell_texts_batch(&mut guard, &texts)
         })
         .await
         {
@@ -818,24 +1011,22 @@ pub async fn reindex_embeddings(
     provisioning: tauri::State<'_, Arc<ProvisioningState>>,
     force: bool,
 ) -> Result<ReindexResult, AppError> {
-    let _lease = provisioning.start_download(ProvisioningTarget::Embeddings)?;
+    {
+        let _lease = provisioning.start_download(ProvisioningTarget::Embeddings)?;
+    }
     reindex_embeddings_internal(app, state.inner().clone(), db.inner().clone(), force).await
 }
 
-pub async fn initialize_embeddings_after_startup(
+pub async fn finalize_embedding_provision(
     app: EmbeddingsCommandAppHandle,
     state: Arc<EmbeddingState>,
     pool: Arc<crate::db::Pool>,
 ) -> Result<(), AppError> {
+    let _finalize_guard = state.finalize_lock.lock().await;
     ensure_no_active_embedding_download(state.as_ref())?;
-    let vault_root = crate::db::pool::app_data_dir()?;
-    if !approved_embedding_bundle_present(&vault_root)? {
-        set_embeddings_status(&state, EmbeddingsStatus::NotProvisioned, None)?;
-        return Ok(());
-    }
-
     set_embeddings_status(&state, EmbeddingsStatus::Initializing, None)?;
     let models_root = app_models_dir()?;
+    let state_for_errors = Arc::clone(&state);
     let model = match tokio::task::spawn_blocking(move || {
         load_embedding_model_blocking(&models_root)
     })
@@ -844,12 +1035,20 @@ pub async fn initialize_embeddings_after_startup(
         Ok(Ok(model)) => model,
         Ok(Err(error)) => {
             let message = format!("embedding startup model load failed: {error}");
-            set_embeddings_status(&state, EmbeddingsStatus::Error, Some(message.clone()))?;
+            set_embeddings_status(
+                &state_for_errors,
+                EmbeddingsStatus::Error,
+                Some(message.clone()),
+            )?;
             return Err(AppError::Search(message));
         }
         Err(join_error) => {
             let message = format!("embedding startup load task failed: {join_error}");
-            set_embeddings_status(&state, EmbeddingsStatus::Error, Some(message.clone()))?;
+            set_embeddings_status(
+                &state_for_errors,
+                EmbeddingsStatus::Error,
+                Some(message.clone()),
+            )?;
             return Err(AppError::Search(message));
         }
     };
@@ -866,8 +1065,13 @@ pub async fn initialize_embeddings_after_startup(
 
     match reindex_embeddings_internal(app, Arc::clone(&state), pool, false).await {
         Ok(_) => {}
-        Err(error) if error.to_string().contains("already in progress") => {
-            tracing::info!(?error, "startup embeddings backfill skipped; reindex already active");
+        Err(AppError::Validation(message))
+            if message == EMBEDDING_REINDEX_ALREADY_IN_PROGRESS_MESSAGE =>
+        {
+            tracing::info!(
+                ?message,
+                "startup embeddings backfill skipped; reindex already active"
+            );
         }
         Err(error) => tracing::warn!(?error, "startup embeddings backfill failed"),
     }
@@ -875,18 +1079,131 @@ pub async fn initialize_embeddings_after_startup(
     Ok(())
 }
 
+pub async fn initialize_embeddings_after_startup(
+    app: EmbeddingsCommandAppHandle,
+    state: Arc<EmbeddingState>,
+    pool: Arc<crate::db::Pool>,
+) -> Result<(), AppError> {
+    ensure_no_active_embedding_download(state.as_ref())?;
+    let vault_root = crate::db::pool::app_data_dir()?;
+    let bundle_root = models_dir(&vault_root).join(EMBEDDING_DESTINATION);
+    let bundle_artifacts_present = match std::fs::metadata(&bundle_root) {
+        Ok(metadata) if metadata.is_dir() => EMBEDDING_EXPECTED_FILES.iter().all(|expected| {
+            bundle_root
+                .join(expected_relative_path(expected.relative_path))
+                .is_file()
+        }),
+        Ok(_) => false,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(AppError::from(error)),
+    };
+
+    if !bundle_artifacts_present {
+        set_embeddings_status(&state, EmbeddingsStatus::NotProvisioned, None)?;
+        return Ok(());
+    }
+
+    if approved_embedding_bundle_present(&vault_root)? {
+        return finalize_embedding_provision(app, state, pool).await;
+    }
+
+    let message = match validate_embedding_bundle_layout(&bundle_root) {
+        Err(error) => format!("embedding bundle validation failed: {error}"),
+        Ok(()) => "embedding bundle validation failed".to_string(),
+    };
+    set_embeddings_status(&state, EmbeddingsStatus::Error, Some(message))?;
+    Ok(())
+}
+
 #[cfg(test)]
-fn test_pool() -> crate::db::Pool {
-    crate::db::init_db(None, false).expect("test pool")
+mod test_support {
+    use crate::commands::vault::lock_vault_env_for_test;
+    use std::ffi::OsString;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
+    static TEST_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    pub struct TestDataDirGuard {
+        previous_data_dir: Option<OsString>,
+        temp_data_dir: std::path::PathBuf,
+    }
+
+    impl TestDataDirGuard {
+        pub fn acquire(test_name: &str) -> Self {
+            let env_lock = lock_vault_env_for_test();
+            let unique_id = TEST_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let sanitized: String = test_name
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            let temp_data_dir = std::env::temp_dir().join(format!(
+                "spellbook-embeddings-test-{}-{}-{}",
+                sanitized,
+                std::process::id(),
+                unique_id
+            ));
+            std::fs::create_dir_all(&temp_data_dir).unwrap();
+            let previous_data_dir = std::env::var_os(SPELLBOOK_DATA_DIR_ENV);
+            std::env::set_var(SPELLBOOK_DATA_DIR_ENV, &temp_data_dir);
+            drop(env_lock);
+            Self {
+                previous_data_dir,
+                temp_data_dir,
+            }
+        }
+    }
+
+    impl Drop for TestDataDirGuard {
+        fn drop(&mut self) {
+            let env_lock = lock_vault_env_for_test();
+            match &self.previous_data_dir {
+                Some(prev) => std::env::set_var(SPELLBOOK_DATA_DIR_ENV, prev),
+                None => std::env::remove_var(SPELLBOOK_DATA_DIR_ENV),
+            }
+            drop(env_lock);
+            let _ = std::fs::remove_dir_all(&self.temp_data_dir);
+        }
+    }
+
+    pub struct IsolatedTestPool {
+        pub pool: Arc<crate::db::Pool>,
+        _guard: TestDataDirGuard,
+    }
+
+    impl IsolatedTestPool {
+        pub fn new(test_name: &str) -> Self {
+            let guard = TestDataDirGuard::acquire(test_name);
+            let env_lock = lock_vault_env_for_test();
+            let pool = Arc::new(crate::db::init_db(None, false).expect("test pool"));
+            drop(env_lock);
+            Self {
+                pool,
+                _guard: guard,
+            }
+        }
+    }
 }
 
 fn approved_embedding_bundle_present(vault_root: &std::path::Path) -> Result<bool, AppError> {
     let bundle_root = models_dir(vault_root).join(EMBEDDING_DESTINATION);
-    match std::fs::metadata(bundle_root) {
-        Ok(metadata) => Ok(metadata.is_dir()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(AppError::from(error)),
+    match std::fs::metadata(&bundle_root) {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => return Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(AppError::from(error)),
     }
+
+    for expected in EMBEDDING_EXPECTED_FILES {
+        let relative = expected_relative_path(expected.relative_path);
+        let file_path = bundle_root.join(relative);
+        if !file_path.is_file() {
+            return Ok(false);
+        }
+    }
+
+    Ok(validate_embedding_bundle_layout(&bundle_root).is_ok())
 }
 
 fn begin_embedding_download(
@@ -1322,7 +1639,10 @@ async fn download_embedding_bundle_with_resume(
     finish_download_session(state.as_ref())?;
 
     match result {
-        Ok(()) => set_embeddings_status(state.as_ref(), EmbeddingsStatus::Initializing, None),
+        Ok(()) => {
+            set_embeddings_status(state.as_ref(), EmbeddingsStatus::Initializing, None)?;
+            Ok(())
+        }
         Err(error) if is_embedding_download_cancelled(&error) => {
             set_embeddings_status(state.as_ref(), EmbeddingsStatus::NotProvisioned, None)
         }
@@ -1354,7 +1674,7 @@ async fn install_imported_embedding_bundle(
         AppError::Search(format!("embedding import install task failed: {error}"))
     })??;
 
-    set_embeddings_status(state.as_ref(), EmbeddingsStatus::Initializing, None)
+    Ok(())
 }
 
 #[tauri::command]
@@ -1368,9 +1688,11 @@ pub async fn embeddings_status(
 pub async fn embeddings_download_model(
     app: EmbeddingsCommandAppHandle,
     embeddings_state: tauri::State<'_, Arc<EmbeddingState>>,
+    db: tauri::State<'_, Arc<crate::db::Pool>>,
     provisioning: tauri::State<'_, Arc<ProvisioningState>>,
 ) -> Result<(), AppError> {
     let _lease = provisioning.start_download(ProvisioningTarget::Embeddings)?;
+    ensure_no_active_embedding_reindex(embeddings_state.inner().as_ref())?;
 
     let models_root = app_models_dir()?;
     tokio::task::spawn_blocking({
@@ -1387,18 +1709,30 @@ pub async fn embeddings_download_model(
     .await
     .map_err(|e| AppError::Search(format!("embedding resource check task failed: {e}")))??;
 
-    download_embedding_bundle_with_resume(app, embeddings_state.inner().clone(), models_root).await
+    download_embedding_bundle_with_resume(
+        app.clone(),
+        embeddings_state.inner().clone(),
+        models_root,
+    )
+    .await?;
+    drop(_lease);
+    finalize_embedding_provision(app, embeddings_state.inner().clone(), db.inner().clone()).await
 }
 
 #[tauri::command]
 pub async fn embeddings_import_model_file(
+    app: EmbeddingsCommandAppHandle,
     file_path: String,
     state: tauri::State<'_, Arc<EmbeddingState>>,
+    db: tauri::State<'_, Arc<crate::db::Pool>>,
     provisioning: tauri::State<'_, Arc<ProvisioningState>>,
 ) -> Result<(), AppError> {
     let _lease = provisioning.start_download(ProvisioningTarget::Embeddings)?;
+    ensure_no_active_embedding_reindex(state.inner().as_ref())?;
     let source = std::path::PathBuf::from(file_path);
-    install_imported_embedding_bundle(state.inner().clone(), source).await
+    install_imported_embedding_bundle(state.inner().clone(), source).await?;
+    drop(_lease);
+    finalize_embedding_provision(app, state.inner().clone(), db.inner().clone()).await
 }
 
 #[tauri::command]
@@ -1410,6 +1744,7 @@ pub async fn embeddings_cancel_download(
 
 #[cfg(test)]
 mod tests {
+    use super::test_support::IsolatedTestPool;
     use super::*;
     use crate::models::{
         EmbeddingsDownloadProgressEvent, EmbeddingsStatusResponse, ReindexProgressEvent,
@@ -1535,7 +1870,8 @@ mod tests {
     #[tokio::test]
     async fn semantic_search_returns_empty_for_blank_query_without_loading_model() {
         let state = Arc::new(EmbeddingState::default());
-        let pool = Arc::new(test_pool());
+        let isolated = IsolatedTestPool::new("semantic_search_returns_empty_for_blank_query");
+        let pool = Arc::clone(&isolated.pool);
         let results = search_spells_semantic_internal(state, pool, " \t".to_string(), Some(10))
             .await
             .expect("semantic search");
@@ -1940,7 +2276,8 @@ mod tests {
         let state = Arc::new(EmbeddingState::default());
         *state.status.lock().unwrap() = EmbeddingsStatus::NotProvisioned;
 
-        let pool = Arc::new(test_pool());
+        let isolated = IsolatedTestPool::new("post_write_hook_skips_when_not_ready");
+        let pool = Arc::clone(&isolated.pool);
         let vector_json =
             serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
         let spell_id: i64 = {
@@ -2019,23 +2356,10 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_embeddings_without_bundle_sets_not_provisioned() {
-        use crate::commands::vault::lock_vault_env_for_test;
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        static STARTUP_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
-        let _env_lock = lock_vault_env_for_test();
-        let unique_id = STARTUP_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let temp_data_dir = std::env::temp_dir().join(format!(
-            "spellbook-embeddings-startup-{}-{}",
-            std::process::id(),
-            unique_id
-        ));
-        std::fs::create_dir_all(&temp_data_dir).unwrap();
-        let previous_data_dir = std::env::var_os("SPELLBOOK_DATA_DIR");
-        std::env::set_var("SPELLBOOK_DATA_DIR", &temp_data_dir);
-
+        let isolated =
+            IsolatedTestPool::new("initialize_embeddings_without_bundle_sets_not_provisioned");
         let state = Arc::new(EmbeddingState::default());
-        let pool = Arc::new(test_pool());
+        let pool = Arc::clone(&isolated.pool);
         let app = tauri::test::mock_builder()
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .expect("startup init test app");
@@ -2043,12 +2367,6 @@ mod tests {
 
         let result =
             initialize_embeddings_after_startup(app_handle, Arc::clone(&state), pool).await;
-
-        match &previous_data_dir {
-            Some(prev) => std::env::set_var("SPELLBOOK_DATA_DIR", prev),
-            None => std::env::remove_var("SPELLBOOK_DATA_DIR"),
-        }
-        let _ = std::fs::remove_dir_all(&temp_data_dir);
 
         assert!(result.is_ok());
         assert_eq!(
@@ -2062,10 +2380,11 @@ mod tests {
         let state = Arc::new(EmbeddingState::default());
         *state.status.lock().unwrap() = EmbeddingsStatus::Ready;
 
+        let isolated = IsolatedTestPool::new("import_hook_returns_immediately_when_ready");
         let started = std::time::Instant::now();
         let result = enqueue_import_embeddings_if_ready(
             state,
-            Arc::new(test_pool()),
+            Arc::clone(&isolated.pool),
             vec![(1_i64, "Shield".to_string(), "Protects".to_string())],
         )
         .await;
@@ -2085,13 +2404,16 @@ mod tests {
         let state = Arc::new(EmbeddingState::default());
         *state.status.lock().unwrap() = EmbeddingsStatus::Initializing;
 
-        let pool = Arc::new(test_pool());
+        let isolated = IsolatedTestPool::new("import_hook_leaves_rows_for_reindex");
+        let pool = Arc::clone(&isolated.pool);
         let vector_json =
             serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
         let id_a: i64 = {
             let conn = pool.get().expect("test db connection");
-            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| row.get(0))
-                .expect("next spell id")
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                row.get(0)
+            })
+            .expect("next spell id")
         };
         let id_b = id_a + 1;
         {
@@ -2191,6 +2513,7 @@ mod tests {
 // `ProvisioningState` transitions match the contract on each command path.
 #[cfg(test)]
 mod m005_command_boundary_tests {
+    use super::test_support::IsolatedTestPool;
     use super::*;
     use crate::commands::provisioning::{ProvisioningState, ProvisioningTarget};
     use crate::commands::vault::lock_vault_env_for_test;
@@ -2255,10 +2578,12 @@ mod m005_command_boundary_tests {
     fn build_embeddings_smoke_app(
         embedding_state: Arc<EmbeddingState>,
         provisioning: Arc<ProvisioningState>,
+        pool: Arc<crate::db::Pool>,
     ) -> EmbeddingsSmokeApp {
         let app = tauri::test::mock_builder()
             .manage(embedding_state)
             .manage(provisioning)
+            .manage(pool)
             .invoke_handler(tauri::generate_handler![
                 embeddings_status,
                 embeddings_download_model,
@@ -2271,6 +2596,14 @@ mod m005_command_boundary_tests {
             .build()
             .expect("M-005: failed to build embeddings smoke webview");
         EmbeddingsSmokeApp { _app: app, webview }
+    }
+
+    fn m005_pool(test_name: &str) -> Arc<crate::db::Pool> {
+        IsolatedTestPool::new(test_name).pool
+    }
+
+    fn m005_pool_for_guard() -> Arc<crate::db::Pool> {
+        Arc::new(crate::db::init_db(None, false).expect("M-005 pool"))
     }
 
     fn install_active_download(state: &EmbeddingState) -> watch::Receiver<bool> {
@@ -2300,8 +2633,13 @@ mod m005_command_boundary_tests {
     async fn m_005_embeddings_status_command_returns_default_state_through_ipc_boundary() {
         let embedding_state = Arc::new(EmbeddingState::default());
         let provisioning = Arc::new(ProvisioningState::default());
-        let smoke =
-            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+        let pool =
+            m005_pool("m_005_embeddings_status_command_returns_default_state_through_ipc_boundary");
+        let smoke = build_embeddings_smoke_app(
+            Arc::clone(&embedding_state),
+            Arc::clone(&provisioning),
+            pool,
+        );
 
         let response = invoke_smoke_command::<EmbeddingsStatusResponse>(
             smoke.webview.clone(),
@@ -2337,8 +2675,14 @@ mod m005_command_boundary_tests {
             });
         }
 
-        let smoke =
-            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+        let pool = m005_pool(
+            "m_005_embeddings_status_command_reports_active_download_progress_through_ipc_boundary",
+        );
+        let smoke = build_embeddings_smoke_app(
+            Arc::clone(&embedding_state),
+            Arc::clone(&provisioning),
+            pool,
+        );
 
         let response = invoke_smoke_command::<EmbeddingsStatusResponse>(
             smoke.webview.clone(),
@@ -2358,8 +2702,13 @@ mod m005_command_boundary_tests {
     async fn m_005_embeddings_cancel_download_command_is_noop_when_no_active_download() {
         let embedding_state = Arc::new(EmbeddingState::default());
         let provisioning = Arc::new(ProvisioningState::default());
-        let smoke =
-            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+        let pool =
+            m005_pool("m_005_embeddings_cancel_download_command_is_noop_when_no_active_download");
+        let smoke = build_embeddings_smoke_app(
+            Arc::clone(&embedding_state),
+            Arc::clone(&provisioning),
+            pool,
+        );
 
         invoke_smoke_command::<()>(
             smoke.webview.clone(),
@@ -2399,8 +2748,14 @@ mod m005_command_boundary_tests {
                 .expect("M-005: finish_download_session must succeed");
         });
 
-        let smoke =
-            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+        let pool = m005_pool(
+            "m_005_embeddings_cancel_download_command_signals_and_clears_active_download_state",
+        );
+        let smoke = build_embeddings_smoke_app(
+            Arc::clone(&embedding_state),
+            Arc::clone(&provisioning),
+            pool,
+        );
 
         timeout(
             Duration::from_secs(2),
@@ -2445,8 +2800,12 @@ mod m005_command_boundary_tests {
             .start_download(ProvisioningTarget::Llm)
             .expect("M-005: pre-acquired LLM provisioning lease must succeed");
 
-        let smoke =
-            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+        let pool = m005_pool_for_guard();
+        let smoke = build_embeddings_smoke_app(
+            Arc::clone(&embedding_state),
+            Arc::clone(&provisioning),
+            pool,
+        );
 
         let result = invoke_smoke_command::<()>(
             smoke.webview.clone(),
@@ -2487,8 +2846,12 @@ mod m005_command_boundary_tests {
             .start_download(ProvisioningTarget::Embeddings)
             .expect("M-005: pre-acquired embeddings provisioning lease must succeed");
 
-        let smoke =
-            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+        let pool = m005_pool_for_guard();
+        let smoke = build_embeddings_smoke_app(
+            Arc::clone(&embedding_state),
+            Arc::clone(&provisioning),
+            pool,
+        );
 
         let result = invoke_smoke_command::<()>(
             smoke.webview.clone(),
@@ -2520,8 +2883,12 @@ mod m005_command_boundary_tests {
         let provisioning = Arc::new(ProvisioningState::default());
         let _cancel_rx = install_active_download(embedding_state.as_ref());
 
-        let smoke =
-            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+        let pool = m005_pool_for_guard();
+        let smoke = build_embeddings_smoke_app(
+            Arc::clone(&embedding_state),
+            Arc::clone(&provisioning),
+            pool,
+        );
 
         let result = invoke_smoke_command::<()>(
             smoke.webview.clone(),
@@ -2560,8 +2927,12 @@ mod m005_command_boundary_tests {
         );
         let embedding_state = Arc::new(EmbeddingState::default());
         let provisioning = Arc::new(ProvisioningState::default());
-        let smoke =
-            build_embeddings_smoke_app(Arc::clone(&embedding_state), Arc::clone(&provisioning));
+        let pool = m005_pool_for_guard();
+        let smoke = build_embeddings_smoke_app(
+            Arc::clone(&embedding_state),
+            Arc::clone(&provisioning),
+            pool,
+        );
 
         let missing = std::env::temp_dir().join(format!(
             "spellbook-m005-missing-{}-{}",

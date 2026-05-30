@@ -996,10 +996,11 @@ pub async fn delete_spell(state: State<'_, Arc<Pool>>, id: i64) -> Result<(), Ap
 #[tauri::command]
 pub async fn upsert_spell(
     state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
     spell: SpellDetail,
 ) -> Result<i64, AppError> {
     let pool = state.inner().clone();
-    let result = tokio::task::spawn_blocking(move || {
+    let (spell_id, name, description) = tokio::task::spawn_blocking(move || {
         validate_spell_fields(&spell.name, spell.level, &spell.description)?;
         validate_epic_and_quest_spells(
             spell.level,
@@ -1060,12 +1061,26 @@ pub async fn upsert_spell(
             })?
         };
         migration_manager::sync_check_spell(&conn, spell_id);
-        Ok::<i64, AppError>(spell_id)
+        let (name, description) = conn.query_row(
+            "SELECT name, description FROM spell WHERE id = ?1",
+            rusqlite::params![spell_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        Ok::<(i64, String, String), AppError>((spell_id, name, description))
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
-    Ok(result)
+    enqueue_spell_embedding_if_ready(
+        Arc::clone(embedding_state.inner()),
+        Arc::clone(state.inner()),
+        spell_id,
+        name,
+        description,
+    )
+    .await?;
+
+    Ok(spell_id)
 }
 
 #[cfg(test)]

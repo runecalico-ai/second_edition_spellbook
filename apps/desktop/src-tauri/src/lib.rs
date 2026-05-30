@@ -5,15 +5,21 @@ pub mod models;
 pub mod sidecar;
 pub mod utils;
 
+#[cfg(not(test))]
 use commands::vault::VaultMaintenanceState;
 use commands::ProvisioningState;
 use commands::*;
+#[cfg(not(test))]
 use db::init_db;
+#[cfg(not(test))]
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(not(test))]
 use tauri::Manager;
+#[cfg(not(test))]
 use tracing_subscriber::{fmt, EnvFilter};
 
+#[cfg(not(test))]
 fn init_logging() {
     let _ = fmt()
         .with_env_filter(
@@ -265,8 +271,66 @@ where
 }
 
 #[cfg(test)]
+struct SmokeDataDirGuard {
+    previous_data_dir: Option<std::ffi::OsString>,
+    temp_data_dir: std::path::PathBuf,
+}
+
+#[cfg(test)]
+impl SmokeDataDirGuard {
+    fn acquire(test_name: &str) -> Self {
+        use crate::commands::vault::lock_vault_env_for_test;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
+        static SMOKE_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        let env_lock = lock_vault_env_for_test();
+        let unique_id = SMOKE_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let sanitized_test_name: String = test_name
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect();
+        let temp_data_dir = std::env::temp_dir().join(format!(
+            "spellbook-smoke-{}-{}-{}",
+            sanitized_test_name,
+            std::process::id(),
+            unique_id
+        ));
+        std::fs::create_dir_all(&temp_data_dir).unwrap();
+
+        let previous_data_dir = std::env::var_os(SPELLBOOK_DATA_DIR_ENV);
+        std::env::set_var(SPELLBOOK_DATA_DIR_ENV, &temp_data_dir);
+        drop(env_lock);
+
+        Self {
+            previous_data_dir,
+            temp_data_dir,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Drop for SmokeDataDirGuard {
+    fn drop(&mut self) {
+        use crate::commands::vault::lock_vault_env_for_test;
+
+        const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
+        let env_lock = lock_vault_env_for_test();
+        match &self.previous_data_dir {
+            Some(previous_data_dir) => std::env::set_var(SPELLBOOK_DATA_DIR_ENV, previous_data_dir),
+            None => std::env::remove_var(SPELLBOOK_DATA_DIR_ENV),
+        }
+        drop(env_lock);
+        let _ = std::fs::remove_dir_all(&self.temp_data_dir);
+    }
+}
+
+#[cfg(test)]
 mod llm_command_smoke_tests {
-    use super::{build_llm_command_smoke_app, invoke_smoke_command, listen_smoke_event};
+    use super::{
+        build_llm_command_smoke_app, invoke_smoke_command, listen_smoke_event, SmokeDataDirGuard,
+    };
     use crate::commands::llm::{
         install_test_download_driver, install_test_model_load_preflight,
         install_test_runtime_driver, DownloadTargetPrep, LlmCommandAppHandle, LlmDownloadDriver,
@@ -276,60 +340,12 @@ mod llm_command_smoke_tests {
     use crate::commands::provisioning::{
         ProvisioningState, BASELINE_MIN_FREE_DISK_BYTES, BASELINE_MIN_FREE_RAM_BYTES,
     };
-    use crate::commands::vault::lock_vault_env_for_test;
     use crate::models::{ChatResponse, DoneEvent, LlmStatus, LlmStatusResponse, TokenEvent};
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::{Arc, MutexGuard};
+    use std::sync::Arc;
     use tokio::time::{timeout, Duration};
 
-    const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
     static LLM_SMOKE_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    struct SmokeDataDirGuard {
-        _env_lock: MutexGuard<'static, ()>,
-        previous_data_dir: Option<std::ffi::OsString>,
-        temp_data_dir: std::path::PathBuf,
-    }
-
-    impl SmokeDataDirGuard {
-        fn acquire(test_name: &str) -> Self {
-            let env_lock = lock_vault_env_for_test();
-
-            let unique_id = LLM_SMOKE_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let sanitized_test_name: String = test_name
-                .chars()
-                .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-                .collect();
-            let temp_data_dir = std::env::temp_dir().join(format!(
-                "spellbook-llm-smoke-{}-{}-{}",
-                sanitized_test_name,
-                std::process::id(),
-                unique_id
-            ));
-            std::fs::create_dir_all(&temp_data_dir).unwrap();
-
-            let previous_data_dir = std::env::var_os(SPELLBOOK_DATA_DIR_ENV);
-            std::env::set_var(SPELLBOOK_DATA_DIR_ENV, &temp_data_dir);
-
-            Self {
-                _env_lock: env_lock,
-                previous_data_dir,
-                temp_data_dir,
-            }
-        }
-    }
-
-    impl Drop for SmokeDataDirGuard {
-        fn drop(&mut self) {
-            match &self.previous_data_dir {
-                Some(previous_data_dir) => {
-                    std::env::set_var(SPELLBOOK_DATA_DIR_ENV, previous_data_dir)
-                }
-                None => std::env::remove_var(SPELLBOOK_DATA_DIR_ENV),
-            }
-            let _ = std::fs::remove_dir_all(&self.temp_data_dir);
-        }
-    }
 
     #[derive(Clone, Default)]
     struct PausedSmokeDownloadDriver {
@@ -445,8 +461,7 @@ mod llm_command_smoke_tests {
                 free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
             },
         });
-        let _driver_guard =
-            install_test_runtime_driver(Arc::new(RecordingRuntimeDriver::default()));
+        let _driver_guard = install_test_runtime_driver(Arc::new(RecordingRuntimeDriver));
 
         let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
         let mut token_events =
@@ -481,7 +496,7 @@ mod llm_command_smoke_tests {
         let llm_state = Arc::new(LlmState::default());
         let provisioning = Arc::new(ProvisioningState::default());
         let _download_driver_guard =
-            install_test_download_driver(Arc::new(ReadySmokeDownloadDriver::default()));
+            install_test_download_driver(Arc::new(ReadySmokeDownloadDriver));
 
         *llm_state.status.lock().unwrap() = LlmStatus::Error;
         *llm_state.last_error.lock().unwrap() = Some("sticky".to_string());
@@ -531,8 +546,7 @@ mod llm_command_smoke_tests {
                 free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
             },
         });
-        let _driver_guard =
-            install_test_runtime_driver(Arc::new(RecordingRuntimeDriver::default()));
+        let _driver_guard = install_test_runtime_driver(Arc::new(RecordingRuntimeDriver));
 
         let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
 
@@ -619,29 +633,35 @@ mod llm_command_smoke_tests {
 
 #[cfg(test)]
 mod embeddings_command_smoke_tests {
-    use super::{build_embeddings_command_smoke_app, invoke_smoke_command};
+    use super::{build_embeddings_command_smoke_app, invoke_smoke_command, SmokeDataDirGuard};
     use crate::commands::{EmbeddingState, ProvisioningState};
-    use crate::models::{EmbeddingsStatus, EmbeddingsStatusResponse, SemanticSearchResult};
+    use crate::models::{
+        EmbeddingsStatus, EmbeddingsStatusResponse, ReindexResult, SemanticSearchResult,
+    };
     use std::sync::Arc;
 
-    fn smoke_pool() -> Arc<crate::db::Pool> {
-        Arc::new(crate::db::init_db(None, false).expect("smoke pool"))
+    struct EmbeddingsSmokeFixture {
+        app: super::LlmCommandSmokeApp,
+        _data_dir: SmokeDataDirGuard,
     }
 
-    fn smoke_app() -> super::LlmCommandSmokeApp {
-        build_embeddings_command_smoke_app(
+    fn smoke_app(test_name: &str) -> EmbeddingsSmokeFixture {
+        let _data_dir = SmokeDataDirGuard::acquire(test_name);
+        let pool = Arc::new(crate::db::init_db(None, false).expect("smoke pool"));
+        let app = build_embeddings_command_smoke_app(
             Arc::new(EmbeddingState::default()),
             Arc::new(ProvisioningState::default()),
-            smoke_pool(),
-        )
+            pool,
+        );
+        EmbeddingsSmokeFixture { app, _data_dir }
     }
 
     #[tokio::test]
     async fn embeddings_commands_are_registered_in_smoke_app() {
-        let app = smoke_app();
+        let fixture = smoke_app("embeddings_commands_are_registered_in_smoke_app");
 
         let status: EmbeddingsStatusResponse = invoke_smoke_command(
-            app.webview.clone(),
+            fixture.app.webview.clone(),
             "embeddings_status",
             serde_json::json!({}),
         )
@@ -653,10 +673,10 @@ mod embeddings_command_smoke_tests {
 
     #[tokio::test]
     async fn search_spells_semantic_command_is_registered_in_smoke_app() {
-        let app = smoke_app();
+        let fixture = smoke_app("search_spells_semantic_command_is_registered_in_smoke_app");
 
         let results: Vec<SemanticSearchResult> = invoke_smoke_command(
-            app.webview.clone(),
+            fixture.app.webview.clone(),
             "search_spells_semantic",
             serde_json::json!({ "query": "   ", "limit": 5 }),
         )
@@ -664,5 +684,22 @@ mod embeddings_command_smoke_tests {
         .expect("search_spells_semantic invoke");
 
         assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reindex_embeddings_command_is_registered_in_smoke_app() {
+        let fixture = smoke_app("reindex_embeddings_command_is_registered_in_smoke_app");
+
+        let result: Result<ReindexResult, serde_json::Value> = invoke_smoke_command(
+            fixture.app.webview.clone(),
+            "reindex_embeddings",
+            serde_json::json!({ "force": false }),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "reindex should fail when embeddings are not provisioned"
+        );
     }
 }

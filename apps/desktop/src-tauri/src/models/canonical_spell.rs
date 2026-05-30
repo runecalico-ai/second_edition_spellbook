@@ -1416,8 +1416,8 @@ mod tests {
     #[test]
     fn test_regression_casting_time_units() {
         // Fix: Bonus Action and Reaction must be accepted andNormalized
-        let units = vec!["bonus action", "reaction", "Bonus Actions"];
-        let expected = vec!["bonus_action", "reaction", "bonus_action"];
+        let units = ["bonus action", "reaction", "Bonus Actions"];
+        let expected = ["bonus_action", "reaction", "bonus_action"];
 
         for (u, exp) in units.iter().zip(expected.iter()) {
             let normalized = match_schema_case(u);
@@ -4419,7 +4419,7 @@ mod tests {
         assert!(
             st.notes
                 .as_ref()
-                .map_or(false, |n| n.contains("DM adjudicates this.")),
+                .is_some_and(|n| n.contains("DM adjudicates this.")),
             "notes must contain the migrated dm_guidance content"
         );
 

@@ -2256,7 +2256,7 @@ git commit -m "feat: register embeddings lifecycle and startup backfill"
 
 - Modify as needed from previous tasks
 
-- [ ] **Step 8.1: Run targeted Rust tests for embedding lifecycle and semantic commands**
+- [x] **Step 8.1: Run targeted Rust tests for embedding lifecycle and semantic commands**
 
 Run:
 
@@ -2272,7 +2272,9 @@ cargo test reindex_result_force_mode_has_zero_initial_skipped --lib
 
 Expected: all tests PASS.
 
-- [ ] **Step 8.2: Run full Rust verification suite for affected backend code**
+Outcome/Evidence (2026-05-29, local Windows): all six filtered tests PASS (1 passed each).
+
+- [x] **Step 8.2: Run full Rust verification suite for affected backend code**
 
 Run:
 
@@ -2286,7 +2288,9 @@ cargo check
 
 Expected: no formatter, lint, or compile failures.
 
-- [ ] **Step 8.3: Run frontend typecheck/lint to ensure command surface changes do not break build**
+Outcome/Evidence (2026-05-29, local Windows): `cargo fmt --all -- --check` PASS; `cargo clippy --all-targets --all-features -- -D warnings` PASS; `cargo test --lib` PASS (519 passed, 0 failed, 2 ignored); `cargo check` PASS. Task 8 verification fixes: `finalize_embedding_provision` after download/import, embed generation tokens, reindex upsert guards, M-005 pool wiring, startup corrupt-bundle Error state.
+
+- [x] **Step 8.3: Run frontend typecheck/lint to ensure command surface changes do not break build**
 
 Run:
 
@@ -2298,7 +2302,9 @@ pnpm test:unit
 
 Expected: lint/test pass or only known unrelated failures.
 
-- [ ] **Step 8.4: Commit verification fixes and final Task Group 3 changeset**
+Outcome/Evidence (2026-05-29): `pnpm lint` PASS (biome + knip clean).
+
+- [x] **Step 8.4: Commit verification fixes and final Task Group 3 changeset**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/embeddings.rs \

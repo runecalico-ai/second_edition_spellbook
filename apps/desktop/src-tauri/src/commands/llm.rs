@@ -2899,7 +2899,7 @@ mod tests {
     async fn wait_for_download_control_or_idle_waits_for_download_publication() {
         let dir = test_temp_dir("cancel-handoff-wait");
         let final_path = approved_llm_model_path(&dir);
-        let temp_path = final_path.with_extension("gguf.part");
+        let _temp_path = final_path.with_extension("gguf.part");
         std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
 
         let state = Arc::new(LlmState::default());
@@ -2968,7 +2968,7 @@ mod tests {
     async fn wait_for_download_control_or_idle_does_not_follow_subsequent_download_session() {
         let dir = test_temp_dir("cancel-handoff-session-scope");
         let final_path = approved_llm_model_path(&dir);
-        let temp_path = final_path.with_extension("gguf.part");
+        let _temp_path = final_path.with_extension("gguf.part");
         std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
 
         let state = Arc::new(LlmState::default());
@@ -3068,7 +3068,7 @@ mod tests {
     async fn cancel_download_waits_for_reprovision_idle_even_after_cleanup_finished() {
         let dir = test_temp_dir("cancel-terminal-finished");
         let final_path = approved_llm_model_path(&dir);
-        let temp_path = final_path.with_extension("gguf.part");
+        let _temp_path = final_path.with_extension("gguf.part");
         std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
 
         let state = Arc::new(LlmState::default());
@@ -3124,7 +3124,7 @@ mod tests {
     async fn cancel_download_returns_after_reprovision_becomes_idle() {
         let dir = test_temp_dir("cancel-terminal-idle");
         let final_path = approved_llm_model_path(&dir);
-        let temp_path = final_path.with_extension("gguf.part");
+        let _temp_path = final_path.with_extension("gguf.part");
         std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
 
         let state = Arc::new(LlmState::default());

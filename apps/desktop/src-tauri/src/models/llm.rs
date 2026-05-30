@@ -73,3 +73,42 @@ pub struct DoneEvent {
     pub grounded_spells: Vec<RagSpellContext>,
     pub timed_out: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn chat_role_serializes_to_lowercase_variant_names() {
+        assert_eq!(
+            serde_json::to_string(&ChatRole::User).unwrap(),
+            "\"user\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ChatRole::Assistant).unwrap(),
+            "\"assistant\""
+        );
+    }
+
+    #[test]
+    fn chat_message_uses_camel_case_keys_and_roundtrips() {
+        let message = ChatMessage {
+            role: ChatRole::User,
+            content: "Tell me about fireball".to_string(),
+        };
+
+        let json = serde_json::to_string(&message).unwrap();
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["role"], json!("user"));
+        assert_eq!(value["content"], json!("Tell me about fireball"));
+        let object = value.as_object().expect("object");
+        assert!(object.contains_key("role"));
+        assert!(object.contains_key("content"));
+        assert_eq!(object.len(), 2);
+
+        let roundtrip: ChatMessage = serde_json::from_str(&json).unwrap();
+        assert!(matches!(roundtrip.role, ChatRole::User));
+        assert_eq!(roundtrip.content, message.content);
+    }
+}

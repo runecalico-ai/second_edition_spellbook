@@ -100,4 +100,20 @@ mod tests {
         let terms = extract_search_terms("what is the of and");
         assert!(terms.is_empty());
     }
+
+    #[test]
+    fn extract_terms_returns_empty_for_empty_query() {
+        assert!(extract_search_terms("").is_empty());
+    }
+
+    #[test]
+    fn extract_terms_returns_empty_for_whitespace_only_query() {
+        assert!(extract_search_terms("   \t\n  ").is_empty());
+    }
+
+    #[test]
+    fn extract_terms_handles_punctuation_boundaries() {
+        let terms = extract_search_terms("fireball?");
+        assert_eq!(terms, vec!["fireball"]);
+    }
 }

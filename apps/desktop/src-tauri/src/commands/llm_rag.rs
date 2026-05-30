@@ -9,6 +9,7 @@ pub const SYSTEM_PROMPT_PREFIX: &str = "You are a helpful AD&D 2nd Edition spell
 
 pub struct AssemblePromptInput<'a> {
     pub system_without_context: &'a str,
+    /// Prior turns only, oldest first. Do not include the current user message here.
     pub grounding: LlmChatGrounding,
     pub history: Vec<ChatMessage>,
     pub user_message: String,
@@ -57,9 +58,12 @@ pub fn assemble_chatml_prompt(input: AssemblePromptInput<'_>) -> Result<String, 
     let prefix_tokens = (input.tokenize)(&system_block)?;
     let suffix_tokens =
         (input.tokenize)(&user_block)? + (input.tokenize)(&assistant_header)?;
-    let remaining = input
-        .context_limit
-        .saturating_sub(prefix_tokens.saturating_add(suffix_tokens));
+    if prefix_tokens.saturating_add(suffix_tokens) > input.context_limit {
+        return Err(AppError::Validation(
+            "Chat prompt system and user sections exceed the model context limit".into(),
+        ));
+    }
+    let remaining = input.context_limit - prefix_tokens - suffix_tokens;
 
     let mut history_blocks: Vec<String> = input
         .history
@@ -366,6 +370,77 @@ mod tests {
         assert!(prompt.contains("Relevant spells from the library:"));
         assert!(prompt.contains("Explain fireball"));
         assert!(prompt.contains(CHATML_IM_END));
+        assert!(prompt.ends_with("<|im_start|>assistant\n"));
+    }
+
+    #[test]
+    fn assemble_prompt_includes_empty_rag_message_in_system_block() {
+        use super::{
+            assemble_chatml_prompt, AssemblePromptInput, SYSTEM_PROMPT_PREFIX,
+        };
+
+        let tokenize = |text: &str| test_tokenize(text);
+        let prompt = assemble_chatml_prompt(AssemblePromptInput {
+            system_without_context: SYSTEM_PROMPT_PREFIX,
+            grounding: LlmChatGrounding {
+                search_terms: vec!["xyzzy".to_string()],
+                grounded_spells: vec![],
+            },
+            history: vec![],
+            user_message: "Explain fireball".to_string(),
+            tokenize: &tokenize,
+            context_limit: 2048,
+        })
+        .unwrap();
+        assert!(prompt.contains("No matching spells found in the library"));
+    }
+
+    #[test]
+    fn format_rag_block_formats_spell_line() {
+        use super::format_rag_block;
+
+        let block = format_rag_block(&sample_grounding_with_one_spell());
+        assert!(block.contains("Relevant spells from the library:"));
+        assert!(block.contains("- Fireball (Level 3 Evocation): A blazing orb of fire"));
+    }
+
+    #[test]
+    fn assemble_prompt_respects_context_limit() {
+        use super::{
+            assemble_chatml_prompt, AssemblePromptInput, SYSTEM_PROMPT_PREFIX,
+        };
+        use crate::models::llm::{ChatMessage, ChatRole};
+
+        let tokenize = |text: &str| test_tokenize(text);
+        let prompt = assemble_chatml_prompt(AssemblePromptInput {
+            system_without_context: SYSTEM_PROMPT_PREFIX,
+            grounding: sample_grounding_with_one_spell(),
+            history: vec![ChatMessage {
+                role: ChatRole::Assistant,
+                content: "x".repeat(800),
+            }],
+            user_message: "latest user".to_string(),
+            tokenize: &tokenize,
+            context_limit: 2048,
+        })
+        .unwrap();
+        assert!(test_tokenize(&prompt).unwrap() <= 2048);
+    }
+
+    #[test]
+    fn assemble_prompt_rejects_when_fixed_sections_exceed_context_limit() {
+        use super::{assemble_chatml_prompt, AssemblePromptInput, SYSTEM_PROMPT_PREFIX};
+
+        let tokenize = |text: &str| test_tokenize(text);
+        let result = assemble_chatml_prompt(AssemblePromptInput {
+            system_without_context: SYSTEM_PROMPT_PREFIX,
+            grounding: sample_grounding_with_one_spell(),
+            history: vec![],
+            user_message: "x".repeat(9000),
+            tokenize: &tokenize,
+            context_limit: 64,
+        });
+        assert!(result.is_err());
     }
 
     #[test]
@@ -416,6 +491,10 @@ mod tests {
         assert!(
             prompt.contains("history turn 9"),
             "recent history should remain when budget allows"
+        );
+        assert!(
+            test_tokenize(&prompt).unwrap() <= 2048,
+            "assembled prompt must fit context limit"
         );
     }
 

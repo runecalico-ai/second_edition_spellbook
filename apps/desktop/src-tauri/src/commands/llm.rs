@@ -967,10 +967,22 @@ static TEST_MODEL_LOAD_PREFLIGHT: std::sync::Mutex<Option<ModelLoadPreflight>> =
     std::sync::Mutex::new(None);
 
 #[cfg(test)]
+static TEST_INFERENCE_TIMEOUT_SECS: std::sync::Mutex<Option<u64>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
 struct TestRuntimeDriverGuard;
 
 #[cfg(test)]
 struct TestModelLoadPreflightGuard;
+
+#[cfg(test)]
+struct TestInferenceTimeoutGuard;
+
+#[cfg(test)]
+fn install_test_inference_timeout_secs(secs: u64) -> TestInferenceTimeoutGuard {
+    *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() = Some(secs);
+    TestInferenceTimeoutGuard
+}
 
 #[cfg(test)]
 fn install_test_runtime_driver_with(driver: Arc<dyn LlmRuntimeDriver>) -> TestRuntimeDriverGuard {
@@ -1000,6 +1012,70 @@ impl Drop for TestRuntimeDriverGuard {
 impl Drop for TestModelLoadPreflightGuard {
     fn drop(&mut self) {
         *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = None;
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestInferenceTimeoutGuard {
+    fn drop(&mut self) {
+        *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() = None;
+    }
+}
+
+#[cfg(test)]
+struct SlowRuntimeDriver;
+
+#[cfg(test)]
+impl LlmRuntimeDriver for SlowRuntimeDriver {
+    fn ensure_loaded(
+        &self,
+        state: Arc<LlmState>,
+        _preflight: ValidatedModelLoadPreflight,
+    ) -> LlmRuntimeFuture<Result<(), AppError>> {
+        Box::pin(async move {
+            finish_model_load_success(state.as_ref())?;
+            Ok(())
+        })
+    }
+
+    fn generate(
+        &self,
+        _state: Arc<LlmState>,
+        _prompt: String,
+        grounding: LlmChatGrounding,
+        cancel: Arc<AtomicBool>,
+        event_sink: Arc<dyn ChatEventSink>,
+    ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+        Box::pin(async move {
+            let started = std::time::Instant::now();
+            let mut generated = String::new();
+            let mut timed_out = false;
+
+            loop {
+                if cancel.load(Ordering::SeqCst) {
+                    break;
+                }
+                if started.elapsed() >= inference_timeout_duration() {
+                    timed_out = true;
+                    break;
+                }
+
+                generated.push('x');
+                event_sink.emit_token("x")?;
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+
+            if timed_out {
+                generated.push_str(RESPONSE_TIMED_OUT_SUFFIX);
+            }
+
+            Ok(ChatRunOutput {
+                full_response: generated,
+                cancelled: cancel.load(Ordering::SeqCst),
+                grounding,
+                timed_out,
+            })
+        })
     }
 }
 
@@ -1406,6 +1482,17 @@ fn ensure_model_loaded_after_preflight_blocking(
     finish_model_load_success(state)
 }
 
+const INFERENCE_TIMEOUT_SECS: u64 = 120;
+const RESPONSE_TIMED_OUT_SUFFIX: &str = "\n[Response timed out]";
+
+fn inference_timeout_duration() -> std::time::Duration {
+    #[cfg(test)]
+    if let Some(secs) = *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() {
+        return std::time::Duration::from_secs(secs);
+    }
+    std::time::Duration::from_secs(INFERENCE_TIMEOUT_SECS)
+}
+
 async fn generate_chat_completion(
     state: Arc<LlmState>,
     prompt: String,
@@ -1464,9 +1551,15 @@ async fn generate_chat_completion(
         let mut sampler = llama_cpp_2::sampling::LlamaSampler::greedy();
         let mut n_cur = batch.n_tokens();
         let mut generated = String::new();
+        let started = std::time::Instant::now();
+        let mut timed_out = false;
 
         while n_cur < n_ctx as i32 {
             if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+            if started.elapsed() >= inference_timeout_duration() {
+                timed_out = true;
                 break;
             }
 
@@ -1500,11 +1593,16 @@ async fn generate_chat_completion(
             event_sink.emit_token(&tail)?;
         }
 
+        if timed_out {
+            event_sink.emit_token(RESPONSE_TIMED_OUT_SUFFIX)?;
+            generated.push_str(RESPONSE_TIMED_OUT_SUFFIX);
+        }
+
         Ok(ChatRunOutput {
             full_response: generated,
             cancelled: cancel.load(std::sync::atomic::Ordering::SeqCst),
             grounding,
-            timed_out: false,
+            timed_out,
         })
     })
     .await
@@ -4233,6 +4331,44 @@ mod tests {
                 timed_out: false,
             })
         );
+    }
+
+    #[tokio::test]
+    async fn generation_marks_timed_out_and_appends_notice() {
+        let state = Arc::new(LlmState::default());
+        let cancel = Arc::new(AtomicBool::new(false));
+        let _timeout_guard = install_test_inference_timeout_secs(0);
+        let driver = Arc::new(SlowRuntimeDriver);
+
+        let output = driver
+            .generate(
+                state,
+                "prompt".to_string(),
+                empty_chat_grounding(),
+                cancel,
+                Arc::new(TimeoutTestSink::default()) as Arc<dyn ChatEventSink>,
+            )
+            .await
+            .unwrap();
+
+        assert!(output.timed_out);
+        assert!(output.full_response.contains("[Response timed out]"));
+    }
+
+    #[derive(Default)]
+    struct TimeoutTestSink {
+        tokens: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl ChatEventSink for TimeoutTestSink {
+        fn emit_token(&self, token: &str) -> Result<(), AppError> {
+            self.tokens.lock().unwrap().push(token.to_string());
+            Ok(())
+        }
+
+        fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+            Ok(())
+        }
     }
 
     #[test]

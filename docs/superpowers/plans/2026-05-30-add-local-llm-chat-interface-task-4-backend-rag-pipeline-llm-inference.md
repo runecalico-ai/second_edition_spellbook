@@ -493,7 +493,7 @@ In `Chat.tsx`, add `history: []` to `invoke("llm_chat", { message: q, streamId, 
 
 - [x] **Step 4.7: Run `cargo test` for llm + llm_rag + search — expect PASS**
 
-- [x] **Step 4.8: Commit** (deferred — user did not request commit)
+- [x] **Step 4.8: Commit**
 
 ```bash
 git commit -m "feat(llm): wire FTS RAG and history into llm_chat"
@@ -547,7 +547,7 @@ cd apps/desktop/src-tauri
 cargo test llm -- --nocapture
 ```
 
-- [x] **Step 5.5: Commit** (deferred — user did not request commit)
+- [x] **Step 5.5: Commit**
 
 ```bash
 git commit -m "feat(llm): enforce 120s inference timeout with partial response"

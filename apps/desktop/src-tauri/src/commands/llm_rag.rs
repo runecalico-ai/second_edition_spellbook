@@ -4,6 +4,8 @@ use crate::models::llm::{ChatMessage, ChatRole, LlmChatGrounding};
 use std::collections::HashSet;
 
 pub const TINYLLAMA_CONTEXT_TOKENS: u32 = 2048;
+/// Reserved in the context window for assistant token generation after the prompt.
+pub const MIN_GENERATION_TOKEN_RESERVE: u32 = 512;
 pub const CHATML_IM_END: &str = concat!("<", "|im_end|", ">");
 pub const SYSTEM_PROMPT_PREFIX: &str = "You are a helpful AD&D 2nd Edition spell expert. Answer questions about spells accurately using the provided library context. Be concise.\n\n";
 

@@ -26,11 +26,14 @@ fn escape_fts_phrase_content(s: &str) -> String {
 #[tauri::command]
 pub async fn chat_answer(
     llm_state: State<'_, Arc<LlmState>>,
+    db: State<'_, Arc<Pool>>,
     prompt: String,
 ) -> Result<ChatResponse, AppError> {
     // Temporary compatibility path for apps/desktop/src/ui/Chat.tsx.
     // Remove this wrapper in the same branch where the frontend migrates to llm_chat + events.
-    let answer = llm_chat_answer_compat(Arc::clone(llm_state.inner()), prompt).await?;
+    let answer =
+        llm_chat_answer_compat(Arc::clone(llm_state.inner()), Arc::clone(db.inner()), prompt)
+            .await?;
 
     Ok(ChatResponse {
         answer,
@@ -521,8 +524,10 @@ pub async fn delete_saved_search(state: State<'_, Arc<Pool>>, id: i64) -> Result
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use crate::db::Pool;
     use rusqlite::Connection;
+    use std::sync::Arc;
 
     /// Creates an in-memory database with the FTS schema.
     /// Delegates to `setup_search_db`; the full schema is a superset and
@@ -873,10 +878,7 @@ mod tests {
     // Integration tests: build_fts_query + actual FTS5 search behaviour
     // -----------------------------------------------------------------------
 
-    /// Creates an in-memory DB with the full `spell` table (all columns used by
-    /// `search_keyword_with_conn`) plus the migration-0014 FTS schema.
-    fn setup_search_db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
+    fn init_fts_test_schema(conn: &Connection) {
         conn.execute_batch(
             r#"
             CREATE TABLE spell (
@@ -903,7 +905,45 @@ mod tests {
         let migration_sql =
             include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
         conn.execute_batch(migration_sql).unwrap();
+    }
+
+    /// Creates an in-memory DB with the full `spell` table (all columns used by
+    /// `search_keyword_with_conn`) plus the migration-0014 FTS schema.
+    fn setup_search_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_fts_test_schema(&conn);
         conn
+    }
+
+    /// In-memory DB with Fireball seeded for RAG integration tests.
+    pub(crate) fn setup_rag_test_conn() -> Connection {
+        let conn = setup_search_db();
+        insert_rag_spell(
+            &conn,
+            1,
+            "Fireball",
+            "A blazing bead of fire streaks outward and blossoms into an explosion dealing fire damage.",
+            "Evocation",
+            3,
+        );
+        conn
+    }
+
+    /// Shared in-memory pool with FTS schema for LLM chat integration tests.
+    pub(crate) fn llm_test_pool() -> Arc<Pool> {
+        use r2d2_sqlite::SqliteConnectionManager;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static POOL_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let pool_id = POOL_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let uri = format!("file:spellbook_llm_test_{pool_id}?mode=memory&cache=shared");
+        let manager = SqliteConnectionManager::file(uri);
+        let pool = Pool::new(manager).expect("llm test pool");
+        {
+            let conn = pool.get().expect("llm test pool connection");
+            init_fts_test_schema(&conn);
+        }
+        Arc::new(pool)
     }
 
     fn insert_spell(conn: &Connection, id: i64, name: &str, description: &str) {

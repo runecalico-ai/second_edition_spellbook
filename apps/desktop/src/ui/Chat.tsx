@@ -69,7 +69,7 @@ export default function Chat() {
         resolveDone?.();
       });
 
-      await invoke<void>("llm_chat", { message: q, streamId });
+      await invoke<void>("llm_chat", { message: q, streamId, history: [] });
       await Promise.race([
         donePromise,
         new Promise<void>((resolve) => {

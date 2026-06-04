@@ -174,10 +174,12 @@ pub(crate) struct LlmCommandSmokeApp {
 pub(crate) fn build_llm_command_smoke_app(
     llm_state: Arc<LlmState>,
     provisioning: Arc<ProvisioningState>,
+    pool: Arc<db::Pool>,
 ) -> LlmCommandSmokeApp {
     let app = tauri::test::mock_builder()
         .manage(llm_state)
         .manage(provisioning)
+        .manage(pool)
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             chat_answer,
@@ -347,6 +349,10 @@ mod llm_command_smoke_tests {
 
     static LLM_SMOKE_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+    fn smoke_test_pool() -> Arc<crate::db::Pool> {
+        Arc::new(crate::db::init_db(None, false).expect("smoke test pool"))
+    }
+
     #[derive(Clone, Default)]
     struct PausedSmokeDownloadDriver {
         started_after_begin_download: Arc<tokio::sync::Notify>,
@@ -407,7 +413,11 @@ mod llm_command_smoke_tests {
         let driver = PausedSmokeDownloadDriver::default();
         let _driver_guard = install_test_download_driver(Arc::new(driver.clone()));
 
-        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
 
         let started = driver.started_after_begin_download.notified();
         let download_future = tokio::spawn(invoke_smoke_command::<()>(
@@ -463,7 +473,11 @@ mod llm_command_smoke_tests {
         });
         let _driver_guard = install_test_runtime_driver(Arc::new(RecordingRuntimeDriver));
 
-        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
         let mut token_events =
             listen_smoke_event::<TokenEvent>(&smoke.webview, "llm://token/smoke-1");
         let mut done_events = listen_smoke_event::<DoneEvent>(&smoke.webview, "llm://done/smoke-1");
@@ -474,6 +488,7 @@ mod llm_command_smoke_tests {
             serde_json::json!({
                 "message": "hello",
                 "streamId": "smoke-1",
+                "history": [],
             }),
         )
         .await
@@ -501,7 +516,11 @@ mod llm_command_smoke_tests {
         *llm_state.status.lock().unwrap() = LlmStatus::Error;
         *llm_state.last_error.lock().unwrap() = Some("sticky".to_string());
 
-        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
 
         let status = invoke_smoke_command::<LlmStatusResponse>(
             smoke.webview.clone(),
@@ -548,7 +567,11 @@ mod llm_command_smoke_tests {
         });
         let _driver_guard = install_test_runtime_driver(Arc::new(RecordingRuntimeDriver));
 
-        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
 
         let response = invoke_smoke_command::<ChatResponse>(
             smoke.webview.clone(),
@@ -587,7 +610,11 @@ mod llm_command_smoke_tests {
 
         let llm_state = Arc::new(LlmState::default());
         let provisioning = Arc::new(ProvisioningState::default());
-        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
 
         let missing_file_path = std::env::temp_dir().join(format!(
             "spellbook-llm-smoke-missing-{}-{}-{}",
@@ -616,7 +643,11 @@ mod llm_command_smoke_tests {
 
         let llm_state = Arc::new(LlmState::default());
         let provisioning = Arc::new(ProvisioningState::default());
-        let smoke = build_llm_command_smoke_app(Arc::clone(&llm_state), Arc::clone(&provisioning));
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
 
         let cancel_result = invoke_smoke_command::<()>(
             smoke.webview.clone(),

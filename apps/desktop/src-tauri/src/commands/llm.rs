@@ -1,6 +1,6 @@
 use crate::commands::llm_rag::{
-    assemble_chatml_prompt, retrieve_rag_context, AssemblePromptInput, SYSTEM_PROMPT_PREFIX,
-    MIN_GENERATION_TOKEN_RESERVE, TINYLLAMA_CONTEXT_TOKENS,
+    assemble_chatml_prompt, retrieve_rag_context, AssemblePromptInput,
+    MIN_GENERATION_TOKEN_RESERVE, SYSTEM_PROMPT_PREFIX, TINYLLAMA_CONTEXT_TOKENS,
 };
 use crate::commands::provisioning::{
     models_dir, LiveResourceProbe, ProvisioningState, ProvisioningTarget, ResourceProbe,
@@ -13,8 +13,8 @@ use crate::db::pool::app_data_dir;
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::{
-    ChatMessage, DoneEvent, DownloadProgressEvent, LlmChatGrounding, LlmStatus,
-    LlmStatusResponse, TokenEvent,
+    ChatMessage, DoneEvent, DownloadProgressEvent, LlmChatGrounding, LlmStatus, LlmStatusResponse,
+    TokenEvent,
 };
 use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::model::LlamaModel;
@@ -912,11 +912,7 @@ impl LlmRuntimeDriver for DefaultLlmRuntimeDriver {
         event_sink: Arc<dyn ChatEventSink>,
     ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
         Box::pin(generate_chat_completion(
-            state,
-            prompt,
-            grounding,
-            cancel,
-            event_sink,
+            state, prompt, grounding, cancel, event_sink,
         ))
     }
 }
@@ -959,6 +955,11 @@ impl ModelLoadPreflightValidationError {
 }
 
 #[cfg(test)]
+tokio::task_local! {
+    static RUN_CLAIMED_LLM_CHAT_TEST_HOOKS: TestHooksSnapshot;
+}
+
+#[cfg(test)]
 static TEST_RUNTIME_DRIVER: std::sync::Mutex<Option<Arc<dyn LlmRuntimeDriver>>> =
     std::sync::Mutex::new(None);
 
@@ -970,24 +971,147 @@ static TEST_MODEL_LOAD_PREFLIGHT: std::sync::Mutex<Option<ModelLoadPreflight>> =
 static TEST_INFERENCE_TIMEOUT_SECS: std::sync::Mutex<Option<u64>> = std::sync::Mutex::new(None);
 
 #[cfg(test)]
-struct TestRuntimeDriverGuard;
+static LLM_TEST_HOOKS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
-struct TestModelLoadPreflightGuard;
+static LLM_GLOBAL_TEST_HOOKS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
-struct TestInferenceTimeoutGuard;
+static LLM_TEST_HOOKS_LOCK_DEPTH: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+struct LlmTestHooksLockGuard;
+
+#[cfg(test)]
+impl Drop for LlmTestHooksLockGuard {
+    fn drop(&mut self) {
+        LLM_TEST_HOOKS_LOCK_DEPTH.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+fn acquire_llm_test_hooks_lock() -> LlmTestHooksLockGuard {
+    LLM_TEST_HOOKS_LOCK_DEPTH.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    LlmTestHooksLockGuard
+}
+
+#[cfg(test)]
+fn with_llm_test_hooks_serial<R>(operation: impl FnOnce() -> R) -> R {
+    let _lock = LLM_TEST_HOOKS_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _global_lock = LLM_GLOBAL_TEST_HOOKS_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    operation()
+}
+
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct TestHooksSnapshot {
+    preflight: Option<ModelLoadPreflight>,
+    runtime_driver: Option<Arc<dyn LlmRuntimeDriver>>,
+    inference_timeout_secs: Option<u64>,
+}
+
+#[cfg(test)]
+fn snapshot_active_test_hooks() -> Option<TestHooksSnapshot> {
+    if let Ok(hooks) = RUN_CLAIMED_LLM_CHAT_TEST_HOOKS.try_get() {
+        return Some(hooks);
+    }
+
+    if !llm_test_hooks_are_active() {
+        return None;
+    }
+
+    let _global_guard = LLM_GLOBAL_TEST_HOOKS_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Some(TestHooksSnapshot {
+        preflight: TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap().clone(),
+        runtime_driver: TEST_RUNTIME_DRIVER.lock().unwrap().clone(),
+        inference_timeout_secs: *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap(),
+    })
+}
+
+#[cfg(test)]
+pub(crate) async fn with_test_llm_chat_hooks<R>(
+    hooks: TestHooksSnapshot,
+    fut: impl std::future::Future<Output = R>,
+) -> R {
+    RUN_CLAIMED_LLM_CHAT_TEST_HOOKS.scope(hooks, fut).await
+}
+
+#[cfg(test)]
+pub(crate) fn test_hooks_snapshot_for_preflight(preflight: ModelLoadPreflight) -> TestHooksSnapshot {
+    TestHooksSnapshot {
+        preflight: Some(preflight),
+        runtime_driver: None,
+        inference_timeout_secs: None,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_hooks_snapshot_for_chat_harness(
+    preflight: ModelLoadPreflight,
+    driver: Arc<dyn LlmRuntimeDriver>,
+) -> TestHooksSnapshot {
+    TestHooksSnapshot {
+        preflight: Some(preflight),
+        runtime_driver: Some(driver),
+        inference_timeout_secs: None,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_hooks_snapshot_for_recording_runtime_driver(
+    preflight: ModelLoadPreflight,
+    driver: Arc<RecordingRuntimeDriver>,
+) -> TestHooksSnapshot {
+    test_hooks_snapshot_for_chat_harness(preflight, driver)
+}
+
+#[cfg(test)]
+fn llm_test_hooks_are_active() -> bool {
+    LLM_TEST_HOOKS_LOCK_DEPTH.load(std::sync::atomic::Ordering::SeqCst) > 0
+}
+
+#[cfg(test)]
+struct TestRuntimeDriverGuard {
+    _hooks_lock: LlmTestHooksLockGuard,
+}
+
+#[cfg(test)]
+struct TestModelLoadPreflightGuard {
+    _hooks_lock: LlmTestHooksLockGuard,
+}
+
+#[cfg(test)]
+struct TestInferenceTimeoutGuard {
+    _hooks_lock: LlmTestHooksLockGuard,
+}
 
 #[cfg(test)]
 fn install_test_inference_timeout_secs(secs: u64) -> TestInferenceTimeoutGuard {
-    *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() = Some(secs);
-    TestInferenceTimeoutGuard
+    let hooks_lock = acquire_llm_test_hooks_lock();
+    with_llm_test_hooks_serial(|| {
+        *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() = Some(secs);
+    });
+    TestInferenceTimeoutGuard {
+        _hooks_lock: hooks_lock,
+    }
 }
 
 #[cfg(test)]
 fn install_test_runtime_driver_with(driver: Arc<dyn LlmRuntimeDriver>) -> TestRuntimeDriverGuard {
-    *TEST_RUNTIME_DRIVER.lock().unwrap() = Some(driver);
-    TestRuntimeDriverGuard
+    let hooks_lock = acquire_llm_test_hooks_lock();
+    with_llm_test_hooks_serial(|| {
+        *TEST_RUNTIME_DRIVER.lock().unwrap() = Some(driver);
+    });
+    TestRuntimeDriverGuard {
+        _hooks_lock: hooks_lock,
+    }
 }
 
 #[cfg(test)]
@@ -997,28 +1121,69 @@ pub(crate) fn install_test_runtime_driver(driver: Arc<RecordingRuntimeDriver>) -
 
 #[cfg(test)]
 pub(crate) fn install_test_model_load_preflight(preflight: ModelLoadPreflight) -> impl Drop {
-    *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = Some(preflight);
-    TestModelLoadPreflightGuard
+    let hooks_lock = acquire_llm_test_hooks_lock();
+    with_llm_test_hooks_serial(|| {
+        *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = Some(preflight);
+    });
+    TestModelLoadPreflightGuard {
+        _hooks_lock: hooks_lock,
+    }
 }
 
 #[cfg(test)]
 impl Drop for TestRuntimeDriverGuard {
     fn drop(&mut self) {
-        *TEST_RUNTIME_DRIVER.lock().unwrap() = None;
+        with_llm_test_hooks_serial(|| {
+            *TEST_RUNTIME_DRIVER.lock().unwrap() = None;
+        });
     }
 }
 
 #[cfg(test)]
 impl Drop for TestModelLoadPreflightGuard {
     fn drop(&mut self) {
-        *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = None;
+        with_llm_test_hooks_serial(|| {
+            *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = None;
+        });
     }
 }
 
 #[cfg(test)]
 impl Drop for TestInferenceTimeoutGuard {
     fn drop(&mut self) {
-        *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() = None;
+        with_llm_test_hooks_serial(|| {
+            *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() = None;
+        });
+    }
+}
+
+#[cfg(test)]
+struct TestLlmChatHarnessGuard {
+    _hooks_lock: LlmTestHooksLockGuard,
+}
+
+#[cfg(test)]
+fn install_test_llm_chat_harness(
+    preflight: ModelLoadPreflight,
+    driver: Arc<dyn LlmRuntimeDriver>,
+) -> TestLlmChatHarnessGuard {
+    let hooks_lock = acquire_llm_test_hooks_lock();
+    with_llm_test_hooks_serial(|| {
+        *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = Some(preflight);
+        *TEST_RUNTIME_DRIVER.lock().unwrap() = Some(driver);
+    });
+    TestLlmChatHarnessGuard {
+        _hooks_lock: hooks_lock,
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestLlmChatHarnessGuard {
+    fn drop(&mut self) {
+        with_llm_test_hooks_serial(|| {
+            *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = None;
+            *TEST_RUNTIME_DRIVER.lock().unwrap() = None;
+        });
     }
 }
 
@@ -1118,8 +1283,16 @@ impl LlmRuntimeDriver for RecordingRuntimeDriver {
 
 fn active_llm_runtime_driver() -> Arc<dyn LlmRuntimeDriver> {
     #[cfg(test)]
-    if let Some(driver) = TEST_RUNTIME_DRIVER.lock().unwrap().as_ref() {
-        return Arc::clone(driver);
+    if let Ok(hooks) = RUN_CLAIMED_LLM_CHAT_TEST_HOOKS.try_get() {
+        if let Some(driver) = hooks.runtime_driver.clone() {
+            return driver;
+        }
+    }
+    #[cfg(test)]
+    if llm_test_hooks_are_active() {
+        if let Some(driver) = TEST_RUNTIME_DRIVER.lock().unwrap().as_ref() {
+            return Arc::clone(driver);
+        }
     }
 
     Arc::new(DefaultLlmRuntimeDriver)
@@ -1356,12 +1529,7 @@ impl Utf8TokenAccumulator {
     }
 }
 
-fn collect_model_load_preflight(vault_root: &Path) -> Result<ModelLoadPreflight, AppError> {
-    #[cfg(test)]
-    if let Some(preflight) = TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap().clone() {
-        return Ok(preflight);
-    }
-
+fn collect_model_load_preflight_live(vault_root: &Path) -> Result<ModelLoadPreflight, AppError> {
     let (model_path, approved_model_present) = snapshot_model_file_presence_blocking(vault_root)?;
     let probe = LiveResourceProbe::new(models_dir(vault_root));
     let requirements = collect_llm_system_requirements(&probe)?;
@@ -1486,6 +1654,12 @@ const INFERENCE_TIMEOUT_SECS: u64 = 120;
 const RESPONSE_TIMED_OUT_SUFFIX: &str = "\n[Response timed out]";
 
 fn inference_timeout_duration() -> std::time::Duration {
+    #[cfg(test)]
+    if let Ok(hooks) = RUN_CLAIMED_LLM_CHAT_TEST_HOOKS.try_get() {
+        if let Some(secs) = hooks.inference_timeout_secs {
+            return std::time::Duration::from_secs(secs);
+        }
+    }
     #[cfg(test)]
     if let Some(secs) = *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() {
         return std::time::Duration::from_secs(secs);
@@ -1657,6 +1831,17 @@ async fn run_claimed_llm_chat(
 
     let vault_root = app_data_dir()?;
     let cancel = begin_generation(state.as_ref(), stream_id.clone())?;
+    #[cfg(test)]
+    let test_hooks = snapshot_active_test_hooks();
+    #[cfg(test)]
+    let runtime_driver = match test_hooks.as_ref() {
+        Some(hooks) => hooks
+            .runtime_driver
+            .clone()
+            .unwrap_or_else(|| Arc::new(DefaultLlmRuntimeDriver)),
+        None => active_llm_runtime_driver(),
+    };
+    #[cfg(not(test))]
     let runtime_driver = active_llm_runtime_driver();
     let mut grounding_for_done = empty_chat_grounding();
 
@@ -1670,9 +1855,20 @@ async fn run_claimed_llm_chat(
             });
         }
 
+        #[cfg(test)]
+        let injected_preflight = test_hooks.as_ref().and_then(|hooks| hooks.preflight.clone());
+
         let preflight_result = tokio::task::spawn_blocking({
             let vault_root = vault_root.clone();
-            move || collect_model_load_preflight(&vault_root)
+            #[cfg(test)]
+            let injected_preflight = injected_preflight;
+            move || {
+                #[cfg(test)]
+                if let Some(preflight) = injected_preflight {
+                    return Ok(preflight);
+                }
+                collect_model_load_preflight_live(&vault_root)
+            }
         })
         .await;
 
@@ -1690,22 +1886,22 @@ async fn run_claimed_llm_chat(
             Ok(Err(error)) => {
                 if cancel.load(Ordering::SeqCst) {
                     return Ok(ChatRunOutput {
-                full_response: String::new(),
-                cancelled: true,
-                grounding: grounding_for_done.clone(),
-                timed_out: false,
-            });
+                        full_response: String::new(),
+                        cancelled: true,
+                        grounding: grounding_for_done.clone(),
+                        timed_out: false,
+                    });
                 }
                 return Err(error);
             }
             Err(error) => {
                 if cancel.load(Ordering::SeqCst) {
                     return Ok(ChatRunOutput {
-                full_response: String::new(),
-                cancelled: true,
-                grounding: grounding_for_done.clone(),
-                timed_out: false,
-            });
+                        full_response: String::new(),
+                        cancelled: true,
+                        grounding: grounding_for_done.clone(),
+                        timed_out: false,
+                    });
                 }
                 return Err(AppError::Llm(format!("LLM preflight task failed: {error}")));
             }
@@ -1726,11 +1922,11 @@ async fn run_claimed_llm_chat(
                 Err(error) => {
                     if cancel.load(Ordering::SeqCst) {
                         return Ok(ChatRunOutput {
-                full_response: String::new(),
-                cancelled: true,
-                grounding: grounding_for_done.clone(),
-                timed_out: false,
-            });
+                            full_response: String::new(),
+                            cancelled: true,
+                            grounding: grounding_for_done.clone(),
+                            timed_out: false,
+                        });
                     }
                     return Err(error.into_app_error());
                 }
@@ -1772,8 +1968,7 @@ async fn run_claimed_llm_chat(
             )
         })
         .await
-        .map_err(|error| AppError::Llm(format!("LLM prompt build task failed: {error}")))??
-        ;
+        .map_err(|error| AppError::Llm(format!("LLM prompt build task failed: {error}")))??;
         grounding_for_done = grounding.clone();
 
         if cancel.load(Ordering::SeqCst) {
@@ -2302,25 +2497,36 @@ static TEST_DOWNLOAD_DRIVER: std::sync::Mutex<Option<Arc<dyn LlmDownloadDriver>>
     std::sync::Mutex::new(None);
 
 #[cfg(test)]
-struct TestDownloadDriverGuard;
+struct TestDownloadDriverGuard {
+    _hooks_lock: LlmTestHooksLockGuard,
+}
 
 #[cfg(test)]
 pub(crate) fn install_test_download_driver(driver: Arc<dyn LlmDownloadDriver>) -> impl Drop {
-    *TEST_DOWNLOAD_DRIVER.lock().unwrap() = Some(driver);
-    TestDownloadDriverGuard
+    let hooks_lock = acquire_llm_test_hooks_lock();
+    with_llm_test_hooks_serial(|| {
+        *TEST_DOWNLOAD_DRIVER.lock().unwrap() = Some(driver);
+    });
+    TestDownloadDriverGuard {
+        _hooks_lock: hooks_lock,
+    }
 }
 
 #[cfg(test)]
 impl Drop for TestDownloadDriverGuard {
     fn drop(&mut self) {
-        *TEST_DOWNLOAD_DRIVER.lock().unwrap() = None;
+        with_llm_test_hooks_serial(|| {
+            *TEST_DOWNLOAD_DRIVER.lock().unwrap() = None;
+        });
     }
 }
 
 fn active_llm_download_driver() -> Arc<dyn LlmDownloadDriver> {
     #[cfg(test)]
-    if let Some(driver) = TEST_DOWNLOAD_DRIVER.lock().unwrap().as_ref() {
-        return Arc::clone(driver);
+    if llm_test_hooks_are_active() {
+        if let Some(driver) = TEST_DOWNLOAD_DRIVER.lock().unwrap().as_ref() {
+            return Arc::clone(driver);
+        }
     }
 
     Arc::new(DefaultLlmDownloadDriver)
@@ -2332,20 +2538,29 @@ static TEST_RUNTIME_INVALIDATION_OBSERVER: std::sync::Mutex<
 > = std::sync::Mutex::new(None);
 
 #[cfg(test)]
-struct TestRuntimeInvalidationObserverGuard;
+struct TestRuntimeInvalidationObserverGuard {
+    _hooks_lock: LlmTestHooksLockGuard,
+}
 
 #[cfg(test)]
 fn install_test_runtime_invalidation_observer(
     observer: Arc<std::sync::atomic::AtomicBool>,
 ) -> TestRuntimeInvalidationObserverGuard {
-    *TEST_RUNTIME_INVALIDATION_OBSERVER.lock().unwrap() = Some(observer);
-    TestRuntimeInvalidationObserverGuard
+    let hooks_lock = acquire_llm_test_hooks_lock();
+    with_llm_test_hooks_serial(|| {
+        *TEST_RUNTIME_INVALIDATION_OBSERVER.lock().unwrap() = Some(observer);
+    });
+    TestRuntimeInvalidationObserverGuard {
+        _hooks_lock: hooks_lock,
+    }
 }
 
 #[cfg(test)]
 impl Drop for TestRuntimeInvalidationObserverGuard {
     fn drop(&mut self) {
-        *TEST_RUNTIME_INVALIDATION_OBSERVER.lock().unwrap() = None;
+        with_llm_test_hooks_serial(|| {
+            *TEST_RUNTIME_INVALIDATION_OBSERVER.lock().unwrap() = None;
+        });
     }
 }
 
@@ -3875,7 +4090,7 @@ mod tests {
         let state = LlmState::default();
         let before = runtime_mutation_snapshot(&state);
 
-        let preflight = collect_model_load_preflight(&dir).unwrap();
+        let preflight = collect_model_load_preflight_live(&dir).unwrap();
 
         assert_eq!(preflight.model_path, approved_llm_model_path(&dir));
         assert_eq!(runtime_mutation_snapshot(&state), before);
@@ -3982,11 +4197,7 @@ mod tests {
         let before = runtime_mutation_snapshot(state.as_ref());
         let ensure_loaded_calls = Arc::new(AtomicUsize::new(0));
         let pre_mutation_snapshot = Arc::new(std::sync::Mutex::new(None));
-        let _driver_guard = install_test_runtime_driver_with(Arc::new(MutatingTestRuntimeDriver {
-            ensure_loaded_calls: Arc::clone(&ensure_loaded_calls),
-            pre_mutation_snapshot: Arc::clone(&pre_mutation_snapshot),
-        }));
-        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+        let preflight = ModelLoadPreflight {
             model_path: std::path::PathBuf::from(
                 "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
             ),
@@ -3995,15 +4206,22 @@ mod tests {
                 free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
                 free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
             },
+        };
+        let driver = Arc::new(MutatingTestRuntimeDriver {
+            ensure_loaded_calls: Arc::clone(&ensure_loaded_calls),
+            pre_mutation_snapshot: Arc::clone(&pre_mutation_snapshot),
         });
 
-        let output = run_claimed_llm_chat(
-            Arc::clone(&state),
-            crate::commands::search::tests::llm_test_pool(),
-            "hello".to_string(),
-            Vec::new(),
-            "stream-phase-boundary".to_string(),
-            Arc::new(CompatChatEventSink),
+        let output = with_test_llm_chat_hooks(
+            test_hooks_snapshot_for_chat_harness(preflight, driver),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                crate::commands::search::tests::llm_test_pool(),
+                "hello".to_string(),
+                Vec::new(),
+                "stream-phase-boundary".to_string(),
+                Arc::new(CompatChatEventSink),
+            ),
         )
         .await
         .unwrap();
@@ -4134,7 +4352,7 @@ mod tests {
 
         let state = Arc::new(LlmState::default());
         let done_sink = Arc::new(RecordingDoneSink::default());
-        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+        let preflight = ModelLoadPreflight {
             model_path: std::path::PathBuf::from(
                 "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
             ),
@@ -4143,15 +4361,18 @@ mod tests {
                 free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
                 free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
             },
-        });
+        };
 
-        let err = run_claimed_llm_chat(
-            Arc::clone(&state),
-            crate::commands::search::tests::llm_test_pool(),
-            "hello".to_string(),
-            Vec::new(),
-            "stream-provision-failure".to_string(),
-            Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+        let err = with_test_llm_chat_hooks(
+            test_hooks_snapshot_for_preflight(preflight),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                crate::commands::search::tests::llm_test_pool(),
+                "hello".to_string(),
+                Vec::new(),
+                "stream-provision-failure".to_string(),
+                Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+            ),
         )
         .await
         .unwrap_err();
@@ -4199,7 +4420,7 @@ mod tests {
 
         let state = Arc::new(LlmState::default());
         let attempted = Arc::new(AtomicBool::new(false));
-        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+        let preflight = ModelLoadPreflight {
             model_path: std::path::PathBuf::from(
                 "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
             ),
@@ -4208,17 +4429,20 @@ mod tests {
                 free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
                 free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
             },
-        });
+        };
 
-        let err = run_claimed_llm_chat(
-            Arc::clone(&state),
-            crate::commands::search::tests::llm_test_pool(),
-            "hello".to_string(),
-            Vec::new(),
-            "stream-provision-failure-done-fail".to_string(),
-            Arc::new(FailingDoneSink {
-                attempted: Arc::clone(&attempted),
-            }) as Arc<dyn ChatEventSink>,
+        let err = with_test_llm_chat_hooks(
+            test_hooks_snapshot_for_preflight(preflight),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                crate::commands::search::tests::llm_test_pool(),
+                "hello".to_string(),
+                Vec::new(),
+                "stream-provision-failure-done-fail".to_string(),
+                Arc::new(FailingDoneSink {
+                    attempted: Arc::clone(&attempted),
+                }) as Arc<dyn ChatEventSink>,
+            ),
         )
         .await
         .unwrap_err();
@@ -4287,8 +4511,7 @@ mod tests {
 
         let state = Arc::new(LlmState::default());
         let done_sink = Arc::new(RecordingDoneSink::default());
-        let _driver_guard = install_test_runtime_driver_with(Arc::new(FailingInitRuntimeDriver));
-        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+        let preflight = ModelLoadPreflight {
             model_path: std::path::PathBuf::from(
                 "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
             ),
@@ -4297,15 +4520,18 @@ mod tests {
                 free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
                 free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
             },
-        });
+        };
 
-        let err = run_claimed_llm_chat(
-            Arc::clone(&state),
-            crate::commands::search::tests::llm_test_pool(),
-            "hello".to_string(),
-            Vec::new(),
-            "stream-init-failure".to_string(),
-            Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+        let err = with_test_llm_chat_hooks(
+            test_hooks_snapshot_for_chat_harness(preflight, Arc::new(FailingInitRuntimeDriver)),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                crate::commands::search::tests::llm_test_pool(),
+                "hello".to_string(),
+                Vec::new(),
+                "stream-init-failure".to_string(),
+                Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+            ),
         )
         .await
         .unwrap_err();

@@ -274,6 +274,7 @@ where
 
 #[cfg(test)]
 struct SmokeDataDirGuard {
+    _env_lock: std::sync::MutexGuard<'static, ()>,
     previous_data_dir: Option<std::ffi::OsString>,
     temp_data_dir: std::path::PathBuf,
 }
@@ -303,9 +304,9 @@ impl SmokeDataDirGuard {
 
         let previous_data_dir = std::env::var_os(SPELLBOOK_DATA_DIR_ENV);
         std::env::set_var(SPELLBOOK_DATA_DIR_ENV, &temp_data_dir);
-        drop(env_lock);
 
         Self {
+            _env_lock: env_lock,
             previous_data_dir,
             temp_data_dir,
         }
@@ -315,15 +316,11 @@ impl SmokeDataDirGuard {
 #[cfg(test)]
 impl Drop for SmokeDataDirGuard {
     fn drop(&mut self) {
-        use crate::commands::vault::lock_vault_env_for_test;
-
         const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
-        let env_lock = lock_vault_env_for_test();
         match &self.previous_data_dir {
             Some(previous_data_dir) => std::env::set_var(SPELLBOOK_DATA_DIR_ENV, previous_data_dir),
             None => std::env::remove_var(SPELLBOOK_DATA_DIR_ENV),
         }
-        drop(env_lock);
         let _ = std::fs::remove_dir_all(&self.temp_data_dir);
     }
 }

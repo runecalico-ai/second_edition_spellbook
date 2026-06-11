@@ -6,9 +6,20 @@ type TokenEvent = {
   token: string;
 };
 
+type RagSpellContext = {
+  id: number;
+  name: string;
+  school?: string;
+  level: number;
+  descriptionSnippet: string;
+};
+
 type DoneEvent = {
   fullResponse: string;
   cancelled: boolean;
+  searchTerms: string[];
+  groundedSpells: RagSpellContext[];
+  timedOut: boolean;
 };
 
 export default function Chat() {
@@ -52,6 +63,8 @@ export default function Chat() {
       resolveDone = resolve;
     });
 
+    let doneReceived = false;
+
     try {
       tokenUnlisten = await listen<TokenEvent>(`llm://token/${streamId}`, (event) => {
         if (!isMountedRef.current) {
@@ -61,10 +74,16 @@ export default function Chat() {
       });
 
       doneUnlisten = await listen<DoneEvent>(`llm://done/${streamId}`, (event) => {
+        doneReceived = true;
         if (isMountedRef.current) {
           setA((prev) =>
             event.payload.fullResponse.length > 0 ? event.payload.fullResponse : prev,
           );
+          if (event.payload.cancelled && event.payload.fullResponse.length === 0) {
+            setError("Generation cancelled.");
+          } else if (event.payload.timedOut) {
+            setError("Response timed out.");
+          }
         }
         resolveDone?.();
       });
@@ -78,6 +97,9 @@ export default function Chat() {
           }, 5000);
         }),
       ]);
+      if (isMountedRef.current && !doneReceived) {
+        setError("Chat finished without a terminal done event.");
+      }
     } catch (caught) {
       try {
         await invoke<void>("llm_cancel_generation", { streamId });

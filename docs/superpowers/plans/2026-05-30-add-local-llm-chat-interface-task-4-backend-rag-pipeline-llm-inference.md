@@ -12,14 +12,14 @@
 
 ## Spec Snapshot (Task Group 4)
 
-| Task | Requirement |
-|------|-------------|
-| 4.1 | Robust search-term extractor (stopwords + domain keywords) |
-| 4.2 | FTS-only RAG retrieval: top 5 spells with grounded metadata |
-| 4.3 | ChatML prompt assembler with 2048-token history truncation |
-| 4.4 | `llm_chat` uses frontend `stream_id`, accepts history, replaces `chat_answer` behavior |
-| 4.5 | 120 s inference timeout + cooperative cancel via existing `llm_cancel_generation` |
-| 4.6 | Concurrent request guard (one inference at a time) |
+| Task | Requirement                                                                            |
+| ---- | -------------------------------------------------------------------------------------- |
+| 4.1  | Robust search-term extractor (stopwords + domain keywords)                             |
+| 4.2  | FTS-only RAG retrieval: top 5 spells with grounded metadata                            |
+| 4.3  | ChatML prompt assembler with 2048-token history truncation                             |
+| 4.4  | `llm_chat` uses frontend `stream_id`, accepts history, replaces `chat_answer` behavior |
+| 4.5  | 120 s inference timeout + cooperative cancel via existing `llm_cancel_generation`      |
+| 4.6  | Concurrent request guard (one inference at a time)                                     |
 
 **Normative sources:** `openspec/changes/add-local-llm-chat-interface/specs/llm-chat/spec.md` (RAG, ChatML, streaming, concurrency), `design.md` (Decision 4–6, data flow), `tasks.md` §4.
 
@@ -43,12 +43,12 @@ Task group 3 (embeddings) is orthogonal: chat must work when embeddings are `not
 
 ## Prerequisites
 
-| Prerequisite | Status | Notes |
-|--------------|--------|-------|
-| Task 1 spikes (MSVC, interruptibility) | Done | See `docs/dev/local_llm_infrastructure_spike.md` |
-| Task 2 `LlmState`, provisioning, `llm_chat` shell | Done | Extend, do not rewrite lifecycle |
-| Task 3 embeddings | Not required for chat RAG | FTS-only per Decision 4 |
-| SQLite spell DB + FTS5 | Exists | `spell_fts` includes `description` |
+| Prerequisite                                      | Status                    | Notes                                            |
+| ------------------------------------------------- | ------------------------- | ------------------------------------------------ |
+| Task 1 spikes (MSVC, interruptibility)            | Done                      | See `docs/dev/local_llm_infrastructure_spike.md` |
+| Task 2 `LlmState`, provisioning, `llm_chat` shell | Done                      | Extend, do not rewrite lifecycle                 |
+| Task 3 embeddings                                 | Not required for chat RAG | FTS-only per Decision 4                          |
+| SQLite spell DB + FTS5                            | Exists                    | `spell_fts` includes `description`               |
 
 **Stop condition:** If `llm.rs` lifecycle commands are missing on the branch, complete task 2 plan first.
 
@@ -56,16 +56,16 @@ Task group 3 (embeddings) is orthogonal: chat must work when embeddings are `not
 
 ## Planned File Structure
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `apps/desktop/src-tauri/src/commands/llm_rag.rs` | Create | Term extraction, FTS RAG retrieval, prompt assembly, unit tests |
-| `apps/desktop/src-tauri/src/commands/llm.rs` | Modify | Wire RAG + history into `run_claimed_llm_chat`, timeout, `stream_id` validation, extend `ChatRunOutput` / `DoneEvent` |
-| `apps/desktop/src-tauri/src/commands/search.rs` | Modify | Add `pub(crate) fn search_rag_spells_with_conn(...)` returning description snippets |
-| `apps/desktop/src-tauri/src/commands/mod.rs` | Modify | `mod llm_rag;` |
-| `apps/desktop/src-tauri/src/models/llm.rs` | Modify | `ChatMessage`, `RagSpellContext`, `LlmChatGrounding`, extend `DoneEvent` |
-| `apps/desktop/src-tauri/src/models/mod.rs` | Modify | Re-export new types |
-| `apps/desktop/src-tauri/src/commands/search.rs` (`chat_answer`) | Modify | Compat path uses same prompt builder |
-| `apps/desktop/src/ui/Chat.tsx` | Modify (minimal) | Pass `history: []` until task 7; required for IPC signature |
+| File                                                            | Action           | Purpose                                                                                                               |
+| --------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `apps/desktop/src-tauri/src/commands/llm_rag.rs`                | Create           | Term extraction, FTS RAG retrieval, prompt assembly, unit tests                                                       |
+| `apps/desktop/src-tauri/src/commands/llm.rs`                    | Modify           | Wire RAG + history into `run_claimed_llm_chat`, timeout, `stream_id` validation, extend `ChatRunOutput` / `DoneEvent` |
+| `apps/desktop/src-tauri/src/commands/search.rs`                 | Modify           | Add `pub(crate) fn search_rag_spells_with_conn(...)` returning description snippets                                   |
+| `apps/desktop/src-tauri/src/commands/mod.rs`                    | Modify           | `mod llm_rag;`                                                                                                        |
+| `apps/desktop/src-tauri/src/models/llm.rs`                      | Modify           | `ChatMessage`, `RagSpellContext`, `LlmChatGrounding`, extend `DoneEvent`                                              |
+| `apps/desktop/src-tauri/src/models/mod.rs`                      | Modify           | Re-export new types                                                                                                   |
+| `apps/desktop/src-tauri/src/commands/search.rs` (`chat_answer`) | Modify           | Compat path uses same prompt builder                                                                                  |
+| `apps/desktop/src/ui/Chat.tsx`                                  | Modify (minimal) | Pass `history: []` until task 7; required for IPC signature                                                           |
 
 No new `Cargo.toml` dependencies.
 
@@ -73,20 +73,20 @@ No new `Cargo.toml` dependencies.
 
 ## Design Decisions (locked for implementation)
 
-| # | Decision | Rationale |
-|---|----------|-----------|
-| D1 | FTS-only RAG via new `search_rag_spells_with_conn`, limit 5 | Reuses `build_fts_query` + `bm25`; avoids coupling chat to embeddings |
-| D2 | Multi-term retrieval: join extracted terms with ` OR ` inside one FTS `MATCH` | Single ranked list; cap at 5 rows |
-| D3 | `RagSpellContext { id, name, school, level, description_snippet }` | Spec needs description ≤200 chars; `SpellSummary` lacks description |
-| D4 | Prompt token budget: **2048** (`TINYLLAMA_CONTEXT_TOKENS`) | Per spec; measure with `model.str_to_token` before inference |
-| D5 | Truncation drops **oldest** non-system turns first; always keep system + latest user | Per spec scenario |
-| D6 | ChatML tokens: `<\|im_start\|>` + `CHATML_IM_END` constant | Replace `redacted_im_end` placeholder in existing code |
-| D7 | Inference timeout: 120 s wall clock, check `Instant` each token loop iteration | Append `[Response timed out]` to partial response in `DoneEvent` |
-| D8 | Extend `DoneEvent` with `searchTerms` + `groundedSpells` | Feeds task 7 `GroundedInIndicator` without re-running FTS on the frontend |
-| D9 | `stream_id` validation: non-empty after trim, max length 128 | Task 9.6; reject before `begin_generation` |
-| D10 | `llm_chat` adds `db: State<'_, Arc<Pool>>` and `history: Vec<ChatMessage>` | RAG needs DB; spec requires history in command |
-| D11 | RAG + prompt build runs in `spawn_blocking` before generation worker | Avoid blocking async runtime on DB + tokenization |
-| D12 | Empty FTS → system prompt includes exact string: `No matching spells found in the library` | Per spec scenario |
+| #   | Decision                                                                                   | Rationale                                                                 |
+| --- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| D1  | FTS-only RAG via new `search_rag_spells_with_conn`, limit 5                                | Reuses `build_fts_query` + `bm25`; avoids coupling chat to embeddings     |
+| D2  | Multi-term retrieval: join extracted terms with `OR` inside one FTS `MATCH`                | Single ranked list; cap at 5 rows                                         |
+| D3  | `RagSpellContext { id, name, school, level, description_snippet }`                         | Spec needs description ≤200 chars; `SpellSummary` lacks description       |
+| D4  | Prompt token budget: **2048** (`TINYLLAMA_CONTEXT_TOKENS`)                                 | Per spec; measure with `model.str_to_token` before inference              |
+| D5  | Truncation drops **oldest** non-system turns first; always keep system + latest user       | Per spec scenario                                                         |
+| D6  | ChatML tokens: `<\|im_start\|>` + `CHATML_IM_END` constant                                 | Replace `redacted_im_end` placeholder in existing code                    |
+| D7  | Inference timeout: 120 s wall clock, check `Instant` each token loop iteration             | Append `[Response timed out]` to partial response in `DoneEvent`          |
+| D8  | Extend `DoneEvent` with `searchTerms` + `groundedSpells`                                   | Feeds task 7 `GroundedInIndicator` without re-running FTS on the frontend |
+| D9  | `stream_id` validation: non-empty after trim, max length 128                               | Task 9.6; reject before `begin_generation`                                |
+| D10 | `llm_chat` adds `db: State<'_, Arc<Pool>>` and `history: Vec<ChatMessage>`                 | RAG needs DB; spec requires history in command                            |
+| D11 | RAG + prompt build runs in `spawn_blocking` before generation worker                       | Avoid blocking async runtime on DB + tokenization                         |
+| D12 | Empty FTS → system prompt includes exact string: `No matching spells found in the library` | Per spec scenario                                                         |
 
 ---
 
@@ -104,6 +104,7 @@ No new `Cargo.toml` dependencies.
 ### Task 0: Preflight Gate
 
 **Files:**
+
 - Read: `apps/desktop/src-tauri/src/commands/llm.rs`
 - Read: `apps/desktop/src-tauri/src/commands/search.rs`
 - Read: `openspec/changes/add-local-llm-chat-interface/specs/llm-chat/spec.md`
@@ -138,6 +139,7 @@ Expected: crates already pinned.
 ### Task 1: RAG types and term extractor (4.1)
 
 **Files:**
+
 - Create: `apps/desktop/src-tauri/src/commands/llm_rag.rs`
 - Modify: `apps/desktop/src-tauri/src/models/llm.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/mod.rs`
@@ -252,6 +254,7 @@ git commit -m "feat(llm): add RAG term extractor and chat grounding types"
 ### Task 2: FTS RAG retrieval (4.2)
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/search.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/llm_rag.rs`
 
@@ -322,6 +325,7 @@ git commit -m "feat(llm): add FTS-only RAG spell retrieval for chat"
 ### Task 3: ChatML prompt assembler with truncation (4.3)
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/llm_rag.rs`
 
 - [x] **Step 3.1: Write failing prompt tests**
@@ -407,6 +411,7 @@ git commit -m "feat(llm): add ChatML prompt assembler with context truncation"
 ### Task 4: Wire RAG into inference path (4.4, 4.6)
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/llm.rs`
 - Modify: `apps/desktop/src-tauri/src/commands/search.rs` (`chat_answer` compat)
 - Modify: `apps/desktop/src/ui/Chat.tsx`
@@ -504,6 +509,7 @@ git commit -m "feat(llm): wire FTS RAG and history into llm_chat"
 ### Task 5: Inference timeout and cancel polish (4.5)
 
 **Files:**
+
 - Modify: `apps/desktop/src-tauri/src/commands/llm.rs`
 
 - [x] **Step 5.1: Write failing timeout test**
@@ -557,22 +563,22 @@ git commit -m "feat(llm): enforce 120s inference timeout with partial response"
 
 ### Task 6: Verification and spec cross-check
 
-- [ ] **Step 6.1: Spec coverage matrix**
+- [x] **Step 6.1: Spec coverage matrix**
 
-| Spec scenario | Task |
-|---------------|------|
-| Term extraction 1–3 terms | Task 1 |
-| FTS top 5 with metadata | Task 2 |
-| Zero FTS → no-context system note | Task 2–3 |
-| ChatML structure | Task 3–4 |
-| History truncation 2048 | Task 3 |
-| Token + done events | Task 4 (existing) |
-| 120 s timeout | Task 5 |
-| Concurrent rejection | Existing `begin_generation` (verify test) |
-| Chat without embeddings | No embedding calls (verify by inspection) |
-| `stream_id` validation | Task 4 |
+| Spec scenario                     | Task                                      |
+| --------------------------------- | ----------------------------------------- |
+| Term extraction 1–3 terms         | Task 1                                    |
+| FTS top 5 with metadata           | Task 2                                    |
+| Zero FTS → no-context system note | Task 2–3                                  |
+| ChatML structure                  | Task 3–4                                  |
+| History truncation 2048           | Task 3                                    |
+| Token + done events               | Task 4 (existing)                         |
+| 120 s timeout                     | Task 5                                    |
+| Concurrent rejection              | Existing `begin_generation` (verify test) |
+| Chat without embeddings           | No embedding calls (verify by inspection) |
+| `stream_id` validation            | Task 4                                    |
 
-- [ ] **Step 6.2: Run full backend checks**
+- [x] **Step 6.2: Run full backend checks**
 
 ```bash
 cd apps/desktop/src-tauri
@@ -581,7 +587,7 @@ cargo clippy -- -D warnings
 cargo test
 ```
 
-- [ ] **Step 6.3: Final commit if formatting-only changes**
+- [x] **Step 6.3: Final commit if formatting-only changes** (fmt-only diff; commit deferred — user did not request)
 
 ---
 
@@ -598,18 +604,18 @@ cargo test
 
 ### Round 1 — Blocking design branches resolved
 
-| Question | Resolution |
-|----------|------------|
-| Where does RAG live? | New `llm_rag.rs`; FTS SQL stays in `search.rs` |
-| How to get descriptions? | Dedicated `search_rag_spells_with_conn` SELECT |
-| Multi-term FTS? | `OR` of per-term `build_fts_query` outputs |
-| Real ChatML end token? | `CHATML_IM_END` via `concat!`, fix existing placeholder |
-| How does UI get grounding? | Extend `DoneEvent` now; task 7 renders it |
-| Does `llm_chat` need DB? | Yes — add `State<Pool>` |
-| History parameter? | Add to command; Chat.tsx passes `[]` until task 7 |
-| Timeout mechanism? | `Instant::elapsed` in token loop (Outcome B compatible) |
-| Concurrent guard already done? | Yes — verify test, no redesign |
-| Dependency additions? | None |
+| Question                       | Resolution                                              |
+| ------------------------------ | ------------------------------------------------------- |
+| Where does RAG live?           | New `llm_rag.rs`; FTS SQL stays in `search.rs`          |
+| How to get descriptions?       | Dedicated `search_rag_spells_with_conn` SELECT          |
+| Multi-term FTS?                | `OR` of per-term `build_fts_query` outputs              |
+| Real ChatML end token?         | `CHATML_IM_END` via `concat!`, fix existing placeholder |
+| How does UI get grounding?     | Extend `DoneEvent` now; task 7 renders it               |
+| Does `llm_chat` need DB?       | Yes — add `State<Pool>`                                 |
+| History parameter?             | Add to command; Chat.tsx passes `[]` until task 7       |
+| Timeout mechanism?             | `Instant::elapsed` in token loop (Outcome B compatible) |
+| Concurrent guard already done? | Yes — verify test, no redesign                          |
+| Dependency additions?          | None                                                    |
 
 **Assumptions accepted:** Task 2 lifecycle code on branch matches exploration; tokenizer-based truncation is acceptable latency vs char heuristic.
 
@@ -622,16 +628,3 @@ cargo test
 - Spec gap: `DoneEvent.timedOut` not in design TypeScript sketch — document in task 6 IPC follow-up.
 
 **Satisfaction estimate: 96%** — Plan is implementation-ready.
-
----
-
-## Execution Handoff
-
-Plan saved to `docs/superpowers/plans/2026-05-30-add-local-llm-chat-interface-task-4-backend-rag-pipeline-llm-inference.md`.
-
-**Two execution options:**
-
-1. **Subagent-Driven (recommended)** — one fresh subagent per task, review between tasks.
-2. **Inline Execution** — use executing-plans skill with checkpoints in this session.
-
-Which approach do you want?

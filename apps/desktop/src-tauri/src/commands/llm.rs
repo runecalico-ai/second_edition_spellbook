@@ -1,5 +1,5 @@
 use crate::commands::llm_rag::{
-    assemble_chatml_prompt, retrieve_rag_context, AssemblePromptInput,
+    assemble_chatml_prompt, retrieve_rag_context, sanitize_chatml_content, AssemblePromptInput,
     MIN_GENERATION_TOKEN_RESERVE, SYSTEM_PROMPT_PREFIX, TINYLLAMA_CONTEXT_TOKENS,
 };
 use crate::commands::provisioning::{
@@ -850,18 +850,27 @@ fn finish_generation(state: &LlmState) -> Result<(), AppError> {
 }
 
 fn cancel_generation(state: &LlmState, stream_id: &str) -> Result<(), AppError> {
+    validate_stream_id(stream_id)?;
+    let stream_id = stream_id.trim();
+
     let active = state
         .active_generation
         .lock()
         .map_err(|_| AppError::Llm("LLM generation state is poisoned".to_string()))?;
-    if let Some(active) = active.as_ref() {
-        if active.stream_id == stream_id {
+    match active.as_ref() {
+        Some(active) if active.stream_id == stream_id => {
             active
                 .cancel
                 .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
         }
+        Some(_) => Err(AppError::Validation(
+            "No active generation matches the provided streamId".into(),
+        )),
+        None => Err(AppError::Validation(
+            "No active generation to cancel".into(),
+        )),
     }
-    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -870,6 +879,44 @@ struct ChatRunOutput {
     cancelled: bool,
     grounding: LlmChatGrounding,
     timed_out: bool,
+}
+
+#[derive(Debug)]
+struct ChatGenerationError {
+    error: AppError,
+    partial_response: String,
+}
+
+impl ChatGenerationError {
+    fn without_partial(error: AppError) -> Self {
+        Self {
+            error,
+            partial_response: String::new(),
+        }
+    }
+}
+
+impl From<AppError> for ChatGenerationError {
+    fn from(error: AppError) -> Self {
+        Self::without_partial(error)
+    }
+}
+
+fn emit_generated_piece(
+    event_sink: &dyn ChatEventSink,
+    generated: &mut String,
+    piece: &str,
+) -> Result<(), ChatGenerationError> {
+    if piece.is_empty() {
+        return Ok(());
+    }
+    generated.push_str(piece);
+    event_sink
+        .emit_token(piece)
+        .map_err(|error| ChatGenerationError {
+            error,
+            partial_response: generated.clone(),
+        })
 }
 
 type LlmRuntimeFuture<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'static>>;
@@ -888,7 +935,7 @@ trait LlmRuntimeDriver: Send + Sync {
         grounding: LlmChatGrounding,
         cancel: Arc<AtomicBool>,
         event_sink: Arc<dyn ChatEventSink>,
-    ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>>;
+    ) -> LlmRuntimeFuture<Result<ChatRunOutput, ChatGenerationError>>;
 }
 
 #[derive(Default)]
@@ -910,7 +957,7 @@ impl LlmRuntimeDriver for DefaultLlmRuntimeDriver {
         grounding: LlmChatGrounding,
         cancel: Arc<AtomicBool>,
         event_sink: Arc<dyn ChatEventSink>,
-    ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+    ) -> LlmRuntimeFuture<Result<ChatRunOutput, ChatGenerationError>> {
         Box::pin(generate_chat_completion(
             state, prompt, grounding, cancel, event_sink,
         ))
@@ -1044,7 +1091,9 @@ pub(crate) async fn with_test_llm_chat_hooks<R>(
 }
 
 #[cfg(test)]
-pub(crate) fn test_hooks_snapshot_for_preflight(preflight: ModelLoadPreflight) -> TestHooksSnapshot {
+pub(crate) fn test_hooks_snapshot_for_preflight(
+    preflight: ModelLoadPreflight,
+) -> TestHooksSnapshot {
     TestHooksSnapshot {
         preflight: Some(preflight),
         runtime_driver: None,
@@ -1210,7 +1259,7 @@ impl LlmRuntimeDriver for SlowRuntimeDriver {
         grounding: LlmChatGrounding,
         cancel: Arc<AtomicBool>,
         event_sink: Arc<dyn ChatEventSink>,
-    ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+    ) -> LlmRuntimeFuture<Result<ChatRunOutput, ChatGenerationError>> {
         Box::pin(async move {
             let started = std::time::Instant::now();
             let mut generated = String::new();
@@ -1226,7 +1275,12 @@ impl LlmRuntimeDriver for SlowRuntimeDriver {
                 }
 
                 generated.push('x');
-                event_sink.emit_token("x")?;
+                event_sink
+                    .emit_token("x")
+                    .map_err(|error| ChatGenerationError {
+                        error,
+                        partial_response: generated.clone(),
+                    })?;
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
 
@@ -1268,9 +1322,12 @@ impl LlmRuntimeDriver for RecordingRuntimeDriver {
         grounding: LlmChatGrounding,
         _cancel: Arc<AtomicBool>,
         sink: Arc<dyn ChatEventSink>,
-    ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+    ) -> LlmRuntimeFuture<Result<ChatRunOutput, ChatGenerationError>> {
         Box::pin(async move {
-            sink.emit_token("ok")?;
+            sink.emit_token("ok").map_err(|error| ChatGenerationError {
+                error,
+                partial_response: String::new(),
+            })?;
             Ok(ChatRunOutput {
                 full_response: "ok".to_string(),
                 cancelled: false,
@@ -1302,6 +1359,7 @@ fn build_done_event(
     run_result: &Result<ChatRunOutput, AppError>,
     cancelled: bool,
     fallback_grounding: &LlmChatGrounding,
+    partial_on_error: &str,
 ) -> DoneEvent {
     match run_result {
         Ok(output) => DoneEvent {
@@ -1312,7 +1370,7 @@ fn build_done_event(
             timed_out: output.timed_out,
         },
         Err(_) => DoneEvent {
-            full_response: String::new(),
+            full_response: partial_on_error.to_string(),
             cancelled,
             search_terms: fallback_grounding.search_terms.clone(),
             grounded_spells: fallback_grounding.grounded_spells.clone(),
@@ -1326,6 +1384,14 @@ fn validate_stream_id(stream_id: &str) -> Result<(), AppError> {
     if trimmed.is_empty() || trimmed.len() > 128 {
         return Err(AppError::Validation(
             "streamId must be a non-empty string up to 128 characters".into(),
+        ));
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(AppError::Validation(
+            "streamId must contain only ASCII letters, digits, hyphens, and underscores".into(),
         ));
     }
     Ok(())
@@ -1378,25 +1444,28 @@ fn empty_chat_grounding() -> LlmChatGrounding {
     }
 }
 
-fn build_chat_prompt_blocking(
-    state: &LlmState,
-    conn: &rusqlite::Connection,
-    user_query: &str,
-    history: &[ChatMessage],
-) -> Result<(String, LlmChatGrounding), AppError> {
-    let grounding = retrieve_rag_context(conn, user_query)?;
+struct ChatPromptBuild {
+    grounding: LlmChatGrounding,
+    prompt: Result<String, AppError>,
+}
 
+fn assemble_chat_prompt_with_model(
+    state: &LlmState,
+    grounding: &LlmChatGrounding,
+    sanitized_history: Vec<ChatMessage>,
+    sanitized_query: String,
+) -> Result<String, AppError> {
     let model_guard = state
         .model
         .lock()
         .map_err(|_| AppError::Llm("LLM model state is poisoned".to_string()))?;
 
-    let prompt = if let Some(model) = model_guard.as_ref() {
+    if let Some(model) = model_guard.as_ref() {
         assemble_chatml_prompt(AssemblePromptInput {
             system_without_context: SYSTEM_PROMPT_PREFIX,
             grounding: grounding.clone(),
-            history: history.to_vec(),
-            user_message: user_query.to_string(),
+            history: sanitized_history,
+            user_message: sanitized_query,
             tokenize: &|text| {
                 let tokens = model
                     .str_to_token(text, llama_cpp_2::model::AddBos::Never)
@@ -1406,20 +1475,48 @@ fn build_chat_prompt_blocking(
                 Ok(tokens.len() as u32)
             },
             context_limit: TINYLLAMA_CONTEXT_TOKENS.saturating_sub(MIN_GENERATION_TOKEN_RESERVE),
-        })?
+        })
     } else {
         let test_tokenize = |text: &str| Ok(text.len() as u32 / 4);
         assemble_chatml_prompt(AssemblePromptInput {
             system_without_context: SYSTEM_PROMPT_PREFIX,
             grounding: grounding.clone(),
-            history: history.to_vec(),
-            user_message: user_query.to_string(),
+            history: sanitized_history,
+            user_message: sanitized_query,
             tokenize: &test_tokenize,
             context_limit: TINYLLAMA_CONTEXT_TOKENS.saturating_sub(MIN_GENERATION_TOKEN_RESERVE),
-        })?
-    };
+        })
+    }
+}
 
-    Ok((prompt, grounding))
+const GENERATION_CANCELLED_MESSAGE: &str = "Generation cancelled";
+
+fn build_chat_prompt_blocking(
+    state: &LlmState,
+    conn: &rusqlite::Connection,
+    user_query: &str,
+    history: &[ChatMessage],
+    cancel: Option<&AtomicBool>,
+) -> Result<ChatPromptBuild, AppError> {
+    if cancel.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
+        return Err(AppError::Validation(GENERATION_CANCELLED_MESSAGE.into()));
+    }
+    let grounding = retrieve_rag_context(conn, user_query)?;
+    if cancel.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
+        return Err(AppError::Validation(GENERATION_CANCELLED_MESSAGE.into()));
+    }
+    let sanitized_query = sanitize_chatml_content(user_query);
+    let sanitized_history: Vec<ChatMessage> = history
+        .iter()
+        .map(|turn| ChatMessage {
+            role: turn.role,
+            content: sanitize_chatml_content(&turn.content),
+        })
+        .collect();
+    let prompt =
+        assemble_chat_prompt_with_model(state, &grounding, sanitized_history, sanitized_query);
+
+    Ok(ChatPromptBuild { grounding, prompt })
 }
 
 #[cfg(test)]
@@ -1429,14 +1526,22 @@ pub(crate) fn build_chat_prompt_for_query(
     history: &[ChatMessage],
 ) -> Result<String, AppError> {
     let grounding = retrieve_rag_context(conn, user_query)?;
+    let sanitized_query = sanitize_chatml_content(user_query);
+    let sanitized_history: Vec<ChatMessage> = history
+        .iter()
+        .map(|turn| ChatMessage {
+            role: turn.role,
+            content: sanitize_chatml_content(&turn.content),
+        })
+        .collect();
     let test_tokenize = |text: &str| Ok(text.len() as u32 / 4);
     assemble_chatml_prompt(AssemblePromptInput {
         system_without_context: SYSTEM_PROMPT_PREFIX,
         grounding,
-        history: history.to_vec(),
-        user_message: user_query.to_string(),
+        history: sanitized_history,
+        user_message: sanitized_query,
         tokenize: &test_tokenize,
-        context_limit: TINYLLAMA_CONTEXT_TOKENS,
+        context_limit: TINYLLAMA_CONTEXT_TOKENS.saturating_sub(MIN_GENERATION_TOKEN_RESERVE),
     })
 }
 
@@ -1673,32 +1778,43 @@ async fn generate_chat_completion(
     grounding: LlmChatGrounding,
     cancel: Arc<AtomicBool>,
     event_sink: Arc<dyn ChatEventSink>,
-) -> Result<ChatRunOutput, AppError> {
-    tokio::task::spawn_blocking(move || -> Result<ChatRunOutput, AppError> {
-        let backend_guard = state
-            .backend
-            .lock()
-            .map_err(|_| AppError::Llm("LLM backend state is poisoned".to_string()))?;
-        let model_guard = state
-            .model
-            .lock()
-            .map_err(|_| AppError::Llm("LLM model state is poisoned".to_string()))?;
-        let backend = backend_guard
-            .as_ref()
-            .ok_or_else(|| AppError::Llm("LLM backend is not loaded".to_string()))?;
-        let model = model_guard
-            .as_ref()
-            .ok_or_else(|| AppError::Llm("LLM model is not loaded".to_string()))?;
+) -> Result<ChatRunOutput, ChatGenerationError> {
+    tokio::task::spawn_blocking(move || -> Result<ChatRunOutput, ChatGenerationError> {
+        let backend_guard = state.backend.lock().map_err(|_| {
+            ChatGenerationError::without_partial(AppError::Llm(
+                "LLM backend state is poisoned".to_string(),
+            ))
+        })?;
+        let model_guard = state.model.lock().map_err(|_| {
+            ChatGenerationError::without_partial(AppError::Llm(
+                "LLM model state is poisoned".to_string(),
+            ))
+        })?;
+        let backend = backend_guard.as_ref().ok_or_else(|| {
+            ChatGenerationError::without_partial(AppError::Llm(
+                "LLM backend is not loaded".to_string(),
+            ))
+        })?;
+        let model = model_guard.as_ref().ok_or_else(|| {
+            ChatGenerationError::without_partial(AppError::Llm(
+                "LLM model is not loaded".to_string(),
+            ))
+        })?;
 
+        let started = std::time::Instant::now();
         let tokens = model
             .str_to_token(&prompt, llama_cpp_2::model::AddBos::Never)
-            .map_err(|error| AppError::Llm(format!("Failed to tokenize prompt: {error}")))?;
+            .map_err(|error| {
+                ChatGenerationError::without_partial(AppError::Llm(format!(
+                    "Failed to tokenize prompt: {error}"
+                )))
+            })?;
         let max_ctx = model.n_ctx_train().min(TINYLLAMA_CONTEXT_TOKENS);
         let prompt_tokens = tokens.len() as u32;
         if prompt_tokens >= max_ctx.saturating_sub(MIN_GENERATION_TOKEN_RESERVE) {
-            return Err(AppError::Llm(
+            return Err(ChatGenerationError::without_partial(AppError::Llm(
                 "Prompt leaves no room for generation in the context window".into(),
-            ));
+            )));
         }
         let n_ctx = prompt_tokens
             .saturating_add(MIN_GENERATION_TOKEN_RESERVE)
@@ -1707,25 +1823,33 @@ async fn generate_chat_completion(
         let ctx_params = llama_cpp_2::context::params::LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(n_ctx))
             .with_n_batch(n_ctx);
-        let mut ctx = model
-            .new_context(backend, ctx_params)
-            .map_err(|error| AppError::Llm(format!("Failed to create llama context: {error}")))?;
+        let mut ctx = model.new_context(backend, ctx_params).map_err(|error| {
+            ChatGenerationError::without_partial(AppError::Llm(format!(
+                "Failed to create llama context: {error}"
+            )))
+        })?;
 
         let mut batch = llama_cpp_2::llama_batch::LlamaBatch::new(n_ctx as usize, 1);
         let last_index = tokens.len().saturating_sub(1) as i32;
         for (i, token) in (0_i32..).zip(tokens.iter().copied()) {
             batch
                 .add(token, i, &[0], i == last_index)
-                .map_err(|error| AppError::Llm(format!("Failed to build llama batch: {error}")))?;
+                .map_err(|error| {
+                    ChatGenerationError::without_partial(AppError::Llm(format!(
+                        "Failed to build llama batch: {error}"
+                    )))
+                })?;
         }
-        ctx.decode(&mut batch)
-            .map_err(|error| AppError::Llm(format!("Initial llama decode failed: {error}")))?;
+        ctx.decode(&mut batch).map_err(|error| {
+            ChatGenerationError::without_partial(AppError::Llm(format!(
+                "Initial llama decode failed: {error}"
+            )))
+        })?;
 
         let mut utf8 = Utf8TokenAccumulator::default();
         let mut sampler = llama_cpp_2::sampling::LlamaSampler::greedy();
         let mut n_cur = batch.n_tokens();
         let mut generated = String::new();
-        let started = std::time::Instant::now();
         let mut timed_out = false;
 
         while n_cur < n_ctx as i32 {
@@ -1745,31 +1869,37 @@ async fn generate_chat_completion(
 
             let bytes = model
                 .token_to_piece_bytes(token, 4096, false, None)
-                .map_err(|error| AppError::Llm(format!("Failed to decode token bytes: {error}")))?;
+                .map_err(|error| ChatGenerationError {
+                    error: AppError::Llm(format!("Failed to decode token bytes: {error}")),
+                    partial_response: generated.clone(),
+                })?;
             let piece = utf8.push(&bytes);
-            if !piece.is_empty() {
-                generated.push_str(&piece);
-                event_sink.emit_token(&piece)?;
-            }
+            emit_generated_piece(event_sink.as_ref(), &mut generated, &piece)?;
 
             batch.clear();
             batch
                 .add(token, n_cur, &[0], true)
-                .map_err(|error| AppError::Llm(format!("Failed to queue next token: {error}")))?;
+                .map_err(|error| ChatGenerationError {
+                    error: AppError::Llm(format!("Failed to queue next token: {error}")),
+                    partial_response: generated.clone(),
+                })?;
             n_cur += 1;
             ctx.decode(&mut batch)
-                .map_err(|error| AppError::Llm(format!("Token decode failed: {error}")))?;
+                .map_err(|error| ChatGenerationError {
+                    error: AppError::Llm(format!("Token decode failed: {error}")),
+                    partial_response: generated.clone(),
+                })?;
         }
 
         let tail = utf8.finish();
-        if !tail.is_empty() {
-            generated.push_str(&tail);
-            event_sink.emit_token(&tail)?;
-        }
+        emit_generated_piece(event_sink.as_ref(), &mut generated, &tail)?;
 
         if timed_out {
-            event_sink.emit_token(RESPONSE_TIMED_OUT_SUFFIX)?;
-            generated.push_str(RESPONSE_TIMED_OUT_SUFFIX);
+            emit_generated_piece(
+                event_sink.as_ref(),
+                &mut generated,
+                RESPONSE_TIMED_OUT_SUFFIX,
+            )?;
         }
 
         Ok(ChatRunOutput {
@@ -1780,7 +1910,11 @@ async fn generate_chat_completion(
         })
     })
     .await
-    .map_err(|error| AppError::Llm(format!("LLM generation task failed: {error}")))?
+    .map_err(|error| {
+        ChatGenerationError::without_partial(AppError::Llm(format!(
+            "LLM generation task failed: {error}"
+        )))
+    })?
 }
 
 fn finalize_claimed_generation(
@@ -1790,11 +1924,13 @@ fn finalize_claimed_generation(
     cancel: &Arc<AtomicBool>,
     event_sink: &dyn ChatEventSink,
     fallback_grounding: &LlmChatGrounding,
+    partial_on_error: &str,
 ) -> Result<ChatRunOutput, AppError> {
     let done_event = build_done_event(
         &run_result,
         cancel.load(std::sync::atomic::Ordering::SeqCst),
         fallback_grounding,
+        partial_on_error,
     );
 
     let command_result = run_result;
@@ -1803,6 +1939,10 @@ fn finalize_claimed_generation(
 
     if let Err(error) = event_sink.emit_done(done_event) {
         tracing::warn!(stream_id, ?error, "Failed to emit terminal LLM done event");
+        return match command_result {
+            Ok(_output) => Err(error),
+            Err(command_err) => Err(command_err),
+        };
     }
 
     command_result
@@ -1815,7 +1955,6 @@ fn finish_generation_best_effort(state: &LlmState, stream_id: &str) {
             ?error,
             "Failed to clear active LLM generation claim"
         );
-        let _ = set_lifecycle_error(state, error.to_string());
     }
 }
 
@@ -1843,20 +1982,30 @@ async fn run_claimed_llm_chat(
     };
     #[cfg(not(test))]
     let runtime_driver = active_llm_runtime_driver();
-    let mut grounding_for_done = empty_chat_grounding();
+    let grounding_for_done = Arc::new(Mutex::new(empty_chat_grounding()));
+    let grounding_for_run = Arc::clone(&grounding_for_done);
+    let partial_on_error = Arc::new(Mutex::new(String::new()));
+    let partial_for_run = Arc::clone(&partial_on_error);
+    let cancel_for_run = Arc::clone(&cancel);
+    let event_sink_for_run = Arc::clone(&event_sink);
+    let state_for_run = Arc::clone(&state);
 
     let run_result = async {
-        if cancel.load(Ordering::SeqCst) {
+        let grounding_snapshot = || grounding_for_run.lock().unwrap().clone();
+
+        if cancel_for_run.load(Ordering::SeqCst) {
             return Ok(ChatRunOutput {
                 full_response: String::new(),
                 cancelled: true,
-                grounding: grounding_for_done.clone(),
+                grounding: grounding_snapshot(),
                 timed_out: false,
             });
         }
 
         #[cfg(test)]
-        let injected_preflight = test_hooks.as_ref().and_then(|hooks| hooks.preflight.clone());
+        let injected_preflight = test_hooks
+            .as_ref()
+            .and_then(|hooks| hooks.preflight.clone());
 
         let preflight_result = tokio::task::spawn_blocking({
             let vault_root = vault_root.clone();
@@ -1872,11 +2021,11 @@ async fn run_claimed_llm_chat(
         })
         .await;
 
-        if cancel.load(Ordering::SeqCst) {
+        if cancel_for_run.load(Ordering::SeqCst) {
             return Ok(ChatRunOutput {
                 full_response: String::new(),
                 cancelled: true,
-                grounding: grounding_for_done.clone(),
+                grounding: grounding_snapshot(),
                 timed_out: false,
             });
         }
@@ -1884,22 +2033,22 @@ async fn run_claimed_llm_chat(
         let preflight = match preflight_result {
             Ok(Ok(preflight)) => preflight,
             Ok(Err(error)) => {
-                if cancel.load(Ordering::SeqCst) {
+                if cancel_for_run.load(Ordering::SeqCst) {
                     return Ok(ChatRunOutput {
                         full_response: String::new(),
                         cancelled: true,
-                        grounding: grounding_for_done.clone(),
+                        grounding: grounding_snapshot(),
                         timed_out: false,
                     });
                 }
                 return Err(error);
             }
             Err(error) => {
-                if cancel.load(Ordering::SeqCst) {
+                if cancel_for_run.load(Ordering::SeqCst) {
                     return Ok(ChatRunOutput {
                         full_response: String::new(),
                         cancelled: true,
-                        grounding: grounding_for_done.clone(),
+                        grounding: grounding_snapshot(),
                         timed_out: false,
                     });
                 }
@@ -1907,24 +2056,24 @@ async fn run_claimed_llm_chat(
             }
         };
 
-        if cancel.load(Ordering::SeqCst) {
+        if cancel_for_run.load(Ordering::SeqCst) {
             return Ok(ChatRunOutput {
                 full_response: String::new(),
                 cancelled: true,
-                grounding: grounding_for_done.clone(),
+                grounding: grounding_snapshot(),
                 timed_out: false,
             });
         }
 
         let validated_preflight =
-            match validate_model_load_preflight_typed(state.as_ref(), preflight) {
+            match validate_model_load_preflight_typed(state_for_run.as_ref(), preflight) {
                 Ok(validated_preflight) => validated_preflight,
                 Err(error) => {
-                    if cancel.load(Ordering::SeqCst) {
+                    if cancel_for_run.load(Ordering::SeqCst) {
                         return Ok(ChatRunOutput {
                             full_response: String::new(),
                             cancelled: true,
-                            grounding: grounding_for_done.clone(),
+                            grounding: grounding_snapshot(),
                             timed_out: false,
                         });
                     }
@@ -1932,24 +2081,24 @@ async fn run_claimed_llm_chat(
                 }
             };
 
-        if cancel.load(Ordering::SeqCst) {
+        if cancel_for_run.load(Ordering::SeqCst) {
             return Ok(ChatRunOutput {
                 full_response: String::new(),
                 cancelled: true,
-                grounding: grounding_for_done.clone(),
+                grounding: grounding_snapshot(),
                 timed_out: false,
             });
         }
 
         runtime_driver
-            .ensure_loaded(Arc::clone(&state), validated_preflight)
+            .ensure_loaded(Arc::clone(&state_for_run), validated_preflight)
             .await?;
 
-        if cancel.load(Ordering::SeqCst) {
+        if cancel_for_run.load(Ordering::SeqCst) {
             return Ok(ChatRunOutput {
                 full_response: String::new(),
                 cancelled: true,
-                grounding: grounding_for_done.clone(),
+                grounding: grounding_snapshot(),
                 timed_out: false,
             });
         }
@@ -1957,49 +2106,77 @@ async fn run_claimed_llm_chat(
         let pool = Arc::clone(&db);
         let user_message = message.clone();
         let history_for_prompt = history.clone();
-        let state_for_prompt = Arc::clone(&state);
-        let (prompt, grounding) = tokio::task::spawn_blocking(move || {
-            let conn = pool.get()?;
-            build_chat_prompt_blocking(
-                state_for_prompt.as_ref(),
-                &conn,
-                &user_message,
-                &history_for_prompt,
-            )
-        })
-        .await
-        .map_err(|error| AppError::Llm(format!("LLM prompt build task failed: {error}")))??;
-        grounding_for_done = grounding.clone();
+        let state_for_prompt = Arc::clone(&state_for_run);
+        let cancel_for_prompt = Arc::clone(&cancel_for_run);
+        let built = {
+            let join_result = tokio::task::spawn_blocking(move || {
+                let conn = pool.get()?;
+                build_chat_prompt_blocking(
+                    state_for_prompt.as_ref(),
+                    &conn,
+                    &user_message,
+                    &history_for_prompt,
+                    Some(cancel_for_prompt.as_ref()),
+                )
+            })
+            .await
+            .map_err(|error| AppError::Llm(format!("LLM prompt build task failed: {error}")))?;
+            match join_result {
+                Ok(build) => build,
+                Err(AppError::Validation(message))
+                    if message == GENERATION_CANCELLED_MESSAGE =>
+                {
+                    return Ok(ChatRunOutput {
+                        full_response: String::new(),
+                        cancelled: true,
+                        grounding: grounding_snapshot(),
+                        timed_out: false,
+                    });
+                }
+                Err(error) => return Err(error),
+            }
+        };
+        *grounding_for_run.lock().unwrap() = built.grounding.clone();
+        let (prompt, grounding) = (built.prompt?, built.grounding);
 
-        if cancel.load(Ordering::SeqCst) {
+        if cancel_for_run.load(Ordering::SeqCst) {
             return Ok(ChatRunOutput {
                 full_response: String::new(),
                 cancelled: true,
-                grounding: grounding_for_done.clone(),
+                grounding: grounding_snapshot(),
                 timed_out: false,
             });
         }
 
-        runtime_driver
+        match runtime_driver
             .generate(
-                Arc::clone(&state),
+                Arc::clone(&state_for_run),
                 prompt,
                 grounding,
-                Arc::clone(&cancel),
-                Arc::clone(&event_sink),
+                Arc::clone(&cancel_for_run),
+                Arc::clone(&event_sink_for_run),
             )
             .await
-            .map_err(|error| record_lifecycle_error(state.as_ref(), error))
+        {
+            Ok(output) => Ok(output),
+            Err(gen_error) => {
+                *partial_for_run.lock().unwrap() = gen_error.partial_response;
+                Err(gen_error.error)
+            }
+        }
     }
     .await;
 
+    let partial_snapshot = partial_on_error.lock().unwrap().clone();
+    let grounding_snapshot = grounding_for_done.lock().unwrap().clone();
     finalize_claimed_generation(
         state.as_ref(),
         &stream_id,
         run_result,
         &cancel,
         event_sink.as_ref(),
-        &grounding_for_done,
+        &grounding_snapshot,
+        &partial_snapshot,
     )
 }
 
@@ -2016,6 +2193,7 @@ pub async fn llm_chat(
     validate_stream_id(&stream_id)?;
     validate_chat_history(&history)?;
     let stream_id = stream_id.trim().to_string();
+    let message = message.trim().to_string();
     run_claimed_llm_chat(
         Arc::clone(state.inner()),
         Arc::clone(db.inner()),
@@ -2034,6 +2212,7 @@ pub(crate) async fn llm_chat_answer_compat(
     message: String,
 ) -> Result<String, AppError> {
     validate_chat_message(&message)?;
+    let message = message.trim().to_string();
     run_claimed_llm_chat(
         Arc::clone(&state),
         db,
@@ -3118,6 +3297,7 @@ pub async fn llm_cancel_download(state: State<'_, Arc<LlmState>>) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::llm::ChatRole;
 
     fn test_temp_dir(label: &str) -> std::path::PathBuf {
         let unique = std::time::SystemTime::now()
@@ -4112,11 +4292,213 @@ mod tests {
     }
 
     #[test]
+    fn validate_stream_id_rejects_unsafe_characters() {
+        assert!(validate_stream_id("stream/a").is_err());
+        assert!(validate_stream_id(r"stream\b").is_err());
+        assert!(validate_stream_id("stream id").is_err());
+        assert!(validate_stream_id("stream\tid").is_err());
+        assert!(validate_stream_id("stream_id-2").is_ok());
+    }
+
+    #[test]
     fn validate_chat_message_rejects_empty_and_overlong_values() {
         assert!(validate_chat_message("").is_err());
         assert!(validate_chat_message("   ").is_err());
         assert!(validate_chat_message(&"x".repeat(8_193)).is_err());
         assert!(validate_chat_message("fireball damage").is_ok());
+    }
+
+    fn sample_chat_turn(content: &str) -> ChatMessage {
+        ChatMessage {
+            role: ChatRole::User,
+            content: content.to_string(),
+        }
+    }
+
+    #[test]
+    fn validate_chat_history_rejects_too_many_turns() {
+        let history: Vec<_> = (0..51)
+            .map(|index| sample_chat_turn(&format!("turn {index}")))
+            .collect();
+        let err = validate_chat_history(&history).unwrap_err();
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("at most 50 turns"))
+        );
+    }
+
+    #[test]
+    fn validate_chat_history_rejects_empty_turn_content() {
+        let history = vec![sample_chat_turn("   ")];
+        let err = validate_chat_history(&history).unwrap_err();
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("history turn 0") && message.contains("non-empty"))
+        );
+    }
+
+    #[test]
+    fn validate_chat_history_rejects_overlong_turn_content() {
+        let history = vec![sample_chat_turn(&"x".repeat(8_193))];
+        let err = validate_chat_history(&history).unwrap_err();
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("history turn 0") && message.contains("8192"))
+        );
+    }
+
+    #[test]
+    fn validate_chat_history_accepts_valid_turns() {
+        let history = vec![
+            sample_chat_turn("fireball damage"),
+            ChatMessage {
+                role: ChatRole::Assistant,
+                content: "3d6 fire damage.".to_string(),
+            },
+        ];
+        assert!(validate_chat_history(&history).is_ok());
+    }
+
+    #[tokio::test]
+    async fn rag_grounding_flows_to_done_event_on_success() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        #[derive(Default)]
+        struct RecordingDoneSink {
+            done_emitted: Arc<AtomicBool>,
+            done_event: Arc<std::sync::Mutex<Option<DoneEvent>>>,
+        }
+
+        impl ChatEventSink for RecordingDoneSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, event: DoneEvent) -> Result<(), AppError> {
+                self.done_emitted.store(true, Ordering::SeqCst);
+                *self.done_event.lock().unwrap() = Some(event);
+                Ok(())
+            }
+        }
+
+        let state = Arc::new(LlmState::default());
+        let done_sink = Arc::new(RecordingDoneSink::default());
+        let preflight = ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        };
+
+        let output = with_test_llm_chat_hooks(
+            test_hooks_snapshot_for_chat_harness(preflight, Arc::new(RecordingRuntimeDriver)),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                crate::commands::search::tests::llm_test_pool_with_rag_seed(),
+                "fireball damage".to_string(),
+                Vec::new(),
+                "stream-rag-done".to_string(),
+                Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+            ),
+        )
+        .await
+        .unwrap();
+
+        assert!(!output.grounding.search_terms.is_empty());
+        assert!(!output.grounding.grounded_spells.is_empty());
+        assert!(done_sink.done_emitted.load(Ordering::SeqCst));
+        let done = done_sink.done_event.lock().unwrap().clone().unwrap();
+        assert!(!done.search_terms.is_empty());
+        assert!(!done.grounded_spells.is_empty());
+        assert_eq!(done.search_terms, output.grounding.search_terms);
+        assert_eq!(done.grounded_spells, output.grounding.grounded_spells);
+        assert!(!done.timed_out);
+    }
+
+    #[tokio::test]
+    async fn generation_failure_after_load_does_not_set_sticky_lifecycle_error() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct FailingGenerateRuntimeDriver;
+
+        impl LlmRuntimeDriver for FailingGenerateRuntimeDriver {
+            fn ensure_loaded(
+                &self,
+                state: Arc<LlmState>,
+                _preflight: ValidatedModelLoadPreflight,
+            ) -> LlmRuntimeFuture<Result<(), AppError>> {
+                Box::pin(async move {
+                    finish_model_load_success(state.as_ref())?;
+                    Ok(())
+                })
+            }
+
+            fn generate(
+                &self,
+                _state: Arc<LlmState>,
+                _prompt: String,
+                _grounding: LlmChatGrounding,
+                _cancel: Arc<AtomicBool>,
+                _event_sink: Arc<dyn ChatEventSink>,
+            ) -> LlmRuntimeFuture<Result<ChatRunOutput, ChatGenerationError>> {
+                Box::pin(async {
+                    Err(ChatGenerationError {
+                        error: AppError::Llm("decode failed".into()),
+                        partial_response: "partial".to_string(),
+                    })
+                })
+            }
+        }
+
+        #[derive(Default)]
+        struct RecordingDoneSink {
+            done_emitted: Arc<AtomicBool>,
+        }
+
+        impl ChatEventSink for RecordingDoneSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+                self.done_emitted.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let state = Arc::new(LlmState::default());
+        let done_sink = Arc::new(RecordingDoneSink::default());
+        let preflight = ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        };
+
+        let err = with_test_llm_chat_hooks(
+            test_hooks_snapshot_for_chat_harness(preflight, Arc::new(FailingGenerateRuntimeDriver)),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                crate::commands::search::tests::llm_test_pool(),
+                "hello".to_string(),
+                Vec::new(),
+                "stream-gen-fail".to_string(),
+                Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+            ),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, AppError::Llm(message) if message.contains("decode failed")));
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::Loaded);
+        assert!(state.last_error.lock().unwrap().is_none());
+        assert!(state.active_generation.lock().unwrap().is_none());
+        assert!(done_sink.done_emitted.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -4181,7 +4563,7 @@ mod tests {
                 _grounding: LlmChatGrounding,
                 _cancel: Arc<AtomicBool>,
                 _event_sink: Arc<dyn ChatEventSink>,
-            ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+            ) -> LlmRuntimeFuture<Result<ChatRunOutput, ChatGenerationError>> {
                 Box::pin(async {
                     Ok(ChatRunOutput {
                         full_response: "ok".to_string(),
@@ -4502,7 +4884,7 @@ mod tests {
                 _grounding: LlmChatGrounding,
                 _cancel: Arc<AtomicBool>,
                 _event_sink: Arc<dyn ChatEventSink>,
-            ) -> LlmRuntimeFuture<Result<ChatRunOutput, AppError>> {
+            ) -> LlmRuntimeFuture<Result<ChatRunOutput, ChatGenerationError>> {
                 Box::pin(async {
                     unreachable!("generation should not run when runtime init fails")
                 })
@@ -4666,6 +5048,7 @@ mod tests {
                 attempted: Arc::clone(&attempted),
             },
             &empty_chat_grounding(),
+            "",
         )
         .unwrap_err();
 
@@ -4675,7 +5058,7 @@ mod tests {
     }
 
     #[test]
-    fn claimed_generation_finalizer_preserves_success_when_done_emit_fails() {
+    fn claimed_generation_finalizer_surfaces_done_emit_failure_on_success() {
         struct FailingDoneSink;
 
         impl ChatEventSink for FailingDoneSink {
@@ -4691,7 +5074,7 @@ mod tests {
         let state = LlmState::default();
         begin_generation(&state, "stream-1".to_string()).unwrap();
 
-        let result = finalize_claimed_generation(
+        let err = finalize_claimed_generation(
             &state,
             "stream-1",
             Ok(ChatRunOutput {
@@ -4703,11 +5086,14 @@ mod tests {
             &Arc::new(std::sync::atomic::AtomicBool::new(false)),
             &FailingDoneSink,
             &empty_chat_grounding(),
+            "",
         )
-        .unwrap();
+        .unwrap_err();
 
-        assert_eq!(result.full_response, "ok");
-        assert!(!result.cancelled);
+        assert!(matches!(
+            err,
+            AppError::Llm(message) if message.contains("terminal done emit failed")
+        ));
         assert!(state.active_generation.lock().unwrap().is_none());
     }
 
@@ -4743,7 +5129,7 @@ mod tests {
             timed_out: false,
         });
 
-        let event = build_done_event(&run_result, false, &empty_chat_grounding());
+        let event = build_done_event(&run_result, false, &empty_chat_grounding(), "");
         let value = serde_json::to_value(event).unwrap();
 
         assert_eq!(
@@ -4767,7 +5153,7 @@ mod tests {
             search_terms: vec!["fireball".to_string()],
             grounded_spells: Vec::new(),
         };
-        let event = build_done_event(&run_result, true, &fallback);
+        let event = build_done_event(&run_result, true, &fallback, "");
         let value = serde_json::to_value(event).unwrap();
 
         assert_eq!(
@@ -4780,5 +5166,76 @@ mod tests {
                 "timedOut": false,
             })
         );
+    }
+
+    #[test]
+    fn done_event_payload_includes_partial_text_on_generation_error() {
+        let run_result: Result<ChatRunOutput, AppError> =
+            Err(AppError::Llm("token emit failed".to_string()));
+
+        let event = build_done_event(
+            &run_result,
+            false,
+            &empty_chat_grounding(),
+            "partial answer",
+        );
+        let value = serde_json::to_value(event).unwrap();
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "fullResponse": "partial answer",
+                "cancelled": false,
+                "searchTerms": [],
+                "groundedSpells": [],
+                "timedOut": false,
+            })
+        );
+    }
+
+    #[test]
+    fn cancel_generation_rejects_when_no_active_generation() {
+        let state = LlmState::default();
+
+        let err = cancel_generation(&state, "stream-1").unwrap_err();
+        assert!(
+            matches!(err, AppError::Validation(message) if message.contains("No active generation"))
+        );
+    }
+
+    #[test]
+    fn cancel_generation_rejects_mismatched_stream_id() {
+        let state = LlmState::default();
+        begin_generation(&state, "stream-1".to_string()).unwrap();
+
+        let err = cancel_generation(&state, "stream-2").unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::Validation(message) if message.contains("No active generation matches")
+        ));
+    }
+
+    #[test]
+    fn cancel_generation_trims_stream_id_before_matching() {
+        let state = LlmState::default();
+        begin_generation(&state, "stream-1".to_string()).unwrap();
+
+        cancel_generation(&state, "  stream-1  ").unwrap();
+
+        let active = state.active_generation.lock().unwrap();
+        assert!(active
+            .as_ref()
+            .unwrap()
+            .cancel
+            .load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn cancel_generation_rejects_invalid_stream_id() {
+        let state = LlmState::default();
+        begin_generation(&state, "stream-1".to_string()).unwrap();
+
+        let err = cancel_generation(&state, "   ").unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)));
     }
 }

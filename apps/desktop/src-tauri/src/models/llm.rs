@@ -81,10 +81,7 @@ mod tests {
 
     #[test]
     fn chat_role_serializes_to_lowercase_variant_names() {
-        assert_eq!(
-            serde_json::to_string(&ChatRole::User).unwrap(),
-            "\"user\""
-        );
+        assert_eq!(serde_json::to_string(&ChatRole::User).unwrap(), "\"user\"");
         assert_eq!(
             serde_json::to_string(&ChatRole::Assistant).unwrap(),
             "\"assistant\""
@@ -153,7 +150,10 @@ mod tests {
         let json = serde_json::to_string(&grounding).unwrap();
         let value: Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["searchTerms"], json!(["fireball", "damage"]));
-        assert_eq!(value["groundedSpells"][0]["descriptionSnippet"], json!("Explosion."));
+        assert_eq!(
+            value["groundedSpells"][0]["descriptionSnippet"],
+            json!("Explosion.")
+        );
 
         let roundtrip: LlmChatGrounding = serde_json::from_str(&json).unwrap();
         assert_eq!(roundtrip.search_terms, grounding.search_terms);

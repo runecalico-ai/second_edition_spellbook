@@ -31,9 +31,12 @@ pub async fn chat_answer(
 ) -> Result<ChatResponse, AppError> {
     // Temporary compatibility path for apps/desktop/src/ui/Chat.tsx.
     // Remove this wrapper in the same branch where the frontend migrates to llm_chat + events.
-    let answer =
-        llm_chat_answer_compat(Arc::clone(llm_state.inner()), Arc::clone(db.inner()), prompt)
-            .await?;
+    let answer = llm_chat_answer_compat(
+        Arc::clone(llm_state.inner()),
+        Arc::clone(db.inner()),
+        prompt,
+    )
+    .await?;
 
     Ok(ChatResponse {
         answer,
@@ -929,6 +932,23 @@ pub(crate) mod tests {
         conn
     }
 
+    /// Shared in-memory pool with FTS schema and Fireball seeded for RAG tests.
+    pub(crate) fn llm_test_pool_with_rag_seed() -> Arc<Pool> {
+        let pool = llm_test_pool();
+        {
+            let conn = pool.get().expect("llm test pool connection");
+            insert_rag_spell(
+                &conn,
+                1,
+                "Fireball",
+                "A blazing bead of fire streaks outward and blossoms into an explosion dealing fire damage.",
+                "Evocation",
+                3,
+            );
+        }
+        pool
+    }
+
     /// Shared in-memory pool with FTS schema for LLM chat integration tests.
     pub(crate) fn llm_test_pool() -> Arc<Pool> {
         use r2d2_sqlite::SqliteConnectionManager;
@@ -1431,8 +1451,7 @@ pub(crate) mod tests {
         assert_eq!(results[0].school.as_deref(), Some("Evocation"));
         assert_eq!(results[0].level, 3);
         assert!(
-            results[0].description_snippet.chars().count()
-                <= RAG_DESCRIPTION_SNIPPET_MAX_CHARS
+            results[0].description_snippet.chars().count() <= RAG_DESCRIPTION_SNIPPET_MAX_CHARS
         );
     }
 
@@ -1454,12 +1473,9 @@ pub(crate) mod tests {
             "A ray of frost chills the target with icy damage.",
         );
 
-        let results = search_rag_spells_with_conn(
-            &conn,
-            &["fireball".to_string(), "frost".to_string()],
-            5,
-        )
-        .unwrap();
+        let results =
+            search_rag_spells_with_conn(&conn, &["fireball".to_string(), "frost".to_string()], 5)
+                .unwrap();
 
         let names: Vec<&str> = results.iter().map(|spell| spell.name.as_str()).collect();
         assert!(names.contains(&"Fireball"));
@@ -1508,7 +1524,9 @@ pub(crate) mod tests {
 
         let conn = setup_fts_db();
         insert_spell(&conn, 1, "Fireball", "fire");
-        assert!(search_rag_spells_with_conn(&conn, &[], 5).unwrap().is_empty());
+        assert!(search_rag_spells_with_conn(&conn, &[], 5)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

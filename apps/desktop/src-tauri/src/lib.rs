@@ -633,9 +633,9 @@ mod llm_command_smoke_tests {
     }
 
     #[tokio::test]
-    async fn llm_cancel_generation_command_succeeds_for_non_matching_stream_id() {
+    async fn llm_cancel_generation_command_rejects_non_matching_stream_id() {
         let _data_dir_guard = SmokeDataDirGuard::acquire(
-            "llm_cancel_generation_command_succeeds_for_non_matching_stream_id",
+            "llm_cancel_generation_command_rejects_non_matching_stream_id",
         );
 
         let llm_state = Arc::new(LlmState::default());
@@ -655,7 +655,7 @@ mod llm_command_smoke_tests {
         )
         .await;
 
-        assert!(cancel_result.is_ok());
+        assert!(cancel_result.is_err());
     }
 }
 

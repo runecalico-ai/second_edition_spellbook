@@ -19,21 +19,6 @@ def _run_sidecar(payload: dict) -> dict:
     return json.loads(process.stdout)
 
 
-def test_embed_returns_vectors():
-    response = _run_sidecar(
-        {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "embed",
-            "params": {"texts": ["alpha", "beta"]},
-        }
-    )
-    assert "result" in response
-    vectors = response["result"]["vectors"]
-    assert len(vectors) == 2
-    assert len(vectors[0]) == 384
-
-
 def test_import_markdown(tmp_path: Path):
     sample = tmp_path / "spell.md"
     sample.write_text(

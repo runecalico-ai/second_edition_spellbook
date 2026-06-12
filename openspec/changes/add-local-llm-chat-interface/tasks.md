@@ -1,58 +1,58 @@
 ## 1. Infrastructure Spike & Dependency Setup
 
-- [ ] 1.1 Verify and approve the exact dependency set and package provenance before any manifest changes (`llama-cpp-rs`, `fastembed`, `reqwest`, and any RAM/disk-check approach)
-- [ ] 1.2 Verify `llama-cpp-rs` compiles on Windows with the MSVC toolchain (spike — blocking)
-- [ ] 1.3 Verify `llama-cpp-rs` supports interruptible generation, or define the exact abort approach before implementation
-- [ ] 1.4 Verify `fastembed` compiles on Windows and document the approved embedding model bundle layout for verified side-load
-- [ ] 1.5 Add the approved dependencies to `apps/desktop/src-tauri/Cargo.toml`
-- [ ] 1.6 Update `DEVELOPMENT.md` with C++ toolchain requirements, provisioning flow, and offline-after-provisioning notes
-- [ ] 1.7 Implement a lightweight provisioning/download state guard to prevent concurrent high-bandwidth operations
+- [x] 1.1 Verify and approve the exact dependency set and package provenance before any manifest changes (`llama-cpp-rs`, `fastembed`, `reqwest`, and any RAM/disk-check approach)
+- [x] 1.2 Verify `llama-cpp-rs` compiles on Windows with the MSVC toolchain (spike — blocking)
+- [x] 1.3 Verify `llama-cpp-rs` supports interruptible generation, or define the exact abort approach before implementation
+- [x] 1.4 Verify `fastembed` compiles on Windows and document the approved embedding model bundle layout for verified side-load
+- [x] 1.5 Add the approved dependencies to `apps/desktop/src-tauri/Cargo.toml`
+- [x] 1.6 Update `DEVELOPMENT.md` with C++ toolchain requirements, provisioning flow, and offline-after-provisioning notes
+- [x] 1.7 Implement a lightweight provisioning/download state guard to prevent concurrent high-bandwidth operations
 
 ## 2. Backend — LLM Model Lifecycle
 
-- [ ] 2.1 Create `apps/desktop/src-tauri/src/commands/llm.rs` module
-- [ ] 2.2 Define `LlmState` struct (`Mutex<Option<LlamaModel>>`, status, active generation state, and download state)
-- [ ] 2.3 Implement a consolidated system-requirements helper (RAM ≥ 1.5 GB, disk ≥ 800 MB)
-- [ ] 2.4 Implement `llm_status` with the v1 states `{ notProvisioned | downloading | ready | loaded | error }`
-- [ ] 2.5 Implement the fixed `SpellbookVault/models/` storage path for the approved TinyLlama file
-- [ ] 2.6 Implement the model download helper: HTTP Range-based resumable download, camelCase progress events, and SHA-256 verification
-- [ ] 2.7 Implement `llm_import_model_file` with exact approved file identity and SHA-256 validation
-- [ ] 2.8 Implement `llm_cancel_download`
-- [ ] 2.9 Implement `llm_cancel_generation`
-- [ ] 2.10 Implement lazy model load inside `llm_chat` with the system-requirements check
-- [ ] 2.11 Register `llm_status`, `llm_download_model`, `llm_import_model_file`, `llm_cancel_download`, `llm_cancel_generation`, and `llm_chat` (replaces `chat_answer`)
+- [x] 2.1 Create `apps/desktop/src-tauri/src/commands/llm.rs` module
+- [x] 2.2 Define `LlmState` struct (`Mutex<Option<LlamaModel>>`, status, active generation state, and download state)
+- [x] 2.3 Implement a consolidated system-requirements helper (RAM ≥ 1.5 GB, disk ≥ 800 MB)
+- [x] 2.4 Implement `llm_status` with the v1 states `{ notProvisioned | downloading | ready | loaded | error }`
+- [x] 2.5 Implement the fixed `SpellbookVault/models/` storage path for the approved TinyLlama file
+- [x] 2.6 Implement the model download helper: HTTP Range-based resumable download, camelCase progress events, and SHA-256 verification
+- [x] 2.7 Implement `llm_import_model_file` with exact approved file identity and SHA-256 validation
+- [x] 2.8 Implement `llm_cancel_download`
+- [x] 2.9 Implement `llm_cancel_generation`
+- [x] 2.10 Implement lazy model load inside `llm_chat` with the system-requirements check
+- [x] 2.11 Register `llm_status`, `llm_download_model`, `llm_import_model_file`, `llm_cancel_download`, `llm_cancel_generation`, and `llm_chat` (replaces `chat_answer`)
 
 ## 3. Backend — Embeddings & Semantic Search
 
-- [ ] 3.1 Create `apps/desktop/src-tauri/src/commands/embeddings.rs` module
-- [ ] 3.2 Define `EmbeddingState` with the v1 states `{ notProvisioned | downloading | initializing | ready | error }`
-- [ ] 3.3 Implement the fixed `SpellbookVault/models/` storage path for the approved embedding model bundle
-- [ ] 3.4 Implement `embeddings_status`, `embeddings_download_model`, `embeddings_import_model_file`, and `embeddings_cancel_download`
-- [ ] 3.5 Implement `embed_spell_text` and `embed_spell_texts_batch` internal helpers
-- [ ] 3.6 Add non-blocking post-write embedding hooks to `create_spell` and `update_spell` when the model is ready
-- [ ] 3.7 Add non-blocking batch embedding to import completion when the model is ready, and record missing-vector gaps otherwise
-- [ ] 3.8 Implement startup embedding initialization after provisioning
-- [ ] 3.9 Implement `search_spells_semantic` (replaces existing `search_semantic`) and return `cosineDistance` in the API result
-- [ ] 3.10 Implement `reindex_embeddings` with progress events and the provisioning/download guard
-- [ ] 3.11 Add startup partial backfill via `reindex_embeddings(force=false)`
-- [ ] 3.12 Register all embedding commands in the Tauri command list
+- [x] 3.1 Create `apps/desktop/src-tauri/src/commands/embeddings.rs` module
+- [x] 3.2 Define `EmbeddingState` with the v1 states `{ notProvisioned | downloading | initializing | ready | error }`
+- [x] 3.3 Implement the fixed `SpellbookVault/models/` storage path for the approved embedding model bundle
+- [x] 3.4 Implement `embeddings_status`, `embeddings_download_model`, `embeddings_import_model_file`, and `embeddings_cancel_download`
+- [x] 3.5 Implement `embed_spell_text` and `embed_spell_texts_batch` internal helpers
+- [x] 3.6 Add non-blocking post-write embedding hooks to `create_spell` and `update_spell` when the model is ready
+- [x] 3.7 Add non-blocking batch embedding to import completion when the model is ready, and record missing-vector gaps otherwise
+- [x] 3.8 Implement startup embedding initialization after provisioning
+- [x] 3.9 Implement `search_spells_semantic` (replaces existing `search_semantic`) and return `cosineDistance` in the API result
+- [x] 3.10 Implement `reindex_embeddings` with progress events and the provisioning/download guard
+- [x] 3.11 Add startup partial backfill via `reindex_embeddings(force=false)`
+- [x] 3.12 Register all embedding commands in the Tauri command list
 
 ## 4. Backend — RAG Pipeline & LLM Inference
 
-- [ ] 4.1 Implement robust search term extractor: strip stopwords (AD&D noise), preserve domain keywords
-- [ ] 4.2 Implement FTS-only RAG retrieval: top 5 results with grounded metadata
-- [ ] 4.3 Implement ChatML prompt assembler with history truncation
-- [ ] 4.4 Implement `llm_chat` command (replaces `chat_answer`): uses frontend-generated `stream_id`
-- [ ] 4.5 Implement inference timeout and interruptible loop for `llm_cancel_generation`
-- [ ] 4.6 Implement concurrent request guard (one inference at a time)
+- [x] 4.1 Implement robust search term extractor: strip stopwords (AD&D noise), preserve domain keywords
+- [x] 4.2 Implement FTS-only RAG retrieval: top 5 results with grounded metadata
+- [x] 4.3 Implement ChatML prompt assembler with history truncation
+- [x] 4.4 Implement `llm_chat` command (replaces `chat_answer`): uses frontend-generated `stream_id`
+- [x] 4.5 Implement inference timeout and interruptible loop for `llm_cancel_generation`
+- [x] 4.6 Implement concurrent request guard (one inference at a time)
 
 ## 5. Python Sidecar Cleanup
 
-- [ ] 5.1 Remove `handle_embed` function and its `_zero_vector` helper from `services/ml/spellbook_sidecar.py`
-- [ ] 5.2 Remove `handle_llm_answer` function from `services/ml/spellbook_sidecar.py`
-- [ ] 5.3 Remove `"embed"` and `"llm_answer"` entries from the `handlers` dispatch dict in `main()`
-- [ ] 5.4 Update sidecar tests in `services/ml/tests/` to remove any tests for the removed handlers
-- [ ] 5.5 Run `ruff check services/ml/` and fix any linting issues introduced by the removals
+- [x] 5.1 Remove `handle_embed` function and its `_zero_vector` helper from `services/ml/spellbook_sidecar.py`
+- [x] 5.2 Remove `handle_llm_answer` function from `services/ml/spellbook_sidecar.py`
+- [x] 5.3 Remove `"embed"` and `"llm_answer"` entries from the `handlers` dispatch dict in `main()`
+- [x] 5.4 Update sidecar tests in `services/ml/tests/` to remove any tests for the removed handlers
+- [x] 5.5 Run `ruff check services/ml/` and fix any linting issues introduced by the removals
 
 ## 6. Frontend — TypeScript Types & IPC
 
@@ -110,7 +110,7 @@
 - [ ] 11.2 Update `apps/desktop/src/AGENTS.md` with Chat provisioning UI, Library semantic empty-state, and streaming hook conventions
 - [ ] 11.3 Document approved model URLs, expected SHA-256 values, verified side-load rules, and the fixed `SpellbookVault/models/` path in `DEVELOPMENT.md`
 - [ ] 11.4 Document that model assets are excluded from backup and restore by default and preserved across restore on the same machine
-- [ ] 11.5 Update `services/ml/AGENTS.md` to note that `embed` and `llm_answer` handlers were removed and why
+- [x] 11.5 Update `services/ml/AGENTS.md` to note that `embed` and `llm_answer` handlers were removed and why
 - [ ] 11.6 Run `cargo clippy`, `cargo fmt`, `pnpm lint`, `ruff check`, and the affected E2E battery; fix all findings
 
 ## Notes

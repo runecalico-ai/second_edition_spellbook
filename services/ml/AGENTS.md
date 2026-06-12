@@ -1,3 +1,11 @@
+---
+description: 
+alwaysApply: false
+---
+
+> [!NOTE]
+> As of the local LLM chat interface implementation (v2), the Python sidecar is used ONLY for document importing and exporting (parsing PDF, DOCX, Markdown, rendering HTML/Markdown print sheets). The `embed` and `llm_answer` handlers have been fully removed and migrated to native Rust commands in the Tauri backend.
+
 # AI Agent Development Guide for Python Services
 
 This document provides guidelines for AI agents working on Python services (ML/sidecar components).
@@ -99,4 +107,3 @@ pytest tests/
 1. **Unused imports**: Run `ruff check --fix` to auto-remove
 2. **Unused variables**: Extract parameters only when you need them
 3. **Type hints**: Include them for all public functions and methods
-

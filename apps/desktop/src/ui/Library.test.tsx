@@ -560,7 +560,9 @@ describe("Library empty states", () => {
       fireEvent.click(screen.getByTestId("library-search-button"));
 
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledWith("search_spells_semantic", { query: "find hidden lore" });
+        expect(invoke).toHaveBeenCalledWith("search_spells_semantic", {
+          query: "find hidden lore",
+        });
       });
       expect(screen.queryByText("No Results")).toBeNull();
 

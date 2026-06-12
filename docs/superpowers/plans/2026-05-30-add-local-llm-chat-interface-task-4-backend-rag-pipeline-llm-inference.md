@@ -587,7 +587,7 @@ cargo clippy -- -D warnings
 cargo test
 ```
 
-- [x] **Step 6.3: Final commit if formatting-only changes** (fmt-only diff; commit deferred — user did not request)
+- [x] **Step 6.3: Final commit if formatting-only changes** (`b8d01a7`)
 
 ---
 

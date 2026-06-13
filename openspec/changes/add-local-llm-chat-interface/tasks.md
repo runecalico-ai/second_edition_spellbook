@@ -56,11 +56,11 @@
 
 ## 6. Frontend — TypeScript Types & IPC
 
-- [ ] 6.1 Define `LlmStatusResponse`, `EmbeddingsStatusResponse`, `ChatMessage`, `DownloadProgressEvent`, `TokenEvent`, and `DoneEvent` in `src/types/llm.ts`
-- [ ] 6.2 Add `ReindexResult` and `SemanticSearchResult` interfaces to `src/types/llm.ts`
-- [ ] 6.3 Create typed IPC wrappers for `llm_status`, `llm_download_model`, `llm_import_model_file`, `llm_cancel_download`, `llm_cancel_generation`, and `llm_chat`
-- [ ] 6.4 Add typed wrappers for `embeddings_status`, `embeddings_download_model`, `embeddings_import_model_file`, `embeddings_cancel_download`, `search_spells_semantic`, and `reindex_embeddings`
-- [ ] 6.5 Implement the streaming hook `useLlmStream(streamId)`: subscribe to `llm://token/<id>` and `llm://done/<id>` and expose generation cancellation
+- [x] 6.1 Define `LlmStatusResponse`, `EmbeddingsStatusResponse`, `ChatMessage`, `DownloadProgressEvent`, `TokenEvent`, and `DoneEvent` in `src/types/llm.ts`
+- [x] 6.2 Add `ReindexResult` and `SemanticSearchResult` interfaces to `src/types/llm.ts`
+- [x] 6.3 Create typed IPC wrappers for `llm_status`, `llm_download_model`, `llm_import_model_file`, `llm_cancel_download`, `llm_cancel_generation`, and `llm_chat`
+- [x] 6.4 Add typed wrappers for `embeddings_status`, `embeddings_download_model`, `embeddings_import_model_file`, `embeddings_cancel_download`, `search_spells_semantic`, and `reindex_embeddings`
+- [x] 6.5 Implement the streaming hook `useLlmStream(streamId)`: subscribe to `llm://token/<id>` and `llm://done/<id>` and expose generation cancellation
 
 ## 7. Frontend — Chat UI Components
 

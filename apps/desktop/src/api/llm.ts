@@ -59,6 +59,8 @@ export async function searchSpellsSemantic(
   query: string,
   limit?: number,
 ): Promise<SemanticSearchResult[]> {
+  // Omit `limit` when undefined so Tauri receives only `{ query }`; passing
+  // `limit: undefined` would serialize the key and may confuse the Rust side.
   return invoke<SemanticSearchResult[]>(
     "search_spells_semantic",
     limit !== undefined ? { query, limit } : { query },

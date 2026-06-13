@@ -78,8 +78,8 @@ export interface SpellSummary {
   components?: string | null;
   duration?: string | null;
   source?: string | null;
-  isQuestSpell: number;
-  isCantrip: number;
+  isQuestSpell: 0 | 1;
+  isCantrip: 0 | 1;
   tags?: string | null;
 }
 

@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cancelLlmGeneration } from "../api/llm";
+import type { DoneEvent, TokenEvent } from "../types/llm";
 import { useLlmStream } from "./useLlmStream";
 
 // Mock Tauri modules
@@ -16,8 +17,8 @@ vi.mock("../api/llm", () => ({
 }));
 
 describe("useLlmStream", () => {
-  let tokenHandler: (e: { payload: { token: string } }) => void;
-  let doneHandler: (e: { payload: Record<string, unknown> }) => void;
+  let tokenHandler: (e: { payload: TokenEvent }) => void;
+  let doneHandler: (e: { payload: DoneEvent }) => void;
   const mockTokenUnlisten = vi.fn();
   const mockDoneUnlisten = vi.fn();
 
@@ -157,6 +158,28 @@ describe("useLlmStream", () => {
     expect(result.current.error).toBe("Generation cancelled.");
   });
 
+  it("handles cancelled and timedOut done event with combined error message", async () => {
+    const { result } = renderHook(() => useLlmStream("test-stream"));
+    await waitForListenersSetup();
+
+    act(() => {
+      doneHandler({
+        payload: {
+          fullResponse: "Partial response",
+          cancelled: true,
+          searchTerms: [],
+          groundedSpells: [],
+          timedOut: true,
+        },
+      });
+    });
+
+    expect(result.current.isGenerating).toBe(false);
+    expect(result.current.cancelled).toBe(true);
+    expect(result.current.timedOut).toBe(true);
+    expect(result.current.error).toBe("Response timed out. Generation cancelled.");
+  });
+
   it("handles timedOut done event correctly", async () => {
     const { result } = renderHook(() => useLlmStream("test-stream"));
     await waitForListenersSetup();
@@ -203,6 +226,98 @@ describe("useLlmStream", () => {
       expect(result.current.error).toBe("listen failed");
       expect(result.current.isGenerating).toBe(false);
     });
+  });
+
+  it("resets state, re-subscribes, and unlistens old channels on streamId A to B transition", async () => {
+    const { result, rerender } = renderHook(({ id }) => useLlmStream(id), {
+      initialProps: { id: "stream-a" as string | null },
+    });
+
+    await waitForListenersSetup();
+
+    act(() => {
+      tokenHandler({ payload: { token: "from A" } });
+    });
+    expect(result.current.response).toBe("from A");
+
+    rerender({ id: "stream-b" });
+
+    await waitFor(() => {
+      expect(mockListen).toHaveBeenCalledWith("llm://token/stream-b", expect.any(Function));
+      expect(mockListen).toHaveBeenCalledWith("llm://done/stream-b", expect.any(Function));
+    });
+
+    expect(mockTokenUnlisten).toHaveBeenCalledTimes(1);
+    expect(mockDoneUnlisten).toHaveBeenCalledTimes(1);
+    expect(result.current.response).toBe("");
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("preserves streamed tokens when done event has empty fullResponse", async () => {
+    const { result } = renderHook(() => useLlmStream("test-stream"));
+    await waitForListenersSetup();
+
+    act(() => {
+      tokenHandler({ payload: { token: "Streamed " } });
+      tokenHandler({ payload: { token: "text" } });
+    });
+    expect(result.current.response).toBe("Streamed text");
+
+    act(() => {
+      doneHandler({
+        payload: {
+          fullResponse: "",
+          cancelled: false,
+          searchTerms: [],
+          groundedSpells: [],
+          timedOut: false,
+        },
+      });
+    });
+
+    expect(result.current.isGenerating).toBe(false);
+    expect(result.current.response).toBe("Streamed text");
+  });
+
+  it("unlistens token and sets error when done listen fails after token listen succeeds", async () => {
+    mockListen.mockImplementation(async (eventName: string, handler: unknown) => {
+      if (eventName.includes("llm://token/")) {
+        tokenHandler = handler as typeof tokenHandler;
+        return mockTokenUnlisten;
+      }
+      if (eventName.includes("llm://done/")) {
+        throw new Error("done listen failed");
+      }
+      return () => {};
+    });
+
+    const { result } = renderHook(() => useLlmStream("test-stream"));
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("done listen failed");
+      expect(result.current.isGenerating).toBe(false);
+    });
+
+    expect(mockTokenUnlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not set error when cancel rejects after unmount", async () => {
+    vi.mocked(cancelLlmGeneration).mockRejectedValue(new Error("cancel failed"));
+
+    const { result, unmount } = renderHook(() => useLlmStream("test-stream"));
+    await waitForListenersSetup();
+
+    expect(result.current.error).toBeNull();
+    const cancelFn = result.current.cancel;
+    unmount();
+
+    await act(async () => {
+      await cancelFn();
+    });
+
+    expect(cancelLlmGeneration).toHaveBeenCalledWith("test-stream");
+    expect(result.current.error).toBeNull();
   });
 
   it("resets to idle and unlistens when streamId rerenders to null", async () => {

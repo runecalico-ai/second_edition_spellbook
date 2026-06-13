@@ -590,7 +590,7 @@ Expected: All tests pass, including the new `useLlmStream` unit tests.
 **Files:**
 - Modify: [tasks.md](file:///c:/Users/vitki/OneDrive/GitHub/runecalico-ai/second_edition_spellbook/openspec/changes/add-local-llm-chat-interface/tasks.md)
 
-- [ ] **Step 5.1: Mark Task Group 6 as complete in tasks.md**
+- [x] **Step 5.1: Mark Task Group 6 as complete in tasks.md**
 Modify `openspec/changes/add-local-llm-chat-interface/tasks.md` to change Group 6 checklist items from `[ ]` to `[x]`:
 ```diff
 - - [ ] 6.1 Define `LlmStatusResponse`, `EmbeddingsStatusResponse`, `ChatMessage`, `DownloadProgressEvent`, `TokenEvent`, and `DoneEvent` in `src/types/llm.ts`
@@ -605,7 +605,7 @@ Modify `openspec/changes/add-local-llm-chat-interface/tasks.md` to change Group 
 + - [x] 6.5 Implement the streaming hook `useLlmStream(streamId)`: subscribe to `llm://token/<id>` and `llm://done/<id>` and expose generation cancellation
 ```
 
-- [ ] **Step 5.2: Commit the changes**
+- [x] **Step 5.2: Commit the changes**
 Run:
 ```powershell
 git add docs/superpowers/plans/2026-06-12-add-local-llm-chat-interface-task-6-frontend-types-ipc.md

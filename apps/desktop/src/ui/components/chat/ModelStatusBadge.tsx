@@ -1,33 +1,37 @@
 import clsx from "classnames";
+import type { EmbeddingsStatus, LlmStatus } from "../../../types/llm";
 
-const LABELS: Record<string, string> = {
+type ModelStatus = LlmStatus | EmbeddingsStatus;
+
+const LABELS = {
   notProvisioned: "Not installed",
   downloading: "Downloading",
   initializing: "Initializing",
   ready: "Ready",
   loaded: "Loaded",
   error: "Error",
-};
+} satisfies Record<ModelStatus, string>;
 
-const COLORS: Record<string, string> = {
+const COLORS = {
   notProvisioned: "bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
   downloading: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   initializing: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200",
   ready: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
   loaded: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
   error: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
-};
+} satisfies Record<ModelStatus, string>;
 
 interface ModelStatusBadgeProps {
   label: string;
-  status: string;
+  status: ModelStatus;
   testId: string;
 }
 
 export function ModelStatusBadge({ label, status, testId }: ModelStatusBadgeProps) {
-  const text = LABELS[status] ?? status;
+  const text = LABELS[status] ?? "Unknown";
   return (
     <span
+      role="status"
       data-testid={testId}
       className={clsx(
         "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",

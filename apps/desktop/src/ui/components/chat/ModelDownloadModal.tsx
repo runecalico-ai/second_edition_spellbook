@@ -40,6 +40,17 @@ export function ModelDownloadModal({
     }
     if (triggerRef.current && triggerRef.current.isConnected) {
       triggerRef.current.focus();
+    } else {
+      const hadTabIndex = document.body.hasAttribute("tabindex");
+      if (!hadTabIndex) {
+        document.body.tabIndex = -1;
+      }
+      document.body.focus();
+      queueMicrotask(() => {
+        if (!hadTabIndex) {
+          document.body.removeAttribute("tabindex");
+        }
+      });
     }
     triggerRef.current = null;
   }, [isOpen]);
@@ -50,7 +61,7 @@ export function ModelDownloadModal({
     if (!dialog) return;
 
     const focusableSelector =
-      "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+      "button:not([disabled]):not([tabindex='-1']), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Tab" || !dialog.open) return;

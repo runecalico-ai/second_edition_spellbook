@@ -124,7 +124,7 @@ const results: SpellSummary[] = raw.map(({ cosineDistance: _distance, ...spell }
 - Create: `apps/desktop/src/ui/library/librarySemantic.ts`
 - Test: `apps/desktop/src/ui/library/librarySemantic.test.ts`
 
-- [ ] **Step 1.1: Write failing tests**
+- [x] **Step 1.1: Write failing tests**
 
 ```typescript
 // apps/desktop/src/ui/library/librarySemantic.test.ts
@@ -165,21 +165,21 @@ describe("SEMANTIC_SEARCH_LIMIT", () => {
 });
 ```
 
-- [ ] **Step 1.2: Run test to verify it fails**
+- [x] **Step 1.2: Run test to verify it fails**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/library/librarySemantic.test.ts`
 Expected: FAIL — module not found
 
-- [ ] **Step 1.3: Implement helpers**
+- [x] **Step 1.3: Implement helpers**
 
 Create `apps/desktop/src/ui/library/librarySemantic.ts` with the Type Contracts block above.
 
-- [ ] **Step 1.4: Run test to verify it passes**
+- [x] **Step 1.4: Run test to verify it passes**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/library/librarySemantic.test.ts`
 Expected: PASS (3 tests)
 
-- [ ] **Step 1.5: Commit**
+- [x] **Step 1.5: Commit**
 
 ```bash
 git add apps/desktop/src/ui/library/librarySemantic.ts apps/desktop/src/ui/library/librarySemantic.test.ts
@@ -194,7 +194,7 @@ git commit -m "feat(library): add semantic availability helpers"
 - Create: `apps/desktop/src/hooks/useEmbeddingsProvisioning.ts`
 - Test: `apps/desktop/src/hooks/useEmbeddingsProvisioning.test.tsx`
 
-- [ ] **Step 2.1: Write failing tests**
+- [x] **Step 2.1: Write failing tests**
 
 ```typescript
 // apps/desktop/src/hooks/useEmbeddingsProvisioning.test.tsx
@@ -272,12 +272,12 @@ describe("useEmbeddingsProvisioning", () => {
 });
 ```
 
-- [ ] **Step 2.2: Run test to verify it fails**
+- [x] **Step 2.2: Run test to verify it fails**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/hooks/useEmbeddingsProvisioning.test.tsx`
 Expected: FAIL — module not found
 
-- [ ] **Step 2.3: Implement hook**
+- [x] **Step 2.3: Implement hook**
 
 ```typescript
 // apps/desktop/src/hooks/useEmbeddingsProvisioning.ts
@@ -375,12 +375,12 @@ export function useEmbeddingsProvisioning({
 }
 ```
 
-- [ ] **Step 2.4: Run test to verify it passes**
+- [x] **Step 2.4: Run test to verify it passes**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/hooks/useEmbeddingsProvisioning.test.tsx`
 Expected: PASS
 
-- [ ] **Step 2.5: Commit**
+- [x] **Step 2.5: Commit**
 
 ```bash
 git add apps/desktop/src/hooks/useEmbeddingsProvisioning.ts apps/desktop/src/hooks/useEmbeddingsProvisioning.test.tsx
@@ -395,7 +395,7 @@ git commit -m "feat(library): add embeddings provisioning hook"
 - Create: `apps/desktop/src/ui/library/LibrarySemanticProvisioning.tsx`
 - Test: `apps/desktop/src/ui/library/LibrarySemanticProvisioning.test.tsx`
 
-- [ ] **Step 3.1: Write failing tests**
+- [x] **Step 3.1: Write failing tests**
 
 ```typescript
 // apps/desktop/src/ui/library/LibrarySemanticProvisioning.test.tsx
@@ -452,12 +452,12 @@ describe("LibrarySemanticProvisioning", () => {
 });
 ```
 
-- [ ] **Step 3.2: Run test to verify it fails**
+- [x] **Step 3.2: Run test to verify it fails**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/library/LibrarySemanticProvisioning.test.tsx`
 Expected: FAIL — module not found
 
-- [ ] **Step 3.3: Implement component**
+- [x] **Step 3.3: Implement component**
 
 ```tsx
 // apps/desktop/src/ui/library/LibrarySemanticProvisioning.tsx
@@ -562,12 +562,12 @@ export function LibrarySemanticProvisioning({
 }
 ```
 
-- [ ] **Step 3.4: Run test to verify it passes**
+- [x] **Step 3.4: Run test to verify it passes**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/library/LibrarySemanticProvisioning.test.tsx`
 Expected: PASS
 
-- [ ] **Step 3.5: Commit**
+- [x] **Step 3.5: Commit**
 
 ```bash
 git add apps/desktop/src/ui/library/LibrarySemanticProvisioning.tsx apps/desktop/src/ui/library/LibrarySemanticProvisioning.test.tsx

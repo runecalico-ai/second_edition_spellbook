@@ -1209,6 +1209,44 @@ describe("Library search", () => {
     expect(screen.queryByTestId("empty-search-state")).toBeNull();
   });
 
+  it("does not show empty-search when switching to semantic with a non-empty query from keyword mode", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("search-input"), {
+      target: { value: "fireball" },
+    });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+    await screen.findByText("No Results");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+    expect(screen.queryByText("No Results")).toBeNull();
+    expect(
+      vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic"),
+    ).toBe(false);
+  });
+
   it("does not show empty-library or empty-search when toggling to semantic with embeddings ready", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       const defaults = defaultModelStatusMocks(cmd);

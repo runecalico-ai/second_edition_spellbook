@@ -372,7 +372,7 @@ export default function Library() {
       isCantripFilter,
   );
   const hasActiveSearchContext = Boolean(
-    query.trim() ||
+    (mode === "keyword" && query.trim()) ||
       (mode === "keyword" && hasKeywordFilters) ||
       (mode === "keyword" && selectedSavedSearchId !== null) ||
       semanticSearchAttempted,
@@ -507,6 +507,7 @@ export default function Library() {
                 setSemanticSearchAttempted(false);
                 setSpells([]);
                 setResultsSettledForCurrentSearch(true);
+                void refreshModelStatus();
               }
             }}
           >

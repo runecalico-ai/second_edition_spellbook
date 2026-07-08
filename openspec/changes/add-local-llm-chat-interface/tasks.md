@@ -64,15 +64,15 @@
 
 ## 7. Frontend — Chat UI Components
 
-- [ ] 7.1 Create `ChatPanel` container: Glassmorphism aesthetics, entrance animations
-- [ ] 7.2 Create `ChatHeader` with integrated LLM and Embedding status badges
-- [ ] 7.3 Create provisioning UI for both models: download flow, verified side-load flow, and download modal where needed
-- [ ] 7.4 Create `MessageList` with auto-scroll and premium bubble styling
-- [ ] 7.5 Create `AssistantMessage` with `GroundedInIndicator` (shows search terms used)
-- [ ] 7.6 Implement spell link detection and navigate links to the existing spell editor route
-- [ ] 7.7 Create `ChatInputBar` with multi-line support and Send/Cancel Generation buttons
-- [ ] 7.8 Replace existing `Chat.tsx` route with the new `ChatPanel`
-- [ ] 7.9 Add `data-testid` attributes to all interactive elements
+- [x] 7.1 Create `ChatPanel` container: Glassmorphism aesthetics, entrance animations
+- [x] 7.2 Create `ChatHeader` with integrated LLM and Embedding status badges
+- [x] 7.3 Create provisioning UI for both models: download flow, verified side-load flow, and download modal where needed
+- [x] 7.4 Create `MessageList` with auto-scroll and premium bubble styling
+- [x] 7.5 Create `AssistantMessage` with `GroundedInIndicator` (shows search terms used)
+- [x] 7.6 Implement spell link detection and navigate links to the existing spell editor route
+- [x] 7.7 Create `ChatInputBar` with multi-line support and Send/Cancel Generation buttons
+- [x] 7.8 Replace existing `Chat.tsx` route with the new `ChatPanel`
+- [x] 7.9 Add `data-testid` attributes to all interactive elements
 
 ## 8. Frontend — Library Semantic Mode
 

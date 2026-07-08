@@ -1526,7 +1526,7 @@ git commit -m "feat(chat): replace Chat.tsx spike with ChatPanel"
 **Files:**
 - All `apps/desktop/src/ui/components/chat/**`
 
-- [ ] **Step 13.1: Verify required testids exist**
+- [x] **Step 13.1: Verify required testids exist**
 
 | Element | testid |
 | ------- | ------ |
@@ -1551,7 +1551,7 @@ git commit -m "feat(chat): replace Chat.tsx spike with ChatPanel"
 | Cancel | `btn-cancel-chat` |
 | Model loading | `chat-model-loading-indicator` |
 
-- [ ] **Step 13.2: Commit** (if any testid fixes)
+- [x] **Step 13.2: Commit** (if any testid fixes)
 
 ```bash
 git commit -m "chore(chat): complete data-testid coverage for chat UI"
@@ -1564,7 +1564,7 @@ git commit -m "chore(chat): complete data-testid coverage for chat UI"
 **Files:**
 - Modify: `openspec/changes/add-local-llm-chat-interface/tasks.md`
 
-- [ ] **Step 14.1: Mark Task Group 7 complete**
+- [x] **Step 14.1: Mark Task Group 7 complete**
 
 ```diff
  ## 7. Frontend — Chat UI Components
@@ -1589,7 +1589,7 @@ git commit -m "chore(chat): complete data-testid coverage for chat UI"
 +- [x] 7.9 Add `data-testid` attributes to all interactive elements
 ```
 
-- [ ] **Step 14.2: Final commit**
+- [x] **Step 14.2: Final commit**
 
 ```bash
 git add openspec/changes/add-local-llm-chat-interface/tasks.md

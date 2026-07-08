@@ -44,7 +44,6 @@ export function LibrarySemanticProvisioning({
     availability === "error" && errorMessage
       ? `${copy.description} ${errorMessage}`
       : copy.description;
-  const liveRegionDescription = copy.description;
 
   const testId =
     availability === "initializing"
@@ -63,15 +62,13 @@ export function LibrarySemanticProvisioning({
         active
         testId={testId}
         heading={copy.heading}
-        description={liveRegionDescription}
+        description={visibleDescription}
       />
       <EmptyState heading={copy.heading} description={visibleDescription} testId={testId} headingLevel="h3">
         {availability === "initializing" || availability === "downloading" ? (
           <p
             className="text-sm text-neutral-500 dark:text-neutral-400"
             data-testid="library-semantic-loading-hint"
-            role="status"
-            aria-live="polite"
           >
             {availability === "initializing" ? "Loading model…" : "Download in progress…"}
           </p>

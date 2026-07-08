@@ -50,7 +50,31 @@ describe("LibrarySemanticProvisioning", () => {
       />,
     );
 
-    expect(screen.getByText(/ONNX runtime failed/)).toBeTruthy();
+    expect(screen.getByTestId("library-semantic-error-state")).toBeTruthy();
+    expect(screen.getByTestId("library-semantic-error-state-live-region").textContent).toMatch(
+      /ONNX runtime failed/,
+    );
+    expect(screen.getByTestId("library-embeddings-download-button")).toBeTruthy();
+    expect(screen.getByTestId("library-embeddings-import-button")).toBeTruthy();
     expect(screen.getByTestId("library-semantic-switch-keyword-button")).toBeTruthy();
+  });
+
+  it("renders downloading state with loading hint and no provisioning actions", () => {
+    render(
+      <LibrarySemanticProvisioning
+        availability="downloading"
+        errorMessage={null}
+        onDownload={vi.fn()}
+        onImport={vi.fn()}
+        onSwitchToKeyword={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("library-semantic-downloading-state")).toBeTruthy();
+    expect(screen.getByTestId("library-semantic-loading-hint").textContent).toMatch(
+      /Download in progress/,
+    );
+    expect(screen.queryByTestId("library-embeddings-download-button")).toBeNull();
+    expect(screen.queryByTestId("library-embeddings-import-button")).toBeNull();
   });
 });

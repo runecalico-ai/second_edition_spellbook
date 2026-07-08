@@ -1,4 +1,4 @@
-import clsx from "classnames";
+import classNames from "classnames";
 import type { EmbeddingsStatus, LlmStatus } from "../../../types/llm";
 
 type ModelStatus = LlmStatus | EmbeddingsStatus;
@@ -28,14 +28,14 @@ interface ModelStatusBadgeProps {
 }
 
 export function ModelStatusBadge({ label, status, testId }: ModelStatusBadgeProps) {
-  const text = LABELS[status] ?? "Unknown";
+  const text = LABELS[status];
   return (
     <span
       role="status"
       data-testid={testId}
-      className={clsx(
+      className={classNames(
         "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-        COLORS[status] ?? COLORS.notProvisioned,
+        COLORS[status],
       )}
       title={`${label}: ${text}`}
     >

@@ -108,7 +108,7 @@ export function ModelDownloadModal({
         aria-label="Cancel download"
         tabIndex={-1}
         data-testid={`${testId}-backdrop`}
-        className="absolute inset-0 cursor-default border-none bg-black/60 p-0 backdrop-blur-sm"
+        className="absolute inset-0 cursor-default border-none bg-transparent p-0"
         onClick={onCancel}
       />
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-neutral-200/60 bg-white/90 p-6 shadow-2xl backdrop-blur-md animate-in zoom-in-95 duration-200 dark:border-neutral-700/60 dark:bg-neutral-900/90">

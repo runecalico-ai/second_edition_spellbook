@@ -18,12 +18,12 @@ export function ModelDownloadModal({
   onCancel,
   testId = "model-download-modal",
 }: ModelDownloadModalProps) {
-  if (!isOpen) return null;
-
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    if (!isOpen) return;
+
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (!dialog.open) {
@@ -36,7 +36,9 @@ export function ModelDownloadModal({
         dialog.close();
       }
     };
-  }, []);
+  }, [isOpen]);
+
+  if (!isOpen) return null;
 
   const percent = totalBytes > 0 ? Math.min(100, Math.max(0, Math.round((bytesDownloaded / totalBytes) * 100))) : 0;
 

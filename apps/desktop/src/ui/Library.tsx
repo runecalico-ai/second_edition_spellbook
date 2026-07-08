@@ -2,22 +2,21 @@ import * as Slider from "@radix-ui/react-slider";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { searchSpellsSemantic } from "../api/llm";
+import { useEmbeddingsProvisioning } from "../hooks/useEmbeddingsProvisioning";
+import { useModelStatus } from "../hooks/useModelStatus";
 import { useModal } from "../store/useModal";
 import { useNotifications } from "../store/useNotifications";
+import type { SpellSummary } from "../types/llm";
+import { ModelDownloadModal } from "./components/chat/ModelDownloadModal";
 import { EmptyState, EmptyStateLiveRegion } from "./components/EmptyState";
-
-type SpellSummary = {
-  id: number;
-  name: string;
-  school?: string;
-  level: number;
-  classList?: string;
-  components?: string;
-  duration?: string;
-  source?: string;
-  isQuestSpell: number;
-  isCantrip: number;
-};
+import { LibrarySemanticProvisioning } from "./library/LibrarySemanticProvisioning";
+import {
+  canRunSemanticSearch,
+  deriveSemanticAvailability,
+  SEMANTIC_SEARCH_LIMIT,
+  type SemanticAvailability,
+} from "./library/librarySemantic";
 
 type Facets = {
   schools: string[];
@@ -82,6 +81,15 @@ function createDefaultSearchFilters(): SearchFilters {
   };
 }
 
+type SemanticBlockingAvailability = Exclude<SemanticAvailability, "keyword" | "ready">;
+
+function asSemanticBlockingAvailability(
+  availability: SemanticAvailability,
+): SemanticBlockingAvailability | null {
+  if (availability === "keyword" || availability === "ready") return null;
+  return availability;
+}
+
 export default function Library() {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"keyword" | "semantic">("keyword");
@@ -110,10 +118,20 @@ export default function Library() {
   const [selectedSavedSearchId, setSelectedSavedSearchId] = useState<number | null>(null);
   const [activeSearchRequestId, setActiveSearchRequestId] = useState(0);
   const [resultsSettledForCurrentSearch, setResultsSettledForCurrentSearch] = useState(false);
+  const [semanticSearchAttempted, setSemanticSearchAttempted] = useState(false);
+  const [semanticSearchError, setSemanticSearchError] = useState<string | null>(null);
   const saveInputRef = useRef<HTMLInputElement>(null);
   const searchRequestIdRef = useRef(0);
   const pushNotification = useNotifications((state) => state.pushNotification);
   const { confirm: modalConfirm } = useModal();
+  const { embeddings, refresh: refreshModelStatus } = useModelStatus();
+  const semanticAvailability = deriveSemanticAvailability(mode, embeddings.state);
+  const embeddingsSetup = useEmbeddingsProvisioning({
+    embeddingsState: embeddings.state,
+    refresh: refreshModelStatus,
+  });
+  const blockingAvailability = asSemanticBlockingAvailability(semanticAvailability);
+  const filtersDisabled = mode === "semantic";
 
   useEffect(() => {
     if (isSaving && saveInputRef.current) {
@@ -261,13 +279,15 @@ export default function Library() {
       try {
         let results: SpellSummary[];
         if (nextMode === "semantic") {
-          const raw = await invoke<
-            Array<
-              SpellSummary & {
-                cosineDistance?: number;
-              }
-            >
-          >("search_spells_semantic", { query: nextQuery });
+          const availability = deriveSemanticAvailability("semantic", embeddings.state);
+          if (!canRunSemanticSearch(availability)) {
+            setSpells([]);
+            setSemanticSearchError(null);
+            return;
+          }
+          setSemanticSearchAttempted(true);
+          setSemanticSearchError(null);
+          const raw = await searchSpellsSemantic(nextQuery, SEMANTIC_SEARCH_LIMIT);
           results = raw.map(({ cosineDistance: _distance, ...spell }) => spell);
         } else {
           results = await invoke<SpellSummary[]>("search_keyword", {
@@ -287,6 +307,9 @@ export default function Library() {
         }
 
         console.error("Failed to search library", e);
+        if (nextMode === "semantic") {
+          setSemanticSearchError(e instanceof Error ? e.message : String(e));
+        }
         setSpells([]);
       } finally {
         if (requestId === searchRequestIdRef.current) {
@@ -294,7 +317,7 @@ export default function Library() {
         }
       }
     },
-    [],
+    [embeddings.state],
   );
 
   const handleResetFilters = () => {
@@ -309,7 +332,9 @@ export default function Library() {
     setTagFilter("");
     setIsQuestFilter(false);
     setIsCantripFilter(false);
-    setSelectedSavedSearchId(null); // NEW: also clear saved search selection
+    setSelectedSavedSearchId(null);
+    setSemanticSearchAttempted(false);
+    setSemanticSearchError(null);
     void runSearch("", "keyword", createDefaultSearchFilters());
   };
 
@@ -328,10 +353,8 @@ export default function Library() {
     void search();
   }, []);
 
-  const hasActiveFilters = Boolean(
-    query.trim() ||
-      mode !== "keyword" ||
-      schoolFilters.length > 0 ||
+  const hasKeywordFilters = Boolean(
+    schoolFilters.length > 0 ||
       levelMin ||
       levelMax ||
       sourceFilter ||
@@ -339,17 +362,46 @@ export default function Library() {
       componentFilter ||
       tagFilter ||
       isQuestFilter ||
-      isCantripFilter ||
-      selectedSavedSearchId !== null,
+      isCantripFilter,
   );
+  const hasActiveSearchContext = Boolean(
+    query.trim() ||
+      (mode === "keyword" && hasKeywordFilters) ||
+      selectedSavedSearchId !== null ||
+      semanticSearchAttempted,
+  );
+
+  const showSemanticPanel =
+    mode === "semantic" &&
+    semanticAvailability !== "ready" &&
+    semanticAvailability !== "keyword";
+
+  const showSemanticSearchError =
+    mode === "semantic" && semanticAvailability === "ready" && semanticSearchError !== null;
+
   const showEmptyLibrary =
-    resultsSettledForCurrentSearch && spells.length === 0 && !hasActiveFilters;
-  const showEmptySearch = resultsSettledForCurrentSearch && spells.length === 0 && hasActiveFilters;
-  const activeEmptyStateAnnouncement = showEmptyLibrary
-    ? EMPTY_LIBRARY_STATE
-    : showEmptySearch
-      ? EMPTY_SEARCH_STATE
-      : null;
+    resultsSettledForCurrentSearch &&
+    spells.length === 0 &&
+    !hasActiveSearchContext &&
+    !showSemanticPanel &&
+    !showSemanticSearchError;
+
+  const showEmptySearch =
+    resultsSettledForCurrentSearch &&
+    spells.length === 0 &&
+    hasActiveSearchContext &&
+    !showSemanticPanel &&
+    !showSemanticSearchError &&
+    (mode === "keyword" || (semanticAvailability === "ready" && !semanticSearchError));
+
+  const activeEmptyStateAnnouncement =
+    showSemanticPanel || showSemanticSearchError
+      ? null
+      : showEmptyLibrary
+        ? EMPTY_LIBRARY_STATE
+        : showEmptySearch
+          ? EMPTY_SEARCH_STATE
+          : null;
 
   const focusVisibleRingClassName =
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-neutral-900";
@@ -435,11 +487,26 @@ export default function Library() {
             className={filterControlClassName}
             data-testid="library-mode-select"
             value={mode}
-            onChange={(e) => setMode(e.target.value as "keyword" | "semantic")}
+            onChange={(e) => {
+              const next = e.target.value as "keyword" | "semantic";
+              setMode(next);
+              setSemanticSearchError(null);
+              if (next === "keyword") {
+                setSemanticSearchAttempted(false);
+              } else {
+                setSpells([]);
+                setResultsSettledForCurrentSearch(true);
+              }
+            }}
           >
             <option value="keyword">Keyword</option>
             <option value="semantic">Semantic</option>
           </select>
+          {mode === "semantic" ? (
+            <p className="text-xs text-neutral-500" data-testid="library-semantic-filters-hint">
+              Facet filters apply to keyword search only.
+            </p>
+          ) : null}
         </div>
         <button
           className={`px-3 py-2 ${secondaryActionClassName}`}
@@ -474,6 +541,8 @@ export default function Library() {
             data-testid="filter-school-select"
             className={`min-w-[160px] ${compactFilterControlClassName}`}
             value={schoolFilters}
+            disabled={filtersDisabled}
+            aria-disabled={filtersDisabled}
             onChange={(e) =>
               setSchoolFilters(Array.from(e.target.selectedOptions).map((opt) => opt.value))
             }
@@ -497,6 +566,7 @@ export default function Library() {
               className="relative flex h-6 w-32 touch-none select-none items-center"
               aria-labelledby="library-level-range-label"
               data-testid="filter-level-slider"
+              disabled={filtersDisabled}
               value={[
                 levelMin ? Number.parseInt(levelMin) : 0,
                 levelMax ? Number.parseInt(levelMax) : 12,
@@ -536,6 +606,8 @@ export default function Library() {
             data-testid="filter-source-select"
             className={compactFilterControlClassName}
             value={sourceFilter}
+            disabled={filtersDisabled}
+            aria-disabled={filtersDisabled}
             onChange={(e) => setSourceFilter(e.target.value)}
           >
             <option value="">All sources</option>
@@ -558,6 +630,8 @@ export default function Library() {
             data-testid="filter-class-select"
             className={compactFilterControlClassName}
             value={classListFilter}
+            disabled={filtersDisabled}
+            aria-disabled={filtersDisabled}
             onChange={(e) => setClassListFilter(e.target.value)}
           >
             <option value="">All classes</option>
@@ -580,6 +654,8 @@ export default function Library() {
             data-testid="filter-component-select"
             className={compactFilterControlClassName}
             value={componentFilter}
+            disabled={filtersDisabled}
+            aria-disabled={filtersDisabled}
             onChange={(e) => setComponentFilter(e.target.value)}
           >
             <option value="">All components</option>
@@ -602,6 +678,8 @@ export default function Library() {
             data-testid="filter-tag-select"
             className={compactFilterControlClassName}
             value={tagFilter}
+            disabled={filtersDisabled}
+            aria-disabled={filtersDisabled}
             onChange={(e) => setTagFilter(e.target.value)}
           >
             <option value="">All tags</option>
@@ -617,6 +695,8 @@ export default function Library() {
             type="checkbox"
             data-testid="filter-quest-checkbox"
             checked={isQuestFilter}
+            disabled={filtersDisabled}
+            aria-disabled={filtersDisabled}
             onChange={(e) => setIsQuestFilter(e.target.checked)}
             className={`${focusVisibleRingClassName} h-3.5 w-3.5 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-800`}
           />
@@ -627,6 +707,8 @@ export default function Library() {
             type="checkbox"
             data-testid="filter-cantrip-checkbox"
             checked={isCantripFilter}
+            disabled={filtersDisabled}
+            aria-disabled={filtersDisabled}
             onChange={(e) => setIsCantripFilter(e.target.checked)}
             className={`${focusVisibleRingClassName} h-3.5 w-3.5 rounded border-neutral-500 bg-white text-blue-600 dark:border-neutral-700 dark:bg-neutral-800`}
           />
@@ -781,56 +863,96 @@ export default function Library() {
             </tr>
           </thead>
           <tbody>
-            {spells.map((s) => (
-              <tr
-                key={s.id}
-                data-testid={`spell-row-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
-                className="group border-b border-neutral-200 hover:bg-neutral-100 dark:border-neutral-800/50 dark:hover:bg-neutral-800"
-              >
-                <td className="p-2 space-x-2 flex items-center">
-                  <Link
-                    to={`/edit/${s.id}`}
-                    data-testid={`spell-link-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
-                    className={`${focusVisibleRingClassName} text-blue-700 hover:underline dark:text-blue-400`}
+            {!showSemanticPanel && !showSemanticSearchError
+              ? spells.map((s) => (
+                  <tr
+                    key={s.id}
+                    data-testid={`spell-row-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
+                    className="group border-b border-neutral-200 hover:bg-neutral-100 dark:border-neutral-800/50 dark:hover:bg-neutral-800"
                   >
-                    {s.name}
-                  </Link>
-                  {s.isQuestSpell === 1 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-700 dark:text-yellow-400">
-                      Quest
-                    </span>
-                  )}
-                  {s.level >= 10 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-700 dark:text-purple-400">
-                      Epic
-                    </span>
-                  )}
-                  {s.level === 0 && s.isCantrip === 1 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-500 dark:text-neutral-400">
-                      Cantrip
-                    </span>
-                  )}
-                  <select
-                    className={`${focusVisibleRingClassName} ml-2 min-h-6 min-w-[7.5rem] rounded-md border border-neutral-500 bg-white px-1.5 py-1 text-sm text-neutral-900 transition-colors dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
-                    data-testid={`add-to-char-select-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
-                    aria-label={`Add ${s.name} to character`}
-                    onChange={(e) => addToCharacter(s.id, e.target.value)}
-                    value=""
-                  >
-                    <option value="">Add to character…</option>
-                    {characters.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    <td className="p-2 space-x-2 flex items-center">
+                      <Link
+                        to={`/edit/${s.id}`}
+                        data-testid={`spell-link-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
+                        className={`${focusVisibleRingClassName} text-blue-700 hover:underline dark:text-blue-400`}
+                      >
+                        {s.name}
+                      </Link>
+                      {s.isQuestSpell === 1 && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-yellow-600/30 bg-yellow-600/20 text-yellow-700 dark:text-yellow-400">
+                          Quest
+                        </span>
+                      )}
+                      {s.level >= 10 && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-purple-600/30 bg-purple-600/20 text-purple-700 dark:text-purple-400">
+                          Epic
+                        </span>
+                      )}
+                      {s.level === 0 && s.isCantrip === 1 && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border border-neutral-600/30 bg-neutral-600/20 text-neutral-500 dark:text-neutral-400">
+                          Cantrip
+                        </span>
+                      )}
+                      <select
+                        className={`${focusVisibleRingClassName} ml-2 min-h-6 min-w-[7.5rem] rounded-md border border-neutral-500 bg-white px-1.5 py-1 text-sm text-neutral-900 transition-colors dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100`}
+                        data-testid={`add-to-char-select-${s.name.replace(/\s+/g, "-").toLowerCase()}`}
+                        aria-label={`Add ${s.name} to character`}
+                        onChange={(e) => addToCharacter(s.id, e.target.value)}
+                        value=""
+                      >
+                        <option value="">Add to character…</option>
+                        {characters.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="p-2">{s.school}</td>
+                    <td className="p-2 text-center">{s.level}</td>
+                    <td className="p-2">{s.classList}</td>
+                    <td className="p-2 text-center">{s.components}</td>
+                  </tr>
+                ))
+              : null}
+            {showSemanticPanel && blockingAvailability ? (
+              <tr>
+                <td colSpan={5}>
+                  <LibrarySemanticProvisioning
+                    availability={blockingAvailability}
+                    errorMessage={embeddings.errorMessage}
+                    onDownload={() => void embeddingsSetup.download()}
+                    onImport={() => void embeddingsSetup.importBundle()}
+                    onSwitchToKeyword={() => {
+                      setMode("keyword");
+                      setSemanticSearchAttempted(false);
+                      setSemanticSearchError(null);
+                    }}
+                    disabled={embeddingsSetup.isDownloadInProgress}
+                  />
                 </td>
-                <td className="p-2">{s.school}</td>
-                <td className="p-2 text-center">{s.level}</td>
-                <td className="p-2">{s.classList}</td>
-                <td className="p-2 text-center">{s.components}</td>
               </tr>
-            ))}
+            ) : null}
+            {showSemanticSearchError ? (
+              <tr>
+                <td colSpan={5}>
+                  <EmptyState
+                    testId="library-semantic-search-error-state"
+                    heading="Semantic search failed"
+                    description={semanticSearchError ?? "Unknown error"}
+                  >
+                    <button
+                      type="button"
+                      data-testid="library-semantic-retry-button"
+                      onClick={() => void search()}
+                      className={`${focusVisibleRingClassName} px-4 py-2 bg-neutral-200 text-neutral-900 rounded-md hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 text-sm`}
+                    >
+                      Retry search
+                    </button>
+                  </EmptyState>
+                </td>
+              </tr>
+            ) : null}
             {showEmptyLibrary && (
               <tr>
                 <td colSpan={5}>
@@ -880,6 +1002,16 @@ export default function Library() {
           </tbody>
         </table>
       </div>
+      {embeddingsSetup.isDownloadModalOpen ? (
+        <ModelDownloadModal
+          isOpen
+          modelLabel="Embedding Model"
+          bytesDownloaded={embeddingsSetup.progress.bytesDownloaded}
+          totalBytes={embeddingsSetup.progress.totalBytes}
+          onCancel={() => void embeddingsSetup.cancelDownload()}
+          testId="library-embeddings-download-modal"
+        />
+      ) : null}
     </div>
   );
 }

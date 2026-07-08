@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { EmbeddingsStatus } from "../types/llm";
 import { useEmbeddingsProvisioning } from "./useEmbeddingsProvisioning";
 
 const downloadEmbeddingsModel = vi.fn();
@@ -37,6 +38,44 @@ describe("useEmbeddingsProvisioning", () => {
     refresh.mockResolvedValue(undefined);
   });
 
+  it("auto-opens modal when embeddingsState is downloading on mount", () => {
+    const { result } = renderHook(() =>
+      useEmbeddingsProvisioning({ embeddingsState: "downloading", refresh }),
+    );
+
+    expect(result.current.isDownloadModalOpen).toBe(true);
+  });
+
+  it("auto-closes modal when embeddingsState transitions downloading to ready", () => {
+    const { result, rerender } = renderHook(
+      ({ embeddingsState }: { embeddingsState: EmbeddingsStatus }) =>
+        useEmbeddingsProvisioning({ embeddingsState, refresh }),
+      { initialProps: { embeddingsState: "downloading" } },
+    );
+
+    expect(result.current.isDownloadModalOpen).toBe(true);
+
+    rerender({ embeddingsState: "ready" });
+
+    expect(result.current.isDownloadModalOpen).toBe(false);
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("auto-closes modal when embeddingsState transitions downloading to error after observing download", () => {
+    const { result, rerender } = renderHook(
+      ({ embeddingsState }: { embeddingsState: EmbeddingsStatus }) =>
+        useEmbeddingsProvisioning({ embeddingsState, refresh }),
+      { initialProps: { embeddingsState: "downloading" } },
+    );
+
+    expect(result.current.isDownloadModalOpen).toBe(true);
+
+    rerender({ embeddingsState: "error" });
+
+    expect(result.current.isDownloadModalOpen).toBe(false);
+    expect(refresh).toHaveBeenCalled();
+  });
+
   it("starts download and calls refresh", async () => {
     const { result } = renderHook(() =>
       useEmbeddingsProvisioning({ embeddingsState: "notProvisioned", refresh }),
@@ -49,6 +88,20 @@ describe("useEmbeddingsProvisioning", () => {
     expect(downloadEmbeddingsModel).toHaveBeenCalledTimes(1);
     expect(refresh).toHaveBeenCalled();
     expect(result.current.isDownloadModalOpen).toBe(true);
+  });
+
+  it("closes modal when download() fails", async () => {
+    downloadEmbeddingsModel.mockRejectedValue(new Error("network error"));
+    const { result } = renderHook(() =>
+      useEmbeddingsProvisioning({ embeddingsState: "notProvisioned", refresh }),
+    );
+
+    await act(async () => {
+      await result.current.download();
+    });
+
+    expect(result.current.isDownloadModalOpen).toBe(false);
+    expect(refresh).toHaveBeenCalled();
   });
 
   it("imports from a directory path when user picks a folder", async () => {
@@ -66,7 +119,20 @@ describe("useEmbeddingsProvisioning", () => {
     expect(refresh).toHaveBeenCalled();
   });
 
-  it("cancels download and closes modal", async () => {
+  it("does not import when user cancels folder picker", async () => {
+    open.mockResolvedValue(null);
+    const { result } = renderHook(() =>
+      useEmbeddingsProvisioning({ embeddingsState: "notProvisioned", refresh }),
+    );
+
+    await act(async () => {
+      await result.current.importBundle();
+    });
+
+    expect(importEmbeddingsModelFile).not.toHaveBeenCalled();
+  });
+
+  it("cancels download, closes modal, and calls refresh", async () => {
     const { result } = renderHook(() =>
       useEmbeddingsProvisioning({ embeddingsState: "downloading", refresh }),
     );
@@ -76,6 +142,25 @@ describe("useEmbeddingsProvisioning", () => {
     });
 
     expect(cancelEmbeddingsDownload).toHaveBeenCalledTimes(1);
+    expect(result.current.isDownloadModalOpen).toBe(false);
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("keeps modal closed after cancel when backend still reports downloading", async () => {
+    const { result, rerender } = renderHook(
+      ({ embeddingsState }: { embeddingsState: EmbeddingsStatus }) =>
+        useEmbeddingsProvisioning({ embeddingsState, refresh }),
+      { initialProps: { embeddingsState: "downloading" } },
+    );
+
+    await act(async () => {
+      await result.current.cancelDownload();
+    });
+
+    expect(result.current.isDownloadModalOpen).toBe(false);
+
+    rerender({ embeddingsState: "downloading" });
+
     expect(result.current.isDownloadModalOpen).toBe(false);
   });
 });

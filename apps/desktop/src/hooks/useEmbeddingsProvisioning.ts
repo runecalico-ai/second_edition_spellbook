@@ -19,6 +19,7 @@ export function useEmbeddingsProvisioning({
 }: UseEmbeddingsProvisioningOptions) {
   const [activeDownload, setActiveDownload] = useState(false);
   const sawDownloadingRef = useRef(false);
+  // Prevents the modal from reopening after cancel while the backend still reports "downloading".
   const dismissedRef = useRef(false);
 
   useEffect(() => {

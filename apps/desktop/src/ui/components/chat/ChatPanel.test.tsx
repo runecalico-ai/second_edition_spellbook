@@ -275,6 +275,17 @@ describe("ChatPanel", () => {
     expect(mockRefresh).toHaveBeenCalled();
   });
 
+  it("keeps the download modal open when retrying from a prior error before downloading starts", async () => {
+    mockDownloadLlmModel.mockResolvedValue(undefined);
+    llmStatus = { status: "error", modelPath: "", lastError: "Previous failure" };
+    render(<ChatPanel />);
+
+    fireEvent.click(screen.getByTestId("chat-llm-download-button"));
+
+    expect(await screen.findByTestId("model-download-modal")).toBeTruthy();
+    expect(screen.getByTestId("chat-provisioning-empty-state")).toBeTruthy();
+  });
+
   it("shows an inline error banner when useModelStatus reports an error", () => {
     statusError = "Failed to reach the model service";
     llmStatus = { status: "notProvisioned", modelPath: "" };

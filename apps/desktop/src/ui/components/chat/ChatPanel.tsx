@@ -80,12 +80,15 @@ export function ChatPanel() {
       return;
     }
 
-    const terminalStatusReached =
+    const successTerminal =
       activeDownload.kind === "llm"
-        ? llm.status === "ready" || llm.status === "loaded" || llm.status === "error"
-        : embeddings.state === "ready" || embeddings.state === "error";
+        ? llm.status === "ready" || llm.status === "loaded"
+        : embeddings.state === "ready";
+    const failedAfterObservedDownload =
+      sawDownloadingRef.current &&
+      (activeDownload.kind === "llm" ? llm.status === "error" : embeddings.state === "error");
 
-    if (sawDownloadingRef.current || terminalStatusReached) {
+    if (sawDownloadingRef.current || successTerminal || failedAfterObservedDownload) {
       setActiveDownload(null);
       void refresh();
     }

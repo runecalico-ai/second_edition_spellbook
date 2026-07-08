@@ -22,8 +22,8 @@ describe("spellNameToSlug", () => {
     expect(spellNameToSlug("   ")).toBe("");
   });
 
-  it("preserves apostrophes in spell names (current behavior)", () => {
-    expect(spellNameToSlug("Tasha's Hideous Laughter")).toBe("tasha's-hideous-laughter");
+  it("strips punctuation for data-testid-safe slugs", () => {
+    expect(spellNameToSlug("Tasha's Hideous Laughter")).toBe("tashas-hideous-laughter");
   });
 });
 
@@ -37,6 +37,11 @@ describe("formatBytes", () => {
   it("returns 0 B for negative or non-finite values", () => {
     expect(formatBytes(-1)).toBe("0 B");
     expect(formatBytes(Number.NaN)).toBe("0 B");
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe("0 B");
+  });
+
+  it("formats fractional byte values without undefined units", () => {
+    expect(formatBytes(0.5)).toBe("1 B");
   });
 
   it("formats byte boundary values", () => {
@@ -47,10 +52,11 @@ describe("formatBytes", () => {
 });
 
 describe("createStreamId", () => {
-  it("returns alphanumeric-hyphen-underscore id under 128 chars", () => {
+  it("returns non-empty id matching backend validate_stream_id contract", () => {
     const id = createStreamId();
-    expect(id).toMatch(/^[a-zA-Z0-9_-]+$/);
+    expect(id.length).toBeGreaterThan(0);
     expect(id.length).toBeLessThanOrEqual(128);
+    expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
   it("starts with chat- prefix", () => {
@@ -64,13 +70,18 @@ describe("createStreamId", () => {
 });
 
 describe("canSendChat", () => {
-  it.each([
-    ["ready", true],
-    ["loaded", true],
-    ["notProvisioned", false],
-    ["downloading", false],
-    ["error", false],
-  ] satisfies [LlmStatus, boolean][])("returns %s → %s", (status, expected) => {
-    expect(canSendChat(status)).toBe(expected);
-  });
+  const expectedCanSendChat = {
+    ready: true,
+    loaded: true,
+    notProvisioned: false,
+    downloading: false,
+    error: false,
+  } satisfies Record<LlmStatus, boolean>;
+
+  it.each(Object.entries(expectedCanSendChat) as [LlmStatus, boolean][])(
+    "returns %s → %s",
+    (status, expected) => {
+      expect(canSendChat(status)).toBe(expected);
+    },
+  );
 });

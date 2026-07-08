@@ -108,10 +108,10 @@ export function useChatSession(llmStatus: string) {
   }, [streamId, pendingChat]);
 
   useEffect(() => {
-    if (!stream.isGenerating && stream.response) {
+    if (!stream.isGenerating) {
       setIsModelLoading(false);
     }
-  }, [stream.isGenerating, stream.response]);
+  }, [stream.isGenerating]);
 
   useEffect(() => {
     const assistantId = assistantIdRef.current;
@@ -137,6 +137,7 @@ export function useChatSession(llmStatus: string) {
     }
 
     if (!stream.isGenerating && stream.error && !stream.response) {
+      setIsModelLoading(false);
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== assistantId),
         { id: `system-${Date.now()}`, kind: "system", content: stream.error ?? "Unknown error" },

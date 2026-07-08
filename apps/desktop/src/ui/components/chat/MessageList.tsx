@@ -11,13 +11,31 @@ interface MessageListProps {
 
 export function MessageList({ messages, isModelLoading }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const lastMessage = messages[messages.length - 1];
+  const streamingContentLength =
+    lastMessage?.kind === "assistant" && lastMessage.isStreaming
+      ? lastMessage.content.length
+      : 0;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const isStreaming =
+      lastMessage?.kind === "assistant" && lastMessage.isStreaming;
+    bottomRef.current?.scrollIntoView({
+      // Instant scroll during token streaming avoids smooth-scroll jank.
+      behavior: isStreaming || prefersReducedMotion ? "auto" : "smooth",
+      block: "end",
+    });
+  }, [messages.length, streamingContentLength, isModelLoading, lastMessage, prefersReducedMotion]);
 
   return (
     <div
+      role="log"
+      aria-live="polite"
+      aria-relevant="additions"
       data-testid="chat-message-list"
       className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-[200px]"
     >
@@ -42,6 +60,7 @@ export function MessageList({ messages, isModelLoading }: MessageListProps) {
       {isModelLoading ? (
         <output
           data-testid="chat-model-loading-indicator"
+          aria-live="polite"
           className="text-sm text-neutral-500 animate-pulse"
         >
           Loading model…

@@ -6,6 +6,7 @@ interface ChatInputBarProps {
   onSend: () => void;
   onCancel: () => void;
   isGenerating: boolean;
+  isModelLoading?: boolean;
   disabled: boolean;
 }
 
@@ -15,18 +16,22 @@ export function ChatInputBar({
   onSend,
   onCancel,
   isGenerating,
+  isModelLoading = false,
   disabled,
 }: ChatInputBarProps) {
+  const sendBlocked = disabled || isGenerating || isModelLoading || !value.trim();
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === "Enter" && !event.shiftKey) {
+        if (event.nativeEvent.isComposing) return;
         event.preventDefault();
-        if (!disabled && !isGenerating && value.trim()) {
+        if (!sendBlocked) {
           onSend();
         }
       }
     },
-    [disabled, isGenerating, onSend, value],
+    [onSend, sendBlocked],
   );
 
   return (
@@ -63,7 +68,7 @@ export function ChatInputBar({
           data-testid="btn-ask-chat"
           className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-40"
           onClick={onSend}
-          disabled={disabled || isGenerating || !value.trim()}
+          disabled={sendBlocked}
         >
           Send
         </button>

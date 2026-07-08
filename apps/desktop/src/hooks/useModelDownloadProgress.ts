@@ -24,11 +24,16 @@ export function useModelDownloadProgress(kind: ModelKind, active: boolean) {
       return;
     }
 
+    setBytesDownloaded(0);
+    setTotalBytes(0);
+
     let mounted = true;
     let unlisten: (() => void) | null = null;
 
     async function setup() {
-      unlisten = await listen<DownloadProgressEvent | EmbeddingsDownloadProgressEvent>(
+      // listen() failures are not surfaced to callers yet; callers should treat
+      // stalled progress as a download/setup issue until error reporting exists.
+      const unlistenFn = await listen<DownloadProgressEvent | EmbeddingsDownloadProgressEvent>(
         EVENT_BY_KIND[kind],
         (event) => {
           if (!mounted) return;
@@ -36,6 +41,12 @@ export function useModelDownloadProgress(kind: ModelKind, active: boolean) {
           setTotalBytes(event.payload.totalBytes);
         },
       );
+
+      if (!mounted) {
+        unlistenFn();
+        return;
+      }
+      unlisten = unlistenFn;
     }
 
     void setup();
@@ -46,7 +57,7 @@ export function useModelDownloadProgress(kind: ModelKind, active: boolean) {
     };
   }, [kind, active]);
 
-  const fraction = totalBytes > 0 ? bytesDownloaded / totalBytes : 0;
+  const fraction = totalBytes > 0 ? Math.min(1, bytesDownloaded / totalBytes) : 0;
 
   return { bytesDownloaded, totalBytes, fraction };
 }

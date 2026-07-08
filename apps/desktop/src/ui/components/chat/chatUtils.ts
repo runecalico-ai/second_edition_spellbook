@@ -1,8 +1,11 @@
+import type { LlmStatus } from "../../../types/llm";
+
 export function spellNameToSlug(name: string): string {
-  return name.replace(/\s+/g, "-").toLowerCase();
+  return name.trim().replace(/\s+/g, "-").toLowerCase();
 }
 
 export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"] as const;
   const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
@@ -14,6 +17,6 @@ export function createStreamId(): string {
   return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function canSendChat(llmStatus: string): boolean {
+export function canSendChat(llmStatus: LlmStatus): boolean {
   return llmStatus === "ready" || llmStatus === "loaded";
 }

@@ -15,9 +15,11 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const MAX_GROUNDED_SPELLS = 5;
+
 function segmentContentWithSpellLinks(content: string, spells: RagSpellContext[]) {
   // Drop spells without a usable name so they never widen the alternation regex.
-  const named = spells.filter((s) => s.name.trim().length > 0);
+  const named = spells.filter((s) => s.name.trim().length > 0).slice(0, MAX_GROUNDED_SPELLS);
   if (named.length === 0) return [content];
 
   // Longest name first so "Fireball Storm" wins over "Fireball" on overlaps.
@@ -65,6 +67,9 @@ export function AssistantMessage({
     <div className="flex justify-start" data-testid={`chat-message-${messageId}`}>
       <div className="max-w-[85%]">
         <div
+          role="article"
+          aria-label={isStreaming ? "Assistant message, generating" : "Assistant message"}
+          aria-busy={isStreaming}
           data-testid="chat-assistant-bubble"
           className="rounded-2xl rounded-bl-md bg-white/80 dark:bg-neutral-800/80 backdrop-blur-sm border border-neutral-200/60 dark:border-neutral-700/60 px-4 py-2.5 text-sm whitespace-pre-wrap shadow-sm"
         >

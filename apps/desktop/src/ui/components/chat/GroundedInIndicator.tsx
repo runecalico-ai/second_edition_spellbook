@@ -5,17 +5,18 @@ interface GroundedInIndicatorProps {
 }
 
 export function GroundedInIndicator({ grounding }: GroundedInIndicatorProps) {
-  if (!grounding || grounding.searchTerms.length === 0) return null;
+  const terms = grounding?.searchTerms.filter((t) => t.trim().length > 0) ?? [];
+  if (terms.length === 0) return null;
 
-  const terms = grounding.searchTerms.join(", ");
-  const spellCount = grounding.groundedSpells.length;
+  const spellCount = grounding!.groundedSpells.filter((s) => s.name.trim().length > 0).length;
 
   return (
     <p
       className="text-xs text-neutral-500 dark:text-neutral-400 mt-2"
       data-testid="grounded-in-indicator"
+      aria-live="polite"
     >
-      Grounded in: <span className="italic">{terms}</span>
+      Grounded in: <span className="italic">{terms.join(", ")}</span>
       {spellCount > 0 ? ` (${spellCount} spell${spellCount === 1 ? "" : "s"})` : null}
     </p>
   );

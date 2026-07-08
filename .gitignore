@@ -52,6 +52,9 @@ storybook-static
 # Local Claude Settings
 .claude/settings.local.json
 
+# Cursor local editor state
+.cursor/hooks/state/
+
 # Windows Stuff
 ehthumbs.db
 Thumbs.db

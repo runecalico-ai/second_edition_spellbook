@@ -219,6 +219,8 @@ export default function Library() {
   };
 
   const loadSearch = (saved: SavedSearch) => {
+    setSemanticSearchAttempted(false);
+    setSemanticSearchError(null);
     try {
       const parsed = JSON.parse(saved.filterJson) as Partial<SavedSearchPayload & SearchFilters>;
       const isPayload =
@@ -281,6 +283,11 @@ export default function Library() {
         if (nextMode === "semantic") {
           const availability = deriveSemanticAvailability("semantic", embeddings.state);
           if (!canRunSemanticSearch(availability)) {
+            setSpells([]);
+            setSemanticSearchError(null);
+            return;
+          }
+          if (!nextQuery.trim()) {
             setSpells([]);
             setSemanticSearchError(null);
             return;
@@ -367,7 +374,7 @@ export default function Library() {
   const hasActiveSearchContext = Boolean(
     query.trim() ||
       (mode === "keyword" && hasKeywordFilters) ||
-      selectedSavedSearchId !== null ||
+      (mode === "keyword" && selectedSavedSearchId !== null) ||
       semanticSearchAttempted,
   );
 
@@ -380,6 +387,7 @@ export default function Library() {
     mode === "semantic" && semanticAvailability === "ready" && semanticSearchError !== null;
 
   const showEmptyLibrary =
+    mode === "keyword" &&
     resultsSettledForCurrentSearch &&
     spells.length === 0 &&
     !hasActiveSearchContext &&
@@ -489,11 +497,14 @@ export default function Library() {
             value={mode}
             onChange={(e) => {
               const next = e.target.value as "keyword" | "semantic";
+              ++searchRequestIdRef.current;
               setMode(next);
               setSemanticSearchError(null);
               if (next === "keyword") {
                 setSemanticSearchAttempted(false);
+                void runSearch(query, "keyword", buildSearchFilters());
               } else {
+                setSemanticSearchAttempted(false);
                 setSpells([]);
                 setResultsSettledForCurrentSearch(true);
               }
@@ -924,9 +935,11 @@ export default function Library() {
                     onDownload={() => void embeddingsSetup.download()}
                     onImport={() => void embeddingsSetup.importBundle()}
                     onSwitchToKeyword={() => {
+                      ++searchRequestIdRef.current;
                       setMode("keyword");
                       setSemanticSearchAttempted(false);
                       setSemanticSearchError(null);
+                      void runSearch(query, "keyword", buildSearchFilters());
                     }}
                     disabled={embeddingsSetup.isDownloadInProgress}
                   />

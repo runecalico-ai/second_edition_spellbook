@@ -1208,6 +1208,199 @@ describe("Library search", () => {
     expect(screen.queryByTestId("empty-library-state")).toBeNull();
     expect(screen.queryByTestId("empty-search-state")).toBeNull();
   });
+
+  it("does not show empty-library or empty-search when toggling to semantic with embeddings ready", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+
+    expect(screen.queryByTestId("empty-library-state")).toBeNull();
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+    expect(screen.queryByText("No Spells Yet")).toBeNull();
+    expect(screen.queryByText("No Results")).toBeNull();
+  });
+
+  it("does not invoke semantic search or show empty-search for blank semantic query", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        case "search_spells_semantic":
+          throw new Error("should not be called for blank query");
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+
+    expect(
+      vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic"),
+    ).toBe(false);
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+    expect(screen.queryByText("No Results")).toBeNull();
+  });
+
+  it("shows semantic search error state with retry button when search fails", async () => {
+    let semanticSearchCalls = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined && cmd !== "search_spells_semantic") return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        case "search_spells_semantic":
+          semanticSearchCalls += 1;
+          throw new Error("embedding index unavailable");
+        default:
+          throw new Error(`unexpected invoke ${cmd}`);
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+    fireEvent.change(screen.getByTestId("search-input"), {
+      target: { value: "fire damage" },
+    });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+
+    const errorState = await screen.findByTestId("library-semantic-search-error-state");
+    expect(within(errorState).getByRole("heading", { name: "Semantic search failed" })).toBeTruthy();
+    expect(within(errorState).getByText("embedding index unavailable")).toBeTruthy();
+    expect(screen.getByTestId("library-semantic-retry-button")).toBeTruthy();
+    expect(semanticSearchCalls).toBe(1);
+
+    fireEvent.click(screen.getByTestId("library-semantic-retry-button"));
+
+    await waitFor(() => {
+      expect(semanticSearchCalls).toBe(2);
+    });
+  });
+
+  it("shows embeddings error provisioning panel when embeddings are in error state", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) {
+        if (cmd === "embeddings_status") {
+          return { state: "error", errorMessage: "Model load failed" };
+        }
+        return defaults;
+      }
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+
+    const errorState = await screen.findByTestId("library-semantic-error-state");
+    expect(within(errorState).getByText(/Model load failed/i)).toBeTruthy();
+    expect(screen.getByTestId("library-semantic-switch-keyword-button")).toBeTruthy();
+    expect(screen.queryByTestId("empty-library-state")).toBeNull();
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+  });
+
+  it("restores keyword results when switching back from semantic mode", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined && cmd !== "search_keyword") return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [
+            {
+              id: 10,
+              name: "Fireball",
+              school: "Evocation",
+              level: 3,
+              classList: "Mage",
+              components: "V, S, M",
+              isQuestSpell: 0,
+              isCantrip: 0,
+            },
+          ];
+        default:
+          throw new Error(`unexpected invoke ${cmd}`);
+      }
+    });
+
+    renderLibraryWithViewport();
+    expect(await screen.findByTestId("spell-row-fireball")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+    expect(screen.queryByTestId("spell-row-fireball")).toBeNull();
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "keyword" },
+    });
+
+    expect(await screen.findByTestId("spell-row-fireball")).toBeTruthy();
+  });
 });
 
 describe("Library saved-search delete modal", () => {

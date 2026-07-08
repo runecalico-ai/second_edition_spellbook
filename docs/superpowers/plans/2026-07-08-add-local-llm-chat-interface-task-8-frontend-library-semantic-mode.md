@@ -598,9 +598,12 @@ Add to `apps/desktop/src/ui/Library.test.tsx`:
 
 it("shows semantic provisioning empty state when mode is semantic and embeddings are notProvisioned", async () => {
   vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    const defaults = defaultModelStatusMocks(cmd);
+    if (defaults !== undefined) {
+      if (cmd === "embeddings_status") return { state: "notProvisioned" };
+      return defaults;
+    }
     switch (cmd) {
-      case "embeddings_status":
-        return { state: "notProvisioned" };
       case "list_facets":
         return { schools: [], sources: [], levels: [], classList: [], components: [], tags: [] };
       case "list_characters":
@@ -625,10 +628,13 @@ it("shows semantic provisioning empty state when mode is semantic and embeddings
 });
 
 it("does not call search_spells_semantic while embeddings are initializing", async () => {
-  vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+  vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    const defaults = defaultModelStatusMocks(cmd);
+    if (defaults !== undefined) {
+      if (cmd === "embeddings_status") return { state: "initializing" };
+      return defaults;
+    }
     switch (cmd) {
-      case "embeddings_status":
-        return { state: "initializing" };
       case "list_facets":
         return { schools: [], sources: [], levels: [], classList: [], components: [], tags: [] };
       case "list_characters":
@@ -655,9 +661,9 @@ it("does not call search_spells_semantic while embeddings are initializing", asy
 
 it("strips cosineDistance from semantic results before rendering rows", async () => {
   vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    const defaults = defaultModelStatusMocks(cmd);
+    if (defaults !== undefined && cmd !== "search_spells_semantic") return defaults;
     switch (cmd) {
-      case "embeddings_status":
-        return { state: "ready" };
       case "list_facets":
         return { schools: [], sources: [], levels: [], classList: [], components: [], tags: [] };
       case "list_characters":
@@ -692,7 +698,51 @@ it("strips cosineDistance from semantic results before rendering rows", async ()
 });
 ```
 
-Also update the existing test `"renders the empty-search state for semantic mode after the semantic search settles"` — it must mock `embeddings_status: { state: "ready" }` or it will hit the provisioning gate instead.
+Also update the existing test `"renders the empty-search state for semantic mode after the semantic search settles"` — route `embeddings_status` / `llm_status` through `defaultModelStatusMocks(cmd)` (defaults to `ready`) so the search reaches `search_spells_semantic`, and update the invoke assertion to expect the limit:
+
+```typescript
+expect(invoke).toHaveBeenCalledWith("search_spells_semantic", {
+  query: "find hidden lore",
+  limit: 100,
+});
+```
+
+Add one regression test:
+
+```typescript
+it("does not show empty-library state when semantic mode is blocked by missing embeddings", async () => {
+  vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    const defaults = defaultModelStatusMocks(cmd);
+    if (defaults !== undefined) {
+      if (cmd === "embeddings_status") return { state: "notProvisioned" };
+      return defaults;
+    }
+    switch (cmd) {
+      case "list_facets":
+        return emptyFacets;
+      case "list_characters":
+        return [];
+      case "list_saved_searches":
+        return [];
+      case "search_keyword":
+        return [];
+      default:
+        return undefined;
+    }
+  });
+
+  renderLibraryWithViewport();
+  await screen.findByText("No Spells Yet");
+
+  fireEvent.change(screen.getByTestId("library-mode-select"), {
+    target: { value: "semantic" },
+  });
+
+  expect(await screen.findByTestId("library-semantic-provisioning-state")).toBeTruthy();
+  expect(screen.queryByTestId("empty-library-state")).toBeNull();
+  expect(screen.queryByTestId("empty-search-state")).toBeNull();
+});
+```
 
 - [ ] **Step 4.2: Run tests to verify new cases fail**
 
@@ -753,23 +803,24 @@ if (nextMode === "semantic") {
 
 5. **Fix `hasActiveFilters`** — remove `mode !== "keyword"`; use:
 ```tsx
-const hasKeywordFilters = Boolean(/* existing facet checks */);
+const hasKeywordFilters = Boolean(
+  schoolFilters.length > 0 ||
+    levelMin ||
+    levelMax ||
+    sourceFilter ||
+    classListFilter ||
+    componentFilter ||
+    tagFilter ||
+    isQuestFilter ||
+    isCantripFilter,
+);
 const hasActiveSearchContext = Boolean(
   query.trim() ||
     (mode === "keyword" && hasKeywordFilters) ||
     selectedSavedSearchId !== null ||
     semanticSearchAttempted,
 );
-const showEmptySearch =
-  resultsSettledForCurrentSearch &&
-  spells.length === 0 &&
-  hasActiveSearchContext &&
-  semanticAvailability === "ready" &&
-  !semanticSearchError;
-```
 
-6. **Semantic panel visibility:**
-```tsx
 const showSemanticPanel =
   mode === "semantic" &&
   semanticAvailability !== "ready" &&
@@ -777,9 +828,54 @@ const showSemanticPanel =
 
 const showSemanticSearchError =
   mode === "semantic" && semanticAvailability === "ready" && semanticSearchError !== null;
+
+const showEmptyLibrary =
+  resultsSettledForCurrentSearch &&
+  spells.length === 0 &&
+  !hasActiveSearchContext &&
+  !showSemanticPanel &&
+  !showSemanticSearchError;
+
+const showEmptySearch =
+  resultsSettledForCurrentSearch &&
+  spells.length === 0 &&
+  hasActiveSearchContext &&
+  semanticAvailability === "ready" &&
+  !semanticSearchError &&
+  !showSemanticPanel;
 ```
 
-7. **Disable facet controls when `mode === "semantic"`** — add `disabled={mode === "semantic"}` and `aria-disabled={mode === "semantic"}` to filter inputs; add helper text under mode select:
+6. **Fix `activeEmptyStateAnnouncement`** — do not announce generic empty states when semantic UI is active:
+```tsx
+const activeEmptyStateAnnouncement =
+  showSemanticPanel || showSemanticSearchError
+    ? null
+    : showEmptyLibrary
+      ? EMPTY_LIBRARY_STATE
+      : showEmptySearch
+        ? EMPTY_SEARCH_STATE
+        : null;
+```
+
+7. **TypeScript narrowing for provisioning panel** — `semanticAvailability` is wider than the component prop; narrow when rendering:
+```tsx
+type SemanticBlockingAvailability = Exclude<SemanticAvailability, "keyword" | "ready">;
+
+function asSemanticBlockingAvailability(
+  availability: SemanticAvailability,
+): SemanticBlockingAvailability | null {
+  if (availability === "keyword" || availability === "ready") return null;
+  return availability;
+}
+
+// In JSX:
+const blockingAvailability = asSemanticBlockingAvailability(semanticAvailability);
+{showSemanticPanel && blockingAvailability ? (
+  <LibrarySemanticProvisioning availability={blockingAvailability} ... />
+) : null}
+```
+
+8. **Disable facet controls when `mode === "semantic"`** — add `disabled={mode === "semantic"}` and `aria-disabled={mode === "semantic"}` to filter inputs; add helper text under mode select:
 ```tsx
 {mode === "semantic" ? (
   <p className="text-xs text-neutral-500" data-testid="library-semantic-filters-hint">
@@ -799,11 +895,11 @@ const showSemanticSearchError =
 Insert semantic status rows before empty-library / empty-search rows:
 
 ```tsx
-{showSemanticPanel ? (
+{showSemanticPanel && blockingAvailability ? (
   <tr>
     <td colSpan={5}>
       <LibrarySemanticProvisioning
-        availability={semanticAvailability}
+        availability={blockingAvailability}
         errorMessage={embeddings.errorMessage}
         onDownload={() => void embeddingsSetup.download()}
         onImport={() => void embeddingsSetup.importBundle()}
@@ -985,6 +1081,21 @@ pnpm lint
 | Clear `semanticSearchAttempted` on reset? | `handleResetFilters` sets `semanticSearchAttempted` to `false` |
 
 **Satisfaction estimate:** 97% — remaining 3% is intentional deferral (Chat directory picker parity, E2E 10.7–10.8, AGENTS.md 11.2).
+
+### Iteration 5 — Double-check audit (2026-07-08)
+
+| Finding | Severity | Plan fix |
+| ------- | -------- | -------- |
+| `showEmptyLibrary` could render alongside semantic provisioning on an empty vault | **High** | Exclude `showSemanticPanel` / `showSemanticSearchError` from `showEmptyLibrary` and `showEmptySearch` |
+| Top-level `EmptyStateLiveRegion` could announce "No Spells Yet" under semantic panel | **Medium** | Set `activeEmptyStateAnnouncement` to `null` when semantic UI is active |
+| `LibrarySemanticProvisioning` prop type mismatch (`keyword`/`ready` not excluded at call site) | **Medium** | Add `asSemanticBlockingAvailability()` narrow helper |
+| New integration tests omitted `llm_status` mock | **High** | Route all new mocks through `defaultModelStatusMocks()` |
+| `useEmbeddingsProvisioning` duplicates `ChatPanel` download logic | **Low** | Accept for Task 8; optional Chat refactor later |
+| Task 8.1 strict reading: refresh status immediately before search | **Low** | Optional `await refreshModelStatus()` at top of semantic branch if staleness is a concern |
+| Hook test imports unused `waitFor` | **Low** | Remove unused import when implementing |
+| Semantic default backend limit is 10; plan uses 100 | **Info** | Confirmed intentional parity with `SEARCH_RESULT_LIMIT = 100` |
+
+**Post-audit satisfaction:** 98% for implementation readiness.
 
 ---
 

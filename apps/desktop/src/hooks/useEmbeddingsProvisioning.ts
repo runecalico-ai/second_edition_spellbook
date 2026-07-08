@@ -88,6 +88,10 @@ export function useEmbeddingsProvisioning({
     }
   }, [refresh]);
 
+  // Consumers (e.g. Library Task 4) should use this — not raw embeddingsState ===
+  // "downloading" — for modal visibility and disabling provisioning actions. After
+  // cancel, dismissedRef keeps this false while the status poller may still report
+  // "downloading" briefly.
   const isDownloadModalOpen =
     activeDownload || (embeddingsState === "downloading" && !dismissedRef.current);
   const progress = useModelDownloadProgress("embeddings", isDownloadModalOpen);
@@ -97,6 +101,8 @@ export function useEmbeddingsProvisioning({
     importBundle,
     cancelDownload,
     isDownloadModalOpen,
+    /** Alias for panel `disabled` / availability — prefer over raw `embeddings.state`. */
+    isDownloadInProgress: isDownloadModalOpen,
     progress,
   };
 }

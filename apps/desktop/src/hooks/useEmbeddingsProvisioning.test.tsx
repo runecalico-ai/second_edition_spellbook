@@ -143,6 +143,7 @@ describe("useEmbeddingsProvisioning", () => {
 
     expect(cancelEmbeddingsDownload).toHaveBeenCalledTimes(1);
     expect(result.current.isDownloadModalOpen).toBe(false);
+    expect(result.current.isDownloadInProgress).toBe(false);
     expect(refresh).toHaveBeenCalled();
   });
 

@@ -1374,7 +1374,7 @@ git commit -m "feat(chat): add useChatSession orchestration hook"
 **Files:**
 - Create: `apps/desktop/src/ui/components/chat/ChatHeader.tsx`
 
-- [ ] **Step 10.1: Implement header**
+- [x] **Step 10.1: Implement header**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/ChatHeader.tsx
@@ -1406,7 +1406,7 @@ export function ChatHeader({ llm, embeddings }: ChatHeaderProps) {
 }
 ```
 
-- [ ] **Step 10.2: Commit**
+- [x] **Step 10.2: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/ChatHeader.tsx
@@ -1421,7 +1421,7 @@ git commit -m "feat(chat): add header with LLM and embedding status badges"
 - Create: `apps/desktop/src/ui/components/chat/ChatPanel.tsx`
 - Test: `apps/desktop/src/ui/components/chat/ChatPanel.test.tsx`
 
-- [ ] **Step 11.1: Implement `ChatPanel`** (glass container + provisioning orchestration)
+- [x] **Step 11.1: Implement `ChatPanel`** (glass container + provisioning orchestration)
 
 Key responsibilities:
 - `useModelStatus()` for badges and gating
@@ -1463,14 +1463,14 @@ Layout:
 3. Else if `!canSendChat(llm.status)` → `ChatProvisioningPrompt` with `llmNeedsSetup` + `llmErrorMessage={llm.lastError}` (no `ChatInputBar`)
 4. Else → `MessageList` + `ChatInputBar`
 
-- [ ] **Step 11.2: Write `ChatPanel.test.tsx`** — mock hooks/API; verify provisioning prompt shown when `notProvisioned`, input shown when `ready`
+- [x] **Step 11.2: Write `ChatPanel.test.tsx`** — mock hooks/API; verify provisioning prompt shown when `notProvisioned`, input shown when `ready`
 
-- [ ] **Step 11.3: Run tests**
+- [x] **Step 11.3: Run tests**
 
 Run: `pnpm test:unit -- src/ui/components/chat/ChatPanel.test.tsx`
 Expected: PASS
 
-- [ ] **Step 11.4: Commit**
+- [x] **Step 11.4: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/ChatPanel.tsx apps/desktop/src/ui/components/chat/ChatPanel.test.tsx
@@ -1484,7 +1484,7 @@ git commit -m "feat(chat): add ChatPanel container with provisioning and glass U
 **Files:**
 - Modify: `apps/desktop/src/ui/Chat.tsx`
 
-- [ ] **Step 12.1: Replace spike with thin wrapper**
+- [x] **Step 12.1: Replace spike with thin wrapper**
 
 ```tsx
 // apps/desktop/src/ui/Chat.tsx
@@ -1495,9 +1495,9 @@ export default function Chat() {
 }
 ```
 
-- [ ] **Step 12.2: Delete dead code** — remove all inline types, `invoke`, `listen` from old `Chat.tsx`
+- [x] **Step 12.2: Delete dead code** — remove all inline types, `invoke`, `listen` from old `Chat.tsx`
 
-- [ ] **Step 12.3: Run full unit suite + typecheck**
+- [x] **Step 12.3: Run full unit suite + typecheck**
 
 Run: `pnpm typecheck && pnpm test:unit && pnpm lint` (from `apps/desktop`)
 Expected: PASS
@@ -1512,7 +1512,7 @@ Verify:
 4. Send shows user bubble + streaming assistant bubble
 5. Spell names from grounding render as links
 
-- [ ] **Step 12.5: Commit**
+- [x] **Step 12.5: Commit**
 
 ```bash
 git add apps/desktop/src/ui/Chat.tsx

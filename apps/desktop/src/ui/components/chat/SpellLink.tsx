@@ -7,6 +7,12 @@ interface SpellLinkProps {
 }
 
 export function SpellLink({ id, name }: SpellLinkProps) {
+  // Guard against malformed ids (0, negatives, non-integers) that would produce
+  // a broken /edit route; render inert text instead of a dead link.
+  if (!Number.isInteger(id) || id <= 0) {
+    return <span>{name}</span>;
+  }
+
   return (
     <Link
       to={`/edit/${id}`}

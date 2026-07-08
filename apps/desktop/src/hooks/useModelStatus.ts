@@ -14,19 +14,21 @@ export function useModelStatus() {
   });
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const requestIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     try {
       const [llmStatus, embStatus] = await Promise.all([
         getLlmStatus(),
         getEmbeddingsStatus(),
       ]);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== requestIdRef.current) return;
       setLlm(llmStatus);
       setEmbeddings(embStatus);
       setError(null);
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== requestIdRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
@@ -46,6 +48,7 @@ export function useModelStatus() {
 
   useEffect(() => {
     if (!isActive) return;
+    void refresh();
     const id = window.setInterval(() => {
       void refresh();
     }, ACTIVE_POLL_MS);

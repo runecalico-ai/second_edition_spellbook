@@ -31,7 +31,7 @@ async function pickModelFile(): Promise<string | null> {
 }
 
 export function ChatPanel() {
-  const { llm, embeddings, refresh } = useModelStatus();
+  const { llm, embeddings, error: statusError, refresh } = useModelStatus();
   const { messages, draft, setDraft, send, cancel, isGenerating, isModelLoading } = useChatSession(
     llm.status,
   );
@@ -56,6 +56,16 @@ export function ChatPanel() {
 
   // Close the modal and refresh model status once the tracked download
   // leaves the "downloading" state (completed, failed, or was cancelled).
+  //
+  // We can't rely solely on "we previously observed downloading" because the
+  // status poller may never catch the backend mid-download for very fast
+  // downloads/imports (e.g. in tests where refresh() is a no-op). In that
+  // case, an unambiguous terminal status reached for the tracked download's
+  // own kind (ready/loaded/error) while a download is still tracked also
+  // indicates completion and should close the modal. The check is scoped to
+  // activeDownload.kind so an unrelated model's status can't prematurely
+  // close the modal for the one actually being tracked (e.g. embeddings
+  // already being "ready" shouldn't close an in-flight llm download modal).
   useEffect(() => {
     if (!activeDownload) {
       sawDownloadingRef.current = false;
@@ -70,7 +80,12 @@ export function ChatPanel() {
       return;
     }
 
-    if (sawDownloadingRef.current) {
+    const terminalStatusReached =
+      activeDownload.kind === "llm"
+        ? llm.status === "ready" || llm.status === "loaded" || llm.status === "error"
+        : embeddings.state === "ready" || embeddings.state === "error";
+
+    if (sawDownloadingRef.current || terminalStatusReached) {
       setActiveDownload(null);
       void refresh();
     }
@@ -136,11 +151,14 @@ export function ChatPanel() {
     }
   }, [activeDownload, refresh]);
 
-  const downloadKind: ModelKind = activeDownload?.kind ?? "llm";
-  const isDownloadModalOpen = llm.status === "downloading" || activeDownload !== null;
+  const downloadKind: ModelKind =
+    activeDownload?.kind ?? (embeddings.state === "downloading" ? "embeddings" : "llm");
+  const isDownloadModalOpen =
+    llm.status === "downloading" || embeddings.state === "downloading" || activeDownload !== null;
   const progress = useModelDownloadProgress(downloadKind, isDownloadModalOpen);
 
   const llmNeedsSetup = llm.status === "notProvisioned" || llm.status === "error";
+  const embeddingsNeedsSetup = embeddings.state === "notProvisioned" || embeddings.state === "error";
   const canChat = canSendChat(llm.status);
 
   return (
@@ -149,6 +167,40 @@ export function ChatPanel() {
       className="flex flex-col h-[calc(100vh-12rem)] min-h-[480px] rounded-2xl border border-neutral-200/50 dark:border-neutral-700/50 bg-white/60 dark:bg-neutral-900/50 backdrop-blur-xl shadow-xl p-4 sm:p-6 animate-in fade-in zoom-in-95 duration-300"
     >
       <ChatHeader llm={llm} embeddings={embeddings} />
+      {statusError ? (
+        <p
+          data-testid="chat-status-error"
+          className="text-xs text-red-600 dark:text-red-400 mt-2"
+        >
+          {statusError}
+        </p>
+      ) : null}
+      {!canChat ? (
+        <ChatProvisioningPrompt
+          onDownloadLlm={() => void handleDownloadLlm()}
+          onImportLlm={() => void handleImportLlm()}
+          onDownloadEmbeddings={() => void handleDownloadEmbeddings()}
+          onImportEmbeddings={() => void handleImportEmbeddings()}
+          llmNeedsSetup={llmNeedsSetup}
+          llmErrorMessage={llm.lastError}
+          embeddingsNotProvisioned={embeddingsNeedsSetup}
+        />
+      ) : (
+        <>
+          <MessageList messages={messages} isModelLoading={isModelLoading} />
+          {!isDownloadModalOpen && (
+            <ChatInputBar
+              value={draft}
+              onChange={setDraft}
+              onSend={() => void send()}
+              onCancel={() => void cancel()}
+              isGenerating={isGenerating}
+              isModelLoading={isModelLoading}
+              disabled={false}
+            />
+          )}
+        </>
+      )}
       {isDownloadModalOpen ? (
         <ModelDownloadModal
           isOpen
@@ -157,30 +209,7 @@ export function ChatPanel() {
           totalBytes={progress.totalBytes}
           onCancel={() => void handleCancelDownload()}
         />
-      ) : !canChat ? (
-        <ChatProvisioningPrompt
-          onDownloadLlm={() => void handleDownloadLlm()}
-          onImportLlm={() => void handleImportLlm()}
-          onDownloadEmbeddings={() => void handleDownloadEmbeddings()}
-          onImportEmbeddings={() => void handleImportEmbeddings()}
-          llmNeedsSetup={llmNeedsSetup}
-          llmErrorMessage={llm.lastError}
-          embeddingsNotProvisioned={embeddings.state === "notProvisioned"}
-        />
-      ) : (
-        <>
-          <MessageList messages={messages} isModelLoading={isModelLoading} />
-          <ChatInputBar
-            value={draft}
-            onChange={setDraft}
-            onSend={() => void send()}
-            onCancel={() => void cancel()}
-            isGenerating={isGenerating}
-            isModelLoading={isModelLoading}
-            disabled={false}
-          />
-        </>
-      )}
+      ) : null}
     </div>
   );
 }

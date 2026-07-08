@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { startLlmChat } from "../api/llm";
-import type { ChatMessage } from "../types/llm";
+import type { ChatMessage, LlmStatus } from "../types/llm";
 import { useLlmStream } from "./useLlmStream";
 import { canSendChat, createStreamId } from "../ui/components/chat/chatUtils";
 import type { ChatDisplayMessage } from "./chatSessionTypes";
@@ -18,7 +18,7 @@ interface PendingChatRequest {
   assistantId: string;
 }
 
-export function useChatSession(llmStatus: string) {
+export function useChatSession(llmStatus: LlmStatus) {
   const [messages, setMessages] = useState<ChatDisplayMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [streamId, setStreamId] = useState<string | null>(null);

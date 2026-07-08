@@ -26,12 +26,13 @@ vi.mock("../../../api/llm", () => ({
 
 let llmStatus: LlmStatusResponse;
 let embeddingsStatus: EmbeddingsStatusResponse;
+let statusError: string | null;
 const mockRefresh = vi.fn();
 vi.mock("../../../hooks/useModelStatus", () => ({
   useModelStatus: () => ({
     llm: llmStatus,
     embeddings: embeddingsStatus,
-    error: null,
+    error: statusError,
     refresh: mockRefresh,
   }),
 }));
@@ -62,6 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   llmStatus = { status: "notProvisioned", modelPath: "" };
   embeddingsStatus = { state: "notProvisioned" };
+  statusError = null;
   HTMLDialogElement.prototype.showModal = vi.fn(function showModal(this: HTMLDialogElement) {
     this.setAttribute("open", "");
   });
@@ -140,9 +142,11 @@ describe("ChatPanel", () => {
     llmStatus = { status: "downloading", modelPath: "", bytesDownloaded: 100, totalBytes: 200 };
     render(<ChatPanel />);
 
+    // The modal overlays the provisioning content underneath (canChat is
+    // false while the LLM is downloading), rather than replacing it.
     expect(screen.getByTestId("model-download-modal")).toBeTruthy();
     expect(screen.queryByTestId("chat-input-bar")).toBeNull();
-    expect(screen.queryByTestId("chat-provisioning-empty-state")).toBeNull();
+    expect(screen.getByTestId("chat-provisioning-empty-state")).toBeTruthy();
   });
 
   it("auto-opens the download modal when embeddings.state is downloading on mount", () => {
@@ -192,12 +196,12 @@ describe("ChatPanel", () => {
     expect(mockImportLlmModelFile).not.toHaveBeenCalled();
   });
 
-        it("unwraps an array result from the file picker", async () => {
-          mockOpen.mockResolvedValue(["/first/path.gguf", "/second/path.gguf"]);
-          mockImportEmbeddingsModelFile.mockResolvedValue(undefined);
-          llmStatus = { status: "notProvisioned", modelPath: "" };
-          embeddingsStatus = { state: "notProvisioned" };
-          render(<ChatPanel />);
+  it("unwraps an array result from the file picker", async () => {
+    mockOpen.mockResolvedValue(["/first/path.gguf", "/second/path.gguf"]);
+    mockImportEmbeddingsModelFile.mockResolvedValue(undefined);
+    llmStatus = { status: "notProvisioned", modelPath: "" };
+    embeddingsStatus = { state: "notProvisioned" };
+    render(<ChatPanel />);
 
     fireEvent.click(screen.getByTestId("chat-embeddings-import-button"));
 
@@ -222,5 +226,68 @@ describe("ChatPanel", () => {
       expect(screen.queryByTestId("model-download-modal")).toBeNull();
     });
     expect(screen.getByTestId("chat-provisioning-empty-state")).toBeTruthy();
+  });
+
+  it("clicking Download Embedding Model calls downloadEmbeddingsModel and opens the modal", async () => {
+    mockDownloadEmbeddingsModel.mockResolvedValue(undefined);
+    llmStatus = { status: "notProvisioned", modelPath: "" };
+    embeddingsStatus = { state: "notProvisioned" };
+    render(<ChatPanel />);
+
+    fireEvent.click(screen.getByTestId("chat-embeddings-download-button"));
+
+    expect(mockDownloadEmbeddingsModel).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId("model-download-modal")).toBeTruthy();
+    expect(screen.getByText(/Downloading Embedding Model/)).toBeTruthy();
+  });
+
+  it("cancelling the embeddings download calls cancelEmbeddingsDownload and closes the modal", async () => {
+    mockDownloadEmbeddingsModel.mockResolvedValue(undefined);
+    mockCancelEmbeddingsDownload.mockResolvedValue(undefined);
+    llmStatus = { status: "notProvisioned", modelPath: "" };
+    embeddingsStatus = { state: "notProvisioned" };
+    render(<ChatPanel />);
+
+    fireEvent.click(screen.getByTestId("chat-embeddings-download-button"));
+    expect(await screen.findByTestId("model-download-modal")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("model-download-modal-cancel-button"));
+
+    expect(mockCancelEmbeddingsDownload).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(screen.queryByTestId("model-download-modal")).toBeNull();
+    });
+  });
+
+  it("auto-closes the download modal once llm.status leaves downloading", async () => {
+    llmStatus = { status: "downloading", modelPath: "", bytesDownloaded: 100, totalBytes: 200 };
+    const { rerender } = render(<ChatPanel />);
+
+    expect(screen.getByTestId("model-download-modal")).toBeTruthy();
+
+    llmStatus = { status: "ready", modelPath: "/vault/models/tinyllama.gguf" };
+    rerender(<ChatPanel />);
+
+    await vi.waitFor(() => {
+      expect(screen.queryByTestId("model-download-modal")).toBeNull();
+    });
+    expect(screen.getByTestId("chat-input-bar")).toBeTruthy();
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it("shows an inline error banner when useModelStatus reports an error", () => {
+    statusError = "Failed to reach the model service";
+    llmStatus = { status: "notProvisioned", modelPath: "" };
+    render(<ChatPanel />);
+
+    const banner = screen.getByTestId("chat-status-error");
+    expect(banner).toBeTruthy();
+    expect(banner.textContent).toBe("Failed to reach the model service");
+  });
+
+  it("does not render the error banner when there is no status error", () => {
+    render(<ChatPanel />);
+
+    expect(screen.queryByTestId("chat-status-error")).toBeNull();
   });
 });

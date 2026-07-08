@@ -463,7 +463,7 @@ git commit -m "feat(chat): add download progress event hook"
 - Create: `apps/desktop/src/ui/components/chat/ModelStatusBadge.tsx`
 - Create: `apps/desktop/src/ui/components/chat/ModelProvisioningActions.tsx`
 
-- [ ] **Step 4.1: Implement `ModelStatusBadge`**
+- [x] **Step 4.1: Implement `ModelStatusBadge`**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/ModelStatusBadge.tsx
@@ -512,7 +512,7 @@ export function ModelStatusBadge({ label, status, testId }: ModelStatusBadgeProp
 }
 ```
 
-- [ ] **Step 4.2: Implement `ModelProvisioningActions`**
+- [x] **Step 4.2: Implement `ModelProvisioningActions`**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/ModelProvisioningActions.tsx
@@ -558,12 +558,12 @@ export function ModelProvisioningActions({
 }
 ```
 
-- [ ] **Step 4.3: Run typecheck + lint**
+- [x] **Step 4.3: Run typecheck + lint**
 
 Run: `pnpm typecheck && pnpm lint` (from `apps/desktop`)
 Expected: PASS
 
-- [ ] **Step 4.4: Commit**
+- [x] **Step 4.4: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/ModelStatusBadge.tsx apps/desktop/src/ui/components/chat/ModelProvisioningActions.tsx
@@ -577,7 +577,7 @@ git commit -m "feat(chat): add status badge and provisioning action buttons"
 **Files:**
 - Create: `apps/desktop/src/ui/components/chat/ModelDownloadModal.tsx`
 
-- [ ] **Step 5.1: Implement modal** (mirror `PrintOptionsDialog` overlay pattern)
+- [x] **Step 5.1: Implement modal** (mirror `PrintOptionsDialog` overlay pattern)
 
 ```tsx
 // apps/desktop/src/ui/components/chat/ModelDownloadModal.tsx
@@ -652,9 +652,9 @@ export function ModelDownloadModal({
 }
 ```
 
-- [ ] **Step 5.2: Run typecheck + lint**
+- [x] **Step 5.2: Run typecheck + lint**
 
-- [ ] **Step 5.3: Commit**
+- [x] **Step 5.3: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/ModelDownloadModal.tsx
@@ -668,7 +668,7 @@ git commit -m "feat(chat): add model download progress modal"
 **Files:**
 - Create: `apps/desktop/src/ui/components/chat/ChatProvisioningPrompt.tsx`
 
-- [ ] **Step 6.1: Implement prompt** (LLM gate — chat input hidden until `ready` or `loaded`)
+- [x] **Step 6.1: Implement prompt** (LLM gate — chat input hidden until `ready` or `loaded`)
 
 ```tsx
 // apps/desktop/src/ui/components/chat/ChatProvisioningPrompt.tsx
@@ -749,7 +749,7 @@ export function ChatProvisioningPrompt({
 }
 ```
 
-- [ ] **Step 6.2: Commit**
+- [x] **Step 6.2: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/ChatProvisioningPrompt.tsx
@@ -768,7 +768,7 @@ git commit -m "feat(chat): add provisioning empty state for LLM and embeddings"
 - Create: `apps/desktop/src/ui/components/chat/AssistantMessage.tsx`
 - Test: `apps/desktop/src/ui/components/chat/AssistantMessage.test.tsx`
 
-- [ ] **Step 7.1: Implement `SpellLink`**
+- [x] **Step 7.1: Implement `SpellLink`**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/SpellLink.tsx
@@ -793,7 +793,7 @@ export function SpellLink({ id, name }: SpellLinkProps) {
 }
 ```
 
-- [ ] **Step 7.2: Implement `GroundedInIndicator`**
+- [x] **Step 7.2: Implement `GroundedInIndicator`**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/GroundedInIndicator.tsx
@@ -821,7 +821,7 @@ export function GroundedInIndicator({ grounding }: GroundedInIndicatorProps) {
 }
 ```
 
-- [ ] **Step 7.3: Implement `UserMessage` and `SystemMessage`**
+- [x] **Step 7.3: Implement `UserMessage` and `SystemMessage`**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/UserMessage.tsx
@@ -865,7 +865,7 @@ export function SystemMessage({ content, messageId }: SystemMessageProps) {
 }
 ```
 
-- [ ] **Step 7.4: Implement `AssistantMessage` with spell link segmentation**
+- [x] **Step 7.4: Implement `AssistantMessage` with spell link segmentation**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/AssistantMessage.tsx
@@ -927,7 +927,7 @@ export function AssistantMessage({
 }
 ```
 
-- [ ] **Step 7.5: Write `AssistantMessage` tests**
+- [x] **Step 7.5: Write `AssistantMessage` tests**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/AssistantMessage.test.tsx
@@ -960,12 +960,12 @@ describe("AssistantMessage", () => {
 });
 ```
 
-- [ ] **Step 7.6: Run tests**
+- [x] **Step 7.6: Run tests**
 
 Run: `pnpm test:unit -- src/ui/components/chat/AssistantMessage.test.tsx`
 Expected: PASS
 
-- [ ] **Step 7.7: Commit**
+- [x] **Step 7.7: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/SpellLink.tsx apps/desktop/src/ui/components/chat/GroundedInIndicator.tsx apps/desktop/src/ui/components/chat/UserMessage.tsx apps/desktop/src/ui/components/chat/SystemMessage.tsx apps/desktop/src/ui/components/chat/AssistantMessage.tsx apps/desktop/src/ui/components/chat/AssistantMessage.test.tsx
@@ -980,7 +980,7 @@ git commit -m "feat(chat): add message bubbles with grounding and spell links"
 - Create: `apps/desktop/src/ui/components/chat/MessageList.tsx`
 - Create: `apps/desktop/src/ui/components/chat/ChatInputBar.tsx`
 
-- [ ] **Step 8.1: Implement `MessageList` with auto-scroll**
+- [x] **Step 8.1: Implement `MessageList` with auto-scroll**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/MessageList.tsx
@@ -1039,7 +1039,7 @@ export function MessageList({ messages, isModelLoading }: MessageListProps) {
 }
 ```
 
-- [ ] **Step 8.2: Implement `ChatInputBar`**
+- [x] **Step 8.2: Implement `ChatInputBar`**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/ChatInputBar.tsx
@@ -1118,7 +1118,7 @@ export function ChatInputBar({
 }
 ```
 
-- [ ] **Step 8.3: Commit**
+- [x] **Step 8.3: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/MessageList.tsx apps/desktop/src/ui/components/chat/ChatInputBar.tsx
@@ -1133,7 +1133,7 @@ git commit -m "feat(chat): add message list auto-scroll and input bar"
 - Create: `apps/desktop/src/hooks/useChatSession.ts`
 - Test: `apps/desktop/src/hooks/useChatSession.test.tsx`
 
-- [ ] **Step 9.1: Write failing tests**
+- [x] **Step 9.1: Write failing tests**
 
 ```tsx
 // apps/desktop/src/hooks/useChatSession.test.tsx
@@ -1186,7 +1186,7 @@ describe("useChatSession", () => {
 });
 ```
 
-- [ ] **Step 9.2: Create `chatSessionTypes.ts` and implement hook**
+- [x] **Step 9.2: Create `chatSessionTypes.ts` and implement hook**
 
 Create `apps/desktop/src/hooks/chatSessionTypes.ts` with the union from Type Contracts.
 
@@ -1358,9 +1358,9 @@ export function useChatSession(llmStatus: string) {
 }
 ```
 
-- [ ] **Step 9.3: Run hook tests — expect PASS**
+- [x] **Step 9.3: Run hook tests — expect PASS**
 
-- [ ] **Step 9.4: Commit**
+- [x] **Step 9.4: Commit**
 
 ```bash
 git add apps/desktop/src/hooks/useChatSession.ts apps/desktop/src/hooks/chatSessionTypes.ts apps/desktop/src/hooks/useChatSession.test.tsx

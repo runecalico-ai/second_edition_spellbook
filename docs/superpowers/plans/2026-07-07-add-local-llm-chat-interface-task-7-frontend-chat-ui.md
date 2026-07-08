@@ -134,7 +134,7 @@ export type ChatDisplayMessage =
 - Create: `apps/desktop/src/ui/components/chat/chatUtils.ts`
 - Test: `apps/desktop/src/ui/components/chat/chatUtils.test.ts`
 
-- [ ] **Step 1.1: Write failing tests**
+- [x] **Step 1.1: Write failing tests**
 
 ```typescript
 // apps/desktop/src/ui/components/chat/chatUtils.test.ts
@@ -165,12 +165,12 @@ describe("createStreamId", () => {
 });
 ```
 
-- [ ] **Step 1.2: Run tests to verify they fail**
+- [x] **Step 1.2: Run tests to verify they fail**
 
 Run: `pnpm test:unit -- src/ui/components/chat/chatUtils.test.ts` (from `apps/desktop`)
 Expected: FAIL — module not found
 
-- [ ] **Step 1.3: Implement utilities**
+- [x] **Step 1.3: Implement utilities**
 
 ```typescript
 // apps/desktop/src/ui/components/chat/chatUtils.ts
@@ -195,12 +195,12 @@ export function canSendChat(llmStatus: string): boolean {
 }
 ```
 
-- [ ] **Step 1.4: Run tests to verify they pass**
+- [x] **Step 1.4: Run tests to verify they pass**
 
 Run: `pnpm test:unit -- src/ui/components/chat/chatUtils.test.ts`
 Expected: PASS
 
-- [ ] **Step 1.5: Commit**
+- [x] **Step 1.5: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/chatUtils.ts apps/desktop/src/ui/components/chat/chatUtils.test.ts
@@ -215,7 +215,7 @@ git commit -m "feat(chat): add shared chat utility helpers"
 - Create: `apps/desktop/src/hooks/useModelStatus.ts`
 - Test: `apps/desktop/src/hooks/useModelStatus.test.tsx`
 
-- [ ] **Step 2.1: Write failing tests**
+- [x] **Step 2.1: Write failing tests**
 
 ```tsx
 // apps/desktop/src/hooks/useModelStatus.test.tsx
@@ -263,11 +263,11 @@ describe("useModelStatus", () => {
 });
 ```
 
-- [ ] **Step 2.2: Run tests — expect FAIL**
+- [x] **Step 2.2: Run tests — expect FAIL**
 
 Run: `pnpm test:unit -- src/hooks/useModelStatus.test.tsx`
 
-- [ ] **Step 2.3: Implement hook**
+- [x] **Step 2.3: Implement hook**
 
 ```typescript
 // apps/desktop/src/hooks/useModelStatus.ts
@@ -329,9 +329,9 @@ export function useModelStatus() {
 }
 ```
 
-- [ ] **Step 2.4: Run tests — expect PASS**
+- [x] **Step 2.4: Run tests — expect PASS**
 
-- [ ] **Step 2.5: Commit**
+- [x] **Step 2.5: Commit**
 
 ```bash
 git add apps/desktop/src/hooks/useModelStatus.ts apps/desktop/src/hooks/useModelStatus.test.tsx
@@ -346,7 +346,7 @@ git commit -m "feat(chat): add useModelStatus hook for LLM and embedding badges"
 - Create: `apps/desktop/src/hooks/useModelDownloadProgress.ts`
 - Test: `apps/desktop/src/hooks/useModelDownloadProgress.test.tsx`
 
-- [ ] **Step 3.1: Write failing tests**
+- [x] **Step 3.1: Write failing tests**
 
 ```tsx
 // apps/desktop/src/hooks/useModelDownloadProgress.test.tsx
@@ -387,9 +387,9 @@ describe("useModelDownloadProgress", () => {
 });
 ```
 
-- [ ] **Step 3.2: Run tests — expect FAIL**
+- [x] **Step 3.2: Run tests — expect FAIL**
 
-- [ ] **Step 3.3: Implement hook**
+- [x] **Step 3.3: Implement hook**
 
 ```typescript
 // apps/desktop/src/hooks/useModelDownloadProgress.ts
@@ -446,9 +446,9 @@ export function useModelDownloadProgress(kind: ModelKind, active: boolean) {
 }
 ```
 
-- [ ] **Step 3.4: Run tests — expect PASS**
+- [x] **Step 3.4: Run tests — expect PASS**
 
-- [ ] **Step 3.5: Commit**
+- [x] **Step 3.5: Commit**
 
 ```bash
 git add apps/desktop/src/hooks/useModelDownloadProgress.ts apps/desktop/src/hooks/useModelDownloadProgress.test.tsx

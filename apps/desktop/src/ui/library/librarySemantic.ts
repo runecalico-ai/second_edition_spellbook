@@ -24,6 +24,10 @@ export function deriveSemanticAvailability(
       return "error";
     case "ready":
       return "ready";
+    default: {
+      const _exhaustive: never = embeddingsState;
+      return _exhaustive;
+    }
   }
 }
 

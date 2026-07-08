@@ -66,6 +66,13 @@ export function ModelDownloadModal({
         return;
       }
 
+      const activeIndex = nodes.indexOf(active as HTMLElement);
+      if (activeIndex === -1) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+
       if (!event.shiftKey && active === last) {
         event.preventDefault();
         first.focus();
@@ -80,8 +87,6 @@ export function ModelDownloadModal({
       document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const percent = totalBytes > 0 ? Math.min(100, Math.max(0, Math.round((bytesDownloaded / totalBytes) * 100))) : 0;
 
@@ -101,6 +106,7 @@ export function ModelDownloadModal({
       <button
         type="button"
         aria-label="Cancel download"
+        tabIndex={-1}
         data-testid={`${testId}-backdrop`}
         className="absolute inset-0 cursor-default border-none bg-black/60 p-0 backdrop-blur-sm"
         onClick={onCancel}

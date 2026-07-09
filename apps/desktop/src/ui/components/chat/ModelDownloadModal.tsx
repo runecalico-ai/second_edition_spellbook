@@ -6,7 +6,9 @@ interface ModelDownloadModalProps {
   modelLabel: string;
   bytesDownloaded: number;
   totalBytes: number;
+  errorMessage?: string | null;
   onCancel: () => void;
+  onRetry?: () => void;
   testId?: string;
 }
 
@@ -15,7 +17,9 @@ export function ModelDownloadModal({
   modelLabel,
   bytesDownloaded,
   totalBytes,
+  errorMessage,
   onCancel,
+  onRetry,
   testId = "model-download-modal",
 }: ModelDownloadModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -150,15 +154,36 @@ export function ModelDownloadModal({
             data-testid={`${testId}-progress-fill`}
           />
         </div>
-        <button
-          ref={cancelButtonRef}
-          type="button"
-          data-testid={`${testId}-cancel-button`}
-          className="w-full rounded-lg border border-neutral-300 px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-600"
-          onClick={onCancel}
-        >
-          Cancel Download
-        </button>
+        {errorMessage ? (
+          <p
+            data-testid={`${testId}-error`}
+            role="alert"
+            className="mb-4 text-sm text-red-600 dark:text-red-400"
+          >
+            {errorMessage}
+          </p>
+        ) : null}
+        <div className="flex flex-col gap-2">
+          {errorMessage && onRetry ? (
+            <button
+              type="button"
+              data-testid={`${testId}-retry-button`}
+              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              onClick={onRetry}
+            >
+              Retry
+            </button>
+          ) : null}
+          <button
+            ref={cancelButtonRef}
+            type="button"
+            data-testid={`${testId}-cancel-button`}
+            className="w-full rounded-lg border border-neutral-300 px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-600"
+            onClick={onCancel}
+          >
+            {errorMessage ? "Dismiss" : "Cancel Download"}
+          </button>
+        </div>
       </div>
     </dialog>
   );

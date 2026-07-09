@@ -303,6 +303,21 @@ describe("ChatPanel", () => {
     expect(screen.getByTestId("chat-provisioning-empty-state")).toBeTruthy();
   });
 
+  it("shows network error in the download modal with retry when download invoke fails", async () => {
+    mockDownloadLlmModel.mockRejectedValue(
+      new Error("LLM model download request failed: connection reset"),
+    );
+    llmStatus = { status: "notProvisioned", modelPath: "" };
+    render(<ChatPanel />);
+
+    fireEvent.click(screen.getByTestId("chat-llm-download-button"));
+    const modal = await screen.findByTestId("model-download-modal");
+
+    expect(within(modal).getByTestId("model-download-modal-error")).toBeTruthy();
+    expect(within(modal).getByText(/Check your internet connection/)).toBeTruthy();
+    expect(within(modal).getByTestId("model-download-modal-retry-button")).toBeTruthy();
+  });
+
   it("shows an inline error banner when useModelStatus reports an error", () => {
     statusError = "Failed to reach the model service";
     llmStatus = { status: "notProvisioned", modelPath: "" };

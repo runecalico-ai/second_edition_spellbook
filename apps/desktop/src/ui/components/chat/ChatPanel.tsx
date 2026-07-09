@@ -15,6 +15,7 @@ import { useModelStatus } from "../../../hooks/useModelStatus";
 import { ChatHeader } from "./ChatHeader";
 import { ChatInputBar } from "./ChatInputBar";
 import { ChatProvisioningPrompt } from "./ChatProvisioningPrompt";
+import { parseProvisionerError } from "./chatProvisionerErrors";
 import { canSendChat } from "./chatUtils";
 import { MessageList } from "./MessageList";
 import { ModelDownloadModal } from "./ModelDownloadModal";
@@ -37,6 +38,7 @@ export function ChatPanel() {
   );
 
   const [activeDownload, setActiveDownload] = useState<{ kind: ModelKind } | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   // Tracks whether the currently-tracked download has actually reached the
   // "downloading" status at least once, so we don't prematurely close the
   // modal while a freshly-started download hasn't been observed by the
@@ -72,6 +74,10 @@ export function ChatPanel() {
       return;
     }
 
+    if (downloadError) {
+      return;
+    }
+
     const isDownloadingNow =
       activeDownload.kind === "llm" ? llm.status === "downloading" : embeddings.state === "downloading";
 
@@ -92,14 +98,15 @@ export function ChatPanel() {
       setActiveDownload(null);
       void refresh();
     }
-  }, [activeDownload, llm.status, embeddings.state, refresh]);
+  }, [activeDownload, downloadError, llm.status, embeddings.state, refresh]);
 
   const handleDownloadLlm = useCallback(async () => {
     setActiveDownload({ kind: "llm" });
+    setDownloadError(null);
     try {
       await downloadLlmModel();
-    } catch {
-      setActiveDownload(null);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : String(err));
     } finally {
       void refresh();
     }
@@ -107,10 +114,11 @@ export function ChatPanel() {
 
   const handleDownloadEmbeddings = useCallback(async () => {
     setActiveDownload({ kind: "embeddings" });
+    setDownloadError(null);
     try {
       await downloadEmbeddingsModel();
-    } catch {
-      setActiveDownload(null);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : String(err));
     } finally {
       void refresh();
     }
@@ -212,7 +220,18 @@ export function ChatPanel() {
           modelLabel={MODEL_LABEL[downloadKind]}
           bytesDownloaded={progress.bytesDownloaded}
           totalBytes={progress.totalBytes}
-          onCancel={() => void handleCancelDownload()}
+          errorMessage={
+            downloadError ? (parseProvisionerError(downloadError)?.description ?? downloadError) : null
+          }
+          onRetry={() => {
+            setDownloadError(null);
+            if (downloadKind === "llm") void handleDownloadLlm();
+            else void handleDownloadEmbeddings();
+          }}
+          onCancel={() => {
+            setDownloadError(null);
+            void handleCancelDownload();
+          }}
         />
       ) : null}
     </div>

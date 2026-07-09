@@ -3,6 +3,7 @@ import { startLlmChat } from "../api/llm";
 import type { ChatMessage, LlmStatus } from "../types/llm";
 import { useLlmStream } from "./useLlmStream";
 import { canSendChat, createStreamId } from "../ui/components/chat/chatUtils";
+import { formatChatSystemError } from "../ui/components/chat/chatProvisionerErrors";
 import type { ChatDisplayMessage } from "./chatSessionTypes";
 
 export type {
@@ -93,7 +94,7 @@ export function useChatSession(llmStatus: LlmStatus) {
             .concat({
               id: `system-${Date.now()}`,
               kind: "system",
-              content: err instanceof Error ? err.message : String(err),
+              content: formatChatSystemError(err instanceof Error ? err.message : String(err)),
             }),
         );
       } finally {
@@ -140,7 +141,7 @@ export function useChatSession(llmStatus: LlmStatus) {
       setIsModelLoading(false);
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== assistantId),
-        { id: `system-${Date.now()}`, kind: "system", content: stream.error ?? "Unknown error" },
+        { id: `system-${Date.now()}`, kind: "system", content: formatChatSystemError(stream.error ?? "Unknown error") },
       ]);
     }
   }, [stream.response, stream.isGenerating, stream.grounding, stream.error, stream.cancelled, stream.timedOut]);

@@ -44,4 +44,42 @@ describe("useChatSession", () => {
     expect(history).toEqual([]); // first turn has empty prior history
     expect(result.current.messages.some((m) => m.kind === "user")).toBe(true);
   });
+
+  it("shows a system message when llm_chat invoke fails with RAM error", async () => {
+    vi.mocked(startLlmChat).mockRejectedValue(
+      new Error("Insufficient RAM: at least 1.5 GB free required to load the model. Close other applications and try again."),
+    );
+    const { result } = renderHook(() => useChatSession("ready"));
+
+    act(() => {
+      result.current.setDraft("Hello");
+    });
+    await act(async () => {
+      await result.current.send();
+    });
+
+    await waitFor(() => {
+      const system = result.current.messages.find((m) => m.kind === "system");
+      expect(system?.content).toContain("Close other applications");
+    });
+    expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(false);
+  });
+
+  it("shows a system message when stream fails without partial response", async () => {
+    mockStream.error = "Inference failed: model context error";
+    mockStream.isGenerating = false;
+    mockStream.response = "";
+    const { result } = renderHook(() => useChatSession("loaded"));
+
+    act(() => {
+      result.current.setDraft("Hello");
+    });
+    await act(async () => {
+      await result.current.send();
+    });
+
+    await waitFor(() => {
+      expect(result.current.messages.some((m) => m.kind === "system")).toBe(true);
+    });
+  });
 });

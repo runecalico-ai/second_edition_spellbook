@@ -76,10 +76,10 @@
 
 ## 8. Frontend — Library Semantic Mode
 
-- [ ] 8.1 Update the existing Library semantic mode to use `embeddings_status` before running semantic search
-- [ ] 8.2 Show the semantic-mode empty state with install actions when the embedding model is not provisioned
-- [ ] 8.3 Keep semantic ranking scores hidden in the Library UI while preserving them in the API result type
-- [ ] 8.4 Handle `initializing` and `error` states without presenting semantic mode as a broken search result
+- [x] 8.1 Update the existing Library semantic mode to use `embeddings_status` before running semantic search
+- [x] 8.2 Show the semantic-mode empty state with install actions when the embedding model is not provisioned
+- [x] 8.3 Keep semantic ranking scores hidden in the Library UI while preserving them in the API result type
+- [x] 8.4 Handle `initializing` and `error` states without presenting semantic mode as a broken search result
 
 ## 9. Error Handling & Edge Cases
 

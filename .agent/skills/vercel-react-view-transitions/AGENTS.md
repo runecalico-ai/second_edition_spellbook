@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: false
+---
+
 # React View Transitions
 
 **Version 1.0.0**

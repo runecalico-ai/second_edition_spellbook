@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: false
+---
+
 # AI Agent Development Guide for Spellbook Backend
 
 This document provides context for AI agents working on the Tauri/Rust backend.

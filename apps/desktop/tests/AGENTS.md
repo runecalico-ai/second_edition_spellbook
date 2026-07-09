@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: false
+---
+
 # E2E Test Development Guide
 
 Instructions for developing, running, and maintaining Playwright E2E tests for the Spellbook desktop application.

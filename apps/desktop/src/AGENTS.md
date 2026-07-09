@@ -1,3 +1,13 @@
+---
+description: 
+alwaysApply: false
+---
+
+---
+description: 
+alwaysApply: false
+---
+
 # UI Component Development Guidelines for E2E Testing
 
 This document provides guidelines for frontend developers to make UI components easily testable with Playwright E2E tests.
@@ -306,4 +316,3 @@ await page.waitForResponse(resp => resp.url().includes("update_character_class_l
 // OR wait for UI update
 await expect(page.getByText("Level 5")).toBeVisible();
 ```
-

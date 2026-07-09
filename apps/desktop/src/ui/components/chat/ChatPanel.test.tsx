@@ -155,6 +155,19 @@ describe("ChatPanel", () => {
     expect(screen.getByTestId("chat-provisioning-retry-button")).toBeTruthy();
   });
 
+  it("shows RAM guidance when lastError is insufficient RAM", () => {
+    llmStatus = {
+      status: "error",
+      modelPath: "",
+      lastError: "Insufficient RAM: at least 1.5 GB free required to load the model. Close other applications and try again.",
+    };
+    render(<ChatPanel />);
+
+    const emptyState = screen.getByTestId("chat-provisioning-empty-state");
+    expect(within(emptyState).getByText(/Not enough memory/)).toBeTruthy();
+    expect(within(emptyState).getByText(/Close other applications/)).toBeTruthy();
+  });
+
   it("auto-opens the download modal when llm.status is downloading on mount", () => {
     llmStatus = { status: "downloading", modelPath: "", bytesDownloaded: 100, totalBytes: 200 };
     render(<ChatPanel />);

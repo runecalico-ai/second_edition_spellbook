@@ -165,7 +165,7 @@ Self::InsufficientRam => AppError::Validation(
 - Create: `apps/desktop/src/ui/components/chat/chatProvisionerErrors.ts`
 - Test: `apps/desktop/src/ui/components/chat/chatProvisionerErrors.test.ts`
 
-- [ ] **Step 0.1: Write failing tests**
+- [x] **Step 0.1: Write failing tests**
 
 ```typescript
 // apps/desktop/src/ui/components/chat/chatProvisionerErrors.test.ts
@@ -220,21 +220,21 @@ describe("formatChatSystemError", () => {
 });
 ```
 
-- [ ] **Step 0.2: Run test to verify it fails**
+- [x] **Step 0.2: Run test to verify it fails**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/components/chat/chatProvisionerErrors.test.ts`
 Expected: FAIL — module not found
 
-- [ ] **Step 0.3: Implement helpers**
+- [x] **Step 0.3: Implement helpers**
 
 Create `chatProvisionerErrors.ts` with the Type Contracts block above.
 
-- [ ] **Step 0.4: Run test to verify it passes**
+- [x] **Step 0.4: Run test to verify it passes**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/components/chat/chatProvisionerErrors.test.ts`
 Expected: PASS (6 tests)
 
-- [ ] **Step 0.5: Commit**
+- [x] **Step 0.5: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/chatProvisionerErrors.ts apps/desktop/src/ui/components/chat/chatProvisionerErrors.test.ts
@@ -248,7 +248,7 @@ git commit -m "feat(chat): add provisioner error classification helpers"
 **Files:**
 - Modify: `apps/desktop/src/ui/components/chat/ChatProvisioningPrompt.tsx`
 
-- [ ] **Step 1.1: Write failing component test**
+- [x] **Step 1.1: Write failing component test**
 
 Add to `ChatPanel.test.tsx` (or create `ChatProvisioningPrompt.test.tsx`):
 
@@ -270,12 +270,12 @@ it("shows disk space details and retry when lastError is a disk error", () => {
 });
 ```
 
-- [ ] **Step 1.2: Run test to verify it fails**
+- [x] **Step 1.2: Run test to verify it fails**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/components/chat/ChatPanel.test.tsx -t "disk space"`
 Expected: FAIL — missing heading / retry button
 
-- [ ] **Step 1.3: Implement ChatProvisioningPrompt changes**
+- [x] **Step 1.3: Implement ChatProvisioningPrompt changes**
 
 ```tsx
 // apps/desktop/src/ui/components/chat/ChatProvisioningPrompt.tsx
@@ -382,12 +382,12 @@ export function ChatProvisioningPrompt({
 }
 ```
 
-- [ ] **Step 1.4: Run tests**
+- [x] **Step 1.4: Run tests**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/components/chat/ChatPanel.test.tsx`
 Expected: disk test PASS; update existing `lastError` test if it expected `Model setup failed:` prefix
 
-- [ ] **Step 1.5: Commit**
+- [x] **Step 1.5: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/ChatProvisioningPrompt.tsx apps/desktop/src/ui/components/chat/ChatPanel.test.tsx
@@ -403,7 +403,7 @@ git commit -m "feat(chat): structured provisioning errors with retry button"
 - Modify: `apps/desktop/src/ui/components/chat/ChatPanel.tsx`
 - Test: `apps/desktop/src/ui/components/chat/ChatPanel.test.tsx`
 
-- [ ] **Step 2.1: Write failing test**
+- [x] **Step 2.1: Write failing test**
 
 ```typescript
 it("shows network error in the download modal with retry when download invoke fails", async () => {
@@ -422,12 +422,12 @@ it("shows network error in the download modal with retry when download invoke fa
 });
 ```
 
-- [ ] **Step 2.2: Run test — expect FAIL**
+- [x] **Step 2.2: Run test — expect FAIL**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/components/chat/ChatPanel.test.tsx -t "network error in the download modal"`
 Expected: FAIL — no error element
 
-- [ ] **Step 2.3: Extend ModelDownloadModal**
+- [x] **Step 2.3: Extend ModelDownloadModal**
 
 ```tsx
 // Add to ModelDownloadModalProps:
@@ -463,7 +463,7 @@ onRetry?: () => void;
 </div>
 ```
 
-- [ ] **Step 2.4: Wire ChatPanel download failure state**
+- [x] **Step 2.4: Wire ChatPanel download failure state**
 
 ```tsx
 // ChatPanel.tsx — add state:
@@ -505,12 +505,12 @@ Import `parseProvisionerError` from `./chatProvisionerErrors`.
 
 Adjust the download-completion `useEffect` so it does **not** close the modal when `downloadError` is set (add `downloadError` to early-return guard).
 
-- [ ] **Step 2.5: Run tests**
+- [x] **Step 2.5: Run tests**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/components/chat/ChatPanel.test.tsx`
 Expected: PASS
 
-- [ ] **Step 2.6: Commit**
+- [x] **Step 2.6: Commit**
 
 ```bash
 git add apps/desktop/src/ui/components/chat/ModelDownloadModal.tsx apps/desktop/src/ui/components/chat/ChatPanel.tsx apps/desktop/src/ui/components/chat/ChatPanel.test.tsx
@@ -524,7 +524,7 @@ git commit -m "feat(chat): inline download errors with modal retry"
 **Files:**
 - Test: `apps/desktop/src/ui/components/chat/ChatPanel.test.tsx`
 
-- [ ] **Step 3.1: Write failing RAM test**
+- [x] **Step 3.1: Write failing RAM test**
 
 ```typescript
 it("shows RAM guidance when lastError is insufficient RAM", () => {
@@ -541,12 +541,12 @@ it("shows RAM guidance when lastError is insufficient RAM", () => {
 });
 ```
 
-- [ ] **Step 3.2: Run test — expect PASS** (Task 1 already handles RAM classification)
+- [x] **Step 3.2: Run test — expect PASS** (Task 1 already handles RAM classification)
 
 Run: `cd apps/desktop && pnpm exec vitest run src/ui/components/chat/ChatPanel.test.tsx -t "RAM guidance"`
 Expected: PASS
 
-- [ ] **Step 3.3: Commit** (only if test file changed)
+- [x] **Step 3.3: Commit** (only if test file changed)
 
 ```bash
 git add apps/desktop/src/ui/components/chat/ChatPanel.test.tsx

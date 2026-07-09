@@ -101,6 +101,7 @@ export function ChatPanel() {
   }, [activeDownload, downloadError, llm.status, embeddings.state, refresh]);
 
   const handleDownloadLlm = useCallback(async () => {
+    sawDownloadingRef.current = false;
     setActiveDownload({ kind: "llm" });
     setDownloadError(null);
     try {
@@ -113,6 +114,7 @@ export function ChatPanel() {
   }, [refresh]);
 
   const handleDownloadEmbeddings = useCallback(async () => {
+    sawDownloadingRef.current = false;
     setActiveDownload({ kind: "embeddings" });
     setDownloadError(null);
     try {

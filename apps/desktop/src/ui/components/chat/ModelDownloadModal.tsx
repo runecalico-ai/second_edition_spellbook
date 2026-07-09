@@ -171,7 +171,7 @@ export function ModelDownloadModal({
               className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               onClick={onRetry}
             >
-              Retry
+              Retry Download
             </button>
           ) : null}
           <button

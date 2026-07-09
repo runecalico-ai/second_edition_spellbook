@@ -96,23 +96,21 @@ export function useChatSession(llmStatus: LlmStatus) {
           return;
         }
 
-        const hasPartialResponse = stream.response.trim().length > 0;
         const errorMessage = formatChatSystemError(
           err instanceof Error ? err.message : String(err),
         );
 
         handledStreamErrorRef.current = true;
         setMessages((prev) => {
-          if (prev.some((m) => m.kind === "system" && m.content === errorMessage)) {
-            return prev;
+          const assistant = prev.find(
+            (m) => m.kind === "assistant" && m.id === pendingChat.assistantId,
+          );
+          if (assistant && assistant.content.trim().length > 0) {
+            return prev; // partial invoke failure — keep assistant bubble
           }
 
-          if (hasPartialResponse) {
-            return prev.concat({
-              id: `system-${Date.now()}`,
-              kind: "system",
-              content: errorMessage,
-            });
+          if (prev.some((m) => m.kind === "system" && m.content === errorMessage)) {
+            return prev;
           }
 
           return prev
@@ -168,6 +166,7 @@ export function useChatSession(llmStatus: LlmStatus) {
       if (handledStreamErrorRef.current) return;
       handledStreamErrorRef.current = true;
       setIsModelLoading(false);
+      setStreamId(null);
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== assistantId),
         {

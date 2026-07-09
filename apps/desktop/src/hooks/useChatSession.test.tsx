@@ -71,6 +71,78 @@ describe("useChatSession", () => {
     expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(false);
   });
 
+  it("keeps assistant when invoke fails after partial content in messages", async () => {
+    vi.mocked(useLlmStream).mockImplementation(() => ({
+      ...mockStream,
+      isGenerating: mockStream.isGenerating,
+      error: mockStream.error,
+      response: mockStream.response,
+    }));
+
+    let rejectChat: (err: Error) => void;
+    vi.mocked(startLlmChat).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectChat = reject;
+        }),
+    );
+
+    const { result, rerender } = renderHook(() => useChatSession("loaded"));
+
+    act(() => {
+      result.current.setDraft("Hello");
+    });
+
+    mockStream.isGenerating = true;
+    mockStream.error = null;
+    mockStream.response = "";
+
+    await act(async () => {
+      await result.current.send();
+    });
+
+    await waitFor(() => expect(startLlmChat).toHaveBeenCalled());
+
+    await act(async () => {
+      mockStream.response = "Partial answer";
+      rerender();
+    });
+
+    await act(async () => {
+      rejectChat!(new Error("Inference failed: model context error"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const assistant = result.current.messages.find((m) => m.kind === "assistant");
+      expect(assistant?.content).toBe("Partial answer");
+    });
+    expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(true);
+    expect(result.current.messages.some((m) => m.kind === "system")).toBe(false);
+  });
+
+  it("shows system message and removes assistant when invoke fails with generic inference error", async () => {
+    const inferenceError = "Inference failed: model context error";
+    vi.mocked(startLlmChat).mockRejectedValue(new Error(inferenceError));
+    const { result } = renderHook(() => useChatSession("loaded"));
+
+    act(() => {
+      result.current.setDraft("Hello");
+    });
+    await act(async () => {
+      await result.current.send();
+    });
+
+    const expected = formatChatSystemError(inferenceError);
+    await waitFor(() => {
+      const systemMessages = result.current.messages.filter((m) => m.kind === "system");
+      expect(systemMessages).toHaveLength(1);
+      expect(systemMessages[0]?.content).toBe(expected);
+    });
+    expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(false);
+  });
+
   it("shows a system message when stream fails without partial response", async () => {
     vi.mocked(useLlmStream).mockImplementation(() => ({
       ...mockStream,
@@ -102,8 +174,11 @@ describe("useChatSession", () => {
       rerender();
     });
 
+    const expected = formatChatSystemError("Inference failed: model context error");
     await waitFor(() => {
-      expect(result.current.messages.some((m) => m.kind === "system")).toBe(true);
+      const systemMessages = result.current.messages.filter((m) => m.kind === "system");
+      expect(systemMessages).toHaveLength(1);
+      expect(systemMessages[0]?.content).toBe(expected);
     });
     expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(false);
   });

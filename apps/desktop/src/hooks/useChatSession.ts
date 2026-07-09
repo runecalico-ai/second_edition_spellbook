@@ -26,6 +26,7 @@ export function useChatSession(llmStatus: LlmStatus) {
   const [pendingChat, setPendingChat] = useState<PendingChatRequest | null>(null);
   const [isModelLoading, setIsModelLoading] = useState(false);
   const assistantIdRef = useRef<string | null>(null);
+  const handledStreamErrorRef = useRef(false);
 
   const stream = useLlmStream(streamId);
 
@@ -45,6 +46,7 @@ export function useChatSession(llmStatus: LlmStatus) {
     const userId = `user-${Date.now()}`;
     const assistantId = `assistant-${Date.now()}`;
     assistantIdRef.current = assistantId;
+    handledStreamErrorRef.current = false;
 
     setMessages((prev) => [
       ...prev,
@@ -88,15 +90,40 @@ export function useChatSession(llmStatus: LlmStatus) {
         if (!active) return;
         setIsModelLoading(false);
         setStreamId(null);
-        setMessages((prev) =>
-          prev
+
+        if (handledStreamErrorRef.current) {
+          assistantIdRef.current = null;
+          return;
+        }
+
+        const hasPartialResponse = stream.response.trim().length > 0;
+        const errorMessage = formatChatSystemError(
+          err instanceof Error ? err.message : String(err),
+        );
+
+        handledStreamErrorRef.current = true;
+        setMessages((prev) => {
+          if (prev.some((m) => m.kind === "system" && m.content === errorMessage)) {
+            return prev;
+          }
+
+          if (hasPartialResponse) {
+            return prev.concat({
+              id: `system-${Date.now()}`,
+              kind: "system",
+              content: errorMessage,
+            });
+          }
+
+          return prev
             .filter((m) => m.id !== pendingChat.assistantId)
             .concat({
               id: `system-${Date.now()}`,
               kind: "system",
-              content: formatChatSystemError(err instanceof Error ? err.message : String(err)),
-            }),
-        );
+              content: errorMessage,
+            });
+        });
+        assistantIdRef.current = null;
       } finally {
         if (active) setPendingChat(null);
       }
@@ -133,16 +160,23 @@ export function useChatSession(llmStatus: LlmStatus) {
       }),
     );
 
-    if (!stream.isGenerating && stream.error && stream.response) {
+    if (!stream.isGenerating && stream.error && stream.response.trim().length > 0) {
       return; // partial cancel/timeout — keep assistant bubble
     }
 
-    if (!stream.isGenerating && stream.error && !stream.response) {
+    if (!stream.isGenerating && stream.error && stream.response.trim().length === 0) {
+      if (handledStreamErrorRef.current) return;
+      handledStreamErrorRef.current = true;
       setIsModelLoading(false);
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== assistantId),
-        { id: `system-${Date.now()}`, kind: "system", content: formatChatSystemError(stream.error ?? "Unknown error") },
+        {
+          id: `system-${Date.now()}`,
+          kind: "system",
+          content: formatChatSystemError(stream.error ?? "Unknown error"),
+        },
       ]);
+      assistantIdRef.current = null;
     }
   }, [stream.response, stream.isGenerating, stream.grounding, stream.error, stream.cancelled, stream.timedOut]);
 

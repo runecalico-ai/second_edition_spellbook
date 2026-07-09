@@ -995,7 +995,7 @@ impl ModelLoadPreflightValidationError {
                 "The approved TinyLlama model has not been provisioned yet".to_string(),
             ),
             Self::InsufficientRam => AppError::Validation(
-                "Insufficient RAM: at least 1.5 GB free required to load the model".to_string(),
+                "Insufficient RAM: at least 1.5 GB free required to load the model. Close other applications and try again.".to_string(),
             ),
         }
     }
@@ -4644,7 +4644,7 @@ mod tests {
 
         let err = validate_model_load_prerequisites(true, requirements).unwrap_err();
         assert!(
-            matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required"))
+            matches!(err, AppError::Validation(message) if message.contains("Close other applications"))
         );
     }
 

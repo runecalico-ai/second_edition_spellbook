@@ -289,6 +289,7 @@ export default function Library() {
           }
           if (!nextQuery.trim()) {
             setSpells([]);
+            setSemanticSearchAttempted(false);
             setSemanticSearchError(null);
             return;
           }
@@ -502,6 +503,7 @@ export default function Library() {
               setSemanticSearchError(null);
               if (next === "keyword") {
                 setSemanticSearchAttempted(false);
+                setSpells([]);
                 void runSearch(query, "keyword", buildSearchFilters());
               } else {
                 setSemanticSearchAttempted(false);
@@ -940,6 +942,7 @@ export default function Library() {
                       setMode("keyword");
                       setSemanticSearchAttempted(false);
                       setSemanticSearchError(null);
+                      setSpells([]);
                       void runSearch(query, "keyword", buildSearchFilters());
                     }}
                     disabled={embeddingsSetup.isDownloadInProgress}

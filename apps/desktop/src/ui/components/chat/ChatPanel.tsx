@@ -184,9 +184,11 @@ export function ChatPanel() {
           onImportLlm={() => void handleImportLlm()}
           onDownloadEmbeddings={() => void handleDownloadEmbeddings()}
           onImportEmbeddings={() => void handleImportEmbeddings()}
+          onRetryDownload={() => void handleDownloadLlm()}
           llmNeedsSetup={llmNeedsSetup}
           llmErrorMessage={llm.lastError}
           embeddingsNotProvisioned={embeddingsNeedsSetup}
+          embeddingsErrorMessage={embeddings.errorMessage}
         />
       ) : (
         <>

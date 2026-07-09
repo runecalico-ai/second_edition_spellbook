@@ -135,7 +135,24 @@ describe("ChatPanel", () => {
 
     const emptyState = screen.getByTestId("chat-provisioning-empty-state");
     expect(emptyState).toBeTruthy();
-    expect(within(emptyState).getByText(/Model setup failed: Boom: disk full/)).toBeTruthy();
+    expect(within(emptyState).getByText(/Model setup failed/)).toBeTruthy();
+    expect(within(emptyState).getByText(/Boom: disk full/)).toBeTruthy();
+  });
+
+  it("shows disk space details and retry when lastError is a disk error", () => {
+    llmStatus = {
+      status: "error",
+      modelPath: "",
+      lastError:
+        "Insufficient disk space: required 800 MiB (838860800 bytes), available 120 MiB (125829120 bytes)",
+    };
+    render(<ChatPanel />);
+
+    const emptyState = screen.getByTestId("chat-provisioning-empty-state");
+    expect(within(emptyState).getByText(/Not enough disk space/)).toBeTruthy();
+    expect(within(emptyState).getByText(/800 MiB/)).toBeTruthy();
+    expect(within(emptyState).getByText(/120 MiB/)).toBeTruthy();
+    expect(screen.getByTestId("chat-provisioning-retry-button")).toBeTruthy();
   });
 
   it("auto-opens the download modal when llm.status is downloading on mount", () => {

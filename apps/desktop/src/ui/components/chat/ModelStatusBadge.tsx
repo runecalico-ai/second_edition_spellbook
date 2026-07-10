@@ -30,8 +30,7 @@ interface ModelStatusBadgeProps {
 export function ModelStatusBadge({ label, status, testId }: ModelStatusBadgeProps) {
   const text = LABELS[status];
   return (
-    <span
-      role="status"
+    <output
       data-testid={testId}
       className={classNames(
         "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
@@ -42,6 +41,6 @@ export function ModelStatusBadge({ label, status, testId }: ModelStatusBadgeProp
       <span className="font-semibold">{label}</span>
       <span aria-hidden="true">·</span>
       <span>{text}</span>
-    </span>
+    </output>
   );
 }

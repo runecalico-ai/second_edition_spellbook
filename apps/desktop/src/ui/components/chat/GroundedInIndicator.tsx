@@ -8,7 +8,7 @@ export function GroundedInIndicator({ grounding }: GroundedInIndicatorProps) {
   const terms = grounding?.searchTerms.filter((t) => t.trim().length > 0) ?? [];
   if (terms.length === 0) return null;
 
-  const spellCount = grounding!.groundedSpells.filter((s) => s.name.trim().length > 0).length;
+  const spellCount = grounding?.groundedSpells.filter((s) => s.name.trim().length > 0).length ?? 0;
 
   return (
     <p

@@ -16,20 +16,18 @@ export function MessageList({ messages, isModelLoading }: MessageListProps) {
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const lastMessage = messages[messages.length - 1];
-  const streamingContentLength =
-    lastMessage?.kind === "assistant" && lastMessage.isStreaming
-      ? lastMessage.content.length
-      : 0;
 
   useEffect(() => {
-    const isStreaming =
-      lastMessage?.kind === "assistant" && lastMessage.isStreaming;
+    // lastMessage is a new object reference on every streamed token update
+    // (see useChatSession's map-based setMessages), so this effect already
+    // re-runs as content grows without needing a separate length dependency.
+    const isStreaming = lastMessage?.kind === "assistant" && lastMessage.isStreaming;
     bottomRef.current?.scrollIntoView({
-      // Instant scroll during token streaming avoids smooth-scroll jank.
-      behavior: isStreaming || prefersReducedMotion ? "auto" : "smooth",
+      // Instant scroll during token streaming or model loading avoids smooth-scroll jank.
+      behavior: isStreaming || isModelLoading || prefersReducedMotion ? "auto" : "smooth",
       block: "end",
     });
-  }, [messages.length, streamingContentLength, isModelLoading, lastMessage, prefersReducedMotion]);
+  }, [lastMessage, isModelLoading, prefersReducedMotion]);
 
   return (
     <div

@@ -127,7 +127,7 @@ describe("useModelStatus", () => {
   });
 
   it("ignores stale refresh responses when a newer refresh is in flight", async () => {
-    let resolveFirst: (value: Awaited<ReturnType<typeof getLlmStatus>>) => void;
+    let resolveFirst: (value: Awaited<ReturnType<typeof getLlmStatus>>) => void = () => {};
     const firstPromise = new Promise<Awaited<ReturnType<typeof getLlmStatus>>>((resolve) => {
       resolveFirst = resolve;
     });
@@ -144,7 +144,7 @@ describe("useModelStatus", () => {
     await act(async () => {
       const staleRefresh = result.current.refresh();
       const freshRefresh = result.current.refresh();
-      resolveFirst!({
+      resolveFirst({
         status: "downloading",
         modelPath: "",
       });

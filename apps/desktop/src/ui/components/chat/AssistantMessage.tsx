@@ -39,12 +39,15 @@ function segmentContentWithSpellLinks(content: string, spells: RagSpellContext[]
     "gi",
   );
 
-  return content.split(pattern).map((part, index) => {
+  let offset = 0;
+  return content.split(pattern).map((part) => {
+    const key = offset;
+    offset += part.length;
     const match = byName.get(part.toLowerCase());
     if (match) {
-      return <SpellLink key={`spell-${index}`} id={match.id} name={match.name} />;
+      return <SpellLink key={`spell-${key}`} id={match.id} name={match.name} />;
     }
-    return <span key={`text-${index}`}>{part}</span>;
+    return <span key={`text-${key}`}>{part}</span>;
   });
 }
 
@@ -66,8 +69,7 @@ export function AssistantMessage({
   return (
     <div className="flex justify-start" data-testid={`chat-message-${messageId}`}>
       <div className="max-w-[85%]">
-        <div
-          role="article"
+        <article
           aria-label={isStreaming ? "Assistant message, generating" : "Assistant message"}
           aria-busy={isStreaming}
           data-testid="chat-assistant-bubble"
@@ -77,7 +79,7 @@ export function AssistantMessage({
           {isStreaming ? (
             <span className="inline-block w-2 h-4 ml-0.5 bg-neutral-400 animate-pulse" aria-hidden="true" />
           ) : null}
-        </div>
+        </article>
         <GroundedInIndicator
           grounding={{ searchTerms, groundedSpells }}
         />

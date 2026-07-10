@@ -2123,9 +2123,7 @@ async fn run_claimed_llm_chat(
             .map_err(|error| AppError::Llm(format!("LLM prompt build task failed: {error}")))?;
             match join_result {
                 Ok(build) => build,
-                Err(AppError::Validation(message))
-                    if message == GENERATION_CANCELLED_MESSAGE =>
-                {
+                Err(AppError::Validation(message)) if message == GENERATION_CANCELLED_MESSAGE => {
                     return Ok(ChatRunOutput {
                         full_response: String::new(),
                         cancelled: true,

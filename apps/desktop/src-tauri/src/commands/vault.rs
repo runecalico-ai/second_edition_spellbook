@@ -1902,7 +1902,9 @@ mod tests {
         // LLM/embedding model files live under the vault's models/ dir and are never part of
         // the backup archive (see design.md Decision 12). Restore must leave them untouched.
         std::fs::write(
-            data_dir.join("models").join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"),
+            data_dir
+                .join("models")
+                .join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"),
             "fake-model-bytes",
         )
         .expect("write model file");
@@ -1936,8 +1938,11 @@ mod tests {
             r#"{"integrityCheckOnOpen":true}"#,
         )
         .expect("write settings");
-        std::fs::write(source_dir.join("spells").join("new.json"), r#"{"id":"new"}"#)
-            .expect("write new spell");
+        std::fs::write(
+            source_dir.join("spells").join("new.json"),
+            r#"{"id":"new"}"#,
+        )
+        .expect("write new spell");
 
         let backup_path = temp_dir.path().join("backup.zip");
         let file = File::create(&backup_path).expect("create backup archive");
@@ -1959,9 +1964,12 @@ mod tests {
             .expect("archive spells");
         zip.finish().expect("finish archive");
 
-        restore_vault_impl(pool_arc, &data_dir, &backup_path, true).expect("restore should succeed");
+        restore_vault_impl(pool_arc, &data_dir, &backup_path, true)
+            .expect("restore should succeed");
 
-        let model_path = data_dir.join("models").join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf");
+        let model_path = data_dir
+            .join("models")
+            .join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf");
         assert!(model_path.exists(), "model file must survive restore");
         assert_eq!(
             std::fs::read_to_string(&model_path).expect("read model"),

@@ -42,7 +42,7 @@ export function ModelDownloadModal({
     if (dialog.open && typeof dialog.close === "function") {
       dialog.close();
     }
-    if (triggerRef.current && triggerRef.current.isConnected) {
+    if (triggerRef.current?.isConnected) {
       triggerRef.current.focus();
     } else {
       const hadTabIndex = document.body.hasAttribute("tabindex");
@@ -130,17 +130,17 @@ export function ModelDownloadModal({
         <h2 id={`${testId}-title`} className="mb-2 text-lg font-semibold">
           Downloading {modelLabel}
         </h2>
-        <p
+        <output
           id={`${testId}-bytes`}
-          className="mb-4 text-sm text-neutral-600 dark:text-neutral-400"
+          className="mb-4 block text-sm text-neutral-600 dark:text-neutral-400"
           data-testid={`${testId}-bytes`}
-          role="status"
           aria-live="polite"
         >
           {formatBytes(bytesDownloaded)} / {formatBytes(totalBytes)} ({percent}%)
-        </p>
+        </output>
         <div
           role="progressbar"
+          tabIndex={0}
           aria-label={`Downloading ${modelLabel}`}
           aria-valuenow={percent}
           aria-valuemin={0}

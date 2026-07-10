@@ -71,6 +71,31 @@ describe("spellbookE2EHarness", () => {
     });
   });
 
+  it("returns isolated active embeddings status overrides and records their observation", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+      ...readyScenario(),
+      embeddingsStatus: { state: "downloading", downloadProgress: 42 },
+    };
+
+    const status = await spellbookE2EHarness.localMl.getEmbeddingsStatus();
+
+    expect(status).toEqual({ state: "downloading", downloadProgress: 42 });
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toContainEqual({
+      kind: "command",
+      name: "embeddings_status",
+      args: {},
+    });
+
+    status!.state = "error";
+    status!.downloadProgress = 0;
+
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__?.embeddingsStatus).toEqual({
+      state: "downloading",
+      downloadProgress: 42,
+    });
+  });
+
   it("requires Playwright mode for local ML overrides", () => {
     window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
 

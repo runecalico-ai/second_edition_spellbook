@@ -1006,6 +1006,98 @@ describe("spellbookE2EHarness", () => {
       void secondChat;
     });
 
+    it("resolves a paused chat promise instead of orphaning it when a second startLlmChat call hits the invokeError short-circuit", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        chat: {
+          tokens: ["Magic ", "Missile"],
+          pauseAfterToken: 1,
+          done: {
+            fullResponse: "Magic Missile",
+            cancelled: false,
+            timedOut: false,
+            searchTerms: [],
+            groundedSpells: [],
+          },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const firstChat = localMl.startLlmChat("Hi", "stream-a", []);
+      expect(firstChat).toBeDefined();
+      if (!firstChat) {
+        throw new Error("expected first chat promise");
+      }
+      await Promise.resolve();
+
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        chat: {
+          tokens: ["should", "never", "emit"],
+          done: {
+            fullResponse: "",
+            cancelled: false,
+            timedOut: false,
+            searchTerms: [],
+            groundedSpells: [],
+          },
+          invokeError: "Inference failed: test fault",
+        },
+      };
+
+      await expect(localMl.startLlmChat("Hi again", "stream-b", [])).rejects.toThrow(
+        "Inference failed: test fault",
+      );
+
+      const timeout = new Promise<string>((resolve) => {
+        setTimeout(() => resolve("timeout"), 50);
+      });
+      const outcome = await Promise.race([firstChat.then(() => "resolved"), timeout]);
+      expect(outcome).toBe("resolved");
+    });
+
+    it("resolves a paused chat promise instead of orphaning it when a second startLlmChat call hits the no-chat short-circuit", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        chat: {
+          tokens: ["Magic ", "Missile"],
+          pauseAfterToken: 1,
+          done: {
+            fullResponse: "Magic Missile",
+            cancelled: false,
+            timedOut: false,
+            searchTerms: [],
+            groundedSpells: [],
+          },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const firstChat = localMl.startLlmChat("Hi", "stream-a", []);
+      expect(firstChat).toBeDefined();
+      if (!firstChat) {
+        throw new Error("expected first chat promise");
+      }
+      await Promise.resolve();
+
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        chat: undefined,
+      };
+
+      const secondChat = localMl.startLlmChat("Hi again", "stream-b", []);
+      expect(secondChat).toBeDefined();
+      await secondChat;
+
+      const timeout = new Promise<string>((resolve) => {
+        setTimeout(() => resolve("timeout"), 50);
+      });
+      const outcome = await Promise.race([firstChat.then(() => "resolved"), timeout]);
+      expect(outcome).toBe("resolved");
+    });
+
     it("resolves an in-flight chat promise instead of hanging when reset() runs mid-stream", async () => {
       window.__IS_PLAYWRIGHT__ = true;
       const streamId = "stream-reset-mid";

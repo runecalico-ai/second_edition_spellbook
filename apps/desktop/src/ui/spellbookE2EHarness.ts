@@ -514,6 +514,12 @@ export const spellbookE2EHarness = {
         history: structuredClone(history),
       });
 
+      // Any new startLlmChat() call always supersedes whatever chat stream
+      // was previously active, regardless of which branch below this call
+      // takes -- otherwise a prior paused/running stream is left dangling
+      // and its promise never resolves.
+      abandonActiveChatStream();
+
       const chat = scenario.chat;
       if (chat?.invokeError !== undefined) {
         return Promise.reject(new Error(chat.invokeError));
@@ -521,8 +527,6 @@ export const spellbookE2EHarness = {
       if (!chat) {
         return Promise.resolve();
       }
-
-      abandonActiveChatStream();
 
       let resolveFn: () => void = () => {};
       const promise = new Promise<void>((resolve) => {

@@ -15,7 +15,7 @@ const DISK_RE =
 
 const RAM_RE = /Insufficient RAM/i;
 const NETWORK_RE =
-  /download (request|stream) failed|connection|timed out|dns|resolve|unreachable|broken pipe/i;
+  /download (request|stream) failed|download.*(connection|timed out|dns|resolve|unreachable|broken pipe)/i;
 
 export function parseProvisionerError(rawMessage: string | null | undefined): ParsedProvisionerError | null {
   if (!rawMessage?.trim()) return null;

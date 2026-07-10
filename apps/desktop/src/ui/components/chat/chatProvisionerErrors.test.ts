@@ -38,6 +38,13 @@ describe("parseProvisionerError", () => {
     expect(parsed?.kind).toBe("generic");
     expect(parsed?.description).toBe("SHA-256 mismatch");
   });
+
+  it("does not misclassify a DB connection pool error as network", () => {
+    const parsed = parseProvisionerError(
+      "Connection pool error: timed out waiting for connection",
+    );
+    expect(parsed?.kind).toBe("generic");
+  });
 });
 
 describe("formatChatSystemError", () => {

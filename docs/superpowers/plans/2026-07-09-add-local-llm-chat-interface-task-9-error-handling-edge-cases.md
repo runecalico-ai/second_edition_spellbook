@@ -706,7 +706,7 @@ If PASS: document in commit message only. If FAIL: fix `finalize_non_sha_downloa
 - `cancel_generation` calls `validate_stream_id` (line ~853)
 - Concurrent uniqueness — `begin_generation_rejects_second_active_stream` test
 
-- [ ] **Step 7.1: Write test for stream_id reuse after generation completes**
+- [x] **Step 7.1: Write test for stream_id reuse after generation completes**
 
 ```rust
 #[test]
@@ -718,12 +718,12 @@ fn begin_generation_allows_stream_id_reuse_after_finish() {
 }
 ```
 
-- [ ] **Step 7.2: Run regression tests**
+- [x] **Step 7.2: Run regression tests**
 
 Run: `cd apps/desktop/src-tauri && cargo test begin_generation_allows_stream_id_reuse validate_stream_id_rejects begin_generation_rejects_second_active_stream -- --nocapture`
 Expected: all PASS
 
-- [ ] **Step 7.3: Commit**
+- [x] **Step 7.3: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/llm.rs

@@ -83,14 +83,14 @@
 
 ## 9. Error Handling & Edge Cases
 
-- [ ] 9.1 Frontend: Display download network error inline with retry button
-- [ ] 9.2 Frontend: Display "disk full" error with required vs available space
-- [ ] 9.3 Frontend: Display RAM error with clear guidance ("Close other applications…")
-- [ ] 9.4 Frontend: Display inference error as a system chat message and keep input enabled for retry
-- [ ] 9.5 Backend: Ensure partial download files are retained on network failure for resume
-- [ ] 9.6 Backend: Validate `stream_id` is non-empty and unique per request
-- [ ] 9.7 Backend: Embedding failures on individual spell writes MUST log and continue (non-fatal)
-- [ ] 9.8 Backend: Preserve existing model files when a vault restore runs and the backup excludes models
+- [x] 9.1 Frontend: Display download network error inline with retry button
+- [x] 9.2 Frontend: Display "disk full" error with required vs available space
+- [x] 9.3 Frontend: Display RAM error with clear guidance ("Close other applications…")
+- [x] 9.4 Frontend: Display inference error as a system chat message and keep input enabled for retry
+- [x] 9.5 Backend: Ensure partial download files are retained on network failure for resume
+- [x] 9.6 Backend: Validate `stream_id` is non-empty and unique per request
+- [x] 9.7 Backend: Embedding failures on individual spell writes MUST log and continue (non-fatal)
+- [x] 9.8 Backend: Preserve existing model files when a vault restore runs and the backup excludes models
 
 ## 10. E2E Tests
 

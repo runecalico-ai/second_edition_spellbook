@@ -1892,6 +1892,86 @@ mod tests {
     }
 
     #[test]
+    fn test_restore_vault_preserves_existing_model_files() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let data_dir = temp_dir.path().join("data");
+        let _env = VaultTestEnvGuard::with_root(data_dir.clone()).expect("set isolated vault env");
+        std::fs::create_dir_all(data_dir.join("spells")).expect("create spells dir");
+        std::fs::create_dir_all(data_dir.join("models")).expect("create models dir");
+
+        // LLM/embedding model files live under the vault's models/ dir and are never part of
+        // the backup archive (see design.md Decision 12). Restore must leave them untouched.
+        std::fs::write(
+            data_dir.join("models").join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"),
+            "fake-model-bytes",
+        )
+        .expect("write model file");
+        std::fs::write(data_dir.join("spells").join("old.json"), r#"{"id":"old"}"#)
+            .expect("write old spell");
+
+        // We need a proper sqlite file to setup the initial DB pool
+        let pool = crate::db::pool::init_db(None, false).expect("failed to init db pool");
+        let pool_arc = std::sync::Arc::new(pool);
+
+        // Build a minimal but real source sqlite db (with the `spell` table) so the backup
+        // restore + post-restore integrity check succeed, matching a genuine backup archive.
+        let source_db_path = temp_dir.path().join("source-spellbook.sqlite3");
+        {
+            let conn = rusqlite::Connection::open(&source_db_path).expect("create source db");
+            conn.execute_batch(
+                "CREATE TABLE spell (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    canonical_data TEXT,
+                    content_hash TEXT
+                );",
+            )
+            .expect("create spell table in source db");
+        }
+
+        let source_dir = temp_dir.path().join("source");
+        std::fs::create_dir_all(source_dir.join("spells")).expect("create source spells dir");
+        std::fs::write(
+            source_dir.join("vault-settings.json"),
+            r#"{"integrityCheckOnOpen":true}"#,
+        )
+        .expect("write settings");
+        std::fs::write(source_dir.join("spells").join("new.json"), r#"{"id":"new"}"#)
+            .expect("write new spell");
+
+        let backup_path = temp_dir.path().join("backup.zip");
+        let file = File::create(&backup_path).expect("create backup archive");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+
+        add_file_to_backup_archive(&mut zip, options, "spellbook.sqlite3", &source_db_path)
+            .expect("archive db");
+        add_file_to_backup_archive(
+            &mut zip,
+            options,
+            "vault-settings.json",
+            &source_dir.join("vault-settings.json"),
+        )
+        .expect("archive settings");
+        add_directory_to_backup_archive(&mut zip, options, &source_dir, &source_dir.join("spells"))
+            .expect("archive spells");
+        zip.finish().expect("finish archive");
+
+        restore_vault_impl(pool_arc, &data_dir, &backup_path, true).expect("restore should succeed");
+
+        let model_path = data_dir.join("models").join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf");
+        assert!(model_path.exists(), "model file must survive restore");
+        assert_eq!(
+            std::fs::read_to_string(&model_path).expect("read model"),
+            "fake-model-bytes"
+        );
+        assert!(data_dir.join("spells").join("new.json").exists());
+        assert!(!data_dir.join("spells").join("old.json").exists());
+    }
+
+    #[test]
     #[ignore]
     fn test_bench_vault_gc_10000() {
         use crate::models::canonical_spell::CanonicalSpell;

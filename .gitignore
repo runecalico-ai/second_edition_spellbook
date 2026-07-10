@@ -59,3 +59,7 @@ storybook-static
 ehthumbs.db
 Thumbs.db
 desktop.ini
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json

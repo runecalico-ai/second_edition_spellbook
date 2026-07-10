@@ -1,5 +1,4 @@
 import type { EventCallback, UnlistenFn } from "@tauri-apps/api/event";
-import { RANGE_DISTANCE_KINDS, type RangeSpec } from "../types/spell";
 import type {
   ChatMessage,
   DoneEvent,
@@ -10,6 +9,7 @@ import type {
   ReindexResult,
   SemanticSearchResult,
 } from "../types/llm";
+import { RANGE_DISTANCE_KINDS, type RangeSpec } from "../types/spell";
 
 type SpellPickerListType = "KNOWN" | "PREPARED";
 type SpellPickerSearchPhase = "start" | "resolve";
@@ -106,29 +106,214 @@ function buildSpellPickerDelayKey(listType: SpellPickerListType, query: string):
 }
 
 const localMlEventListeners = new Map<string, Set<EventCallback<unknown>>>();
+const localMlPendingEvents = new Map<string, unknown[]>();
 let nextLocalMlEventId = 1;
 
-/**
- * Dispatch a simulated production event to harness-registered listeners.
- *
- * Payloads are cloned per listener so handlers cannot mutate shared scenario
- * state, and every emission is appended to the observation log. Scenario-driven
- * playback (download/chat/reindex sequencing) layers on top of this in later
- * harness work; this is the raw registry dispatch seam.
- */
-export function emitLocalMlEvent(eventName: string, payload: unknown): void {
-  recordLocalMlObservation("event", eventName, undefined, structuredClone(payload));
-
-  const bucket = localMlEventListeners.get(eventName);
-  if (!bucket) {
-    return;
-  }
-
+function deliverToBucket(
+  bucket: Set<EventCallback<unknown>>,
+  eventName: string,
+  payload: unknown,
+): void {
   const eventId = nextLocalMlEventId;
   nextLocalMlEventId += 1;
   for (const handler of [...bucket]) {
     handler({ event: eventName, id: eventId, payload: structuredClone(payload) });
   }
+}
+
+/**
+ * Dispatch a simulated production event to harness-registered listeners.
+ *
+ * Payloads are cloned per listener so handlers cannot mutate shared scenario
+ * state, and every emission is appended to the observation log. When no
+ * listener is registered yet for `eventName`, the cloned payload is retained
+ * in a pending queue and flushed the moment a matching `listen()` call
+ * registers a handler (see `ChatPanel`'s start-then-subscribe ordering).
+ */
+export function emitLocalMlEvent(eventName: string, payload: unknown): void {
+  const cloned = structuredClone(payload);
+  recordLocalMlObservation("event", eventName, undefined, cloned);
+
+  const bucket = localMlEventListeners.get(eventName);
+  if (!bucket || bucket.size === 0) {
+    const queue = localMlPendingEvents.get(eventName) ?? [];
+    queue.push(cloned);
+    localMlPendingEvents.set(eventName, queue);
+    return;
+  }
+
+  deliverToBucket(bucket, eventName, cloned);
+}
+
+type ModelDownloadStatus = "downloading" | "notProvisioned";
+
+interface ActiveDownloadState {
+  kind: ModelKind;
+  remainingProgress: DownloadProgressEvent[];
+  download: NonNullable<LocalMlE2EScenario["download"]>;
+  scenario: LocalMlE2EScenario;
+  resolve: () => void;
+  cancelled: boolean;
+}
+
+interface ActiveChatStreamState {
+  streamId: string;
+  remainingTokens: string[];
+  pauseAfterToken?: number;
+  emittedCount: number;
+  emittedTokens: string[];
+  done: DoneEvent;
+  resolve: () => void;
+  cancelled: boolean;
+}
+
+let activeDownload: ActiveDownloadState | null = null;
+let activeChatStream: ActiveChatStreamState | null = null;
+
+function downloadProgressEventName(kind: ModelKind): string {
+  return kind === "llm" ? "llm://download-progress" : "embeddings://download-progress";
+}
+
+function mutateDownloadStatus(
+  scenario: LocalMlE2EScenario,
+  kind: ModelKind,
+  status: ModelDownloadStatus,
+): void {
+  if (kind === "llm") {
+    scenario.llmStatus = { ...scenario.llmStatus, status };
+  } else {
+    scenario.embeddingsStatus = { ...scenario.embeddingsStatus, state: status };
+  }
+}
+
+function applyDownloadTerminal(state: ActiveDownloadState): void {
+  if (state.kind === "llm") {
+    if (state.download.terminalLlmStatus) {
+      state.scenario.llmStatus = structuredClone(state.download.terminalLlmStatus);
+    }
+  } else if (state.download.terminalEmbeddingsStatus) {
+    state.scenario.embeddingsStatus = structuredClone(state.download.terminalEmbeddingsStatus);
+  }
+
+  state.resolve();
+  if (activeDownload === state) {
+    activeDownload = null;
+  }
+}
+
+async function runAutoDownload(state: ActiveDownloadState): Promise<void> {
+  while (state.remainingProgress.length > 0) {
+    await Promise.resolve();
+    if (state.cancelled || activeDownload !== state) {
+      return;
+    }
+    const next = state.remainingProgress.shift();
+    if (next) {
+      emitLocalMlEvent(downloadProgressEventName(state.kind), next);
+    }
+  }
+
+  await Promise.resolve();
+  if (state.cancelled || activeDownload !== state) {
+    return;
+  }
+  applyDownloadTerminal(state);
+}
+
+function startDownload(scenario: LocalMlE2EScenario, kind: ModelKind): Promise<void> | undefined {
+  const download = scenario.download;
+  if (!download || download.kind !== kind) {
+    return undefined;
+  }
+
+  mutateDownloadStatus(scenario, kind, "downloading");
+
+  const remainingProgress = [...download.progress];
+  const first = remainingProgress.shift();
+
+  let resolveFn: () => void = () => {};
+  const promise = new Promise<void>((resolve) => {
+    resolveFn = resolve;
+  });
+
+  const state: ActiveDownloadState = {
+    kind,
+    remainingProgress,
+    download,
+    scenario,
+    resolve: resolveFn,
+    cancelled: false,
+  };
+  activeDownload = state;
+
+  if (first) {
+    emitLocalMlEvent(downloadProgressEventName(kind), first);
+  }
+
+  if (!download.manualProgress) {
+    void runAutoDownload(state);
+  }
+
+  return promise;
+}
+
+function cancelActiveDownload(scenario: LocalMlE2EScenario, kind: ModelKind): void {
+  const state = activeDownload;
+  if (!state || state.kind !== kind || state.cancelled) {
+    return;
+  }
+
+  state.cancelled = true;
+  state.remainingProgress = [];
+  localMlPendingEvents.delete(downloadProgressEventName(kind));
+  mutateDownloadStatus(scenario, kind, "notProvisioned");
+  state.resolve();
+  if (activeDownload === state) {
+    activeDownload = null;
+  }
+}
+
+function chatTokenEventName(streamId: string): string {
+  return `llm://token/${streamId}`;
+}
+
+function chatDoneEventName(streamId: string): string {
+  return `llm://done/${streamId}`;
+}
+
+function finishChatStream(state: ActiveChatStreamState, donePayload: DoneEvent): void {
+  emitLocalMlEvent(chatDoneEventName(state.streamId), donePayload);
+  state.resolve();
+  if (activeChatStream === state) {
+    activeChatStream = null;
+  }
+}
+
+async function runChatStream(state: ActiveChatStreamState): Promise<void> {
+  while (state.remainingTokens.length > 0) {
+    if (state.pauseAfterToken !== undefined && state.emittedCount >= state.pauseAfterToken) {
+      return;
+    }
+
+    await Promise.resolve();
+    if (state.cancelled || activeChatStream !== state) {
+      return;
+    }
+
+    const token = state.remainingTokens.shift();
+    if (token === undefined) {
+      continue;
+    }
+    state.emittedTokens.push(token);
+    state.emittedCount += 1;
+    emitLocalMlEvent(chatTokenEventName(state.streamId), { token });
+  }
+
+  await Promise.resolve();
+  if (state.cancelled || activeChatStream !== state) {
+    return;
+  }
+  finishChatStream(state, state.done);
 }
 
 export const spellbookE2EHarness = {
@@ -168,6 +353,16 @@ export const spellbookE2EHarness = {
       bucket.add(registered);
       localMlEventListeners.set(eventName, bucket);
 
+      const queued = localMlPendingEvents.get(eventName);
+      if (queued && queued.length > 0) {
+        localMlPendingEvents.delete(eventName);
+        Promise.resolve().then(() => {
+          for (const payload of queued) {
+            deliverToBucket(bucket, eventName, payload);
+          }
+        });
+      }
+
       let removed = false;
       const unlisten: UnlistenFn = () => {
         if (removed) {
@@ -195,7 +390,7 @@ export const spellbookE2EHarness = {
       }
 
       recordLocalMlObservation("command", "llm_download_model", {});
-      return Promise.resolve();
+      return startDownload(scenario, "llm") ?? Promise.resolve();
     },
 
     downloadEmbeddingsModel(): Promise<void> | undefined {
@@ -205,7 +400,7 @@ export const spellbookE2EHarness = {
       }
 
       recordLocalMlObservation("command", "embeddings_download_model", {});
-      return Promise.resolve();
+      return startDownload(scenario, "embeddings") ?? Promise.resolve();
     },
 
     cancelLlmDownload(): Promise<void> | undefined {
@@ -215,6 +410,7 @@ export const spellbookE2EHarness = {
       }
 
       recordLocalMlObservation("command", "llm_cancel_download", {});
+      cancelActiveDownload(scenario, "llm");
       return Promise.resolve();
     },
 
@@ -225,7 +421,31 @@ export const spellbookE2EHarness = {
       }
 
       recordLocalMlObservation("command", "embeddings_cancel_download", {});
+      cancelActiveDownload(scenario, "embeddings");
       return Promise.resolve();
+    },
+
+    /**
+     * Advance a manually-paused scripted download by exactly one step: emit
+     * the next queued progress event, or -- once progress is exhausted --
+     * apply the scenario's terminal status and resolve the download command.
+     * No-op when no download is active (e.g. `manualProgress` is not set).
+     */
+    advanceDownload(): void {
+      const state = activeDownload;
+      if (!state || state.cancelled) {
+        return;
+      }
+
+      if (state.remainingProgress.length > 0) {
+        const next = state.remainingProgress.shift();
+        if (next) {
+          emitLocalMlEvent(downloadProgressEventName(state.kind), next);
+        }
+        return;
+      }
+
+      applyDownloadTerminal(state);
     },
 
     startLlmChat(
@@ -244,11 +464,47 @@ export const spellbookE2EHarness = {
         history: structuredClone(history),
       });
 
-      const invokeError = scenario.chat?.invokeError;
-      if (invokeError !== undefined) {
-        return Promise.reject(new Error(invokeError));
+      const chat = scenario.chat;
+      if (chat?.invokeError !== undefined) {
+        return Promise.reject(new Error(chat.invokeError));
       }
-      return Promise.resolve();
+      if (!chat) {
+        return Promise.resolve();
+      }
+
+      let resolveFn: () => void = () => {};
+      const promise = new Promise<void>((resolve) => {
+        resolveFn = resolve;
+      });
+
+      const state: ActiveChatStreamState = {
+        streamId,
+        remainingTokens: [...chat.tokens],
+        pauseAfterToken: chat.pauseAfterToken,
+        emittedCount: 0,
+        emittedTokens: [],
+        done: chat.done,
+        resolve: resolveFn,
+        cancelled: false,
+      };
+      activeChatStream = state;
+      void runChatStream(state);
+
+      return promise;
+    },
+
+    /**
+     * Resume a scripted chat stream paused by `chat.pauseAfterToken`. No-op
+     * when no chat stream is active.
+     */
+    advanceChat(): void {
+      const state = activeChatStream;
+      if (!state || state.cancelled) {
+        return;
+      }
+
+      state.pauseAfterToken = undefined;
+      void runChatStream(state);
     },
 
     cancelLlmGeneration(streamId: string): Promise<void> | undefined {
@@ -258,7 +514,34 @@ export const spellbookE2EHarness = {
       }
 
       recordLocalMlObservation("command", "llm_cancel_generation", { streamId });
+
+      const state = activeChatStream;
+      if (state && state.streamId === streamId && !state.cancelled) {
+        state.cancelled = true;
+        const cancelledDone: DoneEvent = {
+          fullResponse: state.emittedTokens.join(""),
+          cancelled: true,
+          timedOut: false,
+          searchTerms: [],
+          groundedSpells: [],
+        };
+        finishChatStream(state, cancelledDone);
+      }
+
       return Promise.resolve();
+    },
+
+    /**
+     * Clear all module-private harness state: pending event queues, listener
+     * registries, and any in-flight scripted download/chat stream. Intended
+     * for use in test teardown and by the App-mounted command bridge's
+     * unmount cleanup (a later task wires the latter).
+     */
+    reset(): void {
+      localMlEventListeners.clear();
+      localMlPendingEvents.clear();
+      activeDownload = null;
+      activeChatStream = null;
     },
 
     searchSpellsSemantic(

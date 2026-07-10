@@ -853,7 +853,7 @@ git commit -m "test(vault): restore preserves local model assets"
 **Files:**
 - Modify: `openspec/changes/add-local-llm-chat-interface/tasks.md`
 
-- [ ] **Step 10.1: Run verification battery**
+- [x] **Step 10.1: Run verification battery**
 
 ```bash
 cd apps/desktop && pnpm exec vitest run src/ui/components/chat/ src/hooks/useChatSession.test.tsx
@@ -866,11 +866,11 @@ cd apps/desktop/src-tauri && cargo fmt && cargo clippy -- -D warnings
 
 Expected: all PASS / no warnings
 
-- [ ] **Step 10.2: Mark OpenSpec tasks complete**
+- [x] **Step 10.2: Mark OpenSpec tasks complete**
 
 In `openspec/changes/add-local-llm-chat-interface/tasks.md`, change 9.1–9.8 from `[ ]` to `[x]`.
 
-- [ ] **Step 10.3: Commit**
+- [x] **Step 10.3: Commit**
 
 ```bash
 git add openspec/changes/add-local-llm-chat-interface/tasks.md

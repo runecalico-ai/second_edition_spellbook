@@ -1,10 +1,7 @@
 // apps/desktop/src/hooks/useModelDownloadProgress.ts
-import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
-import type {
-  DownloadProgressEvent,
-  EmbeddingsDownloadProgressEvent,
-} from "../types/llm";
+import { listenLlmEvent } from "../api/llmEvents";
+import type { DownloadProgressEvent, EmbeddingsDownloadProgressEvent } from "../types/llm";
 
 export type ModelKind = "llm" | "embeddings";
 
@@ -31,16 +28,15 @@ export function useModelDownloadProgress(kind: ModelKind, active: boolean) {
     let unlisten: (() => void) | null = null;
 
     async function setup() {
-      // listen() failures are not surfaced to callers yet; callers should treat
-      // stalled progress as a download/setup issue until error reporting exists.
-      const unlistenFn = await listen<DownloadProgressEvent | EmbeddingsDownloadProgressEvent>(
-        EVENT_BY_KIND[kind],
-        (event) => {
-          if (!mounted) return;
-          setBytesDownloaded(event.payload.bytesDownloaded);
-          setTotalBytes(event.payload.totalBytes);
-        },
-      );
+      // listenLlmEvent() failures are not surfaced to callers yet; callers should
+      // treat stalled progress as a download/setup issue until error reporting exists.
+      const unlistenFn = await listenLlmEvent<
+        DownloadProgressEvent | EmbeddingsDownloadProgressEvent
+      >(EVENT_BY_KIND[kind], (event) => {
+        if (!mounted) return;
+        setBytesDownloaded(event.payload.bytesDownloaded);
+        setTotalBytes(event.payload.totalBytes);
+      });
 
       if (!mounted) {
         unlistenFn();

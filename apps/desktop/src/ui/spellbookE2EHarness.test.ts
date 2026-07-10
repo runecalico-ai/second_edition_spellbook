@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RangeSpec } from "../types/spell";
 import type { LocalMlE2EScenario } from "./spellbookE2EHarness";
-import { spellbookE2EHarness } from "./spellbookE2EHarness";
+import { emitLocalMlEvent, spellbookE2EHarness } from "./spellbookE2EHarness";
 
 function resetHarnessWindowState() {
   window.__IS_PLAYWRIGHT__ = undefined;
@@ -138,6 +138,223 @@ describe("spellbookE2EHarness", () => {
     await vi.advanceTimersByTimeAsync(1);
     await pending;
     expect(settled).toBe(true);
+  });
+
+  it("returns undefined from localMl.listen when the harness is inactive", () => {
+    const handler = vi.fn();
+
+    expect(spellbookE2EHarness.localMl.listen("llm://download-progress", handler)).toBeUndefined();
+
+    window.__IS_PLAYWRIGHT__ = true;
+    expect(spellbookE2EHarness.localMl.listen("llm://download-progress", handler)).toBeUndefined();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("dispatches cloned payloads to registered listeners and records event observations", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
+
+    const received: Array<{ event: string; payload: unknown }> = [];
+    const listenResult = spellbookE2EHarness.localMl.listen<{ bytesDownloaded: number }>(
+      "llm://download-progress",
+      (event) => {
+        received.push({ event: event.event, payload: event.payload });
+      },
+    );
+    expect(listenResult).toBeDefined();
+    if (!listenResult) {
+      throw new Error("expected active listen to return an unlisten promise");
+    }
+    const unlisten = await listenResult;
+
+    const payload = { bytesDownloaded: 100, totalBytes: 200 };
+    emitLocalMlEvent("llm://download-progress", payload);
+
+    expect(received).toEqual([{ event: "llm://download-progress", payload }]);
+    expect(received[0]?.payload).not.toBe(payload);
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toContainEqual({
+      kind: "event",
+      name: "llm://download-progress",
+      payload,
+    });
+
+    unlisten();
+  });
+
+  it("supports idempotent unlisten and keeps sibling listeners registered", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
+
+    const first = vi.fn();
+    const second = vi.fn();
+    const firstListen = spellbookE2EHarness.localMl.listen("embeddings://reindex-progress", first);
+    const secondListen = spellbookE2EHarness.localMl.listen(
+      "embeddings://reindex-progress",
+      second,
+    );
+    if (!firstListen || !secondListen) {
+      throw new Error("expected active listen to return unlisten promises");
+    }
+    const unlistenFirst = await firstListen;
+    const unlistenSecond = await secondListen;
+
+    unlistenFirst();
+    unlistenFirst();
+    emitLocalMlEvent("embeddings://reindex-progress", { current: 1, total: 2 });
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+
+    unlistenSecond();
+    emitLocalMlEvent("embeddings://reindex-progress", { current: 2, total: 2 });
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-registers listeners on an event after its bucket empties", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
+
+    const handler = vi.fn();
+    const firstListen = spellbookE2EHarness.localMl.listen("llm://download-progress", handler);
+    if (!firstListen) {
+      throw new Error("expected active listen to return an unlisten promise");
+    }
+    (await firstListen)();
+
+    const secondListen = spellbookE2EHarness.localMl.listen("llm://download-progress", handler);
+    if (!secondListen) {
+      throw new Error("expected active listen to return an unlisten promise");
+    }
+    const unlisten = await secondListen;
+
+    emitLocalMlEvent("llm://download-progress", { bytesDownloaded: 1, totalBytes: 2 });
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    unlisten();
+  });
+
+  it("keeps local ML command overrides opt-in", () => {
+    const localMl = spellbookE2EHarness.localMl;
+    window.__IS_PLAYWRIGHT__ = true;
+
+    expect(localMl.downloadLlmModel()).toBeUndefined();
+    expect(localMl.downloadEmbeddingsModel()).toBeUndefined();
+    expect(localMl.cancelLlmDownload()).toBeUndefined();
+    expect(localMl.cancelEmbeddingsDownload()).toBeUndefined();
+    expect(localMl.startLlmChat("Hi", "stream-1", [])).toBeUndefined();
+    expect(localMl.cancelLlmGeneration("stream-1")).toBeUndefined();
+    expect(localMl.searchSpellsSemantic("fireball")).toBeUndefined();
+    expect(localMl.reindexEmbeddings(false)).toBeUndefined();
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toBeUndefined();
+  });
+
+  it("records active command observations for download and cancel overrides", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
+    const localMl = spellbookE2EHarness.localMl;
+
+    await expect(localMl.downloadLlmModel()).resolves.toBeUndefined();
+    await expect(localMl.downloadEmbeddingsModel()).resolves.toBeUndefined();
+    await expect(localMl.cancelLlmDownload()).resolves.toBeUndefined();
+    await expect(localMl.cancelEmbeddingsDownload()).resolves.toBeUndefined();
+    await expect(localMl.cancelLlmGeneration("stream-9")).resolves.toBeUndefined();
+
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toEqual([
+      { kind: "command", name: "llm_download_model", args: {} },
+      { kind: "command", name: "embeddings_download_model", args: {} },
+      { kind: "command", name: "llm_cancel_download", args: {} },
+      { kind: "command", name: "embeddings_cancel_download", args: {} },
+      { kind: "command", name: "llm_cancel_generation", args: { streamId: "stream-9" } },
+    ]);
+  });
+
+  it("scripts startLlmChat overrides from the scenario chat block", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
+    const localMl = spellbookE2EHarness.localMl;
+    const history = [{ role: "user" as const, content: "Hello" }];
+
+    await expect(localMl.startLlmChat("What is fireball?", "stream-1", history)).resolves.toBe(
+      undefined,
+    );
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toContainEqual({
+      kind: "command",
+      name: "llm_chat",
+      args: { message: "What is fireball?", streamId: "stream-1", history },
+    });
+
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+      ...readyScenario(),
+      chat: {
+        tokens: [],
+        done: {
+          fullResponse: "",
+          cancelled: false,
+          searchTerms: [],
+          groundedSpells: [],
+          timedOut: false,
+        },
+        invokeError: "model not loaded",
+      },
+    };
+    await expect(localMl.startLlmChat("Hi", "stream-2", [])).rejects.toThrow("model not loaded");
+  });
+
+  it("returns isolated semantic results and scripted reindex results", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    const scenario: LocalMlE2EScenario = {
+      ...readyScenario(),
+      semanticResults: [
+        {
+          id: 101,
+          name: "Fireball",
+          school: "Evocation",
+          level: 3,
+          isQuestSpell: 0,
+          isCantrip: 0,
+          cosineDistance: 0.12,
+        },
+      ],
+      reindex: {
+        progress: [],
+        result: { total: 10, indexed: 8, skipped: 1, failed: 1 },
+      },
+    };
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = scenario;
+    const localMl = spellbookE2EHarness.localMl;
+
+    const results = await localMl.searchSpellsSemantic("fireball", 5);
+    expect(results).toEqual(scenario.semanticResults);
+    expect(results).not.toBe(scenario.semanticResults);
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toContainEqual({
+      kind: "command",
+      name: "search_spells_semantic",
+      args: { query: "fireball", limit: 5 },
+    });
+
+    const reindexed = await localMl.reindexEmbeddings(true);
+    expect(reindexed).toEqual({ total: 10, indexed: 8, skipped: 1, failed: 1 });
+    expect(reindexed).not.toBe(scenario.reindex?.result);
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toContainEqual({
+      kind: "command",
+      name: "reindex_embeddings",
+      args: { force: true },
+    });
+  });
+
+  it("resolves empty semantic results and rejects unscripted reindex when active", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
+    const localMl = spellbookE2EHarness.localMl;
+
+    await expect(localMl.searchSpellsSemantic("fireball")).resolves.toEqual([]);
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toContainEqual({
+      kind: "command",
+      name: "search_spells_semantic",
+      args: { query: "fireball" },
+    });
+
+    await expect(localMl.reindexEmbeddings(false)).rejects.toThrow("not scripted");
   });
 
   it("records spell picker events and honors configured picker delays through the harness", async () => {

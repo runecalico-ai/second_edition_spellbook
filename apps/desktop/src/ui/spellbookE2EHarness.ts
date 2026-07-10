@@ -1,5 +1,7 @@
+import type { EventCallback, UnlistenFn } from "@tauri-apps/api/event";
 import { RANGE_DISTANCE_KINDS, type RangeSpec } from "../types/spell";
 import type {
+  ChatMessage,
   DoneEvent,
   DownloadProgressEvent,
   EmbeddingsStatusResponse,
@@ -103,6 +105,32 @@ function buildSpellPickerDelayKey(listType: SpellPickerListType, query: string):
   return `${listType}:${query}`;
 }
 
+const localMlEventListeners = new Map<string, Set<EventCallback<unknown>>>();
+let nextLocalMlEventId = 1;
+
+/**
+ * Dispatch a simulated production event to harness-registered listeners.
+ *
+ * Payloads are cloned per listener so handlers cannot mutate shared scenario
+ * state, and every emission is appended to the observation log. Scenario-driven
+ * playback (download/chat/reindex sequencing) layers on top of this in later
+ * harness work; this is the raw registry dispatch seam.
+ */
+export function emitLocalMlEvent(eventName: string, payload: unknown): void {
+  recordLocalMlObservation("event", eventName, undefined, structuredClone(payload));
+
+  const bucket = localMlEventListeners.get(eventName);
+  if (!bucket) {
+    return;
+  }
+
+  const eventId = nextLocalMlEventId;
+  nextLocalMlEventId += 1;
+  for (const handler of [...bucket]) {
+    handler({ event: eventName, id: eventId, payload: structuredClone(payload) });
+  }
+}
+
 export const spellbookE2EHarness = {
   localMl: {
     getLlmStatus(): Promise<LlmStatusResponse> | undefined {
@@ -123,6 +151,148 @@ export const spellbookE2EHarness = {
 
       recordLocalMlObservation("command", "embeddings_status", {});
       return Promise.resolve(structuredClone(scenario.embeddingsStatus));
+    },
+
+    /**
+     * Harness-side stand-in for Tauri `listen`. Returns `undefined` when the
+     * harness is inactive so callers fall through to the real event system.
+     */
+    listen<T>(eventName: string, handler: EventCallback<T>): Promise<UnlistenFn> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      const bucket = localMlEventListeners.get(eventName) ?? new Set<EventCallback<unknown>>();
+      const registered = handler as EventCallback<unknown>;
+      bucket.add(registered);
+      localMlEventListeners.set(eventName, bucket);
+
+      let removed = false;
+      const unlisten: UnlistenFn = () => {
+        if (removed) {
+          return;
+        }
+        removed = true;
+
+        const current = localMlEventListeners.get(eventName);
+        if (!current) {
+          return;
+        }
+        current.delete(registered);
+        if (current.size === 0) {
+          localMlEventListeners.delete(eventName);
+        }
+      };
+
+      return Promise.resolve(unlisten);
+    },
+
+    downloadLlmModel(): Promise<void> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "llm_download_model", {});
+      return Promise.resolve();
+    },
+
+    downloadEmbeddingsModel(): Promise<void> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "embeddings_download_model", {});
+      return Promise.resolve();
+    },
+
+    cancelLlmDownload(): Promise<void> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "llm_cancel_download", {});
+      return Promise.resolve();
+    },
+
+    cancelEmbeddingsDownload(): Promise<void> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "embeddings_cancel_download", {});
+      return Promise.resolve();
+    },
+
+    startLlmChat(
+      message: string,
+      streamId: string,
+      history: ChatMessage[],
+    ): Promise<void> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "llm_chat", {
+        message,
+        streamId,
+        history: structuredClone(history),
+      });
+
+      const invokeError = scenario.chat?.invokeError;
+      if (invokeError !== undefined) {
+        return Promise.reject(new Error(invokeError));
+      }
+      return Promise.resolve();
+    },
+
+    cancelLlmGeneration(streamId: string): Promise<void> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "llm_cancel_generation", { streamId });
+      return Promise.resolve();
+    },
+
+    searchSpellsSemantic(
+      query: string,
+      limit?: number,
+    ): Promise<SemanticSearchResult[]> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation(
+        "command",
+        "search_spells_semantic",
+        limit !== undefined ? { query, limit } : { query },
+      );
+      return Promise.resolve(structuredClone(scenario.semanticResults ?? []));
+    },
+
+    reindexEmbeddings(force: boolean): Promise<ReindexResult> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "reindex_embeddings", { force });
+
+      const reindex = scenario.reindex;
+      if (!reindex) {
+        return Promise.reject(
+          new Error("Local ML harness: reindex_embeddings is not scripted in this scenario"),
+        );
+      }
+      return Promise.resolve(structuredClone(reindex.result));
     },
   },
 

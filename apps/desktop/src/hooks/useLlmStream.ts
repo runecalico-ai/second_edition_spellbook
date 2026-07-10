@@ -1,6 +1,6 @@
-import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelLlmGeneration } from "../api/llm";
+import { listenLlmEvent } from "../api/llmEvents";
 import type { DoneEvent, LlmChatGrounding, TokenEvent } from "../types/llm";
 
 export interface LlmStreamState {
@@ -72,10 +72,13 @@ export function useLlmStream(streamId: string | null): LlmStreamState {
 
     async function setupListeners() {
       try {
-        const tokenUn = await listen<TokenEvent>(`llm://token/${effectiveStreamId}`, (event) => {
-          if (!active) return;
-          setResponse((prev) => prev + event.payload.token);
-        });
+        const tokenUn = await listenLlmEvent<TokenEvent>(
+          `llm://token/${effectiveStreamId}`,
+          (event) => {
+            if (!active) return;
+            setResponse((prev) => prev + event.payload.token);
+          },
+        );
 
         if (!active) {
           tokenUn();
@@ -83,37 +86,40 @@ export function useLlmStream(streamId: string | null): LlmStreamState {
         }
         unlisteners.push(tokenUn);
 
-        const doneUn = await listen<DoneEvent>(`llm://done/${effectiveStreamId}`, (event) => {
-          if (!active) return;
-          setIsGenerating(false);
-          setResponse((prev) =>
-            event.payload.fullResponse.length > 0 ? event.payload.fullResponse : prev,
-          );
-          setGrounding({
-            searchTerms: event.payload.searchTerms,
-            groundedSpells: event.payload.groundedSpells,
-          });
+        const doneUn = await listenLlmEvent<DoneEvent>(
+          `llm://done/${effectiveStreamId}`,
+          (event) => {
+            if (!active) return;
+            setIsGenerating(false);
+            setResponse((prev) =>
+              event.payload.fullResponse.length > 0 ? event.payload.fullResponse : prev,
+            );
+            setGrounding({
+              searchTerms: event.payload.searchTerms,
+              groundedSpells: event.payload.groundedSpells,
+            });
 
-          const wasCancelled = event.payload.cancelled;
-          const wasTimedOut = event.payload.timedOut;
+            const wasCancelled = event.payload.cancelled;
+            const wasTimedOut = event.payload.timedOut;
 
-          if (wasCancelled) {
-            setCancelled(true);
-          }
-          if (wasTimedOut) {
-            setTimedOut(true);
-          }
+            if (wasCancelled) {
+              setCancelled(true);
+            }
+            if (wasTimedOut) {
+              setTimedOut(true);
+            }
 
-          if (wasCancelled && wasTimedOut) {
-            setError("Response timed out. Generation cancelled.");
-          } else if (wasCancelled) {
-            setError("Generation cancelled.");
-          } else if (wasTimedOut) {
-            setError("Response timed out.");
-          } else {
-            setError(null);
-          }
-        });
+            if (wasCancelled && wasTimedOut) {
+              setError("Response timed out. Generation cancelled.");
+            } else if (wasCancelled) {
+              setError("Generation cancelled.");
+            } else if (wasTimedOut) {
+              setError("Response timed out.");
+            } else {
+              setError(null);
+            }
+          },
+        );
 
         if (!active) {
           doneUn();

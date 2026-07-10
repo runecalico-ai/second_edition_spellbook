@@ -2392,6 +2392,122 @@ mod tests {
         panic!("M-005: expected spell_vec row to be deleted after skip-path cleanup");
     }
 
+    /// Task 9.7: `enqueue_spell_embedding_if_ready` must return `Ok(())` to the spell
+    /// write caller even when the *spawned* background embedding task itself fails.
+    ///
+    /// `post_write_hook_skips_when_not_ready` above exercises the "not Ready" skip
+    /// path (lines ~591-627), where the spawned cleanup task cannot fail in a way
+    /// that could ever propagate back to the caller — it always returns `Ok(())`
+    /// before any spawn happens. That test would keep passing even if the
+    /// Ready-branch spawn (~line 629-651) started propagating its inner error, so it
+    /// does not actually pin down the "never fail the caller" contract for the
+    /// success path's failure mode.
+    ///
+    /// This test instead drives `EmbeddingsStatus::Ready` with `state.model` left
+    /// `None` (the default), which forces `await_ready_model_with_timeout` to fail
+    /// fast with "embedding status is ready but model is not loaded" *inside* the
+    /// spawned task (see `embed_single_spell_row` -> `await_ready_model_with_timeout`).
+    /// That failure is caught by the `match` at line ~643 and only logged via
+    /// `tracing::warn!` — never returned to the caller. If that contract regressed
+    /// (e.g. someone made the caller `.await` the spawn and propagate its `Result`),
+    /// this test would fail while `post_write_hook_skips_when_not_ready` would not.
+    #[tokio::test]
+    async fn enqueue_spell_embedding_returns_ok_when_ready_but_model_missing() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Ready;
+        // state.model intentionally stays None (Default) so the spawned task's
+        // model lookup genuinely errors instead of this test passing vacuously.
+
+        let isolated = IsolatedTestPool::new(
+            "enqueue_spell_embedding_returns_ok_when_ready_but_model_missing",
+        );
+        let pool = Arc::clone(&isolated.pool);
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        let spell_id: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                row.get(0)
+            })
+            .expect("next spell id")
+        };
+        {
+            let conn = pool.get().expect("test db connection");
+            let content_hash = format!("hash-embed-hook-ready-no-model-{spell_id}");
+            conn.execute(
+                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Fireball', 3, 'A burst of flame', ?2)",
+                rusqlite::params![spell_id, content_hash],
+            )
+            .expect("insert spell for hook test");
+            // M-005: `vec_f32` exists only when sqlite-vec is loaded; tests may use blob-backed
+            // `spell_vec` from migration fallback (see `db/migrations` + `load_migrations`).
+            match conn.execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![spell_id, vector_json],
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    let bytes: Vec<u8> = vec![0.0_f32; 384]
+                        .into_iter()
+                        .flat_map(f32::to_le_bytes)
+                        .collect();
+                    conn.execute(
+                        "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+                        rusqlite::params![spell_id, bytes],
+                    )
+                    .expect("insert stale spell_vec row (blob fallback)");
+                }
+            }
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![spell_id],
+                    |row| row.get(0),
+                )
+                .expect("count before");
+            assert_eq!(count, 1, "precondition: stale vector row exists");
+        }
+
+        let result = enqueue_spell_embedding_if_ready(
+            state,
+            Arc::clone(&pool),
+            spell_id,
+            "Fireball".to_string(),
+            "A burst of flame".to_string(),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "embedding hook must never fail the spell write caller, even when the \
+             spawned task's model lookup errors"
+        );
+
+        // Confirm the spawned task actually ran the failure branch (logged the warning
+        // and invalidated the stale vector) rather than this test passing vacuously
+        // because Ok(()) is returned before the spawn ever executes.
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            let count: i64 = {
+                let conn = pool.get().expect("test db connection");
+                conn.query_row(
+                    "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                    rusqlite::params![spell_id],
+                    |row| row.get(0),
+                )
+                .expect("count after")
+            };
+            if count == 0 {
+                return;
+            }
+        }
+
+        panic!(
+            "expected spell_vec row to be deleted after spawned-task failure cleanup \
+             (spawned embed task never ran or never hit the error branch)"
+        );
+    }
+
     #[tokio::test]
     async fn initialize_embeddings_without_bundle_sets_not_provisioned() {
         let isolated =

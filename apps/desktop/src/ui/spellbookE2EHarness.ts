@@ -165,6 +165,7 @@ interface ActiveChatStreamState {
   done: DoneEvent;
   resolve: () => void;
   cancelled: boolean;
+  isRunning: boolean;
 }
 
 let activeDownload: ActiveDownloadState | null = null;
@@ -184,6 +185,49 @@ function mutateDownloadStatus(
   } else {
     scenario.embeddingsStatus = { ...scenario.embeddingsStatus, state: status };
   }
+}
+
+/**
+ * Resolve and discard the currently active download, if any, without
+ * touching scenario status. Used when a download is superseded by a new
+ * start or abandoned by `reset()`, so the original `downloadLlmModel()` /
+ * `downloadEmbeddingsModel()` caller's promise never hangs.
+ */
+function abandonActiveDownload(): void {
+  const state = activeDownload;
+  if (!state) {
+    return;
+  }
+  state.cancelled = true;
+  state.resolve();
+  activeDownload = null;
+}
+
+/**
+ * Resolve and discard the currently active chat stream, if any, emitting a
+ * synthetic cancelled-style done event first so listeners observe a
+ * terminal state. Used when a chat stream is superseded by a new
+ * `startLlmChat()` call or abandoned by `reset()`, so the original caller's
+ * promise never hangs.
+ */
+function abandonActiveChatStream(): void {
+  const state = activeChatStream;
+  if (!state) {
+    return;
+  }
+  if (!state.cancelled) {
+    state.cancelled = true;
+    const cancelledDone: DoneEvent = {
+      fullResponse: state.emittedTokens.join(""),
+      cancelled: true,
+      timedOut: false,
+      searchTerms: [],
+      groundedSpells: [],
+    };
+    emitLocalMlEvent(chatDoneEventName(state.streamId), cancelledDone);
+  }
+  state.resolve();
+  activeChatStream = null;
 }
 
 function applyDownloadTerminal(state: ActiveDownloadState): void {
@@ -226,6 +270,7 @@ function startDownload(scenario: LocalMlE2EScenario, kind: ModelKind): Promise<v
     return undefined;
   }
 
+  abandonActiveDownload();
   mutateDownloadStatus(scenario, kind, "downloading");
 
   const remainingProgress = [...download.progress];
@@ -257,7 +302,7 @@ function startDownload(scenario: LocalMlE2EScenario, kind: ModelKind): Promise<v
   return promise;
 }
 
-function cancelActiveDownload(scenario: LocalMlE2EScenario, kind: ModelKind): void {
+function cancelActiveDownload(kind: ModelKind): void {
   const state = activeDownload;
   if (!state || state.kind !== kind || state.cancelled) {
     return;
@@ -266,7 +311,7 @@ function cancelActiveDownload(scenario: LocalMlE2EScenario, kind: ModelKind): vo
   state.cancelled = true;
   state.remainingProgress = [];
   localMlPendingEvents.delete(downloadProgressEventName(kind));
-  mutateDownloadStatus(scenario, kind, "notProvisioned");
+  mutateDownloadStatus(state.scenario, kind, "notProvisioned");
   state.resolve();
   if (activeDownload === state) {
     activeDownload = null;
@@ -290,30 +335,35 @@ function finishChatStream(state: ActiveChatStreamState, donePayload: DoneEvent):
 }
 
 async function runChatStream(state: ActiveChatStreamState): Promise<void> {
-  while (state.remainingTokens.length > 0) {
-    if (state.pauseAfterToken !== undefined && state.emittedCount >= state.pauseAfterToken) {
-      return;
+  state.isRunning = true;
+  try {
+    while (state.remainingTokens.length > 0) {
+      if (state.pauseAfterToken !== undefined && state.emittedCount >= state.pauseAfterToken) {
+        return;
+      }
+
+      await Promise.resolve();
+      if (state.cancelled || activeChatStream !== state) {
+        return;
+      }
+
+      const token = state.remainingTokens.shift();
+      if (token === undefined) {
+        continue;
+      }
+      state.emittedTokens.push(token);
+      state.emittedCount += 1;
+      emitLocalMlEvent(chatTokenEventName(state.streamId), { token });
     }
 
     await Promise.resolve();
     if (state.cancelled || activeChatStream !== state) {
       return;
     }
-
-    const token = state.remainingTokens.shift();
-    if (token === undefined) {
-      continue;
-    }
-    state.emittedTokens.push(token);
-    state.emittedCount += 1;
-    emitLocalMlEvent(chatTokenEventName(state.streamId), { token });
+    finishChatStream(state, state.done);
+  } finally {
+    state.isRunning = false;
   }
-
-  await Promise.resolve();
-  if (state.cancelled || activeChatStream !== state) {
-    return;
-  }
-  finishChatStream(state, state.done);
 }
 
 export const spellbookE2EHarness = {
@@ -410,7 +460,7 @@ export const spellbookE2EHarness = {
       }
 
       recordLocalMlObservation("command", "llm_cancel_download", {});
-      cancelActiveDownload(scenario, "llm");
+      cancelActiveDownload("llm");
       return Promise.resolve();
     },
 
@@ -421,7 +471,7 @@ export const spellbookE2EHarness = {
       }
 
       recordLocalMlObservation("command", "embeddings_cancel_download", {});
-      cancelActiveDownload(scenario, "embeddings");
+      cancelActiveDownload("embeddings");
       return Promise.resolve();
     },
 
@@ -472,6 +522,8 @@ export const spellbookE2EHarness = {
         return Promise.resolve();
       }
 
+      abandonActiveChatStream();
+
       let resolveFn: () => void = () => {};
       const promise = new Promise<void>((resolve) => {
         resolveFn = resolve;
@@ -486,6 +538,7 @@ export const spellbookE2EHarness = {
         done: chat.done,
         resolve: resolveFn,
         cancelled: false,
+        isRunning: false,
       };
       activeChatStream = state;
       void runChatStream(state);
@@ -495,11 +548,15 @@ export const spellbookE2EHarness = {
 
     /**
      * Resume a scripted chat stream paused by `chat.pauseAfterToken`. No-op
-     * when no chat stream is active.
+     * when no chat stream is active, it has already terminated, or a
+     * `runChatStream` loop is currently executing (e.g. a redundant/early
+     * `advanceChat()` call) -- guards against spawning a second concurrent
+     * loop that would race the original over `remainingTokens` and could
+     * double-emit the terminal done event.
      */
     advanceChat(): void {
       const state = activeChatStream;
-      if (!state || state.cancelled) {
+      if (!state || state.cancelled || state.isRunning) {
         return;
       }
 
@@ -536,12 +593,17 @@ export const spellbookE2EHarness = {
      * registries, and any in-flight scripted download/chat stream. Intended
      * for use in test teardown and by the App-mounted command bridge's
      * unmount cleanup (a later task wires the latter).
+     *
+     * Any in-flight download/chat promise is resolved (not merely dropped)
+     * before its state is cleared, so a caller `await`ing
+     * `downloadLlmModel()`/`downloadEmbeddingsModel()`/`startLlmChat()` at
+     * the moment `reset()` runs does not hang forever.
      */
     reset(): void {
+      abandonActiveDownload();
+      abandonActiveChatStream();
       localMlEventListeners.clear();
       localMlPendingEvents.clear();
-      activeDownload = null;
-      activeChatStream = null;
     },
 
     searchSpellsSemantic(

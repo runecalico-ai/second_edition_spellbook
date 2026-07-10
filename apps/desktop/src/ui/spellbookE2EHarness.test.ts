@@ -501,6 +501,158 @@ describe("spellbookE2EHarness", () => {
       expect(payloads).toEqual([]);
     });
 
+    it("runs an auto-progress LLM download without advanceDownload calls", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        llmStatus: { status: "notProvisioned", modelPath: "C:/models/llm.gguf" },
+        download: {
+          kind: "llm",
+          progress: [
+            { bytesDownloaded: 256, totalBytes: 1024 },
+            { bytesDownloaded: 1024, totalBytes: 1024 },
+          ],
+          terminalLlmStatus: { status: "ready", modelPath: "C:/models/llm.gguf" },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const payloads: DownloadProgressEvent[] = [];
+      const listenResult = localMl.listen<DownloadProgressEvent>(
+        "llm://download-progress",
+        (event) => {
+          payloads.push(event.payload);
+        },
+      );
+      if (!listenResult) {
+        throw new Error("expected active listen to return an unlisten promise");
+      }
+      await listenResult;
+
+      const downloadPromise = localMl.downloadLlmModel();
+      expect(downloadPromise).toBeDefined();
+
+      await downloadPromise;
+
+      expect(payloads).toEqual([
+        { bytesDownloaded: 256, totalBytes: 1024 },
+        { bytesDownloaded: 1024, totalBytes: 1024 },
+      ]);
+      const status = spellbookE2EHarness.localMl.getLlmStatus();
+      expect(status).toBeDefined();
+      if (!status) {
+        throw new Error("expected llm status promise");
+      }
+      await expect(status).resolves.toMatchObject({ status: "ready" });
+    });
+
+    it("cancels an active embeddings download back to notProvisioned and resolves the download promise", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        embeddingsStatus: { state: "notProvisioned" },
+        download: {
+          kind: "embeddings",
+          manualProgress: true,
+          progress: [
+            { bytesDownloaded: 256, totalBytes: 512 },
+            { bytesDownloaded: 512, totalBytes: 512 },
+          ],
+          terminalEmbeddingsStatus: { state: "ready" },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const downloadPromise = localMl.downloadEmbeddingsModel();
+      expect(downloadPromise).toBeDefined();
+      await Promise.resolve();
+
+      await localMl.cancelEmbeddingsDownload();
+      await downloadPromise;
+
+      await expect(localMl.getEmbeddingsStatus()).resolves.toMatchObject({
+        state: "notProvisioned",
+      });
+
+      // Further advances are no-ops once cancelled; no additional progress events fire.
+      const payloads: DownloadProgressEvent[] = [];
+      const listenResult = localMl.listen<DownloadProgressEvent>(
+        "embeddings://download-progress",
+        (event) => {
+          payloads.push(event.payload);
+        },
+      );
+      if (!listenResult) {
+        throw new Error("expected active listen to return an unlisten promise");
+      }
+      await listenResult;
+      expect(payloads).toEqual([]);
+      localMl.advanceDownload();
+      await Promise.resolve();
+      expect(payloads).toEqual([]);
+    });
+
+    it("resolves a superseded download promise instead of orphaning it when a second download starts", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        llmStatus: { status: "notProvisioned", modelPath: "C:/models/llm.gguf" },
+        download: {
+          kind: "llm",
+          manualProgress: true,
+          progress: [{ bytesDownloaded: 256, totalBytes: 1024 }],
+          terminalLlmStatus: { status: "ready", modelPath: "C:/models/llm.gguf" },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const firstDownload = localMl.downloadLlmModel();
+      expect(firstDownload).toBeDefined();
+      await Promise.resolve();
+
+      const secondDownload = localMl.downloadLlmModel();
+      expect(secondDownload).toBeDefined();
+      if (!firstDownload) {
+        throw new Error("expected first download promise");
+      }
+
+      const timeout = new Promise<string>((resolve) => {
+        setTimeout(() => resolve("timeout"), 50);
+      });
+      const outcome = await Promise.race([firstDownload.then(() => "resolved"), timeout]);
+      expect(outcome).toBe("resolved");
+    });
+
+    it("resolves an in-flight download promise instead of hanging when reset() runs mid-download", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        llmStatus: { status: "notProvisioned", modelPath: "C:/models/llm.gguf" },
+        download: {
+          kind: "llm",
+          manualProgress: true,
+          progress: [{ bytesDownloaded: 256, totalBytes: 1024 }],
+          terminalLlmStatus: { status: "ready", modelPath: "C:/models/llm.gguf" },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const downloadPromise = localMl.downloadLlmModel();
+      expect(downloadPromise).toBeDefined();
+      if (!downloadPromise) {
+        throw new Error("expected download promise");
+      }
+      await Promise.resolve();
+
+      localMl.reset();
+
+      const timeout = new Promise<string>((resolve) => {
+        setTimeout(() => resolve("timeout"), 50);
+      });
+      const outcome = await Promise.race([downloadPromise.then(() => "resolved"), timeout]);
+      expect(outcome).toBe("resolved");
+    });
+
     it("queues the first download progress event until a listener registers after the download starts", async () => {
       window.__IS_PLAYWRIGHT__ = true;
       window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
@@ -752,6 +904,141 @@ describe("spellbookE2EHarness", () => {
           groundedSpells: [],
         },
       ]);
+    });
+
+    it("ignores a redundant advanceChat call while a resume is already running, avoiding a duplicate done event", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      const streamId = "stream-reentrant";
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        chat: {
+          tokens: ["Magic ", "Missile"],
+          pauseAfterToken: 1,
+          done: {
+            fullResponse: "Magic Missile",
+            cancelled: false,
+            timedOut: false,
+            searchTerms: [],
+            groundedSpells: [],
+          },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const tokens: string[] = [];
+      const tokenListen = localMl.listen<{ token: string }>(`llm://token/${streamId}`, (event) => {
+        tokens.push(event.payload.token);
+      });
+      const doneEvents: DoneEvent[] = [];
+      const doneListen = localMl.listen<DoneEvent>(`llm://done/${streamId}`, (event) => {
+        doneEvents.push(event.payload);
+      });
+      if (!tokenListen || !doneListen) {
+        throw new Error("expected active listen to return unlisten promises");
+      }
+      await tokenListen;
+      await doneListen;
+
+      const chatPromise = localMl.startLlmChat("What is Magic Missile?", streamId, []);
+      if (!chatPromise) {
+        throw new Error("expected chat promise");
+      }
+      let resolveCount = 0;
+      void chatPromise.then(() => {
+        resolveCount += 1;
+      });
+
+      await Promise.resolve();
+      expect(tokens).toEqual(["Magic "]);
+      expect(doneEvents).toEqual([]);
+
+      // Two back-to-back advanceChat calls: the second must be a no-op
+      // because a resume loop from the first is already running -- it
+      // must not spawn a second concurrent runChatStream loop that would
+      // race the original and double-emit the done event / double-resolve.
+      localMl.advanceChat();
+      localMl.advanceChat();
+
+      await chatPromise;
+      await Promise.resolve();
+
+      expect(tokens).toEqual(["Magic ", "Missile"]);
+      expect(doneEvents).toHaveLength(1);
+      expect(resolveCount).toBe(1);
+    });
+
+    it("resolves a superseded chat promise instead of orphaning it when a second startLlmChat call supersedes it", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        chat: {
+          tokens: ["Magic ", "Missile"],
+          pauseAfterToken: 1,
+          done: {
+            fullResponse: "Magic Missile",
+            cancelled: false,
+            timedOut: false,
+            searchTerms: [],
+            groundedSpells: [],
+          },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const firstChat = localMl.startLlmChat("Hi", "stream-a", []);
+      expect(firstChat).toBeDefined();
+      if (!firstChat) {
+        throw new Error("expected first chat promise");
+      }
+      await Promise.resolve();
+
+      const secondChat = localMl.startLlmChat("Hi again", "stream-b", []);
+      expect(secondChat).toBeDefined();
+
+      const timeout = new Promise<string>((resolve) => {
+        setTimeout(() => resolve("timeout"), 50);
+      });
+      const outcome = await Promise.race([firstChat.then(() => "resolved"), timeout]);
+      expect(outcome).toBe("resolved");
+
+      // secondChat is intentionally left paused (pauseAfterToken) and
+      // unawaited here; harness reset() in afterEach tears it down.
+      void secondChat;
+    });
+
+    it("resolves an in-flight chat promise instead of hanging when reset() runs mid-stream", async () => {
+      window.__IS_PLAYWRIGHT__ = true;
+      const streamId = "stream-reset-mid";
+      window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+        ...readyScenario(),
+        chat: {
+          tokens: ["Magic ", "Missile"],
+          pauseAfterToken: 1,
+          done: {
+            fullResponse: "Magic Missile",
+            cancelled: false,
+            timedOut: false,
+            searchTerms: [],
+            groundedSpells: [],
+          },
+        },
+      };
+      const localMl = spellbookE2EHarness.localMl;
+
+      const chatPromise = localMl.startLlmChat("Hi", streamId, []);
+      expect(chatPromise).toBeDefined();
+      if (!chatPromise) {
+        throw new Error("expected chat promise");
+      }
+      await Promise.resolve();
+
+      localMl.reset();
+
+      const timeout = new Promise<string>((resolve) => {
+        setTimeout(() => resolve("timeout"), 50);
+      });
+      const outcome = await Promise.race([chatPromise.then(() => "resolved"), timeout]);
+      expect(outcome).toBe("resolved");
     });
   });
 

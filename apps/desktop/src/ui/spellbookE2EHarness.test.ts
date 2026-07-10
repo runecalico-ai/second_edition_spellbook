@@ -61,7 +61,10 @@ describe("spellbookE2EHarness", () => {
     window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
     const status = spellbookE2EHarness.localMl.getLlmStatus();
     expect(status).toBeDefined();
-    await expect(status!).resolves.toMatchObject({
+    if (!status) {
+      throw new Error("expected llm status promise");
+    }
+    await expect(status).resolves.toMatchObject({
       status: "loaded",
     });
     expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toContainEqual({
@@ -87,8 +90,11 @@ describe("spellbookE2EHarness", () => {
       args: {},
     });
 
-    status!.state = "error";
-    status!.downloadProgress = 0;
+    if (!status) {
+      throw new Error("expected embeddings status override");
+    }
+    status.state = "error";
+    status.downloadProgress = 0;
 
     expect(window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__?.embeddingsStatus).toEqual({
       state: "downloading",

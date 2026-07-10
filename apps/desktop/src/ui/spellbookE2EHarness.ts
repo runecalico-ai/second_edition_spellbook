@@ -78,7 +78,10 @@ function recordLocalMlObservation(
   args?: unknown,
   payload?: unknown,
 ): void {
-  const observations = (window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__ ??= []);
+  if (!window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__) {
+    window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__ = [];
+  }
+  const observations = window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__;
   observations.push({
     kind,
     name,

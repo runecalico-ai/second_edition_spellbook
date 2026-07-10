@@ -4,8 +4,6 @@ import type {
   LocalMlE2EScenario,
 } from "./ui/spellbookE2EHarness";
 
-export {};
-
 declare global {
   interface Window {
     __IS_PLAYWRIGHT__?: boolean;

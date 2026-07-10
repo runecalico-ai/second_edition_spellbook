@@ -15,6 +15,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { reindexEmbeddings, searchSpellsSemantic } from "../api/llm";
 import { useNotifications } from "../store/useNotifications";
 import { useTheme } from "../store/useTheme";
 import App, {
@@ -340,6 +341,12 @@ describe("App shell", () => {
     expect(typeof bridge?.reindexEmbeddings).toBe("function");
     expect(typeof bridge?.advanceDownload).toBe("function");
     expect(typeof bridge?.advanceChat).toBe("function");
+
+    await bridge?.searchSpellsSemantic("test query", 3);
+    expect(searchSpellsSemantic).toHaveBeenCalledWith("test query", 3);
+
+    await bridge?.reindexEmbeddings(true);
+    expect(reindexEmbeddings).toHaveBeenCalledWith(true);
 
     unmount();
     expect(window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__).toBeUndefined();

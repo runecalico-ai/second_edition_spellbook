@@ -71,6 +71,48 @@ describe("useChatSession", () => {
     expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(false);
   });
 
+  it("shows a new system message on each retry even when the error text repeats", async () => {
+    const repeatedError = "Inference failed: model context error";
+    vi.mocked(startLlmChat).mockRejectedValue(new Error(repeatedError));
+    const { result } = renderHook(() => useChatSession("loaded"));
+    const expected = formatChatSystemError(repeatedError);
+
+    act(() => {
+      result.current.setDraft("First question");
+    });
+    await act(async () => {
+      await result.current.send();
+    });
+
+    await waitFor(() => {
+      const systemMessages = result.current.messages.filter((m) => m.kind === "system");
+      expect(systemMessages).toHaveLength(1);
+      expect(systemMessages[0]?.content).toBe(expected);
+    });
+
+    act(() => {
+      result.current.setDraft("Second question, same failure");
+    });
+    await act(async () => {
+      await result.current.send();
+    });
+
+    await waitFor(() => {
+      const systemMessages = result.current.messages.filter((m) => m.kind === "system");
+      // The second failure must surface its own system message rather than being
+      // deduped against the first turn's identical error text.
+      expect(systemMessages).toHaveLength(2);
+      expect(systemMessages[1]?.content).toBe(expected);
+    });
+
+    // No orphaned assistant placeholder should be left stuck streaming with empty content.
+    expect(
+      result.current.messages.some(
+        (m) => m.kind === "assistant" && m.isStreaming && m.content === "",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps assistant when invoke fails after partial content in messages", async () => {
     vi.mocked(useLlmStream).mockImplementation(() => ({
       ...mockStream,
@@ -109,7 +151,7 @@ describe("useChatSession", () => {
     });
 
     await act(async () => {
-      rejectChat!(new Error("Inference failed: model context error"));
+      rejectChat?.(new Error("Inference failed: model context error"));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -120,6 +162,76 @@ describe("useChatSession", () => {
     });
     expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(true);
     expect(result.current.messages.some((m) => m.kind === "system")).toBe(false);
+  });
+
+  it("finalizes isStreaming to false after invoke fails with partial content once the stream resets", async () => {
+    vi.mocked(useLlmStream).mockImplementation(() => ({
+      ...mockStream,
+      isGenerating: mockStream.isGenerating,
+      error: mockStream.error,
+      response: mockStream.response,
+    }));
+
+    let rejectChat: (err: Error) => void;
+    vi.mocked(startLlmChat).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectChat = reject;
+        }),
+    );
+
+    const { result, rerender } = renderHook(() => useChatSession("loaded"));
+
+    act(() => {
+      result.current.setDraft("Hello");
+    });
+
+    mockStream.isGenerating = true;
+    mockStream.error = null;
+    mockStream.response = "";
+
+    await act(async () => {
+      await result.current.send();
+    });
+
+    await waitFor(() => expect(startLlmChat).toHaveBeenCalled());
+
+    await act(async () => {
+      mockStream.response = "Partial answer";
+      rerender();
+    });
+
+    await act(async () => {
+      rejectChat?.(new Error("Inference failed: model context error"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Bubble is kept with its partial content after the invoke failure.
+    await waitFor(() => {
+      const assistant = result.current.messages.find((m) => m.kind === "assistant");
+      expect(assistant?.content).toBe("Partial answer");
+    });
+
+    // Simulate useLlmStream(null)'s reset effect (useLlmStream.ts lines 52-61),
+    // which fires once setStreamId(null) takes effect: response/isGenerating
+    // reset back to their idle defaults.
+    await act(async () => {
+      mockStream.isGenerating = false;
+      mockStream.response = "";
+      mockStream.error = null;
+      rerender();
+    });
+
+    // The kept bubble must be finalized to isStreaming: false, not stuck
+    // pulsing forever because assistantIdRef.current was nulled too early.
+    await waitFor(() => {
+      const assistant = result.current.messages.find((m) => m.kind === "assistant");
+      expect(assistant?.isStreaming).toBe(false);
+    });
+
+    const assistant = result.current.messages.find((m) => m.kind === "assistant");
+    expect(assistant?.content).toBe("Partial answer");
   });
 
   it("shows system message and removes assistant when invoke fails with generic inference error", async () => {
@@ -181,6 +293,50 @@ describe("useChatSession", () => {
       expect(systemMessages[0]?.content).toBe(expected);
     });
     expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(false);
+  });
+
+  it("allows a successful retry send after an invoke failure resets generation state", async () => {
+    const inferenceError = "Inference failed: model context error";
+    vi.mocked(startLlmChat).mockRejectedValueOnce(new Error(inferenceError));
+    const { result } = renderHook(() => useChatSession("loaded"));
+
+    act(() => {
+      result.current.setDraft("First question");
+    });
+    await act(async () => {
+      await result.current.send();
+    });
+
+    const expected = formatChatSystemError(inferenceError);
+    await waitFor(() => {
+      const system = result.current.messages.find((m) => m.kind === "system");
+      expect(system?.content).toBe(expected);
+    });
+
+    // Generation/loading state must fully reset after the failure so the
+    // input stays usable and a retry isn't blocked by leftover state.
+    expect(result.current.isGenerating).toBe(false);
+    expect(result.current.isModelLoading).toBe(false);
+
+    // Retry: second send with startLlmChat now succeeding.
+    vi.mocked(startLlmChat).mockResolvedValueOnce(undefined);
+
+    act(() => {
+      result.current.setDraft("Second question, retried");
+    });
+    await act(async () => {
+      await result.current.send();
+    });
+
+    await waitFor(() => expect(startLlmChat).toHaveBeenCalledTimes(2));
+    const [secondMessage] = vi.mocked(startLlmChat).mock.calls[1];
+    expect(secondMessage).toBe("Second question, retried");
+
+    expect(
+      result.current.messages.some(
+        (m) => m.kind === "user" && m.content === "Second question, retried",
+      ),
+    ).toBe(true);
   });
 
   it("keeps the assistant bubble when stream fails with partial response", async () => {

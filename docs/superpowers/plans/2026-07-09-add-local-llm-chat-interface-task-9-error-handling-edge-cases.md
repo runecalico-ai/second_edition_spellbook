@@ -561,7 +561,7 @@ git commit -m "test(chat): RAM provisioning error copy"
 - Modify: `apps/desktop/src/hooks/useChatSession.ts`
 - Test: `apps/desktop/src/hooks/useChatSession.test.tsx`
 
-- [ ] **Step 4.1: Write failing tests**
+- [x] **Step 4.1: Write failing tests**
 
 ```typescript
 // useChatSession.test.tsx
@@ -604,12 +604,12 @@ it("shows a system message when stream fails without partial response", async ()
 });
 ```
 
-- [ ] **Step 4.2: Run tests — expect FAIL** on RAM test
+- [x] **Step 4.2: Run tests — expect FAIL** on RAM test
 
 Run: `cd apps/desktop && pnpm exec vitest run src/hooks/useChatSession.test.tsx`
 Expected: RAM test FAIL (raw message without guidance)
 
-- [ ] **Step 4.3: Apply formatChatSystemError in useChatSession**
+- [x] **Step 4.3: Apply formatChatSystemError in useChatSession**
 
 ```typescript
 import { formatChatSystemError } from "../ui/components/chat/chatProvisionerErrors";
@@ -621,12 +621,12 @@ content: formatChatSystemError(err instanceof Error ? err.message : String(err))
 content: formatChatSystemError(stream.error ?? "Unknown error"),
 ```
 
-- [ ] **Step 4.4: Run tests — expect PASS**
+- [x] **Step 4.4: Run tests — expect PASS**
 
 Run: `cd apps/desktop && pnpm exec vitest run src/hooks/useChatSession.test.tsx`
 Expected: PASS
 
-- [ ] **Step 4.5: Commit**
+- [x] **Step 4.5: Commit**
 
 ```bash
 git add apps/desktop/src/hooks/useChatSession.ts apps/desktop/src/hooks/useChatSession.test.tsx
@@ -640,7 +640,7 @@ git commit -m "feat(chat): format inference errors as guided system messages"
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/llm.rs` (`ModelLoadPreflightValidationError::into_app_error`)
 
-- [ ] **Step 5.1: Write failing test**
+- [x] **Step 5.1: Write failing test**
 
 Update `validate_model_load_prerequisites_rejects_low_ram_before_model_load` assertion:
 
@@ -650,21 +650,21 @@ assert!(
 );
 ```
 
-- [ ] **Step 5.2: Run test — expect FAIL**
+- [x] **Step 5.2: Run test — expect FAIL**
 
 Run: `cd apps/desktop/src-tauri && cargo test validate_model_load_prerequisites_rejects_low_ram -- --nocapture`
 Expected: FAIL — message lacks guidance
 
-- [ ] **Step 5.3: Update RAM error string**
+- [x] **Step 5.3: Update RAM error string**
 
 Apply Type Contracts RAM copy change in `into_app_error`.
 
-- [ ] **Step 5.4: Run test — expect PASS**
+- [x] **Step 5.4: Run test — expect PASS**
 
 Run: `cd apps/desktop/src-tauri && cargo test validate_model_load_prerequisites_rejects_low_ram -- --nocapture`
 Expected: PASS
 
-- [ ] **Step 5.5: Commit**
+- [x] **Step 5.5: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/llm.rs
@@ -678,16 +678,16 @@ git commit -m "feat(llm): add RAM guidance to model load error"
 **Files:**
 - Verify: `apps/desktop/src-tauri/src/commands/llm.rs` test `non_sha_restart_failures_delete_restart_staging_and_preserve_resumable_part`
 
-- [ ] **Step 6.1: Run existing regression test**
+- [x] **Step 6.1: Run existing regression test**
 
 Run: `cd apps/desktop/src-tauri && cargo test non_sha_restart_failures_delete_restart_staging_and_preserve_resumable_part -- --nocapture`
 Expected: PASS
 
-- [ ] **Step 6.2: Audit — no code change if PASS**
+- [x] **Step 6.2: Audit — no code change if PASS**
 
 If PASS: document in commit message only. If FAIL: fix `finalize_non_sha_download_error` before proceeding.
 
-- [ ] **Step 6.3: Commit** (skip if no changes)
+- [x] **Step 6.3: Commit** (skip if no changes)
 
 ```bash
 # No file changes expected — optional empty commit avoided; proceed to Task 7

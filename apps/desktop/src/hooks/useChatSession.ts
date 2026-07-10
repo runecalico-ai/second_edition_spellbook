@@ -101,18 +101,27 @@ export function useChatSession(llmStatus: LlmStatus) {
         );
 
         handledStreamErrorRef.current = true;
+        // NOTE: setMessages's functional updater is not invoked synchronously —
+        // React defers calling it until it actually processes the update, which
+        // happens after this line has already run. So the "keep bubble vs.
+        // replace with system message" decision is made *inside* the updater,
+        // and assistantIdRef is only cleared on the branch that removes the
+        // placeholder (the updater is a pure function of `prev`, so if React
+        // invokes it more than once — e.g. under StrictMode — every invocation
+        // reaches the same branch and the ref ends up in the same state).
         setMessages((prev) => {
           const assistant = prev.find(
             (m) => m.kind === "assistant" && m.id === pendingChat.assistantId,
           );
           if (assistant && assistant.content.trim().length > 0) {
-            return prev; // partial invoke failure — keep assistant bubble
-          }
-
-          if (prev.some((m) => m.kind === "system" && m.content === errorMessage)) {
+            // Partial invoke failure — keep the assistant bubble and leave
+            // assistantIdRef set so the stream-sync effect (triggered by the
+            // setStreamId(null) reset above) can still run once more and
+            // finalize isStreaming: false on the kept message.
             return prev;
           }
 
+          assistantIdRef.current = null;
           return prev
             .filter((m) => m.id !== pendingChat.assistantId)
             .concat({
@@ -121,7 +130,6 @@ export function useChatSession(llmStatus: LlmStatus) {
               content: errorMessage,
             });
         });
-        assistantIdRef.current = null;
       } finally {
         if (active) setPendingChat(null);
       }

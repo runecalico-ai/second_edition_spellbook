@@ -741,12 +741,12 @@ git commit -m "test(llm): document stream_id reuse after generation completes"
 - Production: `tracing::warn!(spell_id, ?error, "embedding write hook failed (non-fatal)")` in async spawn (~line 645)
 - Test: `post_write_hook_skips_when_not_ready` — caller gets `Ok(())` when embeddings not Ready; async cleanup runs
 
-- [ ] **Step 8.1: Run existing regression test**
+- [x] **Step 8.1: Run existing regression test**
 
 Run: `cd apps/desktop/src-tauri && cargo test post_write_hook_skips_when_not_ready -- --nocapture`
 Expected: PASS
 
-- [ ] **Step 8.2: Add explicit non-fatal contract test (Ready state, embed failure path)**
+- [x] **Step 8.2: Add explicit non-fatal contract test (Ready state, embed failure path)**
 
 When embeddings status is `Ready` but the model is absent, `search_spells_semantic_internal` already tests the error path. Add a focused test documenting the hook contract:
 
@@ -771,12 +771,12 @@ async fn enqueue_spell_embedding_returns_ok_when_not_ready() {
 
 Reuse `IsolatedTestPool` from the existing `post_write_hook_skips_when_not_ready` test module.
 
-- [ ] **Step 8.3: Run tests**
+- [x] **Step 8.3: Run tests**
 
 Run: `cd apps/desktop/src-tauri && cargo test enqueue_spell_embedding_returns_ok_when_not_ready post_write_hook_skips -- --nocapture`
 Expected: PASS
 
-- [ ] **Step 8.4: Commit**
+- [x] **Step 8.4: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/embeddings.rs

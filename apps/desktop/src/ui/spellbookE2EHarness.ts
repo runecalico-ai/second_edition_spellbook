@@ -641,7 +641,46 @@ export const spellbookE2EHarness = {
           new Error("Local ML harness: reindex_embeddings is not scripted in this scenario"),
         );
       }
+
+      for (const progress of reindex.progress) {
+        emitLocalMlEvent("embeddings://reindex-progress", progress);
+      }
+
       return Promise.resolve(structuredClone(reindex.result));
+    },
+
+    /**
+     * Build the command-only browser bridge (`LocalMlE2ECommandBridge`) that
+     * `App` installs on `window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__` while a
+     * scenario is active. Returns `undefined` when the harness is inactive
+     * (Playwright mode off or no scenario installed), matching every other
+     * `localMl` command's opt-in gating (Rule 1).
+     *
+     * `deps.searchSpellsSemantic`/`deps.reindexEmbeddings` must be the public
+     * `api/llm` wrappers (not harness internals): those wrappers already
+     * re-enter `localMl.searchSpellsSemantic()`/`localMl.reindexEmbeddings()`
+     * and record the command observation there, so the bridge methods here
+     * stay thin pass-throughs and never double-record.
+     */
+    createCommandBridge(deps: {
+      searchSpellsSemantic: (query: string, limit?: number) => Promise<SemanticSearchResult[]>;
+      reindexEmbeddings: (force: boolean) => Promise<ReindexResult>;
+    }): LocalMlE2ECommandBridge | undefined {
+      if (!getLocalMlScenario()) {
+        return undefined;
+      }
+
+      return {
+        searchSpellsSemantic: (query: string, limit?: number) =>
+          deps.searchSpellsSemantic(query, limit),
+        reindexEmbeddings: (force: boolean) => deps.reindexEmbeddings(force),
+        advanceDownload: () => {
+          spellbookE2EHarness.localMl.advanceDownload();
+        },
+        advanceChat: () => {
+          spellbookE2EHarness.localMl.advanceChat();
+        },
+      };
     },
   },
 

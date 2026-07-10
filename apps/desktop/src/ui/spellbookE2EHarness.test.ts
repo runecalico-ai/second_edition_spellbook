@@ -344,6 +344,82 @@ describe("spellbookE2EHarness", () => {
     });
   });
 
+  it("clones ranked semantic results through unchanged without re-sorting them", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    const scenario: LocalMlE2EScenario = {
+      ...readyScenario(),
+      semanticResults: [
+        {
+          id: 201,
+          name: "Shield",
+          school: "Evocation",
+          level: 1,
+          isQuestSpell: 0,
+          isCantrip: 0,
+          cosineDistance: 0.08,
+        },
+        {
+          id: 202,
+          name: "Stoneskin",
+          school: "Alteration",
+          level: 4,
+          isQuestSpell: 0,
+          isCantrip: 0,
+          cosineDistance: 0.21,
+        },
+      ],
+    };
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = scenario;
+
+    await expect(
+      spellbookE2EHarness.localMl.searchSpellsSemantic("physical defense", 5),
+    ).resolves.toEqual([
+      expect.objectContaining({ name: "Shield", cosineDistance: 0.08 }),
+      expect.objectContaining({ name: "Stoneskin", cosineDistance: 0.21 }),
+    ]);
+  });
+
+  it("emits every scripted reindex progress event before resolving the reindex result", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+      ...readyScenario(),
+      reindex: {
+        progress: [
+          { current: 1, total: 3 },
+          { current: 2, total: 3 },
+          { current: 3, total: 3 },
+        ],
+        result: { total: 3, indexed: 2, skipped: 1, failed: 0 },
+      },
+    };
+    const localMl = spellbookE2EHarness.localMl;
+
+    const progressEvents: Array<{ current: number; total: number }> = [];
+    const listenResult = localMl.listen<{ current: number; total: number }>(
+      "embeddings://reindex-progress",
+      (event) => {
+        progressEvents.push(event.payload);
+      },
+    );
+    if (!listenResult) {
+      throw new Error("expected active listen to return an unlisten promise");
+    }
+    await listenResult;
+
+    await expect(localMl.reindexEmbeddings(true)).resolves.toEqual({
+      total: 3,
+      indexed: 2,
+      skipped: 1,
+      failed: 0,
+    });
+
+    expect(progressEvents).toEqual([
+      { current: 1, total: 3 },
+      { current: 2, total: 3 },
+      { current: 3, total: 3 },
+    ]);
+  });
+
   it("resolves empty semantic results and rejects unscripted reindex when active", async () => {
     window.__IS_PLAYWRIGHT__ = true;
     window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();

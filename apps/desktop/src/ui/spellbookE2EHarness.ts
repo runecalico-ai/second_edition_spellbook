@@ -1,7 +1,54 @@
 import { RANGE_DISTANCE_KINDS, type RangeSpec } from "../types/spell";
+import type {
+  DoneEvent,
+  DownloadProgressEvent,
+  EmbeddingsStatusResponse,
+  LlmStatusResponse,
+  ReindexProgressEvent,
+  ReindexResult,
+  SemanticSearchResult,
+} from "../types/llm";
 
 type SpellPickerListType = "KNOWN" | "PREPARED";
 type SpellPickerSearchPhase = "start" | "resolve";
+type ModelKind = "llm" | "embeddings";
+
+export interface LocalMlE2EScenario {
+  llmStatus: LlmStatusResponse;
+  embeddingsStatus: EmbeddingsStatusResponse;
+  download?: {
+    kind: ModelKind;
+    progress: DownloadProgressEvent[];
+    manualProgress?: boolean;
+    terminalLlmStatus?: LlmStatusResponse;
+    terminalEmbeddingsStatus?: EmbeddingsStatusResponse;
+  };
+  chat?: {
+    tokens: string[];
+    done: DoneEvent;
+    invokeError?: string;
+    pauseAfterToken?: number;
+  };
+  semanticResults?: SemanticSearchResult[];
+  reindex?: {
+    progress: ReindexProgressEvent[];
+    result: ReindexResult;
+  };
+}
+
+export interface LocalMlE2EObservation {
+  kind: "command" | "event";
+  name: string;
+  args?: unknown;
+  payload?: unknown;
+}
+
+export interface LocalMlE2ECommandBridge {
+  searchSpellsSemantic(query: string, limit?: number): Promise<SemanticSearchResult[]>;
+  reindexEmbeddings(force: boolean): Promise<ReindexResult>;
+  advanceDownload(): void;
+  advanceChat(): void;
+}
 
 const MAX_DELAY_MS = 30_000;
 
@@ -15,6 +62,29 @@ function clampDelayMs(ms: number | undefined): number | null {
 
 function isPlaywrightHarnessActive(): boolean {
   return typeof window !== "undefined" && window.__IS_PLAYWRIGHT__ === true;
+}
+
+function getLocalMlScenario(): LocalMlE2EScenario | undefined {
+  if (!isPlaywrightHarnessActive()) {
+    return undefined;
+  }
+
+  return window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__;
+}
+
+function recordLocalMlObservation(
+  kind: LocalMlE2EObservation["kind"],
+  name: string,
+  args?: unknown,
+  payload?: unknown,
+): void {
+  const observations = (window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__ ??= []);
+  observations.push({
+    kind,
+    name,
+    ...(args === undefined ? {} : { args }),
+    ...(payload === undefined ? {} : { payload }),
+  });
 }
 
 function waitForDelay(ms: number | undefined): Promise<void> {
@@ -31,6 +101,28 @@ function buildSpellPickerDelayKey(listType: SpellPickerListType, query: string):
 }
 
 export const spellbookE2EHarness = {
+  localMl: {
+    getLlmStatus(): Promise<LlmStatusResponse> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "llm_status", {});
+      return Promise.resolve(structuredClone(scenario.llmStatus));
+    },
+
+    getEmbeddingsStatus(): Promise<EmbeddingsStatusResponse> | undefined {
+      const scenario = getLocalMlScenario();
+      if (!scenario) {
+        return undefined;
+      }
+
+      recordLocalMlObservation("command", "embeddings_status", {});
+      return Promise.resolve(structuredClone(scenario.embeddingsStatus));
+    },
+  },
+
   spellEditor: {
     isVisualContractMode(): boolean {
       return (

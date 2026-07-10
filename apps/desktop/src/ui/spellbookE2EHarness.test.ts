@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RangeSpec } from "../types/spell";
+import type { LocalMlE2EScenario } from "./spellbookE2EHarness";
 import { spellbookE2EHarness } from "./spellbookE2EHarness";
 
 function resetHarnessWindowState() {
@@ -10,6 +11,16 @@ function resetHarnessWindowState() {
   window.__SPELLBOOK_E2E_SPELL_PICKER_SEARCH_EVENTS__ = undefined;
   window.__SPELLBOOK_E2E_CORRUPT_RANGE_BASE = undefined;
   window.__SPELLBOOK_E2E_VISUAL_CONTRACT__ = undefined;
+  window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = undefined;
+  window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__ = undefined;
+  window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__ = undefined;
+}
+
+function readyScenario(): LocalMlE2EScenario {
+  return {
+    llmStatus: { status: "loaded", modelPath: "C:/models/llm.gguf" },
+    embeddingsStatus: { state: "ready" },
+  };
 }
 
 function createDistanceRangeSpec(value = 10): RangeSpec {
@@ -41,6 +52,30 @@ describe("spellbookE2EHarness", () => {
     window.__SPELLBOOK_E2E_VISUAL_CONTRACT__ = "all-structured";
 
     expect(spellbookE2EHarness.spellEditor.isVisualContractMode()).toBe(true);
+  });
+
+  it("keeps local ML overrides opt-in", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    expect(spellbookE2EHarness.localMl.getLlmStatus()).toBeUndefined();
+
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
+    const status = spellbookE2EHarness.localMl.getLlmStatus();
+    expect(status).toBeDefined();
+    await expect(status!).resolves.toMatchObject({
+      status: "loaded",
+    });
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__).toContainEqual({
+      kind: "command",
+      name: "llm_status",
+      args: {},
+    });
+  });
+
+  it("requires Playwright mode for local ML overrides", () => {
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = readyScenario();
+
+    expect(spellbookE2EHarness.localMl.getLlmStatus()).toBeUndefined();
+    expect(spellbookE2EHarness.localMl.getEmbeddingsStatus()).toBeUndefined();
   });
 
   it("consumes one-shot range corruption probes through the harness", () => {

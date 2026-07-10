@@ -4685,6 +4685,18 @@ mod tests {
     }
 
     #[test]
+    fn begin_generation_allows_stream_id_reuse_after_finish() {
+        let state = LlmState::default();
+        begin_generation(&state, "stream-a".to_string()).unwrap();
+        finish_generation(&state).unwrap();
+
+        // Reusing the same stream_id after the prior generation finished must
+        // succeed: the mutex tracks the single *active* generation, not a
+        // permanent registry of stream_ids ever seen.
+        assert!(begin_generation(&state, "stream-a".to_string()).is_ok());
+    }
+
+    #[test]
     fn begin_generation_rejects_when_reprovision_is_active() {
         let state = LlmState::default();
         *state.reprovisioning.lock().unwrap() = Some(ReprovisionKind::Download);

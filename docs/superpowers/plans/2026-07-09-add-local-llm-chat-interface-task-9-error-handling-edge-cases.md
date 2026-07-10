@@ -790,7 +790,7 @@ git commit -m "test(embeddings): document non-fatal spell write embedding hook c
 **Files:**
 - Modify: `apps/desktop/src-tauri/src/commands/vault.rs`
 
-- [ ] **Step 9.1: Write failing test**
+- [x] **Step 9.1: Write failing test**
 
 ```rust
 #[test]
@@ -834,12 +834,12 @@ fn test_restore_vault_preserves_existing_model_files() {
 
 Use existing vault test helpers for zip construction and in-memory DB pool (see `test_restore_supporting_files_from_archive_replaces_existing_spell_files`).
 
-- [ ] **Step 9.2: Run test — expect FAIL** if restore incorrectly deletes models (should PASS if behavior already correct)
+- [x] **Step 9.2: Run test — expect FAIL** if restore incorrectly deletes models (should PASS if behavior already correct)
 
 Run: `cd apps/desktop/src-tauri && cargo test test_restore_vault_preserves_existing_model_files -- --nocapture`
 Expected: PASS (documents Decision 12)
 
-- [ ] **Step 9.3: Commit**
+- [x] **Step 9.3: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/commands/vault.rs

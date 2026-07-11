@@ -90,3 +90,179 @@ test.describe("Local LLM chat provisioning", () => {
     }
   });
 });
+
+test.describe("Local LLM chat streaming", () => {
+  test("user message and streamed assistant response render token-by-token to completion", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await app.localLlm.installScenario({
+      llmStatus: { status: "loaded", modelPath: "/vault/models/tinyllama.gguf" },
+      embeddingsStatus: { state: "notProvisioned" },
+      chat: {
+        tokens: ["Magic ", "Missile protects you."],
+        done: {
+          fullResponse: "Magic Missile protects you.",
+          cancelled: false,
+          timedOut: false,
+          searchTerms: [],
+          groundedSpells: [],
+        },
+      },
+    });
+
+    await app.localLlm.openChat();
+    await app.localLlm.send("Tell me about Magic Missile");
+
+    await expect(page.getByTestId("chat-user-bubble").last()).toContainText(
+      "Tell me about Magic Missile",
+    );
+
+    const assistantBubble = page.getByTestId("chat-assistant-bubble").last();
+    await expect(assistantBubble).toHaveAttribute("aria-busy", "true", {
+      timeout: TIMEOUTS.medium,
+    });
+    await expect(assistantBubble).toContainText("Magic", { timeout: TIMEOUTS.medium });
+
+    await expect(assistantBubble).toHaveAttribute("aria-busy", "false", {
+      timeout: TIMEOUTS.medium,
+    });
+    await expect(assistantBubble).toContainText("Magic Missile protects you.");
+  });
+
+  test("grounded spell link navigates to the spell's editor", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await app.createSpell({ name: "Magic Missile", level: "1" });
+    await app.openSpell("Magic Missile");
+    const match = page.url().match(/\/edit\/(\d+)$/);
+    expect(match).not.toBeNull();
+    const spellId = Number(match?.[1]);
+
+    await app.localLlm.installScenario({
+      llmStatus: { status: "loaded", modelPath: "/vault/models/tinyllama.gguf" },
+      embeddingsStatus: { state: "notProvisioned" },
+      chat: {
+        tokens: ["Magic Missile is a reliable spell."],
+        done: {
+          fullResponse: "Magic Missile is a reliable spell.",
+          cancelled: false,
+          timedOut: false,
+          searchTerms: ["magic missile"],
+          groundedSpells: [
+            {
+              id: spellId,
+              name: "Magic Missile",
+              school: "Evocation",
+              level: 1,
+              descriptionSnippet: "A missile of magical energy.",
+            },
+          ],
+        },
+      },
+    });
+
+    await app.localLlm.openChat();
+    await app.localLlm.send("Tell me about Magic Missile");
+
+    const assistantBubble = page.getByTestId("chat-assistant-bubble").last();
+    await expect(assistantBubble).toHaveAttribute("aria-busy", "false", {
+      timeout: TIMEOUTS.medium,
+    });
+
+    await page.getByTestId("spell-link-magic-missile").click();
+
+    await expect(page).toHaveURL(new RegExp(`/edit/${spellId}$`), {
+      timeout: TIMEOUTS.medium,
+    });
+    await expect(page.getByRole("heading", { name: "Edit Spell" })).toBeVisible();
+  });
+
+  test("inline llm_chat invoke error shows a system message and allows retry", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await app.localLlm.installScenario({
+      llmStatus: { status: "loaded", modelPath: "/vault/models/tinyllama.gguf" },
+      embeddingsStatus: { state: "notProvisioned" },
+      chat: {
+        tokens: [],
+        done: {
+          fullResponse: "",
+          cancelled: false,
+          timedOut: false,
+          searchTerms: [],
+          groundedSpells: [],
+        },
+        invokeError: "Inference failed: E2E test fault",
+      },
+    });
+
+    await app.localLlm.openChat();
+    await app.localLlm.send("Tell me about Magic Missile");
+
+    const systemMessage = page.getByTestId("chat-system-message");
+    await expect(systemMessage).toBeVisible({ timeout: TIMEOUTS.medium });
+    await expect(systemMessage).toContainText("Inference failed: E2E test fault");
+
+    await expect(page.getByTestId("chat-assistant-bubble")).toHaveCount(0);
+
+    const input = page.getByTestId("chat-input");
+    await expect(input).toBeVisible();
+    await expect(input).toBeEnabled();
+    await input.fill("Try again");
+    await expect(page.getByTestId("btn-ask-chat")).toBeEnabled();
+  });
+
+  test("cancelling mid-stream stops further tokens from arriving", async ({ appContext }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await app.localLlm.installScenario({
+      llmStatus: { status: "loaded", modelPath: "/vault/models/tinyllama.gguf" },
+      embeddingsStatus: { state: "notProvisioned" },
+      chat: {
+        tokens: ["Partial ", "response that should not fully arrive."],
+        pauseAfterToken: 1,
+        done: {
+          fullResponse: "Partial response that should not fully arrive.",
+          cancelled: false,
+          timedOut: false,
+          searchTerms: [],
+          groundedSpells: [],
+        },
+      },
+    });
+
+    await app.localLlm.openChat();
+    await app.localLlm.send("Tell me about Magic Missile");
+
+    const assistantBubble = page.getByTestId("chat-assistant-bubble").last();
+    await expect(assistantBubble).toContainText("Partial ", { timeout: TIMEOUTS.medium });
+
+    await app.localLlm.cancelGeneration();
+
+    await expect(assistantBubble).toHaveText("Partial ");
+    await expect(assistantBubble).not.toContainText("response that should not fully arrive.");
+    await expect(assistantBubble).toHaveAttribute("aria-busy", "false", {
+      timeout: TIMEOUTS.medium,
+    });
+
+    const observations = await app.localLlm.observations();
+    expect(observations).toContainEqual(
+      expect.objectContaining({ kind: "command", name: "llm_cancel_generation" }),
+    );
+    const cancelObservation = observations.find(
+      (observation) => observation.kind === "command" && observation.name === "llm_cancel_generation",
+    );
+    expect(cancelObservation).toBeDefined();
+    const args = cancelObservation?.args as Record<string, unknown>;
+    expect(Object.keys(args)).toEqual(["streamId"]);
+    expect(typeof args.streamId).toBe("string");
+  });
+});

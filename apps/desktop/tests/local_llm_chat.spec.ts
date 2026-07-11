@@ -272,3 +272,131 @@ test.describe("Local LLM chat streaming", () => {
     expect(typeof args.streamId).toBe("string");
   });
 });
+
+test.describe("Local LLM semantic search and reindex", () => {
+  test("semantic mode with unprovisioned embeddings shows the provisioning panel, not the generic empty state", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await app.localLlm.installScenario({
+      llmStatus: { status: "notProvisioned", modelPath: "" },
+      embeddingsStatus: { state: "notProvisioned" },
+    });
+
+    await app.localLlm.switchLibraryToSemantic();
+
+    await expect(page.getByTestId("library-semantic-provisioning-state")).toBeVisible({
+      timeout: TIMEOUTS.medium,
+    });
+    await expect(page.getByTestId("library-embeddings-download-button")).toBeVisible();
+    await expect(page.getByTestId("library-embeddings-import-button")).toBeVisible();
+    await expect(page.getByTestId("empty-search-state")).toHaveCount(0);
+  });
+
+  test("semantic search returns ranked results and Library renders them in order without the raw score", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await app.localLlm.installScenario({
+      llmStatus: { status: "notProvisioned", modelPath: "" },
+      embeddingsStatus: { state: "ready" },
+      semanticResults: [
+        {
+          id: 1,
+          name: "Shield",
+          level: 1,
+          isQuestSpell: 0,
+          isCantrip: 0,
+          cosineDistance: 0.08,
+        },
+        {
+          id: 2,
+          name: "Stoneskin",
+          level: 4,
+          isQuestSpell: 0,
+          isCantrip: 0,
+          cosineDistance: 0.21,
+        },
+      ],
+    });
+
+    const results = await app.localLlm.runSemanticSearch("physical defense", 5);
+    expect(results).toEqual([
+      expect.objectContaining({ name: "Shield", cosineDistance: 0.08 }),
+      expect.objectContaining({ name: "Stoneskin", cosineDistance: 0.21 }),
+    ]);
+    expect(typeof results[0]?.cosineDistance).toBe("number");
+    expect(typeof results[1]?.cosineDistance).toBe("number");
+
+    const observations = await app.localLlm.observations();
+    expect(observations).toContainEqual({
+      kind: "command",
+      name: "search_spells_semantic",
+      args: { query: "physical defense", limit: 5 },
+    });
+
+    await app.localLlm.switchLibraryToSemantic();
+    await page.getByTestId("search-input").fill("physical defense");
+    await page.getByTestId("library-search-button").click();
+
+    const resultsState = page.getByTestId("library-results-state");
+    await expect(resultsState).toHaveAttribute("data-results-settled", "true", {
+      timeout: TIMEOUTS.medium,
+    });
+
+    const spellTable = page.getByTestId("spell-library-table");
+    const spellLinks = spellTable.locator('[data-testid^="spell-link-"]');
+    await expect(spellLinks).toHaveCount(2);
+    const testIds = await spellLinks.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("data-testid")),
+    );
+    expect(testIds).toEqual(["spell-link-shield", "spell-link-stoneskin"]);
+
+    await expect(spellTable).not.toContainText("0.08");
+    await expect(spellTable).not.toContainText("0.21");
+  });
+
+  test("reindex emits ordered progress events before resolving the summary result", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await app.localLlm.installScenario({
+      llmStatus: { status: "notProvisioned", modelPath: "" },
+      embeddingsStatus: { state: "ready" },
+      reindex: {
+        progress: [
+          { current: 1, total: 2 },
+          { current: 2, total: 2 },
+        ],
+        result: { total: 2, indexed: 1, skipped: 1, failed: 0 },
+      },
+    });
+
+    const result = await app.localLlm.runReindex(false);
+    expect(result).toEqual({ total: 2, indexed: 1, skipped: 1, failed: 0 });
+
+    const observations = await app.localLlm.observations();
+    const progressPayloads = observations
+      .filter(
+        (observation) =>
+          observation.kind === "event" && observation.name === "embeddings://reindex-progress",
+      )
+      .map((observation) => observation.payload);
+    expect(progressPayloads).toEqual([
+      { current: 1, total: 2 },
+      { current: 2, total: 2 },
+    ]);
+
+    expect(observations).toContainEqual({
+      kind: "command",
+      name: "reindex_embeddings",
+      args: { force: false },
+    });
+  });
+});

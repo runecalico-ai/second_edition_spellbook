@@ -271,7 +271,7 @@ git commit -m "test(e2e): route local ML flows through typed harness"
 - Modify: `apps/desktop/src/ui/spellbookE2EHarness.ts`
 - Modify: `apps/desktop/src/ui/spellbookE2EHarness.test.ts`
 
-- [ ] **Step 3.1: Write failing download/event tests**
+- [x] **Step 3.1: Write failing download/event tests**
 
 Subscribe to `llm://download-progress`, start a scripted download, and assert ordered camelCase payloads and terminal status:
 
@@ -287,7 +287,7 @@ await expect(status!).resolves.toMatchObject({
 });
 ```
 
-- [ ] **Step 3.2: Write failing chat completion/error/cancel tests**
+- [x] **Step 3.2: Write failing chat completion/error/cancel tests**
 
 Cover three independent scenarios:
 
@@ -295,13 +295,13 @@ Cover three independent scenarios:
 - `invokeError: "Inference failed: test fault"` rejects without token events;
 - cancellation after the first token prevents the second token and emits `{ fullResponse: "Magic ", cancelled: true, timedOut: false }`.
 
-- [ ] **Step 3.3: Run harness tests and confirm RED**
+- [x] **Step 3.3: Run harness tests and confirm RED**
 
 Run: `pnpm --dir apps/desktop exec vitest run src/ui/spellbookE2EHarness.test.ts`
 
 Expected: FAIL for missing simulation methods.
 
-- [ ] **Step 3.4: Implement ordered event scheduling and cleanup**
+- [x] **Step 3.4: Implement ordered event scheduling and cleanup**
 
 Maintain module-private pending-event queues, listener registries, and active stream state. `reset()` must clear pending events, listeners, and active streams. Event delivery must clone payloads before recording/delivering them. When no listener exists yet, retain the event; `listen()` flushes the matching queue asynchronously after registering its callback.
 
@@ -309,13 +309,13 @@ For downloads, validate that the invoked command matches `scenario.download.kind
 
 For chat cancellation, resolve the original `startLlmChat` promise after the cancellation done event; do not reject, because production cancellation is a successful terminal stream state.
 
-- [ ] **Step 3.5: Run harness tests and confirm GREEN**
+- [x] **Step 3.5: Run harness tests and confirm GREEN**
 
 Run: `pnpm --dir apps/desktop exec vitest run src/ui/spellbookE2EHarness.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 3.6: Commit scripted async behavior**
+- [x] **Step 3.6: Commit scripted async behavior**
 
 ```powershell
 git add apps/desktop/src/ui/spellbookE2EHarness.ts apps/desktop/src/ui/spellbookE2EHarness.test.ts
@@ -333,7 +333,7 @@ git commit -m "test(e2e): script local ML progress and streams"
 - Modify: `apps/desktop/src/ui/App.tsx`
 - Modify: `apps/desktop/src/ui/App.test.tsx`
 
-- [ ] **Step 4.1: Write failing ranked-result and reindex tests**
+- [x] **Step 4.1: Write failing ranked-result and reindex tests**
 
 The semantic fixture supplies results already sorted by the backend contract, and the harness must clone and pass them through unchanged:
 
@@ -347,17 +347,17 @@ await expect(spellbookE2EHarness.localMl.searchSpellsSemantic("physical defense"
 
 The reindex test asserts progress `{ current, total }` events and exact result `{ total, indexed, skipped, failed }`.
 
-- [ ] **Step 4.2: Run harness tests and confirm RED**
+- [x] **Step 4.2: Run harness tests and confirm RED**
 
 Run: `pnpm --dir apps/desktop exec vitest run src/ui/spellbookE2EHarness.test.ts`
 
 Expected: FAIL for missing search/reindex implementations.
 
-- [ ] **Step 4.3: Implement semantic and reindex behavior**
+- [x] **Step 4.3: Implement semantic and reindex behavior**
 
 Record exact command arguments `{ query, limit }` and `{ force }`. Clone semantic results without sorting or otherwise improving them: the simulator must not hide a frontend contract defect by inventing backend behavior. Emit every reindex progress event before resolving the result.
 
-- [ ] **Step 4.4: Install the command-only browser bridge**
+- [x] **Step 4.4: Install the command-only browser bridge**
 
 Add these imports to `App.tsx`:
 
@@ -385,11 +385,11 @@ useEffect(() => {
 
 Define `createCommandBridge()` to accept the two functions with their production signatures and return the complete `LocalMlE2ECommandBridge`, including `advanceDownload` and `advanceChat`. The bridge's search/reindex methods call the injected public typed API wrappers, not harness internals. This covers the frontend API-adapter boundary; it intentionally does not claim to traverse native Tauri IPC while the deterministic scenario is active. If the scenario is installed after mount, the page object reloads once to install the bridge.
 
-- [ ] **Step 4.5: Add App bridge lifecycle tests**
+- [x] **Step 4.5: Add App bridge lifecycle tests**
 
 In `App.test.tsx`, reset all local-ML globals in `beforeEach`/`afterEach`. Add one test proving no bridge is installed without an explicit scenario, and one test that installs a ready scenario, renders `App`, asserts all four bridge methods exist, unmounts, and asserts `__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__` is removed. Mock the two public API functions for this lifecycle test; command behavior remains covered in harness/API tests.
 
-- [ ] **Step 4.6: Run unit and type checks**
+- [x] **Step 4.6: Run unit and type checks**
 
 Run:
 
@@ -400,7 +400,7 @@ pnpm --dir apps/desktop typecheck
 
 Expected: PASS.
 
-- [ ] **Step 4.7: Commit command-only contracts**
+- [x] **Step 4.7: Commit command-only contracts**
 
 ```powershell
 git add apps/desktop/src/ui/spellbookE2EHarness.ts apps/desktop/src/ui/spellbookE2EHarness.test.ts apps/desktop/src/ui/App.tsx apps/desktop/src/ui/App.test.tsx
@@ -416,7 +416,7 @@ git commit -m "test(e2e): expose semantic command bridge"
 - Create: `apps/desktop/tests/page-objects/LocalLlmChat.ts`
 - Modify: `apps/desktop/tests/page-objects/SpellbookApp.ts`
 
-- [ ] **Step 5.1: Add typed setup and reset helpers**
+- [x] **Step 5.1: Add typed setup and reset helpers**
 
 ```typescript
 export class LocalLlmChat {
@@ -437,7 +437,7 @@ export class LocalLlmChat {
 
 Do not add a reusable `resetScenario()` that implies `addInitScript()` can be removed from the current page. Isolation comes from the existing fresh `appContext` fixture; React unmount invokes the harness runtime reset during page/app teardown.
 
-- [ ] **Step 5.2: Add user workflow helpers**
+- [x] **Step 5.2: Add user workflow helpers**
 
 Implement `openChat()`, `send(message)`, `cancelGeneration()`, `openLlmDownload()`, `advanceDownload()`, `switchLibraryToSemantic()`, `runSemanticSearch(query, limit)`, `runReindex(force)`, and `observations()`. Use existing test IDs (`chat-input`, `btn-ask-chat`, `btn-cancel-chat`, `model-download-modal`, `chat-user-bubble`, `chat-assistant-bubble`, `chat-system-message`, `library-mode-select`) and Library's existing accessible mode controls.
 
@@ -480,7 +480,7 @@ async observations(): Promise<LocalMlE2EObservation[]> {
 
 UI-action helpers (`openChat`, `send`, `cancelGeneration`, `openLlmDownload`, and `switchLibraryToSemantic`) must end on a web-first visible/enabled/URL assertion. Control/data helpers (`advanceDownload`, `runSemanticSearch`, `runReindex`, and `observations`) return after the browser-side operation; the calling test immediately asserts the expected 25%, 100%, terminal, result, or observation state. Do not add `waitForTimeout`.
 
-- [ ] **Step 5.3: Expose the focused page object**
+- [x] **Step 5.3: Expose the focused page object**
 
 ```typescript
 readonly localLlm = new LocalLlmChat(this.page);
@@ -488,7 +488,7 @@ readonly localLlm = new LocalLlmChat(this.page);
 
 Initialize it in `SpellbookApp` and import the class. Keep all local-ML implementation details in `LocalLlmChat.ts`.
 
-- [ ] **Step 5.4: Run typecheck and lint on page objects**
+- [x] **Step 5.4: Run typecheck and lint on page objects**
 
 Run:
 
@@ -499,7 +499,7 @@ pnpm --dir apps/desktop exec biome lint tests/page-objects/LocalLlmChat.ts tests
 
 Expected: PASS with no `any`, raw CSS workflow locator, or fixed-wait violations.
 
-- [ ] **Step 5.5: Commit the page object**
+- [x] **Step 5.5: Commit the page object**
 
 ```powershell
 git add apps/desktop/tests/page-objects/LocalLlmChat.ts apps/desktop/tests/page-objects/SpellbookApp.ts
@@ -514,7 +514,7 @@ git commit -m "test(e2e): add local LLM chat page object"
 
 - Create: `apps/desktop/tests/local_llm_chat.spec.ts`
 
-- [ ] **Step 6.1: Write 10.1 first-run provisioning test**
+- [x] **Step 6.1: Write 10.1 first-run provisioning test**
 
 Use the shared `test` fixture and a fresh app per test. Install `llmStatus: notProvisioned`, open Chat, and assert:
 
@@ -527,23 +527,25 @@ await expect(page.getByText(/700 MB/i)).toBeVisible();
 
 Confirm `chat-input` and `chat-message-list` are absent while unprovisioned, matching the spec's requirement not to show message input before readiness.
 
-- [ ] **Step 6.2: Write 10.2 download progress/completion test**
+- [x] **Step 6.2: Write 10.2 download progress/completion test**
 
 Configure progress `256/1024`, then `1024/1024`, `manualProgress: true`, and terminal LLM status `ready`. Click Download and assert the modal and progressbar at 25%; call `advanceDownload()` once and assert the modal remains open at 100%; call it a second time to apply terminal status, then assert modal dismissal and enabled chat input. Finally read observations and assert the event payload keys are exactly `bytesDownloaded` and `totalBytes` (no `bytes_downloaded`/`total_bytes`).
 
-- [ ] **Step 6.3: Rebuild before the first Playwright run**
+- [x] **Step 6.3: Rebuild before the first Playwright run**
 
 Run: `pnpm --dir apps/desktop tauri:build --debug`
 
 Expected: debug build succeeds.
 
-- [ ] **Step 6.4: Run provisioning scenarios**
+- [ ] **Step 6.4: Run provisioning scenarios** — BLOCKED, unverified in this environment
 
 Run: `pnpm --dir apps/desktop exec playwright test tests/local_llm_chat.spec.ts --grep "provisioning|download progress"`
 
 Expected: 2 passed.
 
-- [ ] **Step 6.5: Commit provisioning E2E coverage**
+Actual: the Tauri debug binary launches and spawns `msedgewebview2.exe`, but the WebView2 CDP remote-debugging endpoint never opens (`CDP endpoint not ready after 60000ms. Last error: ... ECONNREFUSED 127.0.0.1:9000`), even when launched directly with the exact env vars `tauri-fixture.ts` uses (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>`). This is not specific to this spec: the pre-existing `spellbook_app_open_spell.spec.ts` fails identically in this session. `query session` shows the console session is disconnected (session 4 `vitki` is `Disc`), consistent with WebView2 being unable to attach a debuggable renderer without a real interactive desktop. Do not mark this checkbox complete until a Playwright run in an environment with an active interactive Windows session confirms 2 passed.
+
+- [x] **Step 6.5: Commit provisioning E2E coverage**
 
 ```powershell
 git add apps/desktop/tests/local_llm_chat.spec.ts
@@ -558,23 +560,23 @@ git commit -m "test(e2e): cover local model provisioning"
 
 - Modify: `apps/desktop/tests/local_llm_chat.spec.ts`
 
-- [ ] **Step 7.1: Write 10.3 user-bubble and streaming-response test**
+- [x] **Step 7.1: Write 10.3 user-bubble and streaming-response test**
 
 Configure `loaded`, tokens `"Magic "` and `"Missile protects you."`, and a matching done response. After Send, assert the user bubble immediately, assistant `aria-busy="true"` with partial text, then `aria-busy="false"` with full text.
 
-- [ ] **Step 7.2: Write 10.4 grounded spell-link navigation test**
+- [x] **Step 7.2: Write 10.4 grounded spell-link navigation test**
 
 Before installing the ML scenario, create a real spell named `Magic Missile`, call `app.openSpell("Magic Missile")`, and extract the numeric id from the current URL with `const match = page.url().match(/\/edit\/(\d+)$/)`. Assert the match exists, convert `match[1]` to a number, and use that id in the scripted `groundedSpells` entry. Install the scenario, open Chat, complete the response, click `spell-link-magic-missile`, and assert the URL ends with `/edit/<captured-id>` plus the exact heading `Edit Spell`.
 
-- [ ] **Step 7.3: Write 10.5 inline `llm_chat` error test**
+- [x] **Step 7.3: Write 10.5 inline `llm_chat` error test**
 
 Configure `invokeError: "Inference failed: E2E test fault"`. Send once; assert the user bubble remains, the empty assistant placeholder is removed, `chat-system-message` contains the error inline, and the chat input/send path is enabled for retry.
 
-- [ ] **Step 7.4: Write 10.6 partial cancellation test**
+- [x] **Step 7.4: Write 10.6 partial cancellation test**
 
 Configure at least two tokens and pause after token 1. Wait for the first partial text, click Cancel Generation, then assert the assistant bubble keeps that partial text, becomes `aria-busy="false"`, and the later token never appears. Assert the recorded cancel command uses camelCase `{ streamId }`.
 
-- [ ] **Step 7.5: Rebuild and run chat scenarios**
+- [ ] **Step 7.5: Rebuild and run chat scenarios** — BLOCKED, unverified in this environment
 
 Run:
 
@@ -585,7 +587,9 @@ pnpm --dir apps/desktop exec playwright test tests/local_llm_chat.spec.ts --grep
 
 Expected: 4 passed.
 
-- [ ] **Step 7.6: Commit chat E2E coverage**
+Actual: `tauri:build --debug` succeeds (Vite build + Rust `dev` profile compile, binary produced at `src-tauri/target/debug/spellbook-desktop.exe`). The Playwright run reproduces the same blocker already documented at Step 6.4: the Tauri debug binary launches and Vite serves on port 5173, but the WebView2 CDP endpoint on port 9000 never opens (`CDP not ready yet` repeating up to the 60s timeout, then a hard test failure). This is the identical environmental limitation noted at 6.4 (no active interactive Windows desktop session for WebView2 to attach a debuggable renderer), not specific to the new 10.3-10.6 scenarios. Do not mark this checkbox complete until a Playwright run in an environment with an active interactive Windows session confirms 4 passed. The four new tests underwent three iterations of independent multi-reviewer code verification (spec-compliance, harness-timing correctness, and a confirmed-and-fixed High-severity streaming synchronization defect in 10.3) in lieu of an executable run.
+
+- [x] **Step 7.6: Commit chat E2E coverage**
 
 ```powershell
 git add apps/desktop/tests/local_llm_chat.spec.ts
@@ -600,11 +604,11 @@ git commit -m "test(e2e): cover chat streaming and cancellation"
 
 - Modify: `apps/desktop/tests/local_llm_chat.spec.ts`
 
-- [ ] **Step 8.1: Write 10.7 semantic-mode empty-state test**
+- [x] **Step 8.1: Write 10.7 semantic-mode empty-state test**
 
 Install `embeddingsStatus: notProvisioned`, select `semantic` through `library-mode-select`, and assert `library-semantic-provisioning-state`, `library-embeddings-download-button`, and `library-embeddings-import-button`. Assert `empty-search-state` is absent.
 
-- [ ] **Step 8.2: Write 10.8 ranked `cosineDistance` adapter and Library-order test**
+- [x] **Step 8.2: Write 10.8 ranked `cosineDistance` adapter and Library-order test**
 
 Call the browser bridge through `LocalLlmChat.runSemanticSearch("physical defense", 5)`. Assert two normal spell-summary objects, numeric `cosineDistance`, ascending order, and the observation:
 
@@ -620,11 +624,11 @@ This is a frontend API-adapter Playwright test, not a native IPC or visual Libra
 
 In the same test, enter `physical defense` in `search-input`, select `semantic` in `library-mode-select`, click `library-search-button`, wait for `library-results-state[data-results-settled="true"]`, and assert the table links occur in the same order as the returned results (`Shield`, then `Stoneskin`). Assert the table text does not expose `0.08` or `0.21`, matching the design decision to preserve scores in the API but hide them in Library UI.
 
-- [ ] **Step 8.3: Write 10.9 reindex progress/result contract test**
+- [x] **Step 8.3: Write 10.9 reindex progress/result contract test**
 
 Run `reindex_embeddings(false)` through the bridge and assert the returned value is exactly `{ total: 2, indexed: 1, skipped: 1, failed: 0 }`. Read the harness observations and assert they contain ordered `embeddings://reindex-progress` payloads `{ current: 1, total: 2 }`, `{ current: 2, total: 2 }`, plus command args `{ force: false }`. No frontend reindex listener is added because the current application has no reindex-progress UI and the spec says the frontend MAY display it.
 
-- [ ] **Step 8.4: Rebuild and run semantic scenarios**
+- [ ] **Step 8.4: Rebuild and run semantic scenarios** — BLOCKED, unverified in this environment
 
 Run:
 
@@ -635,7 +639,9 @@ pnpm --dir apps/desktop exec playwright test tests/local_llm_chat.spec.ts --grep
 
 Expected: 3 passed.
 
-- [ ] **Step 8.5: Commit semantic E2E coverage**
+Actual: `tauri:build --debug` succeeds. The Playwright run reproduces the identical blocker documented at Steps 6.4 and 7.5: the WebView2 CDP endpoint on port 9000 never opens (`CDP not ready yet` repeating to timeout), an environmental limitation unrelated to the new 10.7-10.9 scenarios. Do not mark this checkbox complete until a Playwright run in an environment with an active interactive Windows session confirms 3 passed. The three new tests underwent one full iteration of independent three-reviewer verification (spec-compliance, observation-log/limit-mismatch/listener-independence analysis, and locator-scoping/negative-assertion checks) with zero Critical/High/Medium findings in lieu of an executable run.
+
+- [x] **Step 8.5: Commit semantic E2E coverage**
 
 ```powershell
 git add apps/desktop/tests/local_llm_chat.spec.ts

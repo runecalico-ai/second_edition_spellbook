@@ -124,7 +124,8 @@ test.describe("Local LLM chat streaming", () => {
     await expect(assistantBubble).toHaveAttribute("aria-busy", "true", {
       timeout: TIMEOUTS.medium,
     });
-    await expect(assistantBubble).toContainText("Magic", { timeout: TIMEOUTS.medium });
+    await expect(assistantBubble).toHaveText("Magic ", { timeout: TIMEOUTS.medium });
+    await expect(assistantBubble).not.toContainText("Missile");
 
     await expect(assistantBubble).toHaveAttribute("aria-busy", "false", {
       timeout: TIMEOUTS.medium,

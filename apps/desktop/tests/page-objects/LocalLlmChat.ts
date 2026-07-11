@@ -76,6 +76,19 @@ export class LocalLlmChat {
     });
   }
 
+  /**
+   * Resume a manually-paused scripted chat stream through the command
+   * bridge. The calling test asserts the resulting paused/final state; this
+   * control helper only performs the browser-side call.
+   */
+  async advanceChat(): Promise<void> {
+    await this.page.evaluate(() => {
+      const bridge = window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__;
+      if (!bridge) throw new Error("Local ML E2E command bridge is not installed");
+      bridge.advanceChat();
+    });
+  }
+
   /** Navigate to Library and switch the search mode to semantic. */
   async switchLibraryToSemantic(): Promise<void> {
     await this.page.getByRole("navigation").getByRole("link", { name: "Library" }).click();

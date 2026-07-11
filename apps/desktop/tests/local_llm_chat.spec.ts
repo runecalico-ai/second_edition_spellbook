@@ -103,6 +103,7 @@ test.describe("Local LLM chat streaming", () => {
       embeddingsStatus: { state: "notProvisioned" },
       chat: {
         tokens: ["Magic ", "Missile protects you."],
+        pauseAfterToken: 1,
         done: {
           fullResponse: "Magic Missile protects you.",
           cancelled: false,
@@ -127,10 +128,14 @@ test.describe("Local LLM chat streaming", () => {
     await expect(assistantBubble).toHaveText("Magic ", { timeout: TIMEOUTS.medium });
     await expect(assistantBubble).not.toContainText("Missile");
 
+    await app.localLlm.advanceChat();
+
     await expect(assistantBubble).toHaveAttribute("aria-busy", "false", {
       timeout: TIMEOUTS.medium,
     });
-    await expect(assistantBubble).toContainText("Magic Missile protects you.");
+    await expect(assistantBubble).toHaveText("Magic Missile protects you.", {
+      timeout: TIMEOUTS.medium,
+    });
   });
 
   test("grounded spell link navigates to the spell's editor", async ({ appContext }) => {

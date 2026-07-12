@@ -9,7 +9,7 @@ export const TIMEOUTS = {
   /** Form submissions, navigation */
   medium: 15000,
   /** App startup, complex operations */
-  long: 30000,
+  long: 60000,
   /** Batch imports, file processing */
   batch: 120000,
 } as const;

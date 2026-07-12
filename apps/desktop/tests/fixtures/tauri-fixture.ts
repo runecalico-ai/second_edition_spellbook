@@ -17,7 +17,12 @@ const SQLITE_VEC_BASE_URL = `https://github.com/asg017/sqlite-vec/releases/downl
 
 /** Resolves the Tauri binary path based on platform */
 export function getTauriBinaryPath(): string {
-  const baseDir = path.resolve(__dirname, "../../src-tauri/target");
+  // src-tauri/.cargo/config.toml sets `build.target-dir = "../../../target"`,
+  // which resolves relative to src-tauri's parent-of-.cargo directory (src-tauri itself),
+  // placing build output at the repo root's `target/` instead of `src-tauri/target/`.
+  const workspaceTargetDir = path.resolve(__dirname, "../../../../target");
+  const localTargetDir = path.resolve(__dirname, "../../src-tauri/target");
+  const baseDir = fs.existsSync(workspaceTargetDir) ? workspaceTargetDir : localTargetDir;
 
   if (process.platform === "win32") {
     // Check for target-specific build first

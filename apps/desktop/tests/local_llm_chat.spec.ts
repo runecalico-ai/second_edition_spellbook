@@ -142,7 +142,11 @@ test.describe("Local LLM chat streaming", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    await app.createSpell({ name: "Magic Missile", level: "1" });
+    await app.createSpell({
+      name: "Magic Missile",
+      level: "1",
+      description: "A missile of magical energy that unerringly strikes its target.",
+    });
     await app.openSpell("Magic Missile");
     const match = page.url().match(/\/edit\/(\d+)$/);
     expect(match).not.toBeNull();

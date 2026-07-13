@@ -9,6 +9,12 @@ Instructions for developing, running, and maintaining Playwright E2E tests for t
 
 > **Migrating existing tests?** See [MIGRATION.md](MIGRATION.md) for a complete guide on updating tests to use the modern infrastructure.
 
+## Claude Code / agent sandbox requirement
+
+These tests launch a real Tauri binary that must spawn a WebView2 renderer window. When Claude Code's Bash tool runs the Playwright command under its default sandbox, the child process gets no window-station/desktop access: `spellbook-desktop.exe` starts and stays alive, but never spawns a `msedgewebview2.exe` child, never binds the CDP port, and the test fails with `CDP endpoint not ready after <timeout>ms`, indistinguishable from a real app bug.
+
+**Required:** pass `dangerouslyDisableSandbox: true` on the Bash tool call that runs `playwright test` (and on any direct binary launch used to debug this). Confirmed via manual CDP probe (`curl http://127.0.0.1:<port>/json/version`) that this is sufficient — no other environment change (window station tricks, scheduled tasks, alternate sessions) was needed once the sandbox flag was lifted.
+
 ## Directory Structure
 
 ```

@@ -312,6 +312,7 @@ pub async fn remove_character_spell(
 1. **Type inference in closures**: Always use `Ok::<T, AppError>(value)` inside `spawn_blocking`
 2. **Migration paths**: Relative to the source file, currently `../../../../../db/migrations/`
 3. **Unused imports**: Run `cargo fix --lib` to auto-clean
+4. **CRT linkage on Windows**: `src-tauri/.cargo/config.toml` forces `STATIC_VCRUNTIME=false` (dynamic CRT, force-overridden). Every vendored native dependency (`rusqlite`'s bundled sqlite3, `sqlite-vec`, `llama-cpp-sys-2`, `ort`/onnxruntime via `fastembed`) links the dynamic CRT via `cc-rs`; tauri-build otherwise statically links the exe's CRT, and mixing the two crosses an allocator boundary and corrupts the heap (surfaces on debug builds as `_CrtIsValidHeapPointer` / `is_block_type_valid` assertion crashes at startup). Do not remove this setting or add a new vendored C/C++ dependency without checking it links the same (dynamic) CRT. Release builds now depend on the end-user machine having the standard MSVC runtime present rather than embedding it — no redistributable bundling is currently configured in `tauri.conf.json`.
 
 ### Linting Best Practices (Clippy)
 

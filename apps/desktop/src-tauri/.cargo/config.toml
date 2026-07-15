@@ -7,4 +7,4 @@ target-dir = "../../../target"
 # the dynamic CRT via cc-rs. Mixing the two crosses an allocator boundary and corrupts the
 # heap (Windows debug builds surface this as _CrtIsValidHeapPointer / is_block_type_valid
 # assertions at startup). Force dynamic linking everywhere so the whole binary shares one CRT.
-STATIC_VCRUNTIME = "false"
+STATIC_VCRUNTIME = { value = "false", force = true }

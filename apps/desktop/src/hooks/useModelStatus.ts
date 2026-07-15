@@ -19,10 +19,7 @@ export function useModelStatus() {
   const refresh = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     try {
-      const [llmStatus, embStatus] = await Promise.all([
-        getLlmStatus(),
-        getEmbeddingsStatus(),
-      ]);
+      const [llmStatus, embStatus] = await Promise.all([getLlmStatus(), getEmbeddingsStatus()]);
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
       setLlm(llmStatus);
       setEmbeddings(embStatus);

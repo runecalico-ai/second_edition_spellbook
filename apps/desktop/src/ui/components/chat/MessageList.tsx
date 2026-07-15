@@ -12,8 +12,7 @@ interface MessageListProps {
 export function MessageList({ messages, isModelLoading }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prefersReducedMotion =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const lastMessage = messages[messages.length - 1];
 
@@ -42,7 +41,9 @@ export function MessageList({ messages, isModelLoading }: MessageListProps) {
           return <UserMessage key={message.id} messageId={message.id} content={message.content} />;
         }
         if (message.kind === "system") {
-          return <SystemMessage key={message.id} messageId={message.id} content={message.content} />;
+          return (
+            <SystemMessage key={message.id} messageId={message.id} content={message.content} />
+          );
         }
         return (
           <AssistantMessage

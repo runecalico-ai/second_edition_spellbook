@@ -16,17 +16,19 @@ describe("deriveSemanticAvailability", () => {
     ready: "ready",
   } satisfies Record<EmbeddingsStatus, SemanticAvailability>;
 
-  it.each(
-    Object.entries(semanticModeExpectations) as [EmbeddingsStatus, SemanticAvailability][],
-  )("maps embeddings state %s → %s in semantic mode", (state, expected) => {
-    expect(deriveSemanticAvailability("semantic", state)).toBe(expected);
-  });
+  it.each(Object.entries(semanticModeExpectations) as [EmbeddingsStatus, SemanticAvailability][])(
+    "maps embeddings state %s → %s in semantic mode",
+    (state, expected) => {
+      expect(deriveSemanticAvailability("semantic", state)).toBe(expected);
+    },
+  );
 
-  it.each(
-    Object.keys(semanticModeExpectations) as EmbeddingsStatus[],
-  )("returns keyword in keyword mode regardless of embeddings state %s", (state) => {
-    expect(deriveSemanticAvailability("keyword", state)).toBe("keyword");
-  });
+  it.each(Object.keys(semanticModeExpectations) as EmbeddingsStatus[])(
+    "returns keyword in keyword mode regardless of embeddings state %s",
+    (state) => {
+      expect(deriveSemanticAvailability("keyword", state)).toBe("keyword");
+    },
+  );
 });
 
 describe("canRunSemanticSearch", () => {

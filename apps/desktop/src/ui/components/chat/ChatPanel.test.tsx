@@ -159,7 +159,8 @@ describe("ChatPanel", () => {
     llmStatus = {
       status: "error",
       modelPath: "",
-      lastError: "Insufficient RAM: at least 1.5 GB free required to load the model. Close other applications and try again.",
+      lastError:
+        "Insufficient RAM: at least 1.5 GB free required to load the model. Close other applications and try again.",
     };
     render(<ChatPanel />);
 

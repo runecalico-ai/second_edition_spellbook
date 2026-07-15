@@ -94,18 +94,14 @@ describe("AssistantMessage", () => {
           messageId="a6"
           content="Fireballistics is not the same as a real spell."
           searchTerms={["fire"]}
-          groundedSpells={[
-            { id: 7, name: "Fire", level: 1, descriptionSnippet: "Flame." },
-          ]}
+          groundedSpells={[{ id: 7, name: "Fire", level: 1, descriptionSnippet: "Flame." }]}
           isStreaming={false}
         />
       </MemoryRouter>,
     );
 
     expect(screen.queryByTestId("spell-link-fire")).toBeNull();
-    expect(screen.getByTestId("chat-assistant-bubble").textContent).toContain(
-      "Fireballistics",
-    );
+    expect(screen.getByTestId("chat-assistant-bubble").textContent).toContain("Fireballistics");
   });
 
   it("hides the grounded-in indicator when searchTerms is empty", () => {

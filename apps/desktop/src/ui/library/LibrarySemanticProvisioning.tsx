@@ -19,7 +19,8 @@ const COPY = {
   },
   downloading: {
     heading: "Downloading embedding model",
-    description: "The download modal shows progress. Semantic search will be available when the model is ready.",
+    description:
+      "The download modal shows progress. Semantic search will be available when the model is ready.",
   },
   initializing: {
     heading: "Initializing embedding model",
@@ -64,7 +65,12 @@ export function LibrarySemanticProvisioning({
         heading={copy.heading}
         description={visibleDescription}
       />
-      <EmptyState heading={copy.heading} description={visibleDescription} testId={testId} headingLevel="h3">
+      <EmptyState
+        heading={copy.heading}
+        description={visibleDescription}
+        testId={testId}
+        headingLevel="h3"
+      >
         {availability === "initializing" || availability === "downloading" ? (
           <p
             className="text-sm text-neutral-500 dark:text-neutral-400"

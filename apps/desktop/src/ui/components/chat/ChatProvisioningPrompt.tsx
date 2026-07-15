@@ -76,7 +76,9 @@ export function ChatProvisioningPrompt({
         ) : null}
         {embeddingsNotProvisioned ? (
           <div className="mt-4 w-full border-t border-neutral-200 dark:border-neutral-700 pt-4">
-            <p className="text-xs text-neutral-500 mb-3">Optional: enable Library semantic search</p>
+            <p className="text-xs text-neutral-500 mb-3">
+              Optional: enable Library semantic search
+            </p>
             {embeddingsError ? (
               <p
                 className="mb-3 text-sm text-red-600 dark:text-red-400"

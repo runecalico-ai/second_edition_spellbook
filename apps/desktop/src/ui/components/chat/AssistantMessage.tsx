@@ -77,12 +77,13 @@ export function AssistantMessage({
         >
           {isStreaming ? content : segments}
           {isStreaming ? (
-            <span className="inline-block w-2 h-4 ml-0.5 bg-neutral-400 animate-pulse" aria-hidden="true" />
+            <span
+              className="inline-block w-2 h-4 ml-0.5 bg-neutral-400 animate-pulse"
+              aria-hidden="true"
+            />
           ) : null}
         </article>
-        <GroundedInIndicator
-          grounding={{ searchTerms, groundedSpells }}
-        />
+        <GroundedInIndicator grounding={{ searchTerms, groundedSpells }} />
       </div>
     </div>
   );

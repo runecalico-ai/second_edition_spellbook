@@ -31,7 +31,8 @@ export function ModelDownloadModal({
     if (!dialog) return;
 
     if (isOpen) {
-      triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      triggerRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       if (!dialog.open && typeof dialog.showModal === "function") {
         dialog.showModal();
       }
@@ -103,7 +104,10 @@ export function ModelDownloadModal({
     };
   }, [isOpen]);
 
-  const percent = totalBytes > 0 ? Math.min(100, Math.max(0, Math.round((bytesDownloaded / totalBytes) * 100))) : 0;
+  const percent =
+    totalBytes > 0
+      ? Math.min(100, Math.max(0, Math.round((bytesDownloaded / totalBytes) * 100)))
+      : 0;
 
   return (
     <dialog

@@ -79,7 +79,9 @@ export function ChatPanel() {
     }
 
     const isDownloadingNow =
-      activeDownload.kind === "llm" ? llm.status === "downloading" : embeddings.state === "downloading";
+      activeDownload.kind === "llm"
+        ? llm.status === "downloading"
+        : embeddings.state === "downloading";
 
     if (isDownloadingNow) {
       sawDownloadingRef.current = true;
@@ -171,7 +173,8 @@ export function ChatPanel() {
   const progress = useModelDownloadProgress(downloadKind, isDownloadModalOpen);
 
   const llmNeedsSetup = llm.status === "notProvisioned" || llm.status === "error";
-  const embeddingsNeedsSetup = embeddings.state === "notProvisioned" || embeddings.state === "error";
+  const embeddingsNeedsSetup =
+    embeddings.state === "notProvisioned" || embeddings.state === "error";
   const canChat = canSendChat(llm.status);
 
   return (
@@ -181,10 +184,7 @@ export function ChatPanel() {
     >
       <ChatHeader llm={llm} embeddings={embeddings} />
       {statusError ? (
-        <p
-          data-testid="chat-status-error"
-          className="text-xs text-red-600 dark:text-red-400 mt-2"
-        >
+        <p data-testid="chat-status-error" className="text-xs text-red-600 dark:text-red-400 mt-2">
           {statusError}
         </p>
       ) : null}
@@ -223,7 +223,9 @@ export function ChatPanel() {
           bytesDownloaded={progress.bytesDownloaded}
           totalBytes={progress.totalBytes}
           errorMessage={
-            downloadError ? (parseProvisionerError(downloadError)?.description ?? downloadError) : null
+            downloadError
+              ? (parseProvisionerError(downloadError)?.description ?? downloadError)
+              : null
           }
           onRetry={() => {
             setDownloadError(null);

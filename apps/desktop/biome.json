@@ -11,7 +11,8 @@
       "**/*.zip",
       "**/playwright-report/**",
       "**/test-results/**",
-      "**/storybook-static/**"
+      "**/storybook-static/**",
+      "tests/tmp/**"
     ]
   },
   "organizeImports": {

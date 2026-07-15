@@ -32,8 +32,9 @@ export function useChatSession(llmStatus: LlmStatus) {
 
   const toApiHistory = useCallback((): ChatMessage[] => {
     return messages
-      .filter((m): m is Extract<ChatDisplayMessage, { kind: "user" | "assistant" }> =>
-        m.kind === "user" || m.kind === "assistant",
+      .filter(
+        (m): m is Extract<ChatDisplayMessage, { kind: "user" | "assistant" }> =>
+          m.kind === "user" || m.kind === "assistant",
       )
       .map((m) => ({ role: m.kind, content: m.content }));
   }, [messages]);
@@ -185,7 +186,14 @@ export function useChatSession(llmStatus: LlmStatus) {
       ]);
       assistantIdRef.current = null;
     }
-  }, [stream.response, stream.isGenerating, stream.grounding, stream.error, stream.cancelled, stream.timedOut]);
+  }, [
+    stream.response,
+    stream.isGenerating,
+    stream.grounding,
+    stream.error,
+    stream.cancelled,
+    stream.timedOut,
+  ]);
 
   const cancel = useCallback(async () => {
     await stream.cancel();

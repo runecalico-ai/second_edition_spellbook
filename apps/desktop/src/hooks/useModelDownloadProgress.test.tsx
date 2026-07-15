@@ -6,8 +6,7 @@ import { useModelDownloadProgress } from "./useModelDownloadProgress";
 
 const mockListen = vi.fn();
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: (event: string, handler: (e: { payload: unknown }) => void) =>
-    mockListen(event, handler),
+  listen: (event: string, handler: (e: { payload: unknown }) => void) => mockListen(event, handler),
 }));
 
 describe("useModelDownloadProgress", () => {
@@ -47,10 +46,7 @@ describe("useModelDownloadProgress", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(mockListen).toHaveBeenCalledWith(
-      "embeddings://download-progress",
-      expect.any(Function),
-    );
+    expect(mockListen).toHaveBeenCalledWith("embeddings://download-progress", expect.any(Function));
     act(() => {
       embeddingsHandler({ payload: { bytesDownloaded: 50_000_000, totalBytes: 100_000_000 } });
     });

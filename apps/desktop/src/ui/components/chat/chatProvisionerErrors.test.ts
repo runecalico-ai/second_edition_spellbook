@@ -40,9 +40,7 @@ describe("parseProvisionerError", () => {
   });
 
   it("does not misclassify a DB connection pool error as network", () => {
-    const parsed = parseProvisionerError(
-      "Connection pool error: timed out waiting for connection",
-    );
+    const parsed = parseProvisionerError("Connection pool error: timed out waiting for connection");
     expect(parsed?.kind).toBe("generic");
   });
 });

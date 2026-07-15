@@ -380,9 +380,7 @@ export default function Library() {
   );
 
   const showSemanticPanel =
-    mode === "semantic" &&
-    semanticAvailability !== "ready" &&
-    semanticAvailability !== "keyword";
+    mode === "semantic" && semanticAvailability !== "ready" && semanticAvailability !== "keyword";
 
   const showSemanticSearchError =
     mode === "semantic" && semanticAvailability === "ready" && semanticSearchError !== null;

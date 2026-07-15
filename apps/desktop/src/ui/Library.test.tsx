@@ -1091,9 +1091,9 @@ describe("Library search", () => {
     });
 
     expect(await screen.findByTestId("library-semantic-provisioning-state")).toBeTruthy();
-    expect(
-      vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic"),
-    ).toBe(false);
+    expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic")).toBe(
+      false,
+    );
   });
 
   it("does not call search_spells_semantic while embeddings are initializing", async () => {
@@ -1242,9 +1242,9 @@ describe("Library search", () => {
 
     expect(screen.queryByTestId("empty-search-state")).toBeNull();
     expect(screen.queryByText("No Results")).toBeNull();
-    expect(
-      vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic"),
-    ).toBe(false);
+    expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic")).toBe(
+      false,
+    );
   });
 
   it("does not show empty-library or empty-search when toggling to semantic with embeddings ready", async () => {
@@ -1306,9 +1306,9 @@ describe("Library search", () => {
     });
     fireEvent.click(screen.getByTestId("library-search-button"));
 
-    expect(
-      vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic"),
-    ).toBe(false);
+    expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic")).toBe(
+      false,
+    );
     expect(screen.queryByTestId("empty-search-state")).toBeNull();
     expect(screen.queryByText("No Results")).toBeNull();
   });
@@ -1347,7 +1347,9 @@ describe("Library search", () => {
     fireEvent.click(screen.getByTestId("library-search-button"));
 
     const errorState = await screen.findByTestId("library-semantic-search-error-state");
-    expect(within(errorState).getByRole("heading", { name: "Semantic search failed" })).toBeTruthy();
+    expect(
+      within(errorState).getByRole("heading", { name: "Semantic search failed" }),
+    ).toBeTruthy();
     expect(within(errorState).getByText("embedding index unavailable")).toBeTruthy();
     expect(screen.getByTestId("library-semantic-retry-button")).toBeTruthy();
     expect(semanticSearchCalls).toBe(1);

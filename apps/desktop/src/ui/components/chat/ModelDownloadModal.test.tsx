@@ -36,7 +36,9 @@ describe("ModelDownloadModal", () => {
 
     expect(screen.getByTestId("model-download-modal")).toBeTruthy();
     expect(screen.getByTestId("model-download-modal-bytes").textContent).toContain("50%");
-    expect(screen.getByTestId("model-download-modal-progress-bar").getAttribute("aria-valuenow")).toBe("50");
+    expect(
+      screen.getByTestId("model-download-modal-progress-bar").getAttribute("aria-valuenow"),
+    ).toBe("50");
   });
 
   it("calls onCancel for cancel button and backdrop", () => {
@@ -95,10 +97,7 @@ describe("ModelDownloadModal", () => {
     );
 
     const dialog = screen.getByTestId("model-download-modal");
-    fireEvent(
-      dialog,
-      new Event("cancel", { bubbles: true, cancelable: true }),
-    );
+    fireEvent(dialog, new Event("cancel", { bubbles: true, cancelable: true }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

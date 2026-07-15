@@ -47,8 +47,7 @@ export function useEmbeddingsProvisioning({
     }
 
     const successTerminal = embeddingsState === "ready";
-    const failedAfterObserved =
-      sawDownloadingRef.current && embeddingsState === "error";
+    const failedAfterObserved = sawDownloadingRef.current && embeddingsState === "error";
 
     if (sawDownloadingRef.current || successTerminal || failedAfterObserved) {
       setActiveDownload(false);

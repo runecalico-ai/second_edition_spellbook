@@ -1,2 +1,10 @@
 [build]
 target-dir = "../../../target"
+
+[env]
+# tauri-build defaults to statically linking the CRT into the exe (STATIC_VCRUNTIME=true),
+# but every vendored native dependency (sqlite3, sqlite-vec, llama.cpp, onnxruntime) links
+# the dynamic CRT via cc-rs. Mixing the two crosses an allocator boundary and corrupts the
+# heap (Windows debug builds surface this as _CrtIsValidHeapPointer / is_block_type_valid
+# assertions at startup). Force dynamic linking everywhere so the whole binary shares one CRT.
+STATIC_VCRUNTIME = "false"

@@ -1,9 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import type {
-  LocalMlE2EObservation,
-  LocalMlE2EScenario,
-} from "../../src/ui/spellbookE2EHarness";
+import type { LocalMlE2EObservation, LocalMlE2EScenario } from "../../src/ui/spellbookE2EHarness";
 import type { ReindexResult, SemanticSearchResult } from "../../src/types/llm";
 import { TIMEOUTS } from "../fixtures/constants";
 

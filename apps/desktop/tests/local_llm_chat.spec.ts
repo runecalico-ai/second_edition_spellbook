@@ -268,7 +268,8 @@ test.describe("Local LLM chat streaming", () => {
       expect.objectContaining({ kind: "command", name: "llm_cancel_generation" }),
     );
     const cancelObservation = observations.find(
-      (observation) => observation.kind === "command" && observation.name === "llm_cancel_generation",
+      (observation) =>
+        observation.kind === "command" && observation.name === "llm_cancel_generation",
     );
     expect(cancelObservation).toBeDefined();
     const args = cancelObservation?.args as Record<string, unknown>;

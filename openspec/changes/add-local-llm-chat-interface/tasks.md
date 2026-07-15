@@ -94,15 +94,15 @@
 
 ## 10. E2E Tests
 
-- [ ] 10.1 Write Playwright test: Chat panel shows download and verified side-load actions when the LLM model is not provisioned
-- [ ] 10.2 Write Playwright test: Download progress modal appears and completes with camelCase progress payloads
-- [ ] 10.3 Write Playwright test: Sending a message shows the user bubble and streaming assistant response
-- [ ] 10.4 Write Playwright test: Spell link in a response navigates to the existing spell editor route
-- [ ] 10.5 Write Playwright test: Error message is displayed inline when `llm_chat` returns an error
-- [ ] 10.6 Write Playwright test: Generation cancellation keeps the partial assistant response visible
-- [ ] 10.7 Write Playwright test: Library semantic mode shows the semantic-mode empty state when the embedding model is not provisioned
-- [ ] 10.8 Write Playwright test: `search_spells_semantic` returns ranked results with `cosineDistance`
-- [ ] 10.9 Write Playwright test: `reindex_embeddings` emits progress events and returns the expected `ReindexResult` shape
+- [x] 10.1 Write Playwright test: Chat panel shows download and verified side-load actions when the LLM model is not provisioned
+- [x] 10.2 Write Playwright test: Download progress modal appears and completes with camelCase progress payloads
+- [x] 10.3 Write Playwright test: Sending a message shows the user bubble and streaming assistant response
+- [x] 10.4 Write Playwright test: Spell link in a response navigates to the existing spell editor route
+- [x] 10.5 Write Playwright test: Error message is displayed inline when `llm_chat` returns an error
+- [x] 10.6 Write Playwright test: Generation cancellation keeps the partial assistant response visible
+- [x] 10.7 Write Playwright test: Library semantic mode shows the semantic-mode empty state when the embedding model is not provisioned
+- [x] 10.8 Write Playwright test: `search_spells_semantic` returns ranked results with `cosineDistance`
+- [x] 10.9 Write Playwright test: `reindex_embeddings` emits progress events and returns the expected `ReindexResult` shape
 
 ## 11. Documentation & Cleanup
 

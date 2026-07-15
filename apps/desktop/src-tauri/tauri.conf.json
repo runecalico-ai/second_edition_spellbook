@@ -11,7 +11,12 @@
     "devUrl": "http://127.0.0.1:5173"
   },
   "bundle": {
-    "resources": ["resources/sqlite-vec/*"]
+    "resources": ["resources/sqlite-vec/*"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "installer/vcredist-check.nsh"
+      }
+    }
   },
   "app": {
     "windows": [

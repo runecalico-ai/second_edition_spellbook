@@ -1,5 +1,6 @@
-import { expect, test } from "./fixtures/test-fixtures";
+import type { SemanticSearchResult } from "../src/types/llm";
 import { TIMEOUTS } from "./fixtures/constants";
+import { expect, test } from "./fixtures/test-fixtures";
 import { SpellbookApp } from "./page-objects/SpellbookApp";
 
 test.skip(process.platform !== "win32", "Tauri CDP tests require WebView2 on Windows.");
@@ -316,7 +317,7 @@ test.describe("Local LLM semantic search and reindex", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
-    const rankedSemanticResults = [
+    const rankedSemanticResults: SemanticSearchResult[] = [
       {
         id: 1,
         name: "Shield",

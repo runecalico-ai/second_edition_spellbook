@@ -12,7 +12,8 @@
       "**/playwright-report/**",
       "**/test-results/**",
       "**/storybook-static/**",
-      "tests/tmp/**"
+      "tests/tmp/**",
+      "**/.claude/**"
     ]
   },
   "organizeImports": {

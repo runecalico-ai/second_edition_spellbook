@@ -290,6 +290,16 @@ test.describe("Local LLM semantic search and reindex", () => {
       embeddingsStatus: { state: "notProvisioned" },
     });
 
+    await app.navigate("Library");
+    await app.waitForLibrary();
+    await expect(page.getByTestId("library-mode-select")).toHaveValue("keyword");
+
+    await page.getByTestId("search-input").fill("zzzz-no-match");
+    await page.getByTestId("library-search-button").click();
+    await expect(page.getByTestId("empty-search-state")).toBeVisible({
+      timeout: TIMEOUTS.medium,
+    });
+
     await app.localLlm.switchLibraryToSemantic();
 
     await expect(page.getByTestId("library-semantic-provisioning-state")).toBeVisible({
@@ -306,36 +316,34 @@ test.describe("Local LLM semantic search and reindex", () => {
     const { page } = appContext;
     const app = new SpellbookApp(page);
 
+    const rankedSemanticResults = [
+      {
+        id: 1,
+        name: "Shield",
+        level: 1,
+        isQuestSpell: 0,
+        isCantrip: 0,
+        cosineDistance: 0.08,
+      },
+      {
+        id: 2,
+        name: "Stoneskin",
+        level: 4,
+        isQuestSpell: 0,
+        isCantrip: 0,
+        cosineDistance: 0.21,
+      },
+    ];
+
     await app.localLlm.installScenario({
       llmStatus: { status: "notProvisioned", modelPath: "" },
       embeddingsStatus: { state: "ready" },
-      semanticResults: [
-        {
-          id: 1,
-          name: "Shield",
-          level: 1,
-          isQuestSpell: 0,
-          isCantrip: 0,
-          cosineDistance: 0.08,
-        },
-        {
-          id: 2,
-          name: "Stoneskin",
-          level: 4,
-          isQuestSpell: 0,
-          isCantrip: 0,
-          cosineDistance: 0.21,
-        },
-      ],
+      semanticResults: rankedSemanticResults,
     });
 
     const results = await app.localLlm.runSemanticSearch("physical defense", 5);
-    expect(results).toEqual([
-      expect.objectContaining({ name: "Shield", cosineDistance: 0.08 }),
-      expect.objectContaining({ name: "Stoneskin", cosineDistance: 0.21 }),
-    ]);
-    expect(typeof results[0]?.cosineDistance).toBe("number");
-    expect(typeof results[1]?.cosineDistance).toBe("number");
+    expect(results).toEqual(rankedSemanticResults);
+    expect(results[0].cosineDistance).toBeLessThan(results[1].cosineDistance);
 
     const observations = await app.localLlm.observations();
     expect(observations).toContainEqual({
@@ -345,17 +353,26 @@ test.describe("Local LLM semantic search and reindex", () => {
     });
 
     await app.localLlm.switchLibraryToSemantic();
+    const resultsState = page.getByTestId("library-results-state");
+    const previousSearchRequestId = await resultsState.getAttribute("data-search-request-id");
+
     await page.getByTestId("search-input").fill("physical defense");
     await page.getByTestId("library-search-button").click();
 
-    const resultsState = page.getByTestId("library-results-state");
+    await expect
+      .poll(async () => resultsState.getAttribute("data-search-request-id"), {
+        timeout: TIMEOUTS.medium,
+        intervals: [50, 100, 200],
+      })
+      .not.toBe(previousSearchRequestId);
+
     await expect(resultsState).toHaveAttribute("data-results-settled", "true", {
       timeout: TIMEOUTS.medium,
     });
 
     const spellTable = page.getByTestId("spell-library-table");
     const spellLinks = spellTable.locator('[data-testid^="spell-link-"]');
-    await expect(spellLinks).toHaveCount(2);
+    await expect(spellLinks).toHaveCount(2, { timeout: TIMEOUTS.medium });
     const testIds = await spellLinks.evaluateAll((nodes) =>
       nodes.map((node) => node.getAttribute("data-testid")),
     );

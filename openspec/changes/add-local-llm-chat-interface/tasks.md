@@ -106,10 +106,10 @@
 
 ## 11. Documentation & Cleanup
 
-- [ ] 11.1 Update `apps/desktop/src-tauri/AGENTS.md` with the new LLM and embedding provisioning commands plus `LlmState` and `EmbeddingState`
-- [ ] 11.2 Update `apps/desktop/src/AGENTS.md` with Chat provisioning UI, Library semantic empty-state, and streaming hook conventions
-- [ ] 11.3 Document approved model URLs, expected SHA-256 values, verified side-load rules, and the fixed `SpellbookVault/models/` path in `DEVELOPMENT.md`
-- [ ] 11.4 Document that model assets are excluded from backup and restore by default and preserved across restore on the same machine
+- [x] 11.1 Update `apps/desktop/src-tauri/AGENTS.md` with the new LLM and embedding provisioning commands plus `LlmState` and `EmbeddingState`
+- [x] 11.2 Update `apps/desktop/src/AGENTS.md` with Chat provisioning UI, Library semantic empty-state, and streaming hook conventions
+- [x] 11.3 Document approved model URLs, expected SHA-256 values, verified side-load rules, and the fixed `SpellbookVault/models/` path in `DEVELOPMENT.md`
+- [x] 11.4 Document that model assets are excluded from backup and restore by default and preserved across restore on the same machine
 - [x] 11.5 Update `services/ml/AGENTS.md` to note that `embed` and `llm_answer` handlers were removed and why
 - [ ] 11.6 Run `cargo clippy`, `cargo fmt`, `pnpm lint`, `ruff check`, and the affected E2E battery; fix all findings
 

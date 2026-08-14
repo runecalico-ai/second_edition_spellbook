@@ -31,19 +31,77 @@ pnpm tauri:dev
 
 ## Local Model Provisioning
 
-Task Group 1 defines the approved local-model assets, thresholds, and shared backend provisioning guard for content staged under `SpellbookVault/models/`. Public Tauri download commands land in later tasks.
+Approved TinyLlama and MiniLM assets are staged under the fixed path `SpellbookVault/models/` (`commands/provisioning.rs`). Paths are not configurable. After a successful download or verified side-load, chat and embeddings run offline.
 
-*   Required Windows toolchain: `x86_64-pc-windows-msvc`, `rustc 1.95.0 (59807616e 2026-04-14)`, `cargo 1.95.0 (f2d3ce0bd 2026-03-21)`, Visual Studio Build Tools workload `Microsoft.VisualStudio.Workload.VCTools` version `18.5.11709.299`, Windows SDK `10.0.26100.0`, plus `LIBCLANG_PATH=C:\Program Files\LLVM\bin` and `CMAKE=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe` when compiling the local-model stack in a clean shell.
-*   Approved TinyLlama asset: `https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`, version `TinyLlama-1.1B-Chat-v1.0 / Q4_K_M`, verification strategy `SingleFileSHA256 9FECC3B3CD76BBA89D504F29B616EEDF7DA85B96540E490CA5824D3F7D2776A0`, download size `668788096`, installed size `668788096`, peak RAM `910843904`, destination `SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`.
-*   Approved embedding asset: `https://huggingface.co/Qdrant/all-MiniLM-L6-v2-onnx/tree/5f1b8cd78bc4fb444dd171e59b18f3a3af89a079`, version `5f1b8cd78bc4fb444dd171e59b18f3a3af89a079`, verification strategy `FileInventoryOnly @ 5f1b8cd78bc4fb444dd171e59b18f3a3af89a079 + UpstreamRevisionManifestSHA`, download size `91102069`, installed size `91102069`, peak RAM `121024512`, destination `SpellbookVault/models/embeddings/all-MiniLM-L6-v2/`.
-*   Enforced resource thresholds: free disk `>= 838860800` and free RAM `>= 1610612736` before either provisioning target starts.
-*   Provisioning flow: the approved assets are downloaded or verified via side-load into `SpellbookVault/models/`; after provisioning completes, normal local inference and embedding use stays offline.
-*   Shared download guard: one global provisioning guard is already registered for both asset types. Later download commands must reuse it so overlapping requests fail with the current target-specific validation errors, including `Provisioning for LLM is already in progress.` and `Provisioning for embeddings is unavailable while LLM is in progress.`
-*   Interruptibility finding: Task Group 1 accepted Outcome B for later inference cancellation; a dedicated inference worker owns the model/session and polls an `Arc<std::sync::atomic::AtomicBool>` before token sampling and optionally after decode.
-*   Python sidecar scope: the Python sidecar remains responsible for document import/export only; it does not provide LLM or embedding functionality for this stack.
-*   Scope note: embedding reindex concurrency and mid-download cancellation are not part of Task Group 1.
+Public commands: `llm_download_model`, `llm_import_model_file`, `embeddings_download_model`, `embeddings_import_model_file`. Status: `llm_status`, `embeddings_status`. One global `ProvisioningState` guard prevents overlapping high-bandwidth work (`Provisioning for LLM is already in progress.` / `Provisioning for embeddings is unavailable while LLM is in progress.`).
 
-See [dev/local_llm_infrastructure_spike.md](./dev/local_llm_infrastructure_spike.md) for the raw provenance notes, Windows compile evidence, and the exact embedding bundle file inventory.
+*   Required Windows toolchain: `x86_64-pc-windows-msvc`, `rustc 1.95.0 (59807616e 2026-04-14)`, `cargo 1.95.0 (f2d3ce0bd 2026-03-21)`, Visual Studio Build Tools workload `Microsoft.VisualStudio.Workload.VCTools` version `18.5.11709.299`, Windows SDK `10.0.26100.0`, plus `LIBCLANG_PATH=C:\Program Files\LLVM\bin` and `CMAKE=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe` when compiling the local-model stack in a clean shell. Do not drop these pins; they are the Task 1.6 record.
+*   Enforced resource thresholds: free disk `>= 838860800` bytes and free RAM `>= 1610612736` bytes (`BASELINE_MIN_FREE_DISK_BYTES` / `BASELINE_MIN_FREE_RAM_BYTES`).
+*   Python sidecar scope: import/export only. It does not provide LLM or embedding functionality.
+
+### Approved TinyLlama GGUF
+
+| Field | Value |
+| ----- | ----- |
+| URL | `https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` |
+| Version | TinyLlama-1.1B-Chat-v1.0 / Q4_K_M |
+| Destination | `SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` |
+| SHA-256 | `9FECC3B3CD76BBA89D504F29B616EEDF7DA85B96540E490CA5824D3F7D2776A0` |
+| Strategy | `SingleFileSha256` |
+| Download / installed size | `668788096` bytes |
+| Peak RAM (recorded) | `910843904` bytes |
+
+Mismatch: delete the failed copy, return an error, leave `llm_status` unchanged when side-load fails.
+
+### Approved embedding bundle (all-MiniLM-L6-v2 ONNX)
+
+| Field | Value |
+| ----- | ----- |
+| URL | `https://huggingface.co/Qdrant/all-MiniLM-L6-v2-onnx/tree/5f1b8cd78bc4fb444dd171e59b18f3a3af89a079` |
+| Manifest | `5f1b8cd78bc4fb444dd171e59b18f3a3af89a079` |
+| Destination | `SpellbookVault/models/embeddings/all-MiniLM-L6-v2/` |
+| Strategy | `FileInventoryOnly` + `UpstreamRevisionManifestSHA` |
+| Download / installed size | `91102069` bytes |
+| Peak RAM (recorded) | `121024512` bytes |
+
+Per-file inventory (`EMBEDDING_EXPECTED_FILES`):
+
+| Relative path | Size (bytes) | SHA-256 |
+| ------------- | ------------ | ------- |
+| `embeddings/all-MiniLM-L6-v2/model.onnx` | `90387630` | `bbd7b466f6d58e646fdc2bd5fd67b2f5e93c0b687011bd4548c420f7bd46f0c5` |
+| `embeddings/all-MiniLM-L6-v2/tokenizer.json` | `711661` | `da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0` |
+| `embeddings/all-MiniLM-L6-v2/config.json` | `650` | `1b4d8e2a3988377ed8b519a31d8d31025a25f1c5f8606998e8014111438efcd7` |
+| `embeddings/all-MiniLM-L6-v2/special_tokens_map.json` | `695` | `5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a` |
+| `embeddings/all-MiniLM-L6-v2/tokenizer_config.json` | `1433` | `bd2e06a5b20fd1b13ca988bedc8763d332d242381b4fbc98f8fead4524158f79` |
+
+### Verified side-load rules
+
+1. Only the exact approved GGUF or the exact five-file MiniLM layout is accepted. Arbitrary "compatible" models are rejected.
+2. Commands: `llm_import_model_file` (`filePath`) and `embeddings_import_model_file` (`filePath`).
+3. Validate identity (destination filename / relative paths) and SHA-256 (or the five-file inventory) before copying into `SpellbookVault/models/`.
+4. Success: LLM status becomes `ready`; embeddings status becomes `initializing` or `ready`.
+5. Failure: status unchanged; no vault write of the rejected payload.
+6. Chat UI labels this "Add Local Model" (`chat-llm-import-button` / `chat-embeddings-import-button`). Library semantic empty-state uses `library-embeddings-import-button`.
+7. In-app download remains the other provisioning path (`llm_download_model` / `embeddings_download_model`) with HTTP Range resume and the same hashes.
+
+Generation cancellation is implemented (OpenSpec Outcome B): the inference worker polls an `AtomicBool` at token boundaries via `llm_cancel_generation`.
+
+See [dev/local_llm_infrastructure_spike.md](./dev/local_llm_infrastructure_spike.md) for provenance notes and Windows compile evidence.
+
+### Vault backup and restore (models excluded)
+
+`backup_vault` archives only:
+
+1. `spellbook.sqlite3`
+2. `vault-settings.json` (if present)
+3. the `spells/` directory
+
+The `models/` directory is **not** added to the archive (exclusion by omission, not a separate deny-list). `restore_vault` restores DB + `spells/` + settings and does **not** delete or overwrite `{SpellbookVault}/models/`.
+
+Consequences:
+- Same machine: provisioned TinyLlama/MiniLM files survive restore.
+- New machine or empty vault: the user must download or side-load again.
+- A backup is not a portable copy of the LLM. Do not tell users that restoring a `.zip` brings chat models with it.
 
 ### Python Sidecar Services
 **Location**: `services/ml`

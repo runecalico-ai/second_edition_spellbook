@@ -542,7 +542,9 @@ LibrarySemanticEmptyState
 
 ## Open Questions
 
-- **Build CI**: Verify that the Windows CI runner has the MSVC C++ toolchain needed by `llama-cpp-rs`.
-- **Approved model identities**: Pin the exact download URLs, filenames, and SHA-256 values for both models.
-- **Model URL stability**: If URLs change, decide whether to mirror assets or rely on the documented side-load fallback.
-- **Generation cancellation mechanics**: Verify the exact `llama-cpp-rs` interruption approach before implementing `llm_cancel_generation`.
+Resolved during implementation (Groups 1–4). Kept here so archive readers do not treat them as still open:
+
+- **Build CI**: `.github/workflows/ci.yml` runs on `ubuntu-latest` and compiles the crate (clippy + `cargo test`), including `llama-cpp-2` and `fastembed`. There is no Windows GitHub Actions job. Windows MSVC compile (`x86_64-pc-windows-msvc`, VS Build Tools `VCTools`) was verified in `docs/dev/local_llm_infrastructure_spike.md` and is documented in `docs/DEVELOPMENT.md`.
+- **Approved model identities**: Pinned in `apps/desktop/src-tauri/src/commands/provisioning.rs` and documented in `docs/DEVELOPMENT.md` (TinyLlama single-file SHA-256 and MiniLM five-file inventory).
+- **Model URL stability**: If an upstream URL breaks, use verified side-load of the same hashed files. v1 does not mirror assets.
+- **Generation cancellation mechanics**: Outcome B — dedicated inference worker polls `AtomicBool` before sampling; `llm_cancel_generation` sets the flag. Partial assistant text stays visible.

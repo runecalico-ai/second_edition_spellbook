@@ -658,6 +658,8 @@ git add apps/desktop/tests/local_llm_chat.spec.ts
 git commit -m "test(e2e): cover semantic search and reindex"
 ```
 
+**Re-verified 2026-08-13:** implementer rebuilt and re-ran the semantic/reindex Playwright grep: **3 passed (50.5s)**. Verification loop iteration 1 found three Medium assertion-strength gaps (vacuous 10.7 `empty-search-state` absence, incomplete 10.8 spell-summary equality, no-op 10.8 `data-results-settled` wait after semantic mode switch). Fixes committed as `66059bd test(e2e): tighten semantic 10.7-10.8 assertions`; Playwright **3 passed (49.6s)**. Iteration 2: three independent reviewers, zero Critical/High/Medium. Loop complete. Only Low findings remain.
+
 ---
 
 ### Task 9: Verify all Task 10 coverage, then update the OpenSpec checklist
@@ -666,7 +668,7 @@ git commit -m "test(e2e): cover semantic search and reindex"
 
 - Modify: `openspec/changes/add-local-llm-chat-interface/tasks.md`
 
-- [ ] **Step 9.1: Run focused unit regressions**
+- [x] **Step 9.1: Run focused unit regressions**
 
 Run:
 
@@ -676,7 +678,9 @@ pnpm --dir apps/desktop exec vitest run src/ui/spellbookE2EHarness.test.ts src/a
 
 Expected: all tests pass.
 
-- [ ] **Step 9.2: Run native semantic/reindex contract regressions**
+**Verified 2026-08-13:** `Test Files 7 passed (7)` / `Tests 146 passed (146)`.
+
+- [x] **Step 9.2: Run native semantic/reindex contract regressions**
 
 Run:
 
@@ -691,7 +695,9 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml reindex_embeddings_
 
 Expected: all six focused Rust tests pass. These checks cover native command registration and camelCase/result serialization that the deterministic frontend harness intentionally bypasses.
 
-- [ ] **Step 9.3: Run static verification**
+**Verified 2026-08-13:** all six named tests `ok` (1 passed each).
+
+- [x] **Step 9.3: Run static verification**
 
 Run:
 
@@ -703,7 +709,9 @@ pnpm --dir apps/desktop format:check
 
 Expected: all commands exit 0.
 
-- [ ] **Step 9.4: Rebuild and run the complete new E2E file**
+**Verified 2026-08-13:** first typecheck failed TS2322 on untyped 10.8 fixtures (`isQuestSpell`/`isCantrip` inferred as `number`). Fixed and committed as `a86b171 test(e2e): type ranked semantic fixtures as SemanticSearchResult`. First `format:check` failed on gitignored `apps/desktop/.claude/settings.local.json`; `**/.claude/**` added to `apps/desktop/biome.json` `files.ignore` in `3c49c07`. Re-ran on committed HEAD: typecheck, lint:biome, and format:check all exit 0.
+
+- [x] **Step 9.4: Rebuild and run the complete new E2E file**
 
 Run:
 
@@ -714,7 +722,9 @@ pnpm --dir apps/desktop exec playwright test tests/local_llm_chat.spec.ts
 
 Expected: 9 passed, 0 failed, 0 skipped on Windows.
 
-- [ ] **Step 9.5: Run the adjacent smoke battery**
+**Verified 2026-08-13:** `9 passed (2.4m)`, 0 failed, 0 skipped. Sandbox `CARGO_TARGET_DIR` required copying the fresh debug exe to workspace `target/debug/spellbook-desktop.exe` so Playwright did not launch a stale binary.
+
+- [x] **Step 9.5: Run the adjacent smoke battery**
 
 Run:
 
@@ -724,11 +734,15 @@ pnpm --dir apps/desktop exec playwright test tests/local_llm_chat.spec.ts tests/
 
 Expected: all tests pass, proving the harness does not affect a normal scenario without explicit ML configuration.
 
-- [ ] **Step 9.6: Mark OpenSpec Task 10 complete only now**
+**Verified 2026-08-13:** `11 passed (2.8m)` (`local_llm_chat.spec.ts` 9 + `spellbook_app_open_spell.spec.ts` 2).
+
+- [x] **Step 9.6: Mark OpenSpec Task 10 complete only now**
 
 In `openspec/changes/add-local-llm-chat-interface/tasks.md`, change only 10.1 through 10.9 from `- [ ]` to `- [x]`. Do not mark Group 11 tasks.
 
-- [ ] **Step 9.7: Verify spec diff and checklist coverage**
+**Verified 2026-08-13:** already marked in `c96308c`. Group 11 unmarked except pre-existing 11.5. No duplicate OpenSpec commit.
+
+- [x] **Step 9.7: Verify spec diff and checklist coverage**
 
 Run:
 
@@ -739,12 +753,16 @@ git diff -- openspec/changes/add-local-llm-chat-interface/tasks.md
 
 Expected: no whitespace errors; diff shows exactly nine Task 10 checkbox changes.
 
-- [ ] **Step 9.8: Commit the completed spec state**
+**Verified 2026-08-13:** working-tree OpenSpec diff empty (already committed). Historical `c96308c`: 9 insertions / 9 deletions, only 10.1–10.9 checkboxes. `git diff --check` clean.
+
+- [x] **Step 9.8: Commit the completed spec state**
 
 ```powershell
 git add openspec/changes/add-local-llm-chat-interface/tasks.md
 git commit -m "chore(openspec): mark local LLM E2E tasks complete"
 ```
+
+**Verified 2026-08-13:** skipped duplicate; OpenSpec commit remains `c96308c`. Follow-up commits from the Task 9 verification loop: `a86b171` (fixture typing) and `3c49c07` (Biome `.claude` ignore). Two loop iterations; iteration 2: three independent reviewers, zero Critical/High/Medium. Loop complete. Only Low findings remain.
 
 ---
 

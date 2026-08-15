@@ -583,7 +583,7 @@ If `services/ml/AGENTS.md` also changed in Step 5.1, include it in this commit. 
 - Consumes: CI command set
 - Produces: a green gate for this change, then checkbox 11.6
 
-- [ ] **Step 6.1: Format Rust**
+- [x] **Step 6.1: Format Rust**
 
 Run from `apps/desktop/src-tauri`:
 
@@ -594,7 +594,7 @@ cargo fmt
 
 Expected: exit 0. If rustfmt rewrites files, those rewrites are in scope for 11.6 (the spec says fix all findings).
 
-- [ ] **Step 6.2: Clippy with CI flags**
+- [x] **Step 6.2: Clippy with CI flags**
 
 ```powershell
 cd apps/desktop/src-tauri
@@ -603,7 +603,7 @@ cargo clippy -- -D warnings
 
 Expected: exit 0, no warnings. If it fails, fix the reported lints in the smallest possible patch and re-run this step. Do not pass `--all-targets` or `--all-features`.
 
-- [ ] **Step 6.3: Frontend lint**
+- [x] **Step 6.3: Frontend lint**
 
 ```powershell
 cd apps/desktop
@@ -612,7 +612,7 @@ pnpm lint
 
 Expected: Biome then Knip, exit 0. Optional extra (not required by 11.6 wording but cheap after markdown-adjacent TS was not changed): `pnpm typecheck`. Run `pnpm typecheck` if Step 6.2/6.3 forced any TS/Rust FFI comment changes; skip if only markdown changed.
 
-- [ ] **Step 6.4: Ruff**
+- [x] **Step 6.4: Ruff**
 
 ```powershell
 cd services/ml
@@ -621,7 +621,7 @@ ruff check .
 
 Expected: exit 0. `README.md` is not a Python file; this should stay green.
 
-- [ ] **Step 6.5: Run the affected E2E battery (unsandboxed WebView2)**
+- [x] **Step 6.5: Run the affected E2E battery (unsandboxed WebView2)**
 
 These tests use the Playwright local-ML harness. They must **not** download TinyLlama or MiniLM.
 
@@ -645,7 +645,7 @@ If a test fails:
 3. Do not increase timeouts to paper over flakes.
 4. If the failure is `CDP endpoint not ready`, re-run unsandboxed before treating it as a product bug.
 
-- [ ] **Step 6.6: Commit any lint/format/test fixes**
+- [x] **Step 6.6: Commit any lint/format/test fixes**
 
 If Steps 6.1–6.5 produced code changes, stage only those paths (`git status --short`). Typical candidates are rustfmt output under `apps/desktop/src-tauri/src/` or a clippy-driven edit in `commands/llm.rs` / `commands/embeddings.rs`. Do not stage unrelated dirty files.
 
@@ -656,7 +656,7 @@ git commit -m "chore: fix lint findings from local LLM documentation gate"
 
 If `git status` is clean after Steps 6.1–6.5, skip this commit.
 
-- [ ] **Step 6.7: Mark OpenSpec 11.6 complete only after the gate is green**
+- [x] **Step 6.7: Mark OpenSpec 11.6 complete only after the gate is green**
 
 Change only:
 
@@ -668,7 +668,7 @@ to `[x]`.
 
 Confirm `tasks.md` section 11 is now fully `[x]` (11.1–11.6). `git diff -- openspec/changes/add-local-llm-chat-interface/tasks.md` should show five previously open rows flipped (11.5 was already `[x]`).
 
-- [ ] **Step 6.8: Commit the 11.6 checkbox**
+- [x] **Step 6.8: Commit the 11.6 checkbox**
 
 ```bash
 git add openspec/changes/add-local-llm-chat-interface/tasks.md

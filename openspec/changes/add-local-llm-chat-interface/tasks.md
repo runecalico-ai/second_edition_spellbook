@@ -111,7 +111,7 @@
 - [x] 11.3 Document approved model URLs, expected SHA-256 values, verified side-load rules, and the fixed `SpellbookVault/models/` path in `DEVELOPMENT.md`
 - [x] 11.4 Document that model assets are excluded from backup and restore by default and preserved across restore on the same machine
 - [x] 11.5 Update `services/ml/AGENTS.md` to note that `embed` and `llm_answer` handlers were removed and why
-- [ ] 11.6 Run `cargo clippy`, `cargo fmt`, `pnpm lint`, `ruff check`, and the affected E2E battery; fix all findings
+- [x] 11.6 Run `cargo clippy`, `cargo fmt`, `pnpm lint`, `ruff check`, and the affected E2E battery; fix all findings
 
 ## Notes
 - **Total tasks**: ~60

@@ -179,11 +179,13 @@ Key crates:
 - `serde` / `serde_json` - Serialization
 - `chrono` - Date/time handling
 - `regex` - Filename sanitization
-- `llama-cpp-2` (llama.cpp / `llama-cpp-sys-2`) - Local TinyLlama inference (see CRT pitfall below)
-- `fastembed` - all-MiniLM-L6-v2 embeddings via ONNX (`ort`)
+- `llama-cpp-2` (llama.cpp / `llama-cpp-sys-2`) - Local TinyLlama inference (see CRT pitfall below). Optional via default-on Cargo feature `llm`.
+- `fastembed` - all-MiniLM-L6-v2 embeddings via ONNX (`ort`). Optional via default-on Cargo feature `llm`.
 - `sha2` / `hex` - SHA-256 verification of approved model files
 - `reqwest` - resumable HTTP Range downloads for provisioning
 - `sysinfo` - free RAM/disk probes used by the provisioning thresholds
+
+`pnpm tauri:dev` and release builds use default features (`llm` on). `cargo check --no-default-features` (and `cargo clippy --no-default-features -- -D warnings`) omit chat and semantic-search commands for machines without the C++/ORT toolchain. `reqwest` / `sysinfo` / `sha2` stay compiled either way.
 
 ## Testing
 
@@ -324,12 +326,12 @@ pub async fn remove_character_spell(
 
 ## Local LLM & Embeddings
 
-Local chat and semantic search run in-process in Rust. Model files live under `{SpellbookVault}/models/` (see `commands/provisioning.rs`). The Python sidecar is not on this path.
+Local chat and semantic search run in-process in Rust when the default-on Cargo feature `llm` is enabled. Model files live under `{SpellbookVault}/models/` (see `commands/provisioning.rs`). The Python sidecar is not on this path. `--no-default-features` skips `llama-cpp-2` / `fastembed` and does not register chat or semantic commands.
 
 Managed state is registered in `lib.rs`:
-- `Arc<LlmState>`
-- `Arc<EmbeddingState>`
-- `Arc<ProvisioningState>` (one global high-bandwidth guard; overlapping LLM vs embeddings provisioning fails with the target-specific errors already returned by those commands)
+- `Arc<LlmState>` (feature `llm` only)
+- `Arc<EmbeddingState>` (real model state with `llm`; no-op stub without it)
+- `Arc<ProvisioningState>` (feature `llm` only; one global high-bandwidth guard; overlapping LLM vs embeddings provisioning fails with the target-specific errors already returned by those commands)
 
 ### Data Model
 

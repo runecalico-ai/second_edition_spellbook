@@ -861,47 +861,55 @@ pub async fn search_spells_semantic_internal(
 
     tokio::task::spawn_blocking(move || {
         let conn = db.get()?;
-        let query_json = serde_json::to_string(&query_vector)
-            .map_err(|e| AppError::Search(format!("query vector serialization failed: {e}")))?;
-
-        let mut stmt = conn.prepare(
-            "SELECT s.id, s.name, s.school, s.sphere, s.level, s.class_list, s.components, s.duration,
-                    s.source, s.is_quest_spell, s.is_cantrip, s.tags,
-                    vec_distance_cosine(v.v, ?) AS cosine_distance
-             FROM spell_vec v
-             JOIN spell s ON s.id = v.rowid
-             ORDER BY cosine_distance ASC
-             LIMIT ?",
-        )?;
-
-        let rows = stmt.query_map(rusqlite::params![query_json, max_rows], |row| {
-            Ok(SemanticSearchResult {
-                spell: SpellSummary {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    school: row.get(2)?,
-                    sphere: row.get(3)?,
-                    level: row.get(4)?,
-                    class_list: row.get(5)?,
-                    components: row.get(6)?,
-                    duration: row.get(7)?,
-                    source: row.get(8)?,
-                    is_quest_spell: row.get(9)?,
-                    is_cantrip: row.get(10)?,
-                    tags: row.get(11)?,
-                },
-                cosine_distance: row.get(12)?,
-            })
-        })?;
-
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row?);
-        }
-        Ok::<Vec<SemanticSearchResult>, AppError>(out)
+        query_ranked_spells_by_cosine(&conn, &query_vector, max_rows)
     })
     .await
     .map_err(|e| AppError::Search(format!("semantic query task failed: {e}")))?
+}
+
+fn query_ranked_spells_by_cosine(
+    conn: &rusqlite::Connection,
+    query_vector: &[f32],
+    max_rows: u32,
+) -> Result<Vec<SemanticSearchResult>, AppError> {
+    let query_json = serde_json::to_string(query_vector)
+        .map_err(|e| AppError::Search(format!("query vector serialization failed: {e}")))?;
+
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.name, s.school, s.sphere, s.level, s.class_list, s.components, s.duration,
+                s.source, s.is_quest_spell, s.is_cantrip, s.tags,
+                vec_distance_cosine(v.v, ?) AS cosine_distance
+         FROM spell_vec v
+         JOIN spell s ON s.id = v.rowid
+         ORDER BY cosine_distance ASC
+         LIMIT ?",
+    )?;
+
+    let rows = stmt.query_map(rusqlite::params![query_json, max_rows], |row| {
+        Ok(SemanticSearchResult {
+            spell: SpellSummary {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                school: row.get(2)?,
+                sphere: row.get(3)?,
+                level: row.get(4)?,
+                class_list: row.get(5)?,
+                components: row.get(6)?,
+                duration: row.get(7)?,
+                source: row.get(8)?,
+                is_quest_spell: row.get(9)?,
+                is_cantrip: row.get(10)?,
+                tags: row.get(11)?,
+            },
+            cosine_distance: row.get(12)?,
+        })
+    })?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -1986,6 +1994,75 @@ mod tests {
         assert!(object.get("cosine_distance").is_none());
     }
 
+    fn unit_axis_vector(axis: usize) -> Vec<f32> {
+        let mut vector = vec![0.0_f32; 384];
+        vector[axis] = 1.0;
+        vector
+    }
+
+    #[test]
+    fn semantic_ranking_orders_by_cosine_distance_asc_and_serializes_camel_case() {
+        let isolated = IsolatedTestPool::new(
+            "semantic_ranking_orders_by_cosine_distance_asc_and_serializes_camel_case",
+        );
+        let conn = isolated.pool.get().expect("test db connection");
+        if !spell_vec_uses_sqlite_vec(&conn) {
+            return;
+        }
+
+        let close_id: i64 = {
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                row.get(0)
+            })
+            .expect("next spell id")
+        };
+        let far_id = close_id + 1;
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Close Spell', 1, 'Near the query vector', ?2)",
+            rusqlite::params![close_id, format!("hash-rank-close-{close_id}")],
+        )
+        .expect("insert close spell");
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Far Spell', 1, 'Orthogonal to the query vector', ?2)",
+            rusqlite::params![far_id, format!("hash-rank-far-{far_id}")],
+        )
+        .expect("insert far spell");
+
+        let close_json = serde_json::to_string(&unit_axis_vector(0)).expect("close vector json");
+        let far_json = serde_json::to_string(&unit_axis_vector(1)).expect("far vector json");
+        conn.execute(
+            "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+            rusqlite::params![close_id, close_json],
+        )
+        .expect("insert close vector");
+        conn.execute(
+            "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+            rusqlite::params![far_id, far_json],
+        )
+        .expect("insert far vector");
+
+        let ranked = query_ranked_spells_by_cosine(&conn, &unit_axis_vector(0), 10)
+            .expect("cosine ranking query");
+        assert!(
+            ranked.len() >= 2,
+            "expected both inserted spells in ranking results, got {}",
+            ranked.len()
+        );
+        assert_eq!(ranked[0].spell.name, "Close Spell");
+        assert_eq!(ranked[1].spell.name, "Far Spell");
+        assert!(
+            ranked[0].cosine_distance < ranked[1].cosine_distance,
+            "ORDER BY cosine_distance ASC: close {} should be less than far {}",
+            ranked[0].cosine_distance,
+            ranked[1].cosine_distance
+        );
+
+        let value = serde_json::to_value(&ranked[0]).unwrap();
+        let object = value.as_object().unwrap();
+        assert!(object.get("cosineDistance").is_some());
+        assert!(object.get("cosine_distance").is_none());
+    }
+
     #[test]
     fn reindex_result_serializes_with_expected_summary_keys() {
         let result = ReindexResult {
@@ -2300,6 +2377,58 @@ mod tests {
             }
             Ok(_) => panic!("expected error while model is absent, got model"),
             Err(other) => panic!("expected Search error while model absent, got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn await_ready_model_fail_fast_on_error() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.last_error.lock().unwrap() = Some("onnx init failed".to_string());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Error;
+
+        let result = await_ready_model_with_timeout(state, std::time::Duration::from_secs(1)).await;
+        match result {
+            Err(AppError::Search(message)) => assert_eq!(message, "onnx init failed"),
+            Ok(_) => panic!("expected fail-fast error, got model"),
+            Err(other) => panic!("expected Search error, got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn await_ready_model_fail_fast_when_initializing_then_error() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Initializing;
+        let state_for_error = Arc::clone(&state);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            *state_for_error.last_error.lock().unwrap() =
+                Some("load failed after init".to_string());
+            *state_for_error.status.lock().unwrap() = EmbeddingsStatus::Error;
+        });
+
+        let result =
+            await_ready_model_with_timeout(Arc::clone(&state), std::time::Duration::from_secs(2))
+                .await;
+        match result {
+            Err(AppError::Search(message)) => assert_eq!(message, "load failed after init"),
+            Ok(_) => panic!("expected error after Initializing, got model"),
+            Err(other) => panic!("expected Search error, got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn await_ready_model_times_out_while_initializing() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Initializing;
+
+        let result =
+            await_ready_model_with_timeout(state, std::time::Duration::from_millis(50)).await;
+        match result {
+            Err(AppError::Search(message)) => {
+                assert_eq!(message, "timed out waiting for embedding model readiness");
+            }
+            Ok(_) => panic!("expected timeout, got model"),
+            Err(other) => panic!("expected Search timeout, got: {other}"),
         }
     }
 

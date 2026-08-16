@@ -581,6 +581,15 @@ fn remove_corrupt_download_blocking(temp_path: &Path) -> Result<(), AppError> {
     }
 }
 
+fn reject_sha_mismatch_download_blocking(temp_path: &Path) -> AppError {
+    match remove_corrupt_download_blocking(temp_path) {
+        Ok(()) => AppError::Validation(
+            "Downloaded model SHA-256 does not match the approved TinyLlama asset".to_string(),
+        ),
+        Err(error) => error,
+    }
+}
+
 fn cleanup_restart_staging_blocking(restart_path: &Path) -> Result<(), AppError> {
     match std::fs::metadata(restart_path) {
         Ok(metadata) if metadata.is_file() => {
@@ -2964,22 +2973,15 @@ async fn run_download_chunks_verify_and_promote(
     match sha_result {
         Ok(sha) if sha == TINY_LLAMA_SHA256 => {}
         Ok(_) => {
-            let cleanup_result = tokio::task::spawn_blocking({
+            let error = tokio::task::spawn_blocking({
                 let active_download_path = active_download_path.clone();
-                move || remove_corrupt_download_blocking(&active_download_path)
+                move || reject_sha_mismatch_download_blocking(&active_download_path)
             })
             .await
             .map_err(|error| {
                 AppError::Llm(format!("LLM corrupt-download cleanup task failed: {error}"))
             })?;
-            if let Err(error) = cleanup_result {
-                return Err(error.into());
-            }
-
-            return Err(AppError::Validation(
-                "Downloaded model SHA-256 does not match the approved TinyLlama asset".to_string(),
-            )
-            .into());
+            return Err(error.into());
         }
         Err(error) => {
             return Err(finalize_non_sha_download_error(
@@ -3273,6 +3275,30 @@ mod tests {
         ));
         std::fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    #[test]
+    fn sha256_mismatch_deletes_corrupt_download_and_returns_validation_error() {
+        let dir = test_temp_dir("sha-mismatch");
+        let path = dir.join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf");
+        std::fs::write(&path, b"not-the-approved-tinyllama-bytes").unwrap();
+        assert!(path.is_file());
+
+        let error = reject_sha_mismatch_download_blocking(&path);
+        match error {
+            AppError::Validation(message) => {
+                assert_eq!(
+                    message,
+                    "Downloaded model SHA-256 does not match the approved TinyLlama asset"
+                );
+            }
+            other => panic!("expected Validation error, got {other}"),
+        }
+        assert!(
+            !path.exists(),
+            "SHA-256 mismatch must delete the corrupt download file"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

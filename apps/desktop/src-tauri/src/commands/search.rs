@@ -1,8 +1,8 @@
 use crate::db::Pool;
 use crate::error::AppError;
-use crate::models::{
-    llm::RagSpellContext, Facets, SavedSearch, SavedSearchPayload, SearchFilters, SpellSummary,
-};
+#[cfg(feature = "llm")]
+use crate::models::llm::RagSpellContext;
+use crate::models::{Facets, SavedSearch, SavedSearchPayload, SearchFilters, SpellSummary};
 use rusqlite::params;
 use rusqlite::Connection;
 use std::sync::Arc;
@@ -147,12 +147,15 @@ fn build_fts_query(raw_query: &str) -> String {
 const SEARCH_RESULT_LIMIT: usize = 100;
 
 /// Maximum spells returned for LLM chat RAG grounding.
+#[cfg(feature = "llm")]
 pub(crate) const RAG_RETRIEVAL_LIMIT: usize = 5;
 
 /// Maximum Unicode scalar values in a RAG description snippet.
+#[cfg(feature = "llm")]
 pub(crate) const RAG_DESCRIPTION_SNIPPET_MAX_CHARS: usize = 200;
 
 /// Truncates `s` to at most `max_chars` Unicode scalar values without splitting multibyte characters.
+#[cfg(feature = "llm")]
 fn truncate_to_chars(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
         return s.to_string();
@@ -329,6 +332,7 @@ fn search_keyword_with_conn(
 }
 
 /// FTS-only spell retrieval for LLM chat RAG: BM25-ranked matches with truncated descriptions.
+#[cfg(feature = "llm")]
 pub(crate) fn search_rag_spells_with_conn(
     conn: &Connection,
     terms: &[String],
@@ -949,6 +953,7 @@ pub(crate) mod tests {
         .unwrap();
     }
 
+    #[cfg(feature = "llm")]
     fn insert_rag_spell(
         conn: &Connection,
         id: i64,
@@ -1406,6 +1411,7 @@ pub(crate) mod tests {
         );
     }
 
+    #[cfg(feature = "llm")]
     #[test]
     fn search_rag_spells_returns_top_matches_with_snippets() {
         use super::{search_rag_spells_with_conn, RAG_DESCRIPTION_SNIPPET_MAX_CHARS};
@@ -1430,6 +1436,7 @@ pub(crate) mod tests {
         );
     }
 
+    #[cfg(feature = "llm")]
     #[test]
     fn search_rag_spells_multi_term_or_retrieval() {
         use super::search_rag_spells_with_conn;
@@ -1457,6 +1464,7 @@ pub(crate) mod tests {
         assert!(names.contains(&"Frost Ray"));
     }
 
+    #[cfg(feature = "llm")]
     #[test]
     fn search_rag_spells_top_five_cap() {
         use super::{search_rag_spells_with_conn, RAG_RETRIEVAL_LIMIT};
@@ -1477,6 +1485,7 @@ pub(crate) mod tests {
         assert_eq!(results.len(), RAG_RETRIEVAL_LIMIT);
     }
 
+    #[cfg(feature = "llm")]
     #[test]
     fn search_rag_spells_truncates_description_to_max_chars() {
         use super::{search_rag_spells_with_conn, RAG_DESCRIPTION_SNIPPET_MAX_CHARS};
@@ -1493,6 +1502,7 @@ pub(crate) mod tests {
         );
     }
 
+    #[cfg(feature = "llm")]
     #[test]
     fn search_rag_spells_empty_terms_returns_empty() {
         use super::search_rag_spells_with_conn;
@@ -1504,6 +1514,7 @@ pub(crate) mod tests {
             .is_empty());
     }
 
+    #[cfg(feature = "llm")]
     #[test]
     fn truncate_to_chars_respects_unicode_boundaries() {
         use super::truncate_to_chars;

@@ -110,3 +110,11 @@ jobs:
       - name: Tests (Rust)
         working-directory: apps/desktop/src-tauri
         run: cargo test
+
+      - name: Check (Rust, no default features)
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --no-default-features
+
+      - name: Clippy (Rust, no default features)
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy --no-default-features -- -D warnings

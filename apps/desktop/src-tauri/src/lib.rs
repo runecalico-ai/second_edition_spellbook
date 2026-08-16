@@ -7,6 +7,7 @@ pub mod utils;
 
 #[cfg(not(test))]
 use commands::vault::VaultMaintenanceState;
+#[cfg(all(feature = "llm", not(test)))]
 use commands::ProvisioningState;
 use commands::*;
 #[cfg(not(test))]
@@ -43,27 +44,33 @@ pub fn run() {
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
             let pool = Arc::new(pool);
-            let provisioning = Arc::new(ProvisioningState::default());
             let embeddings = Arc::new(EmbeddingState::default());
 
             app.manage(Arc::clone(&pool));
             app.manage(Arc::new(VaultMaintenanceState::default()));
-            app.manage(Arc::clone(&provisioning));
-            app.manage(Arc::new(LlmState::default()));
+            #[cfg(feature = "llm")]
+            {
+                let provisioning = Arc::new(ProvisioningState::default());
+                app.manage(Arc::clone(&provisioning));
+                app.manage(Arc::new(LlmState::default()));
+            }
             app.manage(Arc::clone(&embeddings));
 
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) = initialize_embeddings_after_startup(
-                    app_handle,
-                    Arc::clone(&embeddings),
-                    Arc::clone(&pool),
-                )
-                .await
-                {
-                    tracing::warn!(?error, "embedding startup initialization failed");
-                }
-            });
+            #[cfg(feature = "llm")]
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = initialize_embeddings_after_startup(
+                        app_handle,
+                        Arc::clone(&embeddings),
+                        Arc::clone(&pool),
+                    )
+                    .await
+                    {
+                        tracing::warn!(?error, "embedding startup initialization failed");
+                    }
+                });
+            }
 
             Ok(())
         })
@@ -113,21 +120,33 @@ pub fn run() {
             get_character_spellbook,
             update_character_spell,
             search_keyword,
+            #[cfg(feature = "llm")]
             search_spells_semantic,
             list_facets,
             save_search,
             list_saved_searches,
             delete_saved_search,
+            #[cfg(feature = "llm")]
             llm_status,
+            #[cfg(feature = "llm")]
             llm_download_model,
+            #[cfg(feature = "llm")]
             llm_import_model_file,
+            #[cfg(feature = "llm")]
             llm_cancel_download,
+            #[cfg(feature = "llm")]
             llm_cancel_generation,
+            #[cfg(feature = "llm")]
             llm_chat,
+            #[cfg(feature = "llm")]
             embeddings_status,
+            #[cfg(feature = "llm")]
             embeddings_download_model,
+            #[cfg(feature = "llm")]
             embeddings_import_model_file,
+            #[cfg(feature = "llm")]
             embeddings_cancel_download,
+            #[cfg(feature = "llm")]
             reindex_embeddings,
             preview_import,
             preview_import_spell_json,
@@ -163,13 +182,13 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 pub(crate) struct LlmCommandSmokeApp {
     _app: tauri::App<tauri::test::MockRuntime>,
     webview: tauri::WebviewWindow<tauri::test::MockRuntime>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 pub(crate) fn build_llm_command_smoke_app(
     llm_state: Arc<LlmState>,
     provisioning: Arc<ProvisioningState>,
@@ -198,7 +217,7 @@ pub(crate) fn build_llm_command_smoke_app(
     LlmCommandSmokeApp { _app: app, webview }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 pub(crate) fn build_embeddings_command_smoke_app(
     embedding_state: Arc<EmbeddingState>,
     provisioning: Arc<ProvisioningState>,
@@ -227,7 +246,7 @@ pub(crate) fn build_embeddings_command_smoke_app(
     LlmCommandSmokeApp { _app: app, webview }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 pub(crate) async fn invoke_smoke_command<T>(
     webview: tauri::WebviewWindow<tauri::test::MockRuntime>,
     command: &str,
@@ -252,7 +271,7 @@ where
         .map(|response_body| response_body.deserialize::<T>().unwrap())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 pub(crate) fn listen_smoke_event<T>(
     webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
     event_name: &str,
@@ -270,14 +289,14 @@ where
     rx
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 struct SmokeDataDirGuard {
     _env_lock: std::sync::MutexGuard<'static, ()>,
     previous_data_dir: Option<std::ffi::OsString>,
     temp_data_dir: std::path::PathBuf,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 impl SmokeDataDirGuard {
     fn acquire(test_name: &str) -> Self {
         use crate::commands::vault::lock_vault_env_for_test;
@@ -311,7 +330,7 @@ impl SmokeDataDirGuard {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 impl Drop for SmokeDataDirGuard {
     fn drop(&mut self) {
         const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
@@ -323,7 +342,7 @@ impl Drop for SmokeDataDirGuard {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 mod llm_command_smoke_tests {
     use super::{
         build_llm_command_smoke_app, invoke_smoke_command, listen_smoke_event, SmokeDataDirGuard,
@@ -603,7 +622,7 @@ mod llm_command_smoke_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "llm"))]
 mod embeddings_command_smoke_tests {
     use super::{build_embeddings_command_smoke_app, invoke_smoke_command, SmokeDataDirGuard};
     use crate::commands::{EmbeddingState, ProvisioningState};

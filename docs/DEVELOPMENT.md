@@ -35,6 +35,7 @@ Approved TinyLlama and MiniLM assets are staged under the fixed path `SpellbookV
 
 Public commands: `llm_download_model`, `llm_import_model_file`, `embeddings_download_model`, `embeddings_import_model_file`. Status: `llm_status`, `embeddings_status`. One global `ProvisioningState` guard prevents overlapping high-bandwidth work (`Provisioning for LLM is already in progress.` / `Provisioning for embeddings is unavailable while LLM is in progress.`).
 
+*   Cargo feature `llm` is **on by default** and pulls in `llama-cpp-2` plus `fastembed`. `pnpm tauri:dev` and release builds use default features (chat and semantic search included). `cargo check --no-default-features` and `cargo clippy --no-default-features -- -D warnings` omit those commands for machines without the C++ / ONNX Runtime toolchain. Provisioning crates (`reqwest`, `sysinfo`, `sha2`) stay compiled either way.
 *   Required Windows toolchain: `x86_64-pc-windows-msvc`, `rustc 1.95.0 (59807616e 2026-04-14)`, `cargo 1.95.0 (f2d3ce0bd 2026-03-21)`, Visual Studio Build Tools workload `Microsoft.VisualStudio.Workload.VCTools` version `18.5.11709.299`, Windows SDK `10.0.26100.0`, plus `LIBCLANG_PATH=C:\Program Files\LLVM\bin` and `CMAKE=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe` when compiling the local-model stack in a clean shell. Do not drop these pins; they are the Task 1.6 record.
 *   Enforced resource thresholds: free disk `>= 838860800` bytes and free RAM `>= 1610612736` bytes (`BASELINE_MIN_FREE_DISK_BYTES` / `BASELINE_MIN_FREE_RAM_BYTES`).
 *   Python sidecar scope: import/export only. It does not provide LLM or embedding functionality.
@@ -160,8 +161,10 @@ To maintain consistency across the stack, we use distinct casing standards for d
 **Backend (Rust)**:
 ```bash
 cd apps/desktop/src-tauri
-cargo test                           # Run all tests
+cargo test                           # Run all tests (default features, including `llm`)
 cargo test --lib                     # Run library tests only
+cargo check --no-default-features    # Compile without llama-cpp-2 / fastembed
+cargo clippy --no-default-features -- -D warnings
 cargo test canonical_spell           # Run specific module tests
 cargo test -- --nocapture            # Show captured test output (including tracing when enabled)
 ```

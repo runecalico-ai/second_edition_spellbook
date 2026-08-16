@@ -495,8 +495,8 @@ LibrarySemanticEmptyState
 **Risk: Inference is slow on older CPUs**
 → Mitigation: Streaming keeps progress visible, and a cancel button lets the user stop a slow run. Raw hardware limits are documented separately.
 
-**Risk: `llama-cpp-rs` adds C++ toolchain complexity**
-→ Mitigation: Gate it behind a dedicated Cargo feature (`llm`). CI must provide C++ build tools, and the toolchain requirement is documented in DEVELOPMENT.md.
+**Risk: `llama-cpp-2` and `fastembed` add C++ / ONNX toolchain complexity**
+→ Mitigation: Both crates are optional behind the default-on Cargo feature `llm` (`llama-cpp-2` / `fastembed`). `pnpm tauri:dev` and release builds keep the feature enabled. CI runs default `cargo clippy` / `cargo test` plus `cargo check --no-default-features` and `cargo clippy --no-default-features -- -D warnings` so machines without the C++/ORT toolchain can still compile the rest of the crate. The toolchain requirement is documented in DEVELOPMENT.md.
 
 **Risk: RAG term extraction misses domain terms**
 → Mitigation: The heuristic is best-effort. If FTS5 returns no results, the model still answers and the system prompt notes the missing context.

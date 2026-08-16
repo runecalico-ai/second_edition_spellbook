@@ -374,7 +374,47 @@ describe("useChatSession", () => {
       const assistant = result.current.messages.find((m) => m.kind === "assistant");
       expect(assistant?.content).toBe("Partial answer");
     });
-    expect(result.current.messages.some((m) => m.kind === "assistant")).toBe(true);
+    expect(
+      result.current.messages.some(
+        (m) => m.kind === "assistant" && m.content === "Partial answer",
+      ),
+    ).toBe(true);
     expect(result.current.messages.some((m) => m.kind === "system")).toBe(false);
+  });
+
+  it("keeps history in memory only and does not persist across remounts or web storage", async () => {
+    const unusedStorage = () => ({
+      getItem: vi.fn(),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(),
+      length: 0,
+    });
+    const localStorageMock = unusedStorage();
+    const sessionStorageMock = unusedStorage();
+    vi.stubGlobal("localStorage", localStorageMock);
+    vi.stubGlobal("sessionStorage", sessionStorageMock);
+
+    const first = renderHook(() => useChatSession("loaded"));
+    act(() => {
+      first.result.current.setDraft("Remember this turn");
+    });
+    await act(async () => {
+      await first.result.current.send();
+    });
+    await waitFor(() => expect(startLlmChat).toHaveBeenCalled());
+    expect(first.result.current.messages.some((m) => m.kind === "user")).toBe(true);
+    first.unmount();
+
+    const second = renderHook(() => useChatSession("loaded"));
+    expect(second.result.current.messages).toEqual([]);
+    second.unmount();
+
+    expect(localStorageMock.setItem).not.toHaveBeenCalled();
+    expect(localStorageMock.getItem).not.toHaveBeenCalled();
+    expect(sessionStorageMock.setItem).not.toHaveBeenCalled();
+    expect(sessionStorageMock.getItem).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

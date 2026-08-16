@@ -206,4 +206,4 @@ The application SHALL provide a Chat panel accessible from the main navigation.
 - **Model file integrity**: SHA-256 of the downloaded GGUF file MUST be verified before use.
 - **Disk requirement**: The application MUST check for at least 800 MB of free disk space before beginning the download.
 
-Hardware targets for provisioned desktop machines. Automated tests cover the streaming and skip-reload paths; they do not assert these wall-clock values in CI. See `docs/DEVELOPMENT.md` (Local ML hardware targets).
+Hardware targets for provisioned desktop machines. Path tests cover streaming and skip-reload behavior; they do not assert these wall-clock values in CI. See `docs/DEVELOPMENT.md` (Local ML hardware targets).

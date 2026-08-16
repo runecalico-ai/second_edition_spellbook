@@ -98,7 +98,7 @@ These numbers come from the `llm-chat` and `search` delta specs. They describe a
 | `search_spells_semantic` | < 200 ms for ~10k indexed spells (query embed + sqlite-vec scan) |
 | Batch embed 1,000 spells | < 30 s on the same class of CPU |
 
-To measure locally after provisioning: use Chat for the token/follow-up targets; use Library semantic mode and Settings reindex for search/batch. Do not add these clocks to Playwright or `cargo test`.
+To measure locally after provisioning: use Chat for the token/follow-up targets; use Library semantic mode and `reindex_embeddings` (Settings UI when available) for search/batch. Do not add these clocks to Playwright or `cargo test`.
 
 See [dev/local_llm_infrastructure_spike.md](./dev/local_llm_infrastructure_spike.md) for provenance notes and Windows compile evidence.
 

@@ -143,4 +143,4 @@ The application SHALL provide a `reindex_embeddings` command to generate missing
 - **Embedding throughput**: Batch embedding of 1,000 spells SHALL complete in < 30 s on a modern CPU (defined as a desktop CPU released after 2018 with ≥ 4 cores).
 - **Vector dimensions**: All stored vectors SHALL be exactly 384 dimensions (all-MiniLM-L6-v2 output); any mismatch SHALL be rejected.
 
-Hardware targets for provisioned desktop machines. Automated tests cover the streaming and skip-reload paths; they do not assert these wall-clock values in CI. See `docs/DEVELOPMENT.md` (Local ML hardware targets).
+Hardware targets for provisioned desktop machines. Automated tests cover sqlite-vec ranking and 128-row embed chunk paths; they do not assert these wall-clock values in CI. See `docs/DEVELOPMENT.md` (Local ML hardware targets).

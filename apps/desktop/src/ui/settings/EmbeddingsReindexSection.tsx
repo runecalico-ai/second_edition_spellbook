@@ -85,6 +85,7 @@ export function EmbeddingsReindexSection() {
             data-testid="settings-reindex-progress-bar"
             role="progressbar"
             tabIndex={0}
+            aria-label="Embedding reindex progress"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(fraction * 100)}

@@ -65,4 +65,15 @@ describe("EmbeddingsReindexSection", () => {
     fireEvent.click(screen.getByTestId("settings-reindex-missing-button"));
     expect(await screen.findByTestId("settings-reindex-error")).toBeTruthy();
   });
+
+  it("gives the running progressbar an accessible name", async () => {
+    reindexEmbeddings.mockReturnValue(new Promise(() => {}));
+    render(<EmbeddingsReindexSection />);
+    fireEvent.click(screen.getByTestId("settings-reindex-missing-button"));
+
+    const progressbar = await screen.findByRole("progressbar");
+    const ariaLabel = progressbar.getAttribute("aria-label");
+    expect(typeof ariaLabel).toBe("string");
+    expect(ariaLabel?.trim().length).toBeGreaterThan(0);
+  });
 });

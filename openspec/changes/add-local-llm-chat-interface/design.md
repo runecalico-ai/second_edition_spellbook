@@ -245,7 +245,7 @@ User chooses Download Model or Add Local Model
 User types query
       │
       ▼
-[Frontend] llm_chat(query, stream_id)
+[Frontend] llm_chat(message, stream_id, history)
       │
       ▼
 [Backend] Extract search terms (heuristic)
@@ -346,7 +346,7 @@ pub async fn llm_download_model(
 #[tauri::command]
 pub async fn llm_import_model_file(
       state: State<'_, LlmState>,
-      source_path: String,
+      file_path: String,
 ) -> Result<(), AppError>
 
 // Cancel an active LLM model download
@@ -366,7 +366,7 @@ pub async fn llm_chat(
     app: AppHandle,
     state: State<'_, LlmState>,
     db: State<'_, Arc<Pool>>,
-    query: String,
+    message: String,
     stream_id: String,
     history: Vec<ChatMessage>,
 ) -> Result<(), AppError>
@@ -390,7 +390,7 @@ pub async fn embeddings_download_model(
 #[tauri::command]
 pub async fn embeddings_import_model_file(
       state: State<'_, EmbeddingState>,
-      source_path: String,
+      file_path: String,
 ) -> Result<(), AppError>
 
 // Cancel an active embedding model download
@@ -414,9 +414,12 @@ pub async fn reindex_embeddings(
     app: AppHandle,
     state: State<'_, EmbeddingState>,
     db: State<'_, Arc<Pool>>,
+    provisioning: State<'_, ProvisioningState>,
     force: bool,                // false = only missing, true = all spells
 ) -> Result<ReindexResult, AppError>
 ```
+
+Frontend `invoke` keys are camelCase: `filePath`, `message`, `streamId`, `force`.
 
 ### TypeScript Response Types
 
@@ -438,6 +441,26 @@ interface EmbeddingsStatusResponse {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+interface TokenEvent {
+  token: string;
+}
+
+interface DoneEvent {
+  fullResponse: string;
+  cancelled: boolean;
+  searchTerms: string[];
+  groundedSpells: RagSpellContext[];
+  timedOut: boolean;
+}
+
+interface RagSpellContext {
+  id: number;
+  name: string;
+  school?: string | null;
+  level: number;
+  descriptionSnippet: string;
 }
 
 interface SemanticSearchResult extends SpellSummary {

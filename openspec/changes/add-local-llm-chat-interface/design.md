@@ -422,9 +422,11 @@ pub async fn reindex_embeddings(
 
 ```typescript
 interface LlmStatusResponse {
-      state: 'notProvisioned' | 'downloading' | 'ready' | 'loaded' | 'error';
-      downloadProgress?: number;  // 0.0–1.0
-      errorMessage?: string;
+      status: 'notProvisioned' | 'downloading' | 'ready' | 'loaded' | 'error';
+      modelPath: string;
+      bytesDownloaded?: number | null;
+      totalBytes?: number | null;
+      lastError?: string | null;
 }
 
 interface EmbeddingsStatusResponse {

@@ -107,6 +107,8 @@ describe("ChatPanel", () => {
     render(<ChatPanel />);
 
     expect(screen.getByTestId("chat-provisioning-empty-state")).toBeTruthy();
+    expect(screen.getByTestId("chat-llm-download-button").textContent).toBe("Download Model");
+    expect(screen.getByTestId("chat-llm-import-button").textContent).toBe("Add Local Model");
     expect(screen.queryByTestId("chat-input-bar")).toBeNull();
     expect(screen.queryByTestId("model-download-modal")).toBeNull();
   });
@@ -189,7 +191,7 @@ describe("ChatPanel", () => {
     expect(screen.getByText(/Downloading Embedding Model/)).toBeTruthy();
   });
 
-  it("clicking Download Chat Model calls downloadLlmModel and opens the modal", async () => {
+  it("clicking Download Model calls downloadLlmModel and opens the modal", async () => {
     mockDownloadLlmModel.mockResolvedValue(undefined);
     llmStatus = { status: "notProvisioned", modelPath: "" };
     render(<ChatPanel />);
@@ -200,7 +202,7 @@ describe("ChatPanel", () => {
     expect(await screen.findByTestId("model-download-modal")).toBeTruthy();
   });
 
-  it("clicking Add Local Chat Model opens the file picker and imports the selected file", async () => {
+  it("clicking Add Local Model opens the file picker and imports the selected file", async () => {
     mockOpen.mockResolvedValue("/path/to/model.gguf");
     mockImportLlmModelFile.mockResolvedValue(undefined);
     llmStatus = { status: "notProvisioned", modelPath: "" };

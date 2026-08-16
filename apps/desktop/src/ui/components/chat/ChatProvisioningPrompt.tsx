@@ -66,7 +66,7 @@ export function ChatProvisioningPrompt({
         ) : null}
         {llmNeedsSetup ? (
           <ModelProvisioningActions
-            modelLabel="Chat Model"
+            modelLabel="Model"
             onDownload={onDownloadLlm}
             onImport={onImportLlm}
             downloadTestId="chat-llm-download-button"

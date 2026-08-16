@@ -5276,4 +5276,129 @@ mod tests {
         let err = cancel_generation(&state, "   ").unwrap_err();
         assert!(matches!(err, AppError::Validation(_)));
     }
+
+    #[tokio::test]
+    async fn llm_chat_emits_token_event_before_done_event() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct OrderSink {
+            token_before_done: Arc<AtomicBool>,
+            done: Arc<AtomicBool>,
+        }
+
+        impl ChatEventSink for OrderSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                assert!(
+                    !self.done.load(Ordering::SeqCst),
+                    "token must be emitted before done"
+                );
+                self.token_before_done.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+
+            fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+                assert!(
+                    self.token_before_done.load(Ordering::SeqCst),
+                    "done must follow at least one token from RecordingRuntimeDriver"
+                );
+                self.done.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let state = Arc::new(LlmState::default());
+        let sink = Arc::new(OrderSink {
+            token_before_done: Arc::new(AtomicBool::new(false)),
+            done: Arc::new(AtomicBool::new(false)),
+        });
+        let preflight = ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        };
+
+        with_test_llm_chat_hooks(
+            test_hooks_snapshot_for_chat_harness(preflight, Arc::new(RecordingRuntimeDriver)),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                crate::commands::search::tests::llm_test_pool_with_rag_seed(),
+                "fireball".to_string(),
+                Vec::new(),
+                "stream-first-token".to_string(),
+                Arc::clone(&sink) as Arc<dyn ChatEventSink>,
+            ),
+        )
+        .await
+        .unwrap();
+
+        assert!(sink.token_before_done.load(Ordering::SeqCst));
+        assert!(sink.done.load(Ordering::SeqCst));
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::Loaded);
+    }
+
+    #[tokio::test]
+    async fn second_llm_chat_reuses_loaded_status_without_error() {
+        let state = Arc::new(LlmState::default());
+        let preflight = ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        };
+        let pool = crate::commands::search::tests::llm_test_pool_with_rag_seed();
+
+        #[derive(Default)]
+        struct NoopSink;
+        impl ChatEventSink for NoopSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
+                Ok(())
+            }
+        }
+
+        let hooks =
+            test_hooks_snapshot_for_chat_harness(preflight, Arc::new(RecordingRuntimeDriver));
+
+        with_test_llm_chat_hooks(
+            hooks.clone(),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                Arc::clone(&pool),
+                "first".to_string(),
+                Vec::new(),
+                "stream-loaded-1".to_string(),
+                Arc::new(NoopSink) as Arc<dyn ChatEventSink>,
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::Loaded);
+
+        with_test_llm_chat_hooks(
+            hooks,
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                pool,
+                "second".to_string(),
+                Vec::new(),
+                "stream-loaded-2".to_string(),
+                Arc::new(NoopSink) as Arc<dyn ChatEventSink>,
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::Loaded);
+    }
 }

@@ -16,6 +16,8 @@ use tauri::Emitter;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{watch, Mutex as AsyncMutex};
 
+pub(crate) const EMBEDDING_INDEX_CHUNK_SIZE: usize = 128;
+
 // Runtime-generic `AppHandle` so `embeddings_download_model` can be dispatched
 // through both the real Wry runtime and `tauri::test::MockRuntime` in
 // command-boundary tests below (mirrors `commands/llm.rs::LlmCommandAppHandle`).
@@ -664,7 +666,7 @@ async fn embed_import_batch_rows(
         await_ready_model_with_timeout(Arc::clone(&state), std::time::Duration::from_secs(10))
             .await?;
 
-    for chunk in rows.chunks(128) {
+    for chunk in rows.chunks(EMBEDDING_INDEX_CHUNK_SIZE) {
         let chunk_spell_ids: Vec<i64> = chunk.iter().map(|(id, _, _)| *id).collect();
         let texts: Vec<String> = chunk
             .iter()
@@ -961,7 +963,7 @@ pub async fn reindex_embeddings_internal(
     let mut indexed = 0_u32;
     let mut failed = 0_u32;
 
-    for (offset, chunk) in rows.chunks(128).enumerate() {
+    for (offset, chunk) in rows.chunks(EMBEDDING_INDEX_CHUNK_SIZE).enumerate() {
         let texts: Vec<String> = chunk
             .iter()
             .map(|(_, name, description)| compose_spell_embedding_text(name, description))
@@ -1004,7 +1006,8 @@ pub async fn reindex_embeddings_internal(
             }
         }
 
-        let current = ((offset + 1) * 128).min(candidate_count as usize) as u32;
+        let current =
+            ((offset + 1) * EMBEDDING_INDEX_CHUNK_SIZE).min(candidate_count as usize) as u32;
         app.emit(
             "embeddings://reindex-progress",
             ReindexProgressEvent {
@@ -1798,6 +1801,17 @@ mod tests {
     };
     use serde_json::Value;
     use std::sync::Arc;
+
+    #[test]
+    fn embedding_index_chunk_size_is_128() {
+        assert_eq!(EMBEDDING_INDEX_CHUNK_SIZE, 128);
+        let rows: Vec<i32> = (0..300).collect();
+        let chunks: Vec<&[i32]> = rows.chunks(EMBEDDING_INDEX_CHUNK_SIZE).collect();
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0].len(), 128);
+        assert_eq!(chunks[1].len(), 128);
+        assert_eq!(chunks[2].len(), 44);
+    }
 
     #[test]
     fn embeddings_status_serializes_to_spec_values() {

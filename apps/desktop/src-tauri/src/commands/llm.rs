@@ -77,7 +77,6 @@ struct LifecycleSnapshot {
 
 struct StatusDerivationInputs {
     reprovision_active: bool,
-    generation_active: bool,
     loaded: bool,
     explicit_status: LlmStatus,
     last_error: Option<String>,
@@ -211,7 +210,6 @@ fn finish_lifecycle_recovery(state: &LlmState, status: LlmStatus) -> Result<(), 
 
 fn derive_lifecycle_status(
     reprovision_active: bool,
-    generation_active: bool,
     model_loaded: bool,
     explicit_status: LlmStatus,
     approved_model_present: bool,
@@ -221,8 +219,6 @@ fn derive_lifecycle_status(
         LlmStatus::Downloading
     } else if explicit_status == LlmStatus::Error && has_last_error {
         LlmStatus::Error
-    } else if generation_active && !model_loaded {
-        LlmStatus::Downloading
     } else if model_loaded {
         LlmStatus::Loaded
     } else if approved_model_present {
@@ -239,7 +235,6 @@ fn build_status_response(
 ) -> LlmStatusResponse {
     let status = derive_lifecycle_status(
         inputs.reprovision_active,
-        inputs.generation_active,
         inputs.loaded,
         inputs.explicit_status,
         inputs.approved_model_present,
@@ -278,14 +273,6 @@ fn status_snapshot(
         reprovision_guard.is_some()
     };
 
-    let generation_active = {
-        let generation_guard = state
-            .active_generation
-            .lock()
-            .map_err(|_| AppError::Llm("LLM generation state is poisoned".to_string()))?;
-        generation_guard.is_some()
-    };
-
     let lifecycle = snapshot_lifecycle_markers(state)?;
 
     let loaded = {
@@ -305,7 +292,6 @@ fn status_snapshot(
         download_snapshot,
         StatusDerivationInputs {
             reprovision_active,
-            generation_active,
             loaded,
             explicit_status: lifecycle.status,
             last_error: lifecycle.last_error,
@@ -2077,7 +2063,15 @@ async fn run_claimed_llm_chat(
                             timed_out: false,
                         });
                     }
-                    return Err(error.into_app_error());
+                    return Err(match error {
+                        ModelLoadPreflightValidationError::InsufficientRam => {
+                            record_lifecycle_error(
+                                state_for_run.as_ref(),
+                                ModelLoadPreflightValidationError::InsufficientRam.into_app_error(),
+                            )
+                        }
+                        other => other.into_app_error(),
+                    });
                 }
             };
 
@@ -3389,32 +3383,28 @@ mod tests {
     #[test]
     fn derive_lifecycle_status_covers_all_required_runtime_states() {
         assert_eq!(
-            derive_lifecycle_status(false, false, false, LlmStatus::NotProvisioned, false, false),
+            derive_lifecycle_status(false, false, LlmStatus::NotProvisioned, false, false),
             LlmStatus::NotProvisioned,
         );
         assert_eq!(
-            derive_lifecycle_status(true, false, false, LlmStatus::NotProvisioned, true, false),
+            derive_lifecycle_status(true, false, LlmStatus::NotProvisioned, true, false),
             LlmStatus::Downloading,
         );
         assert_eq!(
-            derive_lifecycle_status(false, false, false, LlmStatus::NotProvisioned, true, false),
+            derive_lifecycle_status(false, false, LlmStatus::NotProvisioned, true, false),
             LlmStatus::Ready,
         );
         assert_eq!(
-            derive_lifecycle_status(false, false, true, LlmStatus::Ready, true, false),
+            derive_lifecycle_status(false, true, LlmStatus::Ready, true, false),
             LlmStatus::Loaded,
         );
         assert_eq!(
-            derive_lifecycle_status(false, false, true, LlmStatus::Error, true, true),
+            derive_lifecycle_status(false, true, LlmStatus::Error, true, true),
             LlmStatus::Error,
         );
         assert_eq!(
-            derive_lifecycle_status(false, false, false, LlmStatus::Error, true, true),
+            derive_lifecycle_status(false, false, LlmStatus::Error, true, true),
             LlmStatus::Error,
-        );
-        assert_eq!(
-            derive_lifecycle_status(false, true, false, LlmStatus::NotProvisioned, true, false),
-            LlmStatus::Downloading,
         );
     }
 
@@ -3456,7 +3446,6 @@ mod tests {
             None,
             StatusDerivationInputs {
                 reprovision_active: false,
-                generation_active: false,
                 loaded: true,
                 explicit_status: LlmStatus::NotProvisioned,
                 last_error: None,
@@ -4646,29 +4635,73 @@ mod tests {
         );
     }
 
-    #[test]
-    fn low_ram_preflight_validation_leaves_lifecycle_markers_unchanged() {
-        let state = LlmState::default();
-        let err = validate_model_load_preflight(
-            &state,
-            ModelLoadPreflight {
-                model_path: std::path::PathBuf::from(
-                    "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
-                ),
-                approved_model_present: true,
-                requirements: LlmSystemRequirementsSnapshot {
-                    free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
-                    free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES - 1,
-                },
+    #[tokio::test]
+    async fn low_ram_preflight_validation_sets_sticky_lifecycle_error() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        #[derive(Default)]
+        struct RecordingDoneSink {
+            done_emitted: Arc<AtomicBool>,
+            done_event: Arc<std::sync::Mutex<Option<DoneEvent>>>,
+        }
+
+        impl ChatEventSink for RecordingDoneSink {
+            fn emit_token(&self, _token: &str) -> Result<(), AppError> {
+                Ok(())
+            }
+
+            fn emit_done(&self, event: DoneEvent) -> Result<(), AppError> {
+                self.done_emitted.store(true, Ordering::SeqCst);
+                *self.done_event.lock().unwrap() = Some(event);
+                Ok(())
+            }
+        }
+
+        let state = Arc::new(LlmState::default());
+        let done_sink = Arc::new(RecordingDoneSink::default());
+        let preflight = ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES - 1,
             },
+        };
+
+        let err = with_test_llm_chat_hooks(
+            test_hooks_snapshot_for_preflight(preflight),
+            run_claimed_llm_chat(
+                Arc::clone(&state),
+                crate::commands::search::tests::llm_test_pool(),
+                "hello".to_string(),
+                Vec::new(),
+                "stream-low-ram-preflight".to_string(),
+                Arc::clone(&done_sink) as Arc<dyn ChatEventSink>,
+            ),
         )
+        .await
         .unwrap_err();
 
+        assert!(matches!(
+            err,
+            AppError::Validation(message)
+                if message.contains("1.5 GB free required")
+                    && message.contains("Close other applications and try again.")
+        ));
+        assert_eq!(*state.status.lock().unwrap(), LlmStatus::Error);
         assert!(
-            matches!(err, AppError::Validation(message) if message.contains("1.5 GB free required"))
+            state
+                .last_error
+                .lock()
+                .unwrap()
+                .as_deref()
+                .unwrap()
+                .contains("1.5 GB free required")
         );
-        assert_eq!(*state.status.lock().unwrap(), LlmStatus::NotProvisioned);
-        assert!(state.last_error.lock().unwrap().is_none());
+        assert!(state.active_generation.lock().unwrap().is_none());
+        assert!(done_sink.done_emitted.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -4706,7 +4739,7 @@ mod tests {
     }
 
     #[test]
-    fn start_generation_loading_with_keepalive_changes_status_to_loading() {
+    fn start_generation_loading_with_keepalive_keeps_status_ready() {
         let state = Arc::new(LlmState::default());
         let model_path = std::path::PathBuf::from(
             "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
@@ -4715,7 +4748,7 @@ mod tests {
         begin_generation(state.as_ref(), "stream-keepalive".to_string()).unwrap();
 
         let snapshot = status_snapshot(state.as_ref(), &model_path, true).unwrap();
-        assert_eq!(snapshot.status, LlmStatus::Downloading);
+        assert_eq!(snapshot.status, LlmStatus::Ready);
 
         finish_generation(state.as_ref()).unwrap();
     }

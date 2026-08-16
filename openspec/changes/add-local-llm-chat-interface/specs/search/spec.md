@@ -89,8 +89,8 @@ The application SHALL maintain a vector index of all spells in `sqlite-vec`. It 
 - **WHEN** an import operation completes and N spells were inserted
 - **AND** the embedding model is ready
 - **THEN** the import write path SHALL complete without waiting for embedding batch completion
-- **AND** the backend SHALL enqueue or attempt embedding for all N spells in a single `fastembed-rs` batch call
-- **AND** SHALL upsert all resulting vectors into `sqlite-vec` in a single transaction when batch generation succeeds
+- **AND** the backend SHALL enqueue or attempt embedding for all N spells in batches of 128
+- **AND** each chunk SHALL use one `fastembed` call and one sqlite-vec transaction
 
 #### Scenario: Import while model is initializing or unavailable
 - **WHEN** an import operation completes while the embedding model is still initializing, not yet provisioned, or in a failed state
@@ -124,11 +124,13 @@ The application SHALL provide a `reindex_embeddings` command to generate missing
 #### Scenario: Backfill progress reporting
 - **WHEN** `reindex_embeddings` is running
 - **THEN** the backend SHALL emit `embeddings://reindex-progress` events with `{ current: u32, total: u32 }` payloads
+- **AND** progress `total` SHALL be the number of spells this run will attempt to embed (candidates), not the full library size when `force=false`
 - **AND** the frontend MAY use this to display a progress indicator in Settings
 
 #### Scenario: Backfill result
 - **WHEN** `reindex_embeddings` completes
 - **THEN** it SHALL return `{ total, indexed, skipped, failed }` counts
+- **AND** result `total` SHALL be the full library size (not the candidate count used in progress events)
 
 #### Scenario: Startup partial backfill
 - **WHEN** the application starts and the embedding model has successfully initialized

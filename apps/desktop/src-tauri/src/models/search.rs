@@ -52,13 +52,6 @@ pub struct Facets {
     pub tags: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ChatResponse {
-    pub answer: String,
-    pub citations: Vec<String>,
-    pub meta: serde_json::Value,
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CharacterSearchFilters {

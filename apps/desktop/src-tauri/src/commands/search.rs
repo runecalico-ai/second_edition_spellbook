@@ -1,13 +1,10 @@
-use crate::commands::llm::{llm_chat_answer_compat, LlmState};
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::{
-    llm::RagSpellContext, ChatResponse, Facets, SavedSearch, SavedSearchPayload, SearchFilters,
-    SpellSummary,
+    llm::RagSpellContext, Facets, SavedSearch, SavedSearchPayload, SearchFilters, SpellSummary,
 };
 use rusqlite::params;
 use rusqlite::Connection;
-use serde_json::json;
 use std::sync::Arc;
 use tauri::State;
 
@@ -21,28 +18,6 @@ use tauri::State;
 /// passed literally to the tokenizer by FTS5 itself.
 fn escape_fts_phrase_content(s: &str) -> String {
     s.replace('"', "\"\"")
-}
-
-#[tauri::command]
-pub async fn chat_answer(
-    llm_state: State<'_, Arc<LlmState>>,
-    db: State<'_, Arc<Pool>>,
-    prompt: String,
-) -> Result<ChatResponse, AppError> {
-    // Temporary compatibility path for apps/desktop/src/ui/Chat.tsx.
-    // Remove this wrapper in the same branch where the frontend migrates to llm_chat + events.
-    let answer = llm_chat_answer_compat(
-        Arc::clone(llm_state.inner()),
-        Arc::clone(db.inner()),
-        prompt,
-    )
-    .await?;
-
-    Ok(ChatResponse {
-        answer,
-        citations: Vec::new(),
-        meta: json!({"source": "llm_chat_compat"}),
-    })
 }
 
 /// Wraps a string as a single FTS5 quoted phrase term.

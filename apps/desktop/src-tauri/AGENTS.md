@@ -22,7 +22,7 @@ src-tauri/
 │   │   ├── llm.rs          # LLM lifecycle, download, chat, cancellation
 │   │   ├── llm_rag.rs      # FTS-only RAG term extraction and prompt assembly
 │   │   ├── provisioning.rs # Approved model identities, SHA checks, RAM/disk guard
-│   │   ├── search.rs       # Keyword search, facets, chat_answer compat wrapper
+    │   │   ├── search.rs       # Keyword search, facets
 │   │   ├── spells.rs       # Spell CRUD, validation
 │   │   ├── vault.rs        # Vault backup/restore (excludes models/)
 │   │   └── mod.rs          # Re-exports all commands
@@ -370,7 +370,7 @@ Register these in `lib.rs`. Frontend wrappers live in `src/api/llm.ts`.
 | `search_spells_semantic` | Ranked results with `cosineDistance`. Replaces `search_semantic` (removed) |
 | `reindex_embeddings` | Args: `force: bool`. Emits `embeddings://reindex-progress` `{ current, total }`. Returns `ReindexResult` `{ total, indexed, skipped, failed }` |
 
-**Compatibility:** `chat_answer` in `commands/search.rs` remains registered and delegates to `llm_chat_answer_compat`. New UI must call `llm_chat`. Do not reintroduce `search_semantic`.
+Do not reintroduce `search_semantic` or `chat_answer`. Chat uses `llm_chat` only.
 
 **Streaming:** Frontend generates `streamId` (see frontend AGENTS.md). Backend emits:
 - `llm://token/{streamId}` payload `{ token }`

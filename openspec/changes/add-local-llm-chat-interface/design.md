@@ -292,10 +292,7 @@ Import batch completes
       ├─ yes ─► collect all new spell IDs + text
       │           │
       │           ▼
-      │        fastembed-rs: embed(texts, batch=N) — single batch call
-      │           │
-      │           ▼
-      │        bulk upsert vectors into sqlite-vec
+      │        fastembed-rs: embed(texts) in chunks of 128 — one fastembed call and one sqlite-vec transaction per chunk
       │
       └─ no ───► record missing-vector gaps and let startup backfill repair them
 ```

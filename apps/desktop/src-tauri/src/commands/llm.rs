@@ -118,8 +118,6 @@ impl Default for LlmState {
     }
 }
 
-static COMPAT_STREAM_COUNTER: AtomicU64 = AtomicU64::new(0);
-
 fn approved_llm_model_path(vault_root: &Path) -> PathBuf {
     models_dir(vault_root).join(TINY_LLAMA_DESTINATION)
 }
@@ -1567,8 +1565,10 @@ impl ChatEventSink for TauriChatEventSink {
     }
 }
 
+#[cfg(test)]
 struct CompatChatEventSink;
 
+#[cfg(test)]
 impl ChatEventSink for CompatChatEventSink {
     fn emit_token(&self, _token: &str) -> Result<(), AppError> {
         Ok(())
@@ -1577,16 +1577,6 @@ impl ChatEventSink for CompatChatEventSink {
     fn emit_done(&self, _event: DoneEvent) -> Result<(), AppError> {
         Ok(())
     }
-}
-
-fn synthesize_compat_stream_id() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let seq = COMPAT_STREAM_COUNTER.fetch_add(1, Ordering::Relaxed);
-
-    format!("compat-{}-{now}-{seq}", std::process::id())
 }
 
 #[derive(Default)]
@@ -2196,25 +2186,6 @@ pub async fn llm_chat(
     )
     .await
     .map(|_| ())
-}
-
-pub(crate) async fn llm_chat_answer_compat(
-    state: Arc<LlmState>,
-    db: Arc<Pool>,
-    message: String,
-) -> Result<String, AppError> {
-    validate_chat_message(&message)?;
-    let message = message.trim().to_string();
-    run_claimed_llm_chat(
-        Arc::clone(&state),
-        db,
-        message,
-        Vec::new(),
-        synthesize_compat_stream_id(),
-        Arc::new(CompatChatEventSink),
-    )
-    .await
-    .map(|output| output.full_response)
 }
 
 #[tauri::command]
@@ -4691,15 +4662,13 @@ mod tests {
                     && message.contains("Close other applications and try again.")
         ));
         assert_eq!(*state.status.lock().unwrap(), LlmStatus::Error);
-        assert!(
-            state
-                .last_error
-                .lock()
-                .unwrap()
-                .as_deref()
-                .unwrap()
-                .contains("1.5 GB free required")
-        );
+        assert!(state
+            .last_error
+            .lock()
+            .unwrap()
+            .as_deref()
+            .unwrap()
+            .contains("1.5 GB free required"));
         assert!(state.active_generation.lock().unwrap().is_none());
         assert!(done_sink.done_emitted.load(Ordering::SeqCst));
     }

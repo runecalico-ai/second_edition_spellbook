@@ -26,13 +26,13 @@ vi.mock("../../hooks/useReindexProgress", () => ({
 describe("EmbeddingsReindexSection", () => {
   beforeEach(() => {
     reindexEmbeddings.mockReset();
-    mockStatus.embeddings = { state: "ready" };
+    mockStatus.embeddings = { state: "ready", errorMessage: null };
     mockStatus.refresh = vi.fn().mockResolvedValue(undefined);
   });
   afterEach(cleanup);
 
   it("disables both buttons when embeddings are not ready", () => {
-    mockStatus.embeddings = { state: "notProvisioned" };
+    mockStatus.embeddings = { state: "notProvisioned", errorMessage: null };
     render(<EmbeddingsReindexSection />);
     expect(
       (screen.getByTestId("settings-reindex-missing-button") as HTMLButtonElement).disabled,

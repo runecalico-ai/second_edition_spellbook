@@ -11,7 +11,7 @@ import {
 vi.mock("../hooks/useModelStatus", () => ({
   useModelStatus: () => ({
     llm: { status: "notProvisioned", modelPath: "" },
-    embeddings: { state: "notProvisioned" },
+    embeddings: { state: "notProvisioned", errorMessage: null },
     error: null,
     refresh: async () => {},
   }),

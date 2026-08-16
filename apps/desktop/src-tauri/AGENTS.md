@@ -374,6 +374,8 @@ Register these in `lib.rs`. Frontend wrappers live in `src/api/llm.ts`.
 
 Do not reintroduce `search_semantic` or `chat_answer`. Chat uses `llm_chat` only.
 
+`chat_answer` and `search_semantic` are not registered. Do not add a compatibility wrapper. New UI and tests call `llm_chat` and `search_spells_semantic` only.
+
 **Streaming:** Frontend generates `streamId` (see frontend AGENTS.md). Backend emits:
 - `llm://token/{streamId}` payload `{ token }`
 - `llm://done/{streamId}` payload `{ fullResponse, cancelled, searchTerms, groundedSpells, timedOut }`

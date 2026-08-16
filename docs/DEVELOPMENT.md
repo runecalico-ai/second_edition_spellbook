@@ -87,6 +87,19 @@ Per-file inventory (`EMBEDDING_EXPECTED_FILES`):
 
 Generation cancellation is implemented (OpenSpec Outcome B): the inference worker polls an `AtomicBool` at token boundaries via `llm_cancel_generation`.
 
+### Local ML hardware targets (not CI gates)
+
+These numbers come from the `llm-chat` and `search` delta specs. They describe a desktop CPU released after 2018 with ≥ 4 cores and ≥ 4 GB RAM after the approved models are provisioned. GitHub Actions and `cargo test` do **not** enforce the wall-clock values (no TinyLlama/ONNX in CI, and shared runners vary). Path tests cover streaming, skip-reload, sqlite-vec ranking, and 128-row embed chunks.
+
+| Target | Value |
+| ------ | ----- |
+| First streamed token | within 3 s of `llm_chat` on ≥ 4 GB RAM hardware |
+| Follow-up `llm_chat` while status is `loaded` | generation begins within 500 ms (no GGUF reload) |
+| `search_spells_semantic` | < 200 ms for ~10k indexed spells (query embed + sqlite-vec scan) |
+| Batch embed 1,000 spells | < 30 s on the same class of CPU |
+
+To measure locally after provisioning: use Chat for the token/follow-up targets; use Library semantic mode and Settings reindex for search/batch. Do not add these clocks to Playwright or `cargo test`.
+
 See [dev/local_llm_infrastructure_spike.md](./dev/local_llm_infrastructure_spike.md) for provenance notes and Windows compile evidence.
 
 ### Vault backup and restore (models excluded)

@@ -142,3 +142,5 @@ The application SHALL provide a `reindex_embeddings` command to generate missing
 - **Semantic search latency**: `search_spells_semantic` SHALL return results in < 200 ms for libraries of 10k spells (query embedding + sqlite-vec scan).
 - **Embedding throughput**: Batch embedding of 1,000 spells SHALL complete in < 30 s on a modern CPU (defined as a desktop CPU released after 2018 with ≥ 4 cores).
 - **Vector dimensions**: All stored vectors SHALL be exactly 384 dimensions (all-MiniLM-L6-v2 output); any mismatch SHALL be rejected.
+
+Hardware targets for provisioned desktop machines. Automated tests cover the streaming and skip-reload paths; they do not assert these wall-clock values in CI. See `docs/DEVELOPMENT.md` (Local ML hardware targets).

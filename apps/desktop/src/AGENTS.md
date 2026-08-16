@@ -239,6 +239,8 @@ Keyword mode always returns `"keyword"` from `deriveSemanticAvailability` and mu
 
 **IPC wrappers to reuse** (`src/api/llm.ts`): `getLlmStatus`, `downloadLlmModel`, `importLlmModelFile`, `cancelLlmDownload`, `cancelLlmGeneration`, `startLlmChat`, `getEmbeddingsStatus`, `downloadEmbeddingsModel`, `importEmbeddingsModelFile`, `cancelEmbeddingsDownload`, `searchSpellsSemantic`, `reindexEmbeddings`.
 
+**Settings reindex:** `SettingsPage` renders `EmbeddingsReindexSection` (`settings-embeddings-section`). Buttons call `reindexEmbeddings(false)` (`settings-reindex-missing-button`) and `reindexEmbeddings(true)` (`settings-reindex-all-button`). Subscribe to `embeddings://reindex-progress` with `useReindexProgress` (camelCase `{ current, total }`). Disable both buttons unless `embeddings_status.state === "ready"`. Do not display `cosineDistance`. Chat and Library remain the provisioning surfaces; Settings does not add download/import actions.
+
 ## Testing Checklist
 
 Before committing UI changes, verify:

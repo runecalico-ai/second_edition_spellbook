@@ -422,4 +422,39 @@ test.describe("Local LLM semantic search and reindex", () => {
       args: { force: false },
     });
   });
+
+  test("Settings reindex buttons emit progress and show the result summary", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+
+    await app.localLlm.installScenario({
+      llmStatus: { status: "notProvisioned", modelPath: "" },
+      embeddingsStatus: { state: "ready" },
+      reindex: {
+        progress: [
+          { current: 1, total: 2 },
+          { current: 2, total: 2 },
+        ],
+        result: { total: 2, indexed: 1, skipped: 1, failed: 0 },
+      },
+    });
+
+    await page.getByTestId("settings-gear-button").click();
+    await expect(page.getByTestId("settings-embeddings-section")).toBeVisible({
+      timeout: TIMEOUTS.medium,
+    });
+    await page.getByTestId("settings-reindex-missing-button").click();
+    await expect(page.getByTestId("settings-reindex-result")).toContainText("1 indexed", {
+      timeout: TIMEOUTS.medium,
+    });
+
+    const observations = await app.localLlm.observations();
+    expect(observations).toContainEqual({
+      kind: "command",
+      name: "reindex_embeddings",
+      args: { force: false },
+    });
+  });
 });

@@ -500,6 +500,11 @@ LibrarySemanticEmptyState
 ├── Explanation of semantic search
 ├── Download Model button
 └── Add Local Model button
+
+SettingsEmbeddingsReindex
+├── Index missing vectors (reindex_embeddings force=false)
+├── Re-index all spells (force=true)
+└── Progress from embeddings://reindex-progress
 ```
 
 **Spell link detection**: After generation completes, the assistant message is post-processed with a regex that matches spell names from that turn's FTS5 results. Matches become `<SpellLink>` components.

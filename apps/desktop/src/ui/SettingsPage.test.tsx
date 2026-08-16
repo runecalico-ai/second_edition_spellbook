@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useTheme } from "../store/useTheme";
 import {
@@ -7,6 +7,15 @@ import {
   getSelectableThemeValue,
   getThemeModeFromSystemToggle,
 } from "./SettingsPage";
+
+vi.mock("../hooks/useModelStatus", () => ({
+  useModelStatus: () => ({
+    llm: { status: "notProvisioned", modelPath: "" },
+    embeddings: { state: "notProvisioned" },
+    error: null,
+    refresh: async () => {},
+  }),
+}));
 
 function resetThemeState() {
   useTheme.setState({
@@ -33,6 +42,11 @@ describe("SettingsPage", () => {
     expect(
       (screen.getByTestId("settings-follow-system-checkbox") as HTMLInputElement).checked,
     ).toBe(true);
+  });
+
+  it("renders the embeddings reindex section", () => {
+    render(<SettingsPage />);
+    expect(screen.getByTestId("settings-embeddings-section")).toBeTruthy();
   });
 
   it("disables the select while follow system is enabled", () => {

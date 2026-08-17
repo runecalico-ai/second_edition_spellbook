@@ -375,9 +375,7 @@ describe("useChatSession", () => {
       expect(assistant?.content).toBe("Partial answer");
     });
     expect(
-      result.current.messages.some(
-        (m) => m.kind === "assistant" && m.content === "Partial answer",
-      ),
+      result.current.messages.some((m) => m.kind === "assistant" && m.content === "Partial answer"),
     ).toBe(true);
     expect(result.current.messages.some((m) => m.kind === "system")).toBe(false);
   });

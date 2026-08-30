@@ -747,12 +747,14 @@ async fn embed_import_batch_rows(
                 )
                 .await
                 {
+                    let filtered_spell_ids: Vec<i64> =
+                        filtered.rows.iter().map(|row| row.0).collect();
                     tracing::warn!(
                         ?error,
-                        chunk_len = chunk.len(),
+                        chunk_len = filtered_spell_ids.len(),
                         "import batch embedding chunk upsert failed (non-fatal)"
                     );
-                    invalidate_spell_vec_rows(pool_for_invalidation, chunk_spell_ids).await;
+                    invalidate_spell_vec_rows(pool_for_invalidation, filtered_spell_ids).await;
                 }
             }
             Ok(Err(error)) => {
@@ -2761,6 +2763,27 @@ mod tests {
     }
 
     #[test]
+    fn assign_import_row_generations_bumps_per_row_and_returns_versioned_tuples() {
+        let state = EmbeddingState::default();
+        let rows = vec![
+            (10, "Shield".into(), "Protects".into()),
+            (11, "Light".into(), "Illuminates".into()),
+        ];
+        let versioned = assign_import_row_generations(&state, rows);
+        assert_eq!(versioned.len(), 2);
+        assert_eq!(versioned[0].0, 10);
+        assert_eq!(versioned[0].1, "Shield");
+        assert_eq!(versioned[0].2, "Protects");
+        assert_eq!(versioned[1].0, 11);
+        assert_eq!(versioned[1].1, "Light");
+        assert_eq!(versioned[1].2, "Illuminates");
+        assert_eq!(versioned[0].3, 1);
+        assert_eq!(versioned[1].3, 1);
+        assert!(is_spell_embed_generation_current(&state, 10, versioned[0].3));
+        assert!(is_spell_embed_generation_current(&state, 11, versioned[1].3));
+    }
+
+    #[test]
     fn filter_current_import_rows_drops_stale_generation() {
         let state = EmbeddingState::default();
         let gen_keep = bump_spell_embed_generation(&state, 1);
@@ -2776,6 +2799,26 @@ mod tests {
         assert_eq!(kept.rows[0].0, 1);
         assert_eq!(kept.vectors.len(), 1);
         assert_eq!(kept.vectors[0][0], 0.1);
+    }
+
+    #[test]
+    fn upsert_failure_invalidation_excludes_generation_stale_ids() {
+        let state = EmbeddingState::default();
+        let gen_keep = bump_spell_embed_generation(&state, 1);
+        let gen_stale = bump_spell_embed_generation(&state, 2);
+        bump_spell_embed_generation(&state, 2);
+        let rows: Vec<VersionedSpellEmbeddingRow> = vec![
+            (1, "Keep".into(), "desc".into(), gen_keep),
+            (2, "Stale".into(), "desc".into(), gen_stale),
+        ];
+        let vectors = vec![vec![0.1_f32], vec![0.2_f32]];
+        let filtered = filter_current_import_upserts(&state, &rows, &vectors);
+        let ids_to_invalidate: Vec<i64> = filtered.rows.iter().map(|row| row.0).collect();
+        assert_eq!(ids_to_invalidate, vec![1]);
+        assert!(
+            !ids_to_invalidate.contains(&2),
+            "generation-stale spell ids must not be invalidated on upsert failure"
+        );
     }
 
     /// M-005 batch path: `enqueue_import_embeddings_if_ready` must delete existing `spell_vec`

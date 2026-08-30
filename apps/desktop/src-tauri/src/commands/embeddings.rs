@@ -2821,6 +2821,49 @@ mod tests {
         );
     }
 
+    /// Import enqueue assigns per-spell generations, then a concurrent edit bumps one spell
+    /// before the batch completes. `filter_current_import_upserts` must drop the stale row
+    /// so the import upsert cannot overwrite vectors written by the edit path.
+    #[test]
+    fn concurrent_edit_after_import_enqueue_excludes_stale_from_upsert() {
+        let state = EmbeddingState::default();
+        let import_rows = vec![
+            (10, "Shield".into(), "Protects".into()),
+            (11, "Light".into(), "Illuminates".into()),
+        ];
+        let versioned = assign_import_row_generations(&state, import_rows);
+        let shield_gen_at_enqueue = versioned[0].3;
+        let light_gen_at_enqueue = versioned[1].3;
+
+        // Concurrent edit on spell 10 (same generation bump as update_spell post-write hook).
+        bump_spell_embed_generation(&state, 10);
+
+        let mock_vectors = vec![vec![0.1_f32; 384], vec![0.2_f32; 384]];
+        let filtered = filter_current_import_upserts(&state, &versioned, &mock_vectors);
+
+        assert_eq!(
+            filtered.rows.len(),
+            1,
+            "stale row must be dropped before upsert"
+        );
+        assert_eq!(
+            filtered.rows[0].0, 11,
+            "only the unedited spell should remain for upsert"
+        );
+        assert_eq!(filtered.vectors.len(), 1);
+        assert_eq!(filtered.vectors[0][0], 0.2);
+        assert!(!is_spell_embed_generation_current(
+            &state,
+            10,
+            shield_gen_at_enqueue
+        ));
+        assert!(is_spell_embed_generation_current(
+            &state,
+            11,
+            light_gen_at_enqueue
+        ));
+    }
+
     /// M-005 batch path: `enqueue_import_embeddings_if_ready` must delete existing `spell_vec`
     /// rows for each imported spell id when embeddings are not Ready (parity with
     /// `post_write_hook_skips_when_not_ready`).

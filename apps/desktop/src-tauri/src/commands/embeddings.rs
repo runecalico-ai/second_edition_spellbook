@@ -189,6 +189,49 @@ const DOWNLOAD_CONTROL_WAIT_POLL_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(10);
 const DOWNLOAD_CONTROL_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
 type SpellEmbeddingRow = (i64, String, String);
+type VersionedSpellEmbeddingRow = (i64, String, String, u64);
+
+struct FilteredImportUpsert {
+    rows: Vec<SpellEmbeddingRow>,
+    vectors: Vec<Vec<f32>>,
+}
+
+fn filter_current_import_upserts(
+    state: &EmbeddingState,
+    rows: &[VersionedSpellEmbeddingRow],
+    vectors: &[Vec<f32>],
+) -> FilteredImportUpsert {
+    let mut kept_rows = Vec::new();
+    let mut kept_vectors = Vec::new();
+    for (row, vector) in rows.iter().zip(vectors.iter()) {
+        if is_spell_embed_generation_current(state, row.0, row.3) {
+            kept_rows.push((row.0, row.1.clone(), row.2.clone()));
+            kept_vectors.push(vector.clone());
+        } else {
+            tracing::info!(
+                spell_id = row.0,
+                generation = row.3,
+                "import batch embedding skipped stale generation"
+            );
+        }
+    }
+    FilteredImportUpsert {
+        rows: kept_rows,
+        vectors: kept_vectors,
+    }
+}
+
+fn assign_import_row_generations(
+    state: &EmbeddingState,
+    rows: Vec<SpellEmbeddingRow>,
+) -> Vec<VersionedSpellEmbeddingRow> {
+    rows.into_iter()
+        .map(|(id, name, description)| {
+            let generation = bump_spell_embed_generation(state, id);
+            (id, name, description, generation)
+        })
+        .collect()
+}
 
 fn set_embeddings_status(
     state: &EmbeddingState,
@@ -656,7 +699,7 @@ pub async fn enqueue_spell_embedding_if_ready(
 async fn embed_import_batch_rows(
     state: std::sync::Arc<EmbeddingState>,
     pool: std::sync::Arc<crate::db::Pool>,
-    rows: Vec<SpellEmbeddingRow>,
+    rows: Vec<VersionedSpellEmbeddingRow>,
 ) -> Result<(), AppError> {
     if rows.is_empty() {
         return Ok(());
@@ -667,10 +710,10 @@ async fn embed_import_batch_rows(
             .await?;
 
     for chunk in rows.chunks(EMBEDDING_INDEX_CHUNK_SIZE) {
-        let chunk_spell_ids: Vec<i64> = chunk.iter().map(|(id, _, _)| *id).collect();
+        let chunk_spell_ids: Vec<i64> = chunk.iter().map(|row| row.0).collect();
         let texts: Vec<String> = chunk
             .iter()
-            .map(|(_, name, description)| compose_spell_embedding_text(name, description))
+            .map(|(_, name, description, _)| compose_spell_embedding_text(name, description))
             .collect();
         let model_for_chunk = Arc::clone(&model);
         let pool_for_invalidation = Arc::clone(&pool);
@@ -692,7 +735,17 @@ async fn embed_import_batch_rows(
                     invalidate_spell_vec_rows(pool_for_invalidation, chunk_spell_ids).await;
                     continue;
                 }
-                if let Err(error) = upsert_embedding_chunk(Arc::clone(&pool), chunk, &vectors).await
+                let filtered =
+                    filter_current_import_upserts(state_for_reindex.as_ref(), chunk, &vectors);
+                if filtered.rows.is_empty() {
+                    continue;
+                }
+                if let Err(error) = upsert_embedding_chunk(
+                    Arc::clone(&pool),
+                    &filtered.rows,
+                    &filtered.vectors,
+                )
+                .await
                 {
                     tracing::warn!(
                         ?error,
@@ -826,10 +879,11 @@ pub async fn enqueue_import_embeddings_if_ready(
         return Ok(());
     }
 
+    let versioned = assign_import_row_generations(state.as_ref(), rows);
     let state_for_task = Arc::clone(&state);
-    let count = rows.len();
+    let count = versioned.len();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = embed_import_batch_rows(state_for_task, pool, rows).await {
+        if let Err(error) = embed_import_batch_rows(state_for_task, pool, versioned).await {
             tracing::warn!(count, ?error, "import embedding hook failed (non-fatal)");
         }
     });
@@ -2691,6 +2745,37 @@ mod tests {
             started.elapsed() < std::time::Duration::from_millis(500),
             "import enqueue should return before background embed work"
         );
+    }
+
+    #[test]
+    fn import_enqueue_assigns_generations_and_later_edit_invalidates_them() {
+        let state = EmbeddingState::default();
+        let gen_a = bump_spell_embed_generation(&state, 10);
+        let gen_b = bump_spell_embed_generation(&state, 11);
+        assert_eq!(gen_a, 1);
+        assert_eq!(gen_b, 1);
+        assert!(is_spell_embed_generation_current(&state, 10, gen_a));
+        bump_spell_embed_generation(&state, 10);
+        assert!(!is_spell_embed_generation_current(&state, 10, gen_a));
+        assert!(is_spell_embed_generation_current(&state, 11, gen_b));
+    }
+
+    #[test]
+    fn filter_current_import_rows_drops_stale_generation() {
+        let state = EmbeddingState::default();
+        let gen_keep = bump_spell_embed_generation(&state, 1);
+        let gen_stale = bump_spell_embed_generation(&state, 2);
+        bump_spell_embed_generation(&state, 2);
+        let rows: Vec<VersionedSpellEmbeddingRow> = vec![
+            (1, "Keep".into(), "desc".into(), gen_keep),
+            (2, "Stale".into(), "desc".into(), gen_stale),
+        ];
+        let vectors = vec![vec![0.1_f32], vec![0.2_f32]];
+        let kept = filter_current_import_upserts(&state, &rows, &vectors);
+        assert_eq!(kept.rows.len(), 1);
+        assert_eq!(kept.rows[0].0, 1);
+        assert_eq!(kept.vectors.len(), 1);
+        assert_eq!(kept.vectors[0][0], 0.1);
     }
 
     /// M-005 batch path: `enqueue_import_embeddings_if_ready` must delete existing `spell_vec`

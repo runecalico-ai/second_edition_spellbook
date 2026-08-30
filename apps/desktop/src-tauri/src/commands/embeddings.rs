@@ -1718,7 +1718,30 @@ fn classify_embedding_import_paths(
     Ok(EmbeddingImportPathKind::Distinct)
 }
 
-fn promote_staged_embedding_bundle(
+trait EmbeddingBundlePromotionFs {
+    fn exists(&self, path: &std::path::Path) -> bool;
+    fn rename(&self, from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()>;
+    fn remove_dir_all(&self, path: &std::path::Path) -> std::io::Result<()>;
+}
+
+struct StdEmbeddingBundlePromotionFs;
+
+impl EmbeddingBundlePromotionFs for StdEmbeddingBundlePromotionFs {
+    fn exists(&self, path: &std::path::Path) -> bool {
+        path.exists()
+    }
+
+    fn rename(&self, from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+        std::fs::rename(from, to)
+    }
+
+    fn remove_dir_all(&self, path: &std::path::Path) -> std::io::Result<()> {
+        std::fs::remove_dir_all(path)
+    }
+}
+
+fn promote_staged_embedding_bundle_with_fs(
+    fs: &impl EmbeddingBundlePromotionFs,
     staging: &std::path::Path,
     destination: &std::path::Path,
 ) -> Result<(), AppError> {
@@ -1729,24 +1752,59 @@ fn promote_staged_embedding_bundle(
             .and_then(|n| n.to_str())
             .unwrap_or("embeddings-bundle")
     ));
-    if backup.exists() {
-        std::fs::remove_dir_all(&backup)?;
+    if fs.exists(&backup) {
+        fs.remove_dir_all(&backup)?;
     }
-    if destination.exists() {
-        std::fs::rename(destination, &backup)?;
+    if fs.exists(destination) {
+        fs.rename(destination, &backup)?;
     }
-    match std::fs::rename(staging, destination) {
+    match fs.rename(staging, destination) {
         Ok(()) => {
-            if backup.exists() {
-                let _ = std::fs::remove_dir_all(&backup);
+            if fs.exists(&backup) {
+                let _ = fs.remove_dir_all(&backup);
             }
             Ok(())
         }
         Err(error) => {
-            if backup.exists() && !destination.exists() {
-                let _ = std::fs::rename(&backup, destination);
+            if fs.exists(&backup) && !fs.exists(destination) {
+                let _ = fs.rename(&backup, destination);
             }
             Err(AppError::from(error))
+        }
+    }
+}
+
+fn promote_staged_embedding_bundle(
+    staging: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), AppError> {
+    promote_staged_embedding_bundle_with_fs(&StdEmbeddingBundlePromotionFs, staging, destination)
+}
+
+fn install_validated_embedding_bundle(source: &std::path::Path) -> Result<(), AppError> {
+    let models_root = app_models_dir()?;
+    let destination = models_root.join(EMBEDDING_DESTINATION);
+    match classify_embedding_import_paths(source, &destination)? {
+        EmbeddingImportPathKind::Identical => {
+            tracing::info!("embedding import source is the installed bundle; skipping copy");
+            Ok(())
+        }
+        EmbeddingImportPathKind::Nested => Err(AppError::Validation(
+            "Embedding import source overlaps the installed bundle directory".to_string(),
+        )),
+        EmbeddingImportPathKind::Distinct => {
+            let staging_parent = models_root.join("embeddings");
+            std::fs::create_dir_all(&staging_parent)?;
+            let staging = staging_parent.join(".import-staging-all-MiniLM-L6-v2");
+            if staging.exists() {
+                std::fs::remove_dir_all(&staging)?;
+            }
+            if let Err(error) = copy_directory_recursive(source, &staging) {
+                let _ = std::fs::remove_dir_all(&staging);
+                return Err(error);
+            }
+            validate_embedding_bundle_layout(&staging)?;
+            promote_staged_embedding_bundle(&staging, &destination)
         }
     }
 }
@@ -1887,31 +1945,7 @@ async fn install_imported_embedding_bundle(
 
     tokio::task::spawn_blocking(move || {
         validate_embedding_bundle_layout(&source)?;
-        let models_root = app_models_dir()?;
-        let destination = models_root.join(EMBEDDING_DESTINATION);
-        match classify_embedding_import_paths(&source, &destination)? {
-            EmbeddingImportPathKind::Identical => {
-                tracing::info!("embedding import source is the installed bundle; skipping copy");
-                Ok(())
-            }
-            EmbeddingImportPathKind::Nested => Err(AppError::Validation(
-                "Embedding import source overlaps the installed bundle directory".to_string(),
-            )),
-            EmbeddingImportPathKind::Distinct => {
-                let staging_parent = models_root.join("embeddings");
-                std::fs::create_dir_all(&staging_parent)?;
-                let staging = staging_parent.join(".import-staging-all-MiniLM-L6-v2");
-                if staging.exists() {
-                    std::fs::remove_dir_all(&staging)?;
-                }
-                if let Err(error) = copy_directory_recursive(&source, &staging) {
-                    let _ = std::fs::remove_dir_all(&staging);
-                    return Err(error);
-                }
-                validate_embedding_bundle_layout(&staging)?;
-                promote_staged_embedding_bundle(&staging, &destination)
-            }
-        }
+        install_validated_embedding_bundle(&source)
     })
     .await
     .map_err(|error| {
@@ -3206,6 +3240,172 @@ mod tests {
         assert!(dest.join("model.onnx").is_file());
         assert!(!dest.join("old.txt").exists());
         assert!(!staging.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn classify_embedding_import_paths_returns_distinct_when_destination_missing() {
+        let unique = format!(
+            "spellbook-embed-path-missing-dest-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(root.join("source")).expect("source dir");
+
+        let source = root.join("source");
+        let missing_destination = root.join("missing-bundle");
+
+        let kind =
+            classify_embedding_import_paths(&source, &missing_destination).expect("distinct");
+        assert_eq!(kind, EmbeddingImportPathKind::Distinct);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    struct InstallPathVaultGuard {
+        _env_lock: std::sync::MutexGuard<'static, ()>,
+        previous_data_dir: Option<std::ffi::OsString>,
+        temp_data_dir: std::path::PathBuf,
+    }
+
+    impl Drop for InstallPathVaultGuard {
+        fn drop(&mut self) {
+            match &self.previous_data_dir {
+                Some(prev) => std::env::set_var("SPELLBOOK_DATA_DIR", prev),
+                None => std::env::remove_var("SPELLBOOK_DATA_DIR"),
+            }
+            let _ = std::fs::remove_dir_all(&self.temp_data_dir);
+        }
+    }
+
+    fn acquire_install_path_test_vault(label: &str) -> InstallPathVaultGuard {
+        use crate::commands::vault::lock_vault_env_for_test;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static INSTALL_PATH_TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        let env_lock = lock_vault_env_for_test();
+        let unique_id = INSTALL_PATH_TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let sanitized: String = label
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        let temp_data_dir = std::env::temp_dir().join(format!(
+            "spellbook-embed-install-path-{sanitized}-{}-{unique_id}",
+            std::process::id(),
+        ));
+        std::fs::create_dir_all(&temp_data_dir).expect("temp vault");
+        let previous_data_dir = std::env::var_os("SPELLBOOK_DATA_DIR");
+        std::env::set_var("SPELLBOOK_DATA_DIR", &temp_data_dir);
+        InstallPathVaultGuard {
+            _env_lock: env_lock,
+            previous_data_dir,
+            temp_data_dir,
+        }
+    }
+
+    #[test]
+    fn install_validated_embedding_bundle_skips_copy_when_source_is_installed_destination() {
+        let _guard = acquire_install_path_test_vault(
+            "install_validated_embedding_bundle_skips_copy_when_source_is_installed_destination",
+        );
+        let models_root = app_models_dir().expect("models root");
+        let destination = models_root.join(EMBEDDING_DESTINATION);
+        std::fs::create_dir_all(&destination).expect("destination dir");
+        std::fs::write(destination.join("marker.txt"), b"keep-me").expect("marker file");
+
+        install_validated_embedding_bundle(&destination).expect("identical path import");
+
+        assert!(
+            destination.join("marker.txt").is_file(),
+            "identical-path import must not delete installed bundle files"
+        );
+        assert_eq!(
+            std::fs::read_to_string(destination.join("marker.txt")).expect("read marker"),
+            "keep-me"
+        );
+    }
+
+    #[test]
+    fn install_validated_embedding_bundle_rejects_nested_overlap() {
+        let _guard =
+            acquire_install_path_test_vault("install_validated_embedding_bundle_rejects_nested_overlap");
+        let models_root = app_models_dir().expect("models root");
+        let destination = models_root.join(EMBEDDING_DESTINATION);
+        let bundle_dir = models_root.join("embeddings").join("all-MiniLM-L6-v2");
+        std::fs::create_dir_all(&bundle_dir).expect("destination dir");
+        let inner_source = bundle_dir.join("inner");
+        std::fs::create_dir_all(&inner_source).expect("inner source dir");
+
+        assert_eq!(
+            classify_embedding_import_paths(&inner_source, &destination).expect("classify"),
+            EmbeddingImportPathKind::Nested,
+            "test setup must classify inner source as nested overlap"
+        );
+
+        let err = install_validated_embedding_bundle(&inner_source).expect_err("nested overlap");
+        assert!(matches!(err, AppError::Validation(_)));
+        assert!(
+            err.to_string()
+                .contains("overlaps the installed bundle directory"),
+            "unexpected nested overlap error: {err}"
+        );
+    }
+
+    #[test]
+    fn promote_staged_embedding_bundle_restores_destination_when_promotion_fails() {
+        struct StagingRenameFailingFs;
+
+        impl EmbeddingBundlePromotionFs for StagingRenameFailingFs {
+            fn exists(&self, path: &std::path::Path) -> bool {
+                path.exists()
+            }
+
+            fn rename(&self, from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+                if from.file_name().and_then(|name| name.to_str()) == Some("staging") {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "promotion blocked",
+                    ));
+                }
+                std::fs::rename(from, to)
+            }
+
+            fn remove_dir_all(&self, path: &std::path::Path) -> std::io::Result<()> {
+                std::fs::remove_dir_all(path)
+            }
+        }
+
+        let unique = format!(
+            "spellbook-embed-promote-rollback-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let dest = root.join("dest");
+        let staging = root.join("staging");
+        let backup = dest.with_file_name("dest.bak");
+        std::fs::create_dir_all(dest.join("old")).expect("old dest");
+        std::fs::write(dest.join("old.txt"), b"old").expect("old file");
+        std::fs::create_dir_all(&staging).expect("staging");
+        std::fs::write(staging.join("model.onnx"), b"new").expect("new file");
+
+        promote_staged_embedding_bundle_with_fs(&StagingRenameFailingFs, &staging, &dest)
+            .expect_err("promotion must fail");
+
+        assert_eq!(
+            std::fs::read_to_string(dest.join("old.txt")).expect("restored dest"),
+            "old"
+        );
+        assert!(staging.exists(), "staging must remain when promotion fails");
+        assert!(!backup.exists(), "backup must be restored to destination");
         let _ = std::fs::remove_dir_all(&root);
     }
 

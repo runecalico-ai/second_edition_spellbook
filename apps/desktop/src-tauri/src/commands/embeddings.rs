@@ -1006,6 +1006,14 @@ async fn reembed_pending_spells(state: Arc<EmbeddingState>, pool: Arc<crate::db:
             return;
         }
     };
+    let status = match state.status.lock() {
+        Ok(guard) => *guard,
+        Err(poisoned) => *poisoned.into_inner(),
+    };
+    if status != EmbeddingsStatus::Ready {
+        mark_spells_pending_reembed(state.as_ref(), ids_for_retry);
+        return;
+    }
     for (spell_id, name, description) in rows {
         if let Err(error) = enqueue_spell_embedding_if_ready(
             Arc::clone(&state),
@@ -3043,14 +3051,162 @@ mod tests {
 
         let result = enqueue_import_embeddings_if_ready(
             Arc::clone(&state),
-            pool,
+            Arc::clone(&pool),
             vec![(spell_id, "Light".into(), "Creates light".into())],
         )
         .await;
         assert!(result.is_ok());
         tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let count: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row(
+                "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                rusqlite::params![spell_id],
+                |row| row.get(0),
+            )
+            .expect("count")
+        };
+        assert_eq!(count, 1, "reindex skip must not delete the vector");
         let pending = take_pending_reembed_spell_ids(state.as_ref());
         assert_eq!(pending, vec![spell_id]);
+    }
+
+    #[tokio::test]
+    async fn reembed_pending_spells_drains_when_ready() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Ready;
+
+        let isolated = IsolatedTestPool::new("reembed_pending_spells_drains_when_ready");
+        let pool = Arc::clone(&isolated.pool);
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        let spell_id: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                row.get(0)
+            })
+            .expect("next spell id")
+        };
+        {
+            let conn = pool.get().expect("test db connection");
+            conn.execute(
+                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Shield', 1, 'Protects against attacks', ?2)",
+                rusqlite::params![spell_id, format!("hash-reembed-drain-{spell_id}")],
+            )
+            .expect("insert spell");
+            match conn.execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![spell_id, vector_json],
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    let bytes: Vec<u8> = vec![0.0_f32; 384]
+                        .into_iter()
+                        .flat_map(f32::to_le_bytes)
+                        .collect();
+                    conn.execute(
+                        "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+                        rusqlite::params![spell_id, bytes],
+                    )
+                    .expect("blob fallback");
+                }
+            }
+        }
+
+        mark_spell_pending_reembed(state.as_ref(), spell_id);
+        let gen_at_mark = state
+            .spell_embed_generations
+            .lock()
+            .unwrap()
+            .get(&spell_id)
+            .copied()
+            .unwrap_or(0);
+
+        reembed_pending_spells(Arc::clone(&state), Arc::clone(&pool)).await;
+
+        assert!(
+            take_pending_reembed_spell_ids(state.as_ref()).is_empty(),
+            "drain should consume pending ids"
+        );
+        let gen_after_drain = state
+            .spell_embed_generations
+            .lock()
+            .unwrap()
+            .get(&spell_id)
+            .copied()
+            .unwrap_or(0);
+        assert!(
+            gen_after_drain > gen_at_mark,
+            "drain should call enqueue which bumps generation"
+        );
+    }
+
+    #[tokio::test]
+    async fn reembed_pending_spells_requeues_when_not_ready() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Initializing;
+
+        let isolated = IsolatedTestPool::new("reembed_pending_spells_requeues_when_not_ready");
+        let pool = Arc::clone(&isolated.pool);
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        let spell_id: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                row.get(0)
+            })
+            .expect("next spell id")
+        };
+        {
+            let conn = pool.get().expect("test db connection");
+            conn.execute(
+                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Shield', 1, 'Protects against attacks', ?2)",
+                rusqlite::params![spell_id, format!("hash-reembed-guard-{spell_id}")],
+            )
+            .expect("insert spell");
+            match conn.execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![spell_id, vector_json],
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    let bytes: Vec<u8> = vec![0.0_f32; 384]
+                        .into_iter()
+                        .flat_map(f32::to_le_bytes)
+                        .collect();
+                    conn.execute(
+                        "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+                        rusqlite::params![spell_id, bytes],
+                    )
+                    .expect("blob fallback");
+                }
+            }
+        }
+
+        mark_spell_pending_reembed(state.as_ref(), spell_id);
+
+        reembed_pending_spells(Arc::clone(&state), Arc::clone(&pool)).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let count: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row(
+                "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                rusqlite::params![spell_id],
+                |row| row.get(0),
+            )
+            .expect("count")
+        };
+        assert_eq!(
+            count, 1,
+            "not-ready drain must not delete preserved vectors"
+        );
+        let pending = take_pending_reembed_spell_ids(state.as_ref());
+        assert_eq!(
+            pending,
+            vec![spell_id],
+            "not-ready drain must re-queue pending ids"
+        );
     }
 
     /// M-005 batch path: `enqueue_import_embeddings_if_ready` must delete existing `spell_vec`

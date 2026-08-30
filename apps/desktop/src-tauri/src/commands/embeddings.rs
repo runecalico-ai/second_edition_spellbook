@@ -9,7 +9,7 @@ use crate::models::{
 };
 use fastembed::TextEmbedding;
 use futures_util::StreamExt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use tauri::Emitter;
@@ -51,6 +51,8 @@ pub struct EmbeddingState {
     reindex_in_progress: AtomicBool,
     /// Monotonic per-spell generation to drop stale background embed tasks.
     spell_embed_generations: Mutex<HashMap<i64, u64>>,
+    /// Spell ids edited/created/imported while a reindex guard is held.
+    pending_reembed_spell_ids: Mutex<HashSet<i64>>,
     /// Single-flight guard for model load + Ready transition.
     finalize_lock: AsyncMutex<()>,
 }
@@ -65,6 +67,7 @@ impl Default for EmbeddingState {
             download_epoch: AtomicU64::new(0),
             reindex_in_progress: AtomicBool::new(false),
             spell_embed_generations: Mutex::new(HashMap::new()),
+            pending_reembed_spell_ids: Mutex::new(HashSet::new()),
             finalize_lock: AsyncMutex::new(()),
         }
     }
@@ -72,6 +75,40 @@ impl Default for EmbeddingState {
 
 pub(crate) fn cancel_spell_embedding_for_delete(state: &EmbeddingState, spell_id: i64) {
     bump_spell_embed_generation(state, spell_id);
+    remove_pending_reembed(state, spell_id);
+}
+
+fn mark_spell_pending_reembed(state: &EmbeddingState, spell_id: i64) {
+    bump_spell_embed_generation(state, spell_id);
+    let mut pending = state
+        .pending_reembed_spell_ids
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    pending.insert(spell_id);
+}
+
+fn mark_spells_pending_reembed(state: &EmbeddingState, spell_ids: impl IntoIterator<Item = i64>) {
+    for spell_id in spell_ids {
+        mark_spell_pending_reembed(state, spell_id);
+    }
+}
+
+fn remove_pending_reembed(state: &EmbeddingState, spell_id: i64) {
+    let mut pending = state
+        .pending_reembed_spell_ids
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    pending.remove(&spell_id);
+}
+
+fn take_pending_reembed_spell_ids(state: &EmbeddingState) -> Vec<i64> {
+    let mut pending = state
+        .pending_reembed_spell_ids
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut ids: Vec<i64> = pending.drain().collect();
+    ids.sort_unstable();
+    ids
 }
 
 fn bump_spell_embed_generation(state: &EmbeddingState, spell_id: i64) -> u64 {
@@ -568,9 +605,9 @@ async fn embed_single_spell_row(
     if reindex_in_progress(state.as_ref()) {
         tracing::info!(
             spell_id,
-            "embedding write hook dropped because reindex started"
+            "embedding write hook deferred because reindex started"
         );
-        invalidate_spell_vec_rows(pool, vec![spell_id]).await;
+        mark_spell_pending_reembed(state.as_ref(), spell_id);
         return Ok(());
     }
 
@@ -599,37 +636,9 @@ pub async fn enqueue_spell_embedding_if_ready(
     if status == EmbeddingsStatus::Ready && reindex_in_progress(state.as_ref()) {
         tracing::info!(
             spell_id,
-            "embedding write hook skipped while reindex in progress"
+            "embedding write hook deferred until reindex completes"
         );
-        let pool_for_cleanup = Arc::clone(&pool);
-        tauri::async_runtime::spawn(async move {
-            let cleanup = tokio::task::spawn_blocking(move || {
-                let conn = pool_for_cleanup.get()?;
-                conn.execute(
-                    "DELETE FROM spell_vec WHERE rowid = ?1",
-                    rusqlite::params![spell_id],
-                )?;
-                Ok::<(), AppError>(())
-            })
-            .await;
-
-            match cleanup {
-                Ok(Ok(())) => tracing::info!(
-                    spell_id,
-                    "embedding skipped during reindex; stale vector invalidated"
-                ),
-                Ok(Err(error)) => tracing::warn!(
-                    spell_id,
-                    ?error,
-                    "embedding skipped during reindex; stale vector invalidation failed (non-fatal)"
-                ),
-                Err(join_error) => tracing::warn!(
-                    spell_id,
-                    ?join_error,
-                    "embedding skipped during reindex; stale vector invalidation join failed (non-fatal)"
-                ),
-            }
-        });
+        mark_spell_pending_reembed(state.as_ref(), spell_id);
         return Ok(());
     }
 
@@ -730,9 +739,12 @@ async fn embed_import_batch_rows(
                 if reindex_in_progress(state_for_reindex.as_ref()) {
                     tracing::info!(
                         chunk_len = chunk.len(),
-                        "import batch embedding chunk dropped because reindex started"
+                        "import batch embedding chunk deferred because reindex started"
                     );
-                    invalidate_spell_vec_rows(pool_for_invalidation, chunk_spell_ids).await;
+                    mark_spells_pending_reembed(
+                        state_for_reindex.as_ref(),
+                        chunk.iter().map(|row| row.0),
+                    );
                     continue;
                 }
                 let filtered =
@@ -799,43 +811,9 @@ pub async fn enqueue_import_embeddings_if_ready(
     if status == EmbeddingsStatus::Ready && reindex_in_progress(state.as_ref()) {
         tracing::info!(
             count = rows.len(),
-            "import embeddings skipped while reindex in progress"
+            "import embeddings deferred until reindex completes"
         );
-        let stale_ids: Vec<i64> = rows.iter().map(|(id, _, _)| *id).collect();
-        let count = stale_ids.len();
-        let pool_for_cleanup = Arc::clone(&pool);
-        tauri::async_runtime::spawn(async move {
-            let cleanup = tokio::task::spawn_blocking(move || {
-                let conn = pool_for_cleanup.get()?;
-                let tx = conn.unchecked_transaction()?;
-                for spell_id in stale_ids {
-                    tx.execute(
-                        "DELETE FROM spell_vec WHERE rowid = ?1",
-                        rusqlite::params![spell_id],
-                    )?;
-                }
-                tx.commit()?;
-                Ok::<(), AppError>(())
-            })
-            .await;
-
-            match cleanup {
-                Ok(Ok(())) => tracing::info!(
-                    count,
-                    "import embeddings skipped during reindex; stale vectors invalidated"
-                ),
-                Ok(Err(error)) => tracing::warn!(
-                    count,
-                    ?error,
-                    "import embeddings skipped during reindex; stale vector invalidation failed (non-fatal)"
-                ),
-                Err(join_error) => tracing::warn!(
-                    count,
-                    ?join_error,
-                    "import embeddings skipped during reindex; stale vector invalidation join failed (non-fatal)"
-                ),
-            }
-        });
+        mark_spells_pending_reembed(state.as_ref(), rows.iter().map(|(id, _, _)| *id));
         return Ok(());
     }
 
@@ -980,6 +958,69 @@ pub async fn search_spells_semantic(
     search_spells_semantic_internal(state.inner().clone(), db.inner().clone(), query, limit).await
 }
 
+fn load_spell_embedding_rows_by_ids(
+    pool: &crate::db::Pool,
+    ids: &[i64],
+) -> Result<Vec<SpellEmbeddingRow>, AppError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let conn = pool.get()?;
+    let mut rows = Vec::with_capacity(ids.len());
+    for spell_id in ids {
+        let loaded = conn.query_row(
+            "SELECT id, name, description FROM spell WHERE id = ?1",
+            rusqlite::params![spell_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        );
+        match loaded {
+            Ok(row) => rows.push(row),
+            Err(rusqlite::Error::QueryReturnedNoRows) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(rows)
+}
+
+async fn reembed_pending_spells(state: Arc<EmbeddingState>, pool: Arc<crate::db::Pool>) {
+    let ids = take_pending_reembed_spell_ids(state.as_ref());
+    if ids.is_empty() {
+        return;
+    }
+    let ids_for_retry = ids.clone();
+    let pool_for_load = Arc::clone(&pool);
+    let rows = match tokio::task::spawn_blocking(move || {
+        load_spell_embedding_rows_by_ids(&pool_for_load, &ids)
+    })
+    .await
+    {
+        Ok(Ok(rows)) => rows,
+        Ok(Err(error)) => {
+            tracing::warn!(?error, "pending reembed load failed (non-fatal)");
+            mark_spells_pending_reembed(state.as_ref(), ids_for_retry);
+            return;
+        }
+        Err(join_error) => {
+            tracing::warn!(?join_error, "pending reembed load join failed (non-fatal)");
+            mark_spells_pending_reembed(state.as_ref(), ids_for_retry);
+            return;
+        }
+    };
+    for (spell_id, name, description) in rows {
+        if let Err(error) = enqueue_spell_embedding_if_ready(
+            Arc::clone(&state),
+            Arc::clone(&pool),
+            spell_id,
+            name,
+            description,
+        )
+        .await
+        {
+            tracing::warn!(spell_id, ?error, "pending reembed enqueue failed (non-fatal)");
+        }
+    }
+}
+
 pub async fn reindex_embeddings_internal(
     app: EmbeddingsCommandAppHandle,
     state: Arc<EmbeddingState>,
@@ -987,7 +1028,20 @@ pub async fn reindex_embeddings_internal(
     force: bool,
 ) -> Result<ReindexResult, AppError> {
     ensure_no_active_embedding_download(state.as_ref())?;
-    let _reindex_guard = ReindexInProgressGuard::try_acquire(Arc::clone(&state))?;
+    let result = {
+        let _reindex_guard = ReindexInProgressGuard::try_acquire(Arc::clone(&state))?;
+        run_reindex_chunks(app, Arc::clone(&state), Arc::clone(&db), force).await
+    };
+    reembed_pending_spells(Arc::clone(&state), db).await;
+    result
+}
+
+async fn run_reindex_chunks(
+    app: EmbeddingsCommandAppHandle,
+    state: Arc<EmbeddingState>,
+    db: Arc<crate::db::Pool>,
+    force: bool,
+) -> Result<ReindexResult, AppError> {
     let model =
         await_ready_model_with_timeout(Arc::clone(&state), std::time::Duration::from_secs(30))
             .await?;
@@ -2862,6 +2916,141 @@ mod tests {
             11,
             light_gen_at_enqueue
         ));
+    }
+
+    #[tokio::test]
+    async fn enqueue_during_reindex_queues_spell_and_keeps_vector() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Ready;
+        state
+            .reindex_in_progress
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let isolated = IsolatedTestPool::new("enqueue_during_reindex_queues_spell_and_keeps_vector");
+        let pool = Arc::clone(&isolated.pool);
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        let spell_id: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                row.get(0)
+            })
+            .expect("next spell id")
+        };
+        {
+            let conn = pool.get().expect("test db connection");
+            conn.execute(
+                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Shield', 1, 'Protects against attacks', ?2)",
+                rusqlite::params![spell_id, format!("hash-reindex-queue-{spell_id}")],
+            )
+            .expect("insert spell");
+            match conn.execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![spell_id, vector_json],
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    let bytes: Vec<u8> = vec![0.0_f32; 384]
+                        .into_iter()
+                        .flat_map(f32::to_le_bytes)
+                        .collect();
+                    conn.execute(
+                        "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+                        rusqlite::params![spell_id, bytes],
+                    )
+                    .expect("blob fallback");
+                }
+            }
+        }
+
+        let result = enqueue_spell_embedding_if_ready(
+            Arc::clone(&state),
+            Arc::clone(&pool),
+            spell_id,
+            "Shield Edited".to_string(),
+            "New description".to_string(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let count: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row(
+                "SELECT COUNT(*) FROM spell_vec WHERE rowid = ?1",
+                rusqlite::params![spell_id],
+                |row| row.get(0),
+            )
+            .expect("count")
+        };
+        assert_eq!(count, 1, "reindex skip must not delete the vector");
+        let pending = take_pending_reembed_spell_ids(state.as_ref());
+        assert_eq!(pending, vec![spell_id]);
+    }
+
+    #[test]
+    fn cancel_delete_removes_pending_reembed() {
+        let state = EmbeddingState::default();
+        mark_spell_pending_reembed(&state, 42);
+        cancel_spell_embedding_for_delete(&state, 42);
+        assert!(take_pending_reembed_spell_ids(&state).is_empty());
+    }
+
+    #[tokio::test]
+    async fn import_during_reindex_queues_ids_and_keeps_vectors() {
+        let state = Arc::new(EmbeddingState::default());
+        *state.status.lock().unwrap() = EmbeddingsStatus::Ready;
+        state
+            .reindex_in_progress
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let isolated = IsolatedTestPool::new("import_during_reindex_queues_ids");
+        let pool = Arc::clone(&isolated.pool);
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        let spell_id: i64 = {
+            let conn = pool.get().expect("test db connection");
+            conn.query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                row.get(0)
+            })
+            .expect("next spell id")
+        };
+        {
+            let conn = pool.get().expect("test db connection");
+            conn.execute(
+                "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Light', 1, 'Creates light', ?2)",
+                rusqlite::params![spell_id, format!("hash-import-reindex-{spell_id}")],
+            )
+            .expect("insert spell");
+            match conn.execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![spell_id, vector_json],
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    let bytes: Vec<u8> = vec![0.0_f32; 384]
+                        .into_iter()
+                        .flat_map(f32::to_le_bytes)
+                        .collect();
+                    conn.execute(
+                        "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+                        rusqlite::params![spell_id, bytes],
+                    )
+                    .expect("blob fallback");
+                }
+            }
+        }
+
+        let result = enqueue_import_embeddings_if_ready(
+            Arc::clone(&state),
+            pool,
+            vec![(spell_id, "Light".into(), "Creates light".into())],
+        )
+        .await;
+        assert!(result.is_ok());
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let pending = take_pending_reembed_spell_ids(state.as_ref());
+        assert_eq!(pending, vec![spell_id]);
     }
 
     /// M-005 batch path: `enqueue_import_embeddings_if_ready` must delete existing `spell_vec`

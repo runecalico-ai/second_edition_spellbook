@@ -1693,6 +1693,64 @@ fn copy_directory_recursive(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmbeddingImportPathKind {
+    Identical,
+    Nested,
+    Distinct,
+}
+
+fn classify_embedding_import_paths(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<EmbeddingImportPathKind, AppError> {
+    if !destination.exists() {
+        return Ok(EmbeddingImportPathKind::Distinct);
+    }
+    let source = std::fs::canonicalize(source)?;
+    let destination = std::fs::canonicalize(destination)?;
+    if source == destination {
+        return Ok(EmbeddingImportPathKind::Identical);
+    }
+    if destination.starts_with(&source) || source.starts_with(&destination) {
+        return Ok(EmbeddingImportPathKind::Nested);
+    }
+    Ok(EmbeddingImportPathKind::Distinct)
+}
+
+fn promote_staged_embedding_bundle(
+    staging: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), AppError> {
+    let backup = destination.with_file_name(format!(
+        "{}.bak",
+        destination
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("embeddings-bundle")
+    ));
+    if backup.exists() {
+        std::fs::remove_dir_all(&backup)?;
+    }
+    if destination.exists() {
+        std::fs::rename(destination, &backup)?;
+    }
+    match std::fs::rename(staging, destination) {
+        Ok(()) => {
+            if backup.exists() {
+                let _ = std::fs::remove_dir_all(&backup);
+            }
+            Ok(())
+        }
+        Err(error) => {
+            if backup.exists() && !destination.exists() {
+                let _ = std::fs::rename(&backup, destination);
+            }
+            Err(AppError::from(error))
+        }
+    }
+}
+
 async fn download_embedding_bundle_with_resume(
     app: EmbeddingsCommandAppHandle,
     state: Arc<EmbeddingState>,
@@ -1831,10 +1889,29 @@ async fn install_imported_embedding_bundle(
         validate_embedding_bundle_layout(&source)?;
         let models_root = app_models_dir()?;
         let destination = models_root.join(EMBEDDING_DESTINATION);
-        if destination.exists() {
-            std::fs::remove_dir_all(&destination)?;
+        match classify_embedding_import_paths(&source, &destination)? {
+            EmbeddingImportPathKind::Identical => {
+                tracing::info!("embedding import source is the installed bundle; skipping copy");
+                Ok(())
+            }
+            EmbeddingImportPathKind::Nested => Err(AppError::Validation(
+                "Embedding import source overlaps the installed bundle directory".to_string(),
+            )),
+            EmbeddingImportPathKind::Distinct => {
+                let staging_parent = models_root.join("embeddings");
+                std::fs::create_dir_all(&staging_parent)?;
+                let staging = staging_parent.join(".import-staging-all-MiniLM-L6-v2");
+                if staging.exists() {
+                    std::fs::remove_dir_all(&staging)?;
+                }
+                if let Err(error) = copy_directory_recursive(&source, &staging) {
+                    let _ = std::fs::remove_dir_all(&staging);
+                    return Err(error);
+                }
+                validate_embedding_bundle_layout(&staging)?;
+                promote_staged_embedding_bundle(&staging, &destination)
+            }
         }
-        copy_directory_recursive(&source, &destination)
     })
     .await
     .map_err(|error| {
@@ -3069,6 +3146,67 @@ mod tests {
         assert_eq!(count, 1, "reindex skip must not delete the vector");
         let pending = take_pending_reembed_spell_ids(state.as_ref());
         assert_eq!(pending, vec![spell_id]);
+    }
+
+    #[test]
+    fn classify_embedding_import_paths_detects_identical_and_nested() {
+        let unique = format!(
+            "spellbook-embed-path-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(root.join("bundle")).expect("bundle dir");
+        std::fs::create_dir_all(root.join("bundle").join("inner")).expect("inner dir");
+        std::fs::create_dir_all(root.join("other")).expect("other dir");
+
+        let bundle = root.join("bundle");
+        let inner = bundle.join("inner");
+        let other = root.join("other");
+
+        let identical = classify_embedding_import_paths(&bundle, &bundle).expect("identical");
+        assert_eq!(identical, EmbeddingImportPathKind::Identical);
+
+        let nested = classify_embedding_import_paths(&bundle, &inner).expect("nested dest in source");
+        assert_eq!(nested, EmbeddingImportPathKind::Nested);
+
+        let nested_src =
+            classify_embedding_import_paths(&inner, &bundle).expect("nested source in dest");
+        assert_eq!(nested_src, EmbeddingImportPathKind::Nested);
+
+        let distinct = classify_embedding_import_paths(&bundle, &other).expect("distinct");
+        assert_eq!(distinct, EmbeddingImportPathKind::Distinct);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn promote_staged_embedding_bundle_replaces_destination() {
+        let unique = format!(
+            "spellbook-embed-promote-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let dest = root.join("dest");
+        let staging = root.join("staging");
+        std::fs::create_dir_all(dest.join("old")).expect("old dest");
+        std::fs::write(dest.join("old.txt"), b"old").expect("old file");
+        std::fs::create_dir_all(&staging).expect("staging");
+        std::fs::write(staging.join("model.onnx"), b"new").expect("new file");
+
+        promote_staged_embedding_bundle(&staging, &dest).expect("promote");
+
+        assert!(dest.join("model.onnx").is_file());
+        assert!(!dest.join("old.txt").exists());
+        assert!(!staging.exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]

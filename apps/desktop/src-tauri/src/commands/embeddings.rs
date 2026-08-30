@@ -1765,11 +1765,23 @@ fn promote_staged_embedding_bundle_with_fs(
             }
             Ok(())
         }
-        Err(error) => {
+        Err(promotion_error) => {
             if fs.exists(&backup) && !fs.exists(destination) {
-                let _ = fs.rename(&backup, destination);
+                match fs.rename(&backup, destination) {
+                    Ok(()) => {}
+                    Err(restore_error) => {
+                        return Err(AppError::Search(format!(
+                            "Promoting the approved embedding bundle failed: {promotion_error}; restoring the previous installed bundle also failed: {restore_error}. Manual recovery may be required at {} and {}",
+                            destination.display(),
+                            backup.display(),
+                        )));
+                    }
+                }
             }
-            Err(AppError::from(error))
+
+            Err(AppError::Search(format!(
+                "Promoting the approved embedding bundle failed: {promotion_error}"
+            )))
         }
     }
 }
@@ -3308,6 +3320,98 @@ mod tests {
         }
     }
 
+    const TEST_EMBEDDING_BUNDLE_CACHE_DIR: &str = "spellbook-embedding-test-bundle-cache";
+
+    fn test_embedding_bundle_fixture_root() -> Option<std::path::PathBuf> {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/embeddings/all-MiniLM-L6-v2")
+            .canonicalize()
+            .ok()
+            .filter(|path| path.is_dir())
+    }
+
+    fn test_embedding_bundle_reference_root() -> Option<std::path::PathBuf> {
+        std::env::var_os("SPELLBOOK_TEST_EMBEDDING_BUNDLE")
+            .map(std::path::PathBuf::from)
+            .filter(|path| path.is_dir())
+            .and_then(|path| path.canonicalize().ok())
+    }
+
+    fn test_embedding_bundle_cache_root() -> std::path::PathBuf {
+        std::env::temp_dir().join(TEST_EMBEDDING_BUNDLE_CACHE_DIR)
+    }
+
+    async fn download_test_embedding_bundle_to(
+        bundle_root: &std::path::Path,
+    ) -> Result<(), AppError> {
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+
+        std::fs::create_dir_all(bundle_root)?;
+        let client = reqwest::Client::new();
+        for expected in EMBEDDING_EXPECTED_FILES.iter() {
+            let relative = expected_relative_path(expected.relative_path);
+            let destination = bundle_root.join(relative);
+            if let Some(parent) = destination.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+
+            let response = client
+                .get(embedding_file_url(expected.relative_path)?)
+                .send()
+                .await
+                .map_err(|error| {
+                    AppError::Search(format!("test embedding bundle download failed: {error}"))
+                })?;
+            if !response.status().is_success() {
+                return Err(AppError::Search(format!(
+                    "test embedding bundle download failed with status {}",
+                    response.status()
+                )));
+            }
+
+            let mut file = tokio::fs::File::create(&destination).await?;
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|error| {
+                    AppError::Search(format!("test embedding bundle download stream failed: {error}"))
+                })?;
+                file.write_all(&chunk).await?;
+            }
+        }
+
+        validate_embedding_bundle_layout(bundle_root)
+    }
+
+    fn ensure_test_embedding_bundle_at(bundle_root: &std::path::Path) -> Result<(), AppError> {
+        if validate_embedding_bundle_layout(bundle_root).is_ok() {
+            return Ok(());
+        }
+
+        let reference = test_embedding_bundle_reference_root()
+            .or_else(test_embedding_bundle_fixture_root)
+            .filter(|path| validate_embedding_bundle_layout(path).is_ok());
+
+        if let Some(reference) = reference {
+            copy_directory_recursive(&reference, bundle_root)?;
+            return validate_embedding_bundle_layout(bundle_root);
+        }
+
+        let cache_root = test_embedding_bundle_cache_root();
+        if validate_embedding_bundle_layout(&cache_root).is_ok() {
+            copy_directory_recursive(&cache_root, bundle_root)?;
+            return validate_embedding_bundle_layout(bundle_root);
+        }
+
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| AppError::Search(format!("test runtime failed: {error}")))?
+            .block_on(download_test_embedding_bundle_to(&cache_root))?;
+        copy_directory_recursive(&cache_root, bundle_root)?;
+        validate_embedding_bundle_layout(bundle_root)
+    }
+
     #[test]
     fn install_validated_embedding_bundle_skips_copy_when_source_is_installed_destination() {
         let _guard = acquire_install_path_test_vault(
@@ -3407,6 +3511,170 @@ mod tests {
         assert!(staging.exists(), "staging must remain when promotion fails");
         assert!(!backup.exists(), "backup must be restored to destination");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn promote_staged_embedding_bundle_reports_restore_failure_for_manual_recovery() {
+        struct RestoreFailingFs;
+
+        impl EmbeddingBundlePromotionFs for RestoreFailingFs {
+            fn exists(&self, path: &std::path::Path) -> bool {
+                path.exists()
+            }
+
+            fn rename(&self, from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+                if from.file_name().and_then(|name| name.to_str()) == Some("staging") {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "promotion blocked",
+                    ));
+                }
+
+                if from.extension().and_then(|ext| ext.to_str()) == Some("bak") {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "restore blocked",
+                    ));
+                }
+
+                std::fs::rename(from, to)
+            }
+
+            fn remove_dir_all(&self, path: &std::path::Path) -> std::io::Result<()> {
+                std::fs::remove_dir_all(path)
+            }
+        }
+
+        let unique = format!(
+            "spellbook-embed-promote-restore-failure-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let dest = root.join("dest");
+        let staging = root.join("staging");
+        let backup = dest.with_file_name("dest.bak");
+        std::fs::create_dir_all(dest.join("old")).expect("old dest");
+        std::fs::write(dest.join("old.txt"), b"old").expect("old file");
+        std::fs::create_dir_all(&staging).expect("staging");
+        std::fs::write(staging.join("model.onnx"), b"new").expect("new file");
+
+        let err =
+            promote_staged_embedding_bundle_with_fs(&RestoreFailingFs, &staging, &dest).unwrap_err();
+
+        assert!(
+            matches!(err, AppError::Search(message) if message.contains("promotion blocked") && message.contains("restore blocked") && message.contains("Manual recovery may be required"))
+        );
+        assert!(staging.exists());
+        assert!(backup.exists());
+        assert!(!dest.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn install_validated_embedding_bundle_copies_distinct_path_via_staging() {
+        let _guard = acquire_install_path_test_vault(
+            "install_validated_embedding_bundle_copies_distinct_path_via_staging",
+        );
+        let models_root = app_models_dir().expect("models root");
+        let destination = models_root.join(EMBEDDING_DESTINATION);
+        std::fs::create_dir_all(&destination).expect("destination dir");
+        std::fs::write(destination.join("legacy.txt"), b"old-install").expect("legacy marker");
+
+        let source = models_root.join("external-import-source");
+        ensure_test_embedding_bundle_at(&source).expect("materialize distinct source bundle");
+
+        assert_eq!(
+            classify_embedding_import_paths(&source, &destination).expect("classify"),
+            EmbeddingImportPathKind::Distinct,
+            "test setup must classify source as distinct from destination"
+        );
+
+        install_validated_embedding_bundle(&source).expect("distinct path install");
+
+        assert!(
+            !destination.join("legacy.txt").exists(),
+            "distinct import must replace the previous destination contents"
+        );
+        validate_embedding_bundle_layout(&destination).expect("destination bundle must validate");
+        for expected in EMBEDDING_EXPECTED_FILES {
+            let relative = expected_relative_path(expected.relative_path);
+            assert_eq!(
+                std::fs::read(destination.join(relative)).expect("read destination file"),
+                std::fs::read(source.join(relative)).expect("read source file"),
+                "destination file {relative} must match source"
+            );
+        }
+
+        let staging = models_root
+            .join("embeddings")
+            .join(".import-staging-all-MiniLM-L6-v2");
+        assert!(
+            !staging.exists(),
+            "staging directory must be removed after successful promotion"
+        );
+    }
+
+    #[tokio::test]
+    async fn install_imported_embedding_bundle_validates_before_identical_skip() {
+        let _guard = acquire_install_path_test_vault(
+            "install_imported_embedding_bundle_validates_before_identical_skip",
+        );
+        let state = Arc::new(EmbeddingState::default());
+        let models_root = app_models_dir().expect("models root");
+        let destination = models_root.join(EMBEDDING_DESTINATION);
+        std::fs::create_dir_all(&destination).expect("destination dir");
+        std::fs::write(destination.join("marker.txt"), b"keep-me").expect("marker file");
+
+        let err = install_imported_embedding_bundle(state, destination.clone())
+            .await
+            .expect_err("invalid identical-path import must fail validation first");
+
+        assert!(
+            matches!(err, AppError::Validation(_)),
+            "validation must run before identical-path skip, got: {err}"
+        );
+        assert!(
+            destination.join("marker.txt").is_file(),
+            "failed identical-path import must not delete installed bundle files"
+        );
+    }
+
+    #[tokio::test]
+    async fn install_imported_embedding_bundle_skips_copy_for_identical_valid_bundle() {
+        let _guard = acquire_install_path_test_vault(
+            "install_imported_embedding_bundle_skips_copy_for_identical_valid_bundle",
+        );
+        let state = Arc::new(EmbeddingState::default());
+        let models_root = app_models_dir().expect("models root");
+        let destination = models_root.join(EMBEDDING_DESTINATION);
+        ensure_test_embedding_bundle_at(&destination).expect("materialize installed bundle");
+
+        let before = EMBEDDING_EXPECTED_FILES
+            .iter()
+            .map(|expected| {
+                let relative = expected_relative_path(expected.relative_path);
+                (
+                    relative.to_string(),
+                    std::fs::read(destination.join(relative)).expect("read installed file"),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        install_imported_embedding_bundle(state, destination.clone())
+            .await
+            .expect("valid identical-path import");
+
+        for (relative, bytes) in before {
+            assert_eq!(
+                std::fs::read(destination.join(&relative)).expect("read installed file after import"),
+                bytes,
+                "identical-path import must not rewrite {relative}"
+            );
+        }
     }
 
     #[tokio::test]

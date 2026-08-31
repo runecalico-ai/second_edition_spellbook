@@ -3396,6 +3396,27 @@ mod tests {
         validate_embedding_bundle_layout(bundle_root)
     }
 
+    fn download_test_embedding_bundle_blocking(
+        bundle_root: &std::path::Path,
+    ) -> Result<(), AppError> {
+        let bundle_root = bundle_root.to_path_buf();
+        let run = move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| AppError::Search(format!("test runtime failed: {error}")))?
+                .block_on(download_test_embedding_bundle_to(&bundle_root))
+        };
+
+        if tokio::runtime::Handle::try_current().is_ok() {
+            std::thread::spawn(run).join().map_err(|_| {
+                AppError::Search("test embedding bundle download thread panicked".to_string())
+            })?
+        } else {
+            run()
+        }
+    }
+
     fn ensure_test_embedding_bundle_at(bundle_root: &std::path::Path) -> Result<(), AppError> {
         if validate_embedding_bundle_layout(bundle_root).is_ok() {
             return Ok(());
@@ -3416,11 +3437,7 @@ mod tests {
             return validate_embedding_bundle_layout(bundle_root);
         }
 
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| AppError::Search(format!("test runtime failed: {error}")))?
-            .block_on(download_test_embedding_bundle_to(&cache_root))?;
+        download_test_embedding_bundle_blocking(&cache_root)?;
         copy_directory_recursive(&cache_root, bundle_root)?;
         validate_embedding_bundle_layout(bundle_root)
     }

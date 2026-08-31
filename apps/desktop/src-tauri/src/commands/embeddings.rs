@@ -752,12 +752,9 @@ async fn embed_import_batch_rows(
                 if filtered.rows.is_empty() {
                     continue;
                 }
-                if let Err(error) = upsert_embedding_chunk(
-                    Arc::clone(&pool),
-                    &filtered.rows,
-                    &filtered.vectors,
-                )
-                .await
+                if let Err(error) =
+                    upsert_embedding_chunk(Arc::clone(&pool), &filtered.rows, &filtered.vectors)
+                        .await
                 {
                     let filtered_spell_ids: Vec<i64> =
                         filtered.rows.iter().map(|row| row.0).collect();
@@ -1024,7 +1021,11 @@ async fn reembed_pending_spells(state: Arc<EmbeddingState>, pool: Arc<crate::db:
         )
         .await
         {
-            tracing::warn!(spell_id, ?error, "pending reembed enqueue failed (non-fatal)");
+            tracing::warn!(
+                spell_id,
+                ?error,
+                "pending reembed enqueue failed (non-fatal)"
+            );
         }
     }
 }
@@ -2964,8 +2965,16 @@ mod tests {
         assert_eq!(versioned[1].2, "Illuminates");
         assert_eq!(versioned[0].3, 1);
         assert_eq!(versioned[1].3, 1);
-        assert!(is_spell_embed_generation_current(&state, 10, versioned[0].3));
-        assert!(is_spell_embed_generation_current(&state, 11, versioned[1].3));
+        assert!(is_spell_embed_generation_current(
+            &state,
+            10,
+            versioned[0].3
+        ));
+        assert!(is_spell_embed_generation_current(
+            &state,
+            11,
+            versioned[1].3
+        ));
     }
 
     #[test]
@@ -3057,7 +3066,8 @@ mod tests {
             .reindex_in_progress
             .store(true, std::sync::atomic::Ordering::SeqCst);
 
-        let isolated = IsolatedTestPool::new("enqueue_during_reindex_queues_spell_and_keeps_vector");
+        let isolated =
+            IsolatedTestPool::new("enqueue_during_reindex_queues_spell_and_keeps_vector");
         let pool = Arc::clone(&isolated.pool);
         let vector_json =
             serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
@@ -3216,7 +3226,8 @@ mod tests {
         let identical = classify_embedding_import_paths(&bundle, &bundle).expect("identical");
         assert_eq!(identical, EmbeddingImportPathKind::Identical);
 
-        let nested = classify_embedding_import_paths(&bundle, &inner).expect("nested dest in source");
+        let nested =
+            classify_embedding_import_paths(&bundle, &inner).expect("nested dest in source");
         assert_eq!(nested, EmbeddingImportPathKind::Nested);
 
         let nested_src =
@@ -3374,7 +3385,9 @@ mod tests {
             let mut stream = response.bytes_stream();
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(|error| {
-                    AppError::Search(format!("test embedding bundle download stream failed: {error}"))
+                    AppError::Search(format!(
+                        "test embedding bundle download stream failed: {error}"
+                    ))
                 })?;
                 file.write_all(&chunk).await?;
             }
@@ -3436,8 +3449,9 @@ mod tests {
 
     #[test]
     fn install_validated_embedding_bundle_rejects_nested_overlap() {
-        let _guard =
-            acquire_install_path_test_vault("install_validated_embedding_bundle_rejects_nested_overlap");
+        let _guard = acquire_install_path_test_vault(
+            "install_validated_embedding_bundle_rejects_nested_overlap",
+        );
         let models_root = app_models_dir().expect("models root");
         let destination = models_root.join(EMBEDDING_DESTINATION);
         let bundle_dir = models_root.join("embeddings").join("all-MiniLM-L6-v2");
@@ -3562,8 +3576,8 @@ mod tests {
         std::fs::create_dir_all(&staging).expect("staging");
         std::fs::write(staging.join("model.onnx"), b"new").expect("new file");
 
-        let err =
-            promote_staged_embedding_bundle_with_fs(&RestoreFailingFs, &staging, &dest).unwrap_err();
+        let err = promote_staged_embedding_bundle_with_fs(&RestoreFailingFs, &staging, &dest)
+            .unwrap_err();
 
         assert!(
             matches!(err, AppError::Search(message) if message.contains("promotion blocked") && message.contains("restore blocked") && message.contains("Manual recovery may be required"))
@@ -3670,7 +3684,8 @@ mod tests {
 
         for (relative, bytes) in before {
             assert_eq!(
-                std::fs::read(destination.join(&relative)).expect("read installed file after import"),
+                std::fs::read(destination.join(&relative))
+                    .expect("read installed file after import"),
                 bytes,
                 "identical-path import must not rewrite {relative}"
             );

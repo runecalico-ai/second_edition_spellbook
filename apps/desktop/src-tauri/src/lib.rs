@@ -5,14 +5,22 @@ pub mod models;
 pub mod sidecar;
 pub mod utils;
 
+#[cfg(not(test))]
 use commands::vault::VaultMaintenanceState;
+#[cfg(all(feature = "llm", not(test)))]
+use commands::ProvisioningState;
 use commands::*;
+#[cfg(not(test))]
 use db::init_db;
+#[cfg(not(test))]
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(not(test))]
 use tauri::Manager;
+#[cfg(not(test))]
 use tracing_subscriber::{fmt, EnvFilter};
 
+#[cfg(not(test))]
 fn init_logging() {
     let _ = fmt()
         .with_env_filter(
@@ -21,6 +29,7 @@ fn init_logging() {
         .try_init();
 }
 
+#[cfg(not(test))]
 pub fn run() {
     init_logging();
     tauri::Builder::default()
@@ -33,8 +42,36 @@ pub fn run() {
 
             let pool = init_db(resource_dir.as_deref(), true)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-            app.manage(Arc::new(pool));
+
+            let pool = Arc::new(pool);
+            let embeddings = Arc::new(EmbeddingState::default());
+
+            app.manage(Arc::clone(&pool));
             app.manage(Arc::new(VaultMaintenanceState::default()));
+            #[cfg(feature = "llm")]
+            {
+                let provisioning = Arc::new(ProvisioningState::default());
+                app.manage(Arc::clone(&provisioning));
+                app.manage(Arc::new(LlmState::default()));
+            }
+            app.manage(Arc::clone(&embeddings));
+
+            #[cfg(feature = "llm")]
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = initialize_embeddings_after_startup(
+                        app_handle,
+                        Arc::clone(&embeddings),
+                        Arc::clone(&pool),
+                    )
+                    .await
+                    {
+                        tracing::warn!(?error, "embedding startup initialization failed");
+                    }
+                });
+            }
+
             Ok(())
         })
         .plugin(tauri_plugin_fs::init())
@@ -83,12 +120,34 @@ pub fn run() {
             get_character_spellbook,
             update_character_spell,
             search_keyword,
-            search_semantic,
+            #[cfg(feature = "llm")]
+            search_spells_semantic,
             list_facets,
             save_search,
             list_saved_searches,
             delete_saved_search,
-            chat_answer,
+            #[cfg(feature = "llm")]
+            llm_status,
+            #[cfg(feature = "llm")]
+            llm_download_model,
+            #[cfg(feature = "llm")]
+            llm_import_model_file,
+            #[cfg(feature = "llm")]
+            llm_cancel_download,
+            #[cfg(feature = "llm")]
+            llm_cancel_generation,
+            #[cfg(feature = "llm")]
+            llm_chat,
+            #[cfg(feature = "llm")]
+            embeddings_status,
+            #[cfg(feature = "llm")]
+            embeddings_download_model,
+            #[cfg(feature = "llm")]
+            embeddings_import_model_file,
+            #[cfg(feature = "llm")]
+            embeddings_cancel_download,
+            #[cfg(feature = "llm")]
+            reindex_embeddings,
             preview_import,
             preview_import_spell_json,
             import_spell_json,
@@ -121,4 +180,517 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(all(test, feature = "llm"))]
+pub(crate) struct LlmCommandSmokeApp {
+    _app: tauri::App<tauri::test::MockRuntime>,
+    webview: tauri::WebviewWindow<tauri::test::MockRuntime>,
+}
+
+#[cfg(all(test, feature = "llm"))]
+pub(crate) fn build_llm_command_smoke_app(
+    llm_state: Arc<LlmState>,
+    provisioning: Arc<ProvisioningState>,
+    pool: Arc<db::Pool>,
+) -> LlmCommandSmokeApp {
+    let app = tauri::test::mock_builder()
+        .manage(llm_state)
+        .manage(provisioning)
+        .manage(pool)
+        .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![
+            llm_status,
+            llm_download_model,
+            llm_import_model_file,
+            llm_cancel_download,
+            llm_cancel_generation,
+            llm_chat,
+        ])
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("failed to build LLM smoke app");
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "smoke-main", Default::default())
+        .build()
+        .expect("failed to build LLM smoke webview");
+
+    LlmCommandSmokeApp { _app: app, webview }
+}
+
+#[cfg(all(test, feature = "llm"))]
+pub(crate) fn build_embeddings_command_smoke_app(
+    embedding_state: Arc<EmbeddingState>,
+    provisioning: Arc<ProvisioningState>,
+    pool: Arc<db::Pool>,
+) -> LlmCommandSmokeApp {
+    let app = tauri::test::mock_builder()
+        .manage(embedding_state)
+        .manage(provisioning)
+        .manage(pool)
+        .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![
+            embeddings_status,
+            embeddings_download_model,
+            embeddings_import_model_file,
+            embeddings_cancel_download,
+            search_spells_semantic,
+            reindex_embeddings,
+        ])
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("failed to build embeddings smoke app");
+
+    let webview = tauri::WebviewWindowBuilder::new(&app, "smoke-main", Default::default())
+        .build()
+        .expect("failed to build embeddings smoke webview");
+
+    LlmCommandSmokeApp { _app: app, webview }
+}
+
+#[cfg(all(test, feature = "llm"))]
+pub(crate) async fn invoke_smoke_command<T>(
+    webview: tauri::WebviewWindow<tauri::test::MockRuntime>,
+    command: &str,
+    body: serde_json::Value,
+) -> Result<T, serde_json::Value>
+where
+    T: serde::de::DeserializeOwned + Send + 'static,
+{
+    let request = tauri::webview::InvokeRequest {
+        cmd: command.to_string(),
+        callback: tauri::ipc::CallbackFn(0),
+        error: tauri::ipc::CallbackFn(1),
+        url: "http://tauri.localhost".parse().unwrap(),
+        body: tauri::ipc::InvokeBody::Json(body),
+        headers: Default::default(),
+        invoke_key: tauri::test::INVOKE_KEY.to_string(),
+    };
+
+    tokio::task::spawn_blocking(move || tauri::test::get_ipc_response(&webview, request))
+        .await
+        .unwrap()
+        .map(|response_body| response_body.deserialize::<T>().unwrap())
+}
+
+#[cfg(all(test, feature = "llm"))]
+pub(crate) fn listen_smoke_event<T>(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    event_name: &str,
+) -> tokio::sync::mpsc::UnboundedReceiver<T>
+where
+    T: serde::de::DeserializeOwned + Send + 'static,
+{
+    use tauri::Listener;
+
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    webview.listen(event_name.to_string(), move |event| {
+        let payload = serde_json::from_str::<T>(event.payload()).unwrap();
+        tx.send(payload).unwrap();
+    });
+    rx
+}
+
+#[cfg(all(test, feature = "llm"))]
+struct SmokeDataDirGuard {
+    _env_lock: std::sync::MutexGuard<'static, ()>,
+    previous_data_dir: Option<std::ffi::OsString>,
+    temp_data_dir: std::path::PathBuf,
+}
+
+#[cfg(all(test, feature = "llm"))]
+impl SmokeDataDirGuard {
+    fn acquire(test_name: &str) -> Self {
+        use crate::commands::vault::lock_vault_env_for_test;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
+        static SMOKE_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        let env_lock = lock_vault_env_for_test();
+        let unique_id = SMOKE_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let sanitized_test_name: String = test_name
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect();
+        let temp_data_dir = std::env::temp_dir().join(format!(
+            "spellbook-smoke-{}-{}-{}",
+            sanitized_test_name,
+            std::process::id(),
+            unique_id
+        ));
+        std::fs::create_dir_all(&temp_data_dir).unwrap();
+
+        let previous_data_dir = std::env::var_os(SPELLBOOK_DATA_DIR_ENV);
+        std::env::set_var(SPELLBOOK_DATA_DIR_ENV, &temp_data_dir);
+
+        Self {
+            _env_lock: env_lock,
+            previous_data_dir,
+            temp_data_dir,
+        }
+    }
+}
+
+#[cfg(all(test, feature = "llm"))]
+impl Drop for SmokeDataDirGuard {
+    fn drop(&mut self) {
+        const SPELLBOOK_DATA_DIR_ENV: &str = "SPELLBOOK_DATA_DIR";
+        match &self.previous_data_dir {
+            Some(previous_data_dir) => std::env::set_var(SPELLBOOK_DATA_DIR_ENV, previous_data_dir),
+            None => std::env::remove_var(SPELLBOOK_DATA_DIR_ENV),
+        }
+        let _ = std::fs::remove_dir_all(&self.temp_data_dir);
+    }
+}
+
+#[cfg(all(test, feature = "llm"))]
+mod llm_command_smoke_tests {
+    use super::{
+        build_llm_command_smoke_app, invoke_smoke_command, listen_smoke_event, SmokeDataDirGuard,
+    };
+    use crate::commands::llm::{
+        install_test_download_driver, install_test_model_load_preflight,
+        install_test_runtime_driver, DownloadTargetPrep, LlmCommandAppHandle, LlmDownloadDriver,
+        LlmDownloadDriverFuture, LlmState, LlmSystemRequirementsSnapshot, ModelLoadPreflight,
+        RecordingRuntimeDriver, StartedReprovisionResult,
+    };
+    use crate::commands::provisioning::{
+        ProvisioningState, BASELINE_MIN_FREE_DISK_BYTES, BASELINE_MIN_FREE_RAM_BYTES,
+    };
+    use crate::models::{DoneEvent, LlmStatus, LlmStatusResponse, TokenEvent};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+    use tokio::time::{timeout, Duration};
+
+    static LLM_SMOKE_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn smoke_test_pool() -> Arc<crate::db::Pool> {
+        Arc::new(crate::db::init_db(None, false).expect("smoke test pool"))
+    }
+
+    #[derive(Clone, Default)]
+    struct PausedSmokeDownloadDriver {
+        started_after_begin_download: Arc<tokio::sync::Notify>,
+        release_result: Arc<tokio::sync::Notify>,
+    }
+
+    impl LlmDownloadDriver for PausedSmokeDownloadDriver {
+        fn run_started_download(
+            &self,
+            _app: LlmCommandAppHandle,
+            _state: Arc<LlmState>,
+            mut cancel_rx: tokio::sync::watch::Receiver<bool>,
+            _target_prep: DownloadTargetPrep,
+            _temp_path: std::path::PathBuf,
+            _final_path: std::path::PathBuf,
+        ) -> LlmDownloadDriverFuture {
+            let driver = self.clone();
+            Box::pin(async move {
+                driver.started_after_begin_download.notify_waiters();
+                let _ = cancel_rx.changed().await;
+                driver.release_result.notified().await;
+                StartedReprovisionResult::Cancelled
+            })
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct ReadySmokeDownloadDriver;
+
+    impl LlmDownloadDriver for ReadySmokeDownloadDriver {
+        fn run_started_download(
+            &self,
+            _app: LlmCommandAppHandle,
+            _state: Arc<LlmState>,
+            _cancel_rx: tokio::sync::watch::Receiver<bool>,
+            _target_prep: DownloadTargetPrep,
+            _temp_path: std::path::PathBuf,
+            final_path: std::path::PathBuf,
+        ) -> LlmDownloadDriverFuture {
+            Box::pin(async move {
+                if let Some(parent) = final_path.parent() {
+                    std::fs::create_dir_all(parent).unwrap();
+                }
+                std::fs::write(&final_path, b"smoke").unwrap();
+                StartedReprovisionResult::Ready
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn llm_cancel_download_command_waits_for_in_flight_download_completion() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "llm_cancel_download_command_waits_for_in_flight_download_completion",
+        );
+
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let driver = PausedSmokeDownloadDriver::default();
+        let _driver_guard = install_test_download_driver(Arc::new(driver.clone()));
+
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
+
+        let started = driver.started_after_begin_download.notified();
+        let download_future = tokio::spawn(invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_download_model",
+            serde_json::json!({}),
+        ));
+        started.await;
+
+        let mut cancel_future = tokio::spawn(invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_cancel_download",
+            serde_json::json!({}),
+        ));
+        assert!(timeout(Duration::from_millis(10), &mut cancel_future)
+            .await
+            .is_err());
+
+        driver.release_result.notify_waiters();
+
+        assert!(download_future.await.unwrap().is_ok());
+        cancel_future.await.unwrap().unwrap();
+
+        let status = invoke_smoke_command::<LlmStatusResponse>(
+            smoke.webview.clone(),
+            "llm_status",
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert_ne!(status.status, LlmStatus::Downloading);
+        assert!(status.bytes_downloaded.is_none());
+        assert!(status.total_bytes.is_none());
+    }
+
+    #[tokio::test]
+    async fn llm_chat_command_emits_token_and_done_events_through_app_event_sink() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "llm_chat_command_emits_token_and_done_events_through_app_event_sink",
+        );
+
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let _preflight_guard = install_test_model_load_preflight(ModelLoadPreflight {
+            model_path: std::path::PathBuf::from(
+                "C:/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            ),
+            approved_model_present: true,
+            requirements: LlmSystemRequirementsSnapshot {
+                free_disk_bytes: BASELINE_MIN_FREE_DISK_BYTES,
+                free_ram_bytes: BASELINE_MIN_FREE_RAM_BYTES,
+            },
+        });
+        let _driver_guard = install_test_runtime_driver(Arc::new(RecordingRuntimeDriver));
+
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
+        let mut token_events =
+            listen_smoke_event::<TokenEvent>(&smoke.webview, "llm://token/smoke-1");
+        let mut done_events = listen_smoke_event::<DoneEvent>(&smoke.webview, "llm://done/smoke-1");
+
+        invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_chat",
+            serde_json::json!({
+                "message": "hello",
+                "streamId": "smoke-1",
+                "history": [],
+            }),
+        )
+        .await
+        .unwrap();
+
+        let token = token_events.recv().await.unwrap();
+        assert_eq!(token.token, "ok");
+
+        let done = done_events.recv().await.unwrap();
+        assert_eq!(done.full_response, "ok");
+        assert!(!done.cancelled);
+    }
+
+    #[tokio::test]
+    async fn registered_llm_commands_observe_same_app_managed_llm_state() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "registered_llm_commands_observe_same_app_managed_llm_state",
+        );
+
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let _download_driver_guard =
+            install_test_download_driver(Arc::new(ReadySmokeDownloadDriver));
+
+        *llm_state.status.lock().unwrap() = LlmStatus::Error;
+        *llm_state.last_error.lock().unwrap() = Some("sticky".to_string());
+
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
+
+        let status = invoke_smoke_command::<LlmStatusResponse>(
+            smoke.webview.clone(),
+            "llm_status",
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(status.status, LlmStatus::Error);
+
+        let download_future = tokio::spawn(invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_download_model",
+            serde_json::json!({}),
+        ));
+        assert!(download_future.await.unwrap().is_ok());
+
+        let status_after_download = invoke_smoke_command::<LlmStatusResponse>(
+            smoke.webview.clone(),
+            "llm_status",
+            serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(status_after_download.status, LlmStatus::Ready);
+    }
+
+    #[tokio::test]
+    async fn llm_import_model_file_command_returns_error_for_invalid_path() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "llm_import_model_file_command_returns_error_for_invalid_path",
+        );
+
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
+
+        let missing_file_path = std::env::temp_dir().join(format!(
+            "spellbook-llm-smoke-missing-{}-{}-{}",
+            "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+            std::process::id(),
+            LLM_SMOKE_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+
+        let import_result = invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_import_model_file",
+            serde_json::json!({
+                "filePath": missing_file_path.to_string_lossy(),
+            }),
+        )
+        .await;
+
+        assert!(import_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn llm_cancel_generation_command_rejects_non_matching_stream_id() {
+        let _data_dir_guard = SmokeDataDirGuard::acquire(
+            "llm_cancel_generation_command_rejects_non_matching_stream_id",
+        );
+
+        let llm_state = Arc::new(LlmState::default());
+        let provisioning = Arc::new(ProvisioningState::default());
+        let smoke = build_llm_command_smoke_app(
+            Arc::clone(&llm_state),
+            Arc::clone(&provisioning),
+            smoke_test_pool(),
+        );
+
+        let cancel_result = invoke_smoke_command::<()>(
+            smoke.webview.clone(),
+            "llm_cancel_generation",
+            serde_json::json!({
+                "streamId": "non-matching-stream-id",
+            }),
+        )
+        .await;
+
+        assert!(cancel_result.is_err());
+    }
+}
+
+#[cfg(all(test, feature = "llm"))]
+mod embeddings_command_smoke_tests {
+    use super::{build_embeddings_command_smoke_app, invoke_smoke_command, SmokeDataDirGuard};
+    use crate::commands::{EmbeddingState, ProvisioningState};
+    use crate::models::{
+        EmbeddingsStatus, EmbeddingsStatusResponse, ReindexResult, SemanticSearchResult,
+    };
+    use std::sync::Arc;
+
+    struct EmbeddingsSmokeFixture {
+        app: super::LlmCommandSmokeApp,
+        _data_dir: SmokeDataDirGuard,
+    }
+
+    fn smoke_app(test_name: &str) -> EmbeddingsSmokeFixture {
+        let _data_dir = SmokeDataDirGuard::acquire(test_name);
+        let pool = Arc::new(crate::db::init_db(None, false).expect("smoke pool"));
+        let app = build_embeddings_command_smoke_app(
+            Arc::new(EmbeddingState::default()),
+            Arc::new(ProvisioningState::default()),
+            pool,
+        );
+        EmbeddingsSmokeFixture { app, _data_dir }
+    }
+
+    #[tokio::test]
+    async fn embeddings_commands_are_registered_in_smoke_app() {
+        let fixture = smoke_app("embeddings_commands_are_registered_in_smoke_app");
+
+        let status: EmbeddingsStatusResponse = invoke_smoke_command(
+            fixture.app.webview.clone(),
+            "embeddings_status",
+            serde_json::json!({}),
+        )
+        .await
+        .expect("embeddings_status invoke");
+
+        assert_eq!(status.state, EmbeddingsStatus::NotProvisioned);
+    }
+
+    #[tokio::test]
+    async fn search_spells_semantic_command_is_registered_in_smoke_app() {
+        let fixture = smoke_app("search_spells_semantic_command_is_registered_in_smoke_app");
+
+        let results: Vec<SemanticSearchResult> = invoke_smoke_command(
+            fixture.app.webview.clone(),
+            "search_spells_semantic",
+            serde_json::json!({ "query": "   ", "limit": 5 }),
+        )
+        .await
+        .expect("search_spells_semantic invoke");
+
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reindex_embeddings_command_is_registered_in_smoke_app() {
+        let fixture = smoke_app("reindex_embeddings_command_is_registered_in_smoke_app");
+
+        let result: Result<ReindexResult, serde_json::Value> = invoke_smoke_command(
+            fixture.app.webview.clone(),
+            "reindex_embeddings",
+            serde_json::json!({ "force": false }),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "reindex should fail when embeddings are not provisioned"
+        );
+    }
 }

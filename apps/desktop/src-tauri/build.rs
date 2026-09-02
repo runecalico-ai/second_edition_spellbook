@@ -1,4 +1,13 @@
 fn main() {
+    #[cfg(target_os = "windows")]
+    {
+        // Unit-test harness binaries do not carry app manifest generated for Tauri app exe.
+        // Ensure comctl32 v6 is activated so common-controls-v6 imports resolve in tests.
+        println!(
+            "cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
+        );
+    }
+
     let dist_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dist");
     std::fs::create_dir_all(&dist_dir).expect("create frontend dist directory");
     let icon_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("icons");

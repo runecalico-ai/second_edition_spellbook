@@ -1,12 +1,10 @@
 use crate::db::Pool;
 use crate::error::AppError;
-use crate::models::{
-    ChatResponse, Facets, SavedSearch, SavedSearchPayload, SearchFilters, SpellSummary,
-};
-use crate::sidecar::call_sidecar;
+#[cfg(feature = "llm")]
+use crate::models::llm::RagSpellContext;
+use crate::models::{Facets, SavedSearch, SavedSearchPayload, SearchFilters, SpellSummary};
 use rusqlite::params;
 use rusqlite::Connection;
-use serde_json::json;
 use std::sync::Arc;
 use tauri::State;
 
@@ -105,12 +103,12 @@ fn try_build_advanced_fts_query(tokens: &[&str]) -> Option<String> {
 /// The returned string is always bound as a single `?` parameter — raw user
 /// input is never concatenated into SQL.
 ///
-/// **Basic mode** (default):  
+/// **Basic mode** (default):
 ///   The entire query is wrapped as a single quoted phrase.  All FTS5 special
 ///   characters (`"`, `*`, `(`, `)`, `^`, `:`, `-`, `+`) are treated as
 ///   literal text.  Boolean keywords typed in any case are not operators.
 ///
-/// **Advanced mode** (opt-in):  
+/// **Advanced mode** (opt-in):
 ///   Activated when the trimmed query contains at least one standalone uppercase
 ///   boolean keyword (`AND`, `OR`, `NOT`) as a whitespace-delimited token.
 ///   Matched operators are kept as FTS5 boolean operators; all other tokens are
@@ -147,6 +145,23 @@ fn build_fts_query(raw_query: &str) -> String {
 /// cap is an arbitrary completeness ceiling — silent truncation is possible for
 /// large result sets).
 const SEARCH_RESULT_LIMIT: usize = 100;
+
+/// Maximum spells returned for LLM chat RAG grounding.
+#[cfg(feature = "llm")]
+pub(crate) const RAG_RETRIEVAL_LIMIT: usize = 5;
+
+/// Maximum Unicode scalar values in a RAG description snippet.
+#[cfg(feature = "llm")]
+pub(crate) const RAG_DESCRIPTION_SNIPPET_MAX_CHARS: usize = 200;
+
+/// Truncates `s` to at most `max_chars` Unicode scalar values without splitting multibyte characters.
+#[cfg(feature = "llm")]
+fn truncate_to_chars(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    s.chars().take(max_chars).collect()
+}
 
 /// Escapes `\`, `%`, and `_` so they are treated as literals in a SQLite LIKE
 /// clause. The caller must append `ESCAPE '\'` to the SQL clause.
@@ -316,6 +331,60 @@ fn search_keyword_with_conn(
     Ok(spells)
 }
 
+/// FTS-only spell retrieval for LLM chat RAG: BM25-ranked matches with truncated descriptions.
+#[cfg(feature = "llm")]
+pub(crate) fn search_rag_spells_with_conn(
+    conn: &Connection,
+    terms: &[String],
+    limit: usize,
+) -> Result<Vec<RagSpellContext>, AppError> {
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let fts_query: String = terms
+        .iter()
+        .map(|t| build_fts_query(t))
+        .filter(|q| !q.is_empty())
+        .collect::<Vec<_>>()
+        .join(" OR ");
+
+    if fts_query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let sql = "SELECT s.id, s.name, s.school, s.level, s.description \
+               FROM spell s \
+               JOIN spell_fts ON spell_fts.rowid = s.id \
+               WHERE spell_fts MATCH ? \
+               ORDER BY bm25(spell_fts) ASC \
+               LIMIT ?";
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![fts_query, i64::try_from(limit).unwrap_or(i64::MAX)],
+        |row| {
+            let description: String = row.get(4)?;
+            Ok(RagSpellContext {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                school: row.get::<_, Option<String>>(2)?,
+                level: row.get(3)?,
+                description_snippet: truncate_to_chars(
+                    &description,
+                    RAG_DESCRIPTION_SNIPPET_MAX_CHARS,
+                ),
+            })
+        },
+    )?;
+
+    let mut spells = Vec::new();
+    for spell in rows {
+        spells.push(spell?);
+    }
+    Ok(spells)
+}
+
 #[tauri::command]
 pub async fn search_keyword(
     state: State<'_, Arc<Pool>>,
@@ -326,66 +395,6 @@ pub async fn search_keyword(
     let result = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
         search_keyword_with_conn(&conn, &query, filters)
-    })
-    .await
-    .map_err(|e| AppError::Unknown(e.to_string()))??;
-
-    Ok(result)
-}
-
-#[tauri::command]
-pub async fn search_semantic(
-    state: State<'_, Arc<Pool>>,
-    query: String,
-) -> Result<Vec<SpellSummary>, AppError> {
-    let embedding_resp = call_sidecar("embed", json!({"text": query})).await?;
-    let vector: Vec<f32> = serde_json::from_value(
-        embedding_resp
-            .get("embedding")
-            .cloned()
-            .unwrap_or(json!([])),
-    )
-    .map_err(|e| AppError::Sidecar(format!("Failed to parse embedding: {}", e)))?;
-
-    if vector.is_empty() {
-        return Err(AppError::Sidecar("Empty embedding returned".into()));
-    }
-
-    let pool = state.inner().clone();
-    let result = tokio::task::spawn_blocking(move || {
-        let conn = pool.get()?;
-        let mut stmt = conn.prepare(
-            "SELECT s.id, s.name, s.school, s.sphere, s.level, s.class_list, s.components, s.duration,
-                    s.source, s.is_quest_spell, s.is_cantrip, s.tags, vec_distance_cosine(v.v, ?) as distance
-             FROM spell_vec v
-             JOIN spell s ON s.id = v.rowid
-             ORDER BY distance ASC
-             LIMIT 50",
-        )?;
-
-        let vec_json = serde_json::to_string(&vector).unwrap();
-        let rows = stmt.query_map([vec_json], |row| {
-            Ok(SpellSummary {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                school: row.get(2)?,
-                sphere: row.get(3)?,
-                level: row.get(4)?,
-                class_list: row.get(5)?,
-                components: row.get(6)?,
-                duration: row.get(7)?,
-                source: row.get(8)?,
-                is_quest_spell: row.get(9)?,
-                is_cantrip: row.get(10)?,
-                tags: row.get(11)?,
-            })
-        })?;
-
-        let mut spells = vec![];
-        for spell in rows {
-            spells.push(spell?);
-        }
-        Ok::<Vec<SpellSummary>, AppError>(spells)
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -497,8 +506,10 @@ pub async fn delete_saved_search(state: State<'_, Arc<Pool>>, id: i64) -> Result
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use crate::db::Pool;
     use rusqlite::Connection;
+    use std::sync::Arc;
 
     /// Creates an in-memory database with the FTS schema.
     /// Delegates to `setup_search_db`; the full schema is a superset and
@@ -849,10 +860,7 @@ mod tests {
     // Integration tests: build_fts_query + actual FTS5 search behaviour
     // -----------------------------------------------------------------------
 
-    /// Creates an in-memory DB with the full `spell` table (all columns used by
-    /// `search_keyword_with_conn`) plus the migration-0014 FTS schema.
-    fn setup_search_db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
+    fn init_fts_test_schema(conn: &Connection) {
         conn.execute_batch(
             r#"
             CREATE TABLE spell (
@@ -879,13 +887,85 @@ mod tests {
         let migration_sql =
             include_str!("../../../../../db/migrations/0014_fts_extend_canonical.sql");
         conn.execute_batch(migration_sql).unwrap();
+    }
+
+    /// Creates an in-memory DB with the full `spell` table (all columns used by
+    /// `search_keyword_with_conn`) plus the migration-0014 FTS schema.
+    fn setup_search_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_fts_test_schema(&conn);
         conn
+    }
+
+    /// In-memory DB with Fireball seeded for RAG integration tests.
+    pub(crate) fn setup_rag_test_conn() -> Connection {
+        let conn = setup_search_db();
+        insert_rag_spell(
+            &conn,
+            1,
+            "Fireball",
+            "A blazing bead of fire streaks outward and blossoms into an explosion dealing fire damage.",
+            "Evocation",
+            3,
+        );
+        conn
+    }
+
+    /// Shared in-memory pool with FTS schema and Fireball seeded for RAG tests.
+    pub(crate) fn llm_test_pool_with_rag_seed() -> Arc<Pool> {
+        let pool = llm_test_pool();
+        {
+            let conn = pool.get().expect("llm test pool connection");
+            insert_rag_spell(
+                &conn,
+                1,
+                "Fireball",
+                "A blazing bead of fire streaks outward and blossoms into an explosion dealing fire damage.",
+                "Evocation",
+                3,
+            );
+        }
+        pool
+    }
+
+    /// Shared in-memory pool with FTS schema for LLM chat integration tests.
+    pub(crate) fn llm_test_pool() -> Arc<Pool> {
+        use r2d2_sqlite::SqliteConnectionManager;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static POOL_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let pool_id = POOL_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let uri = format!("file:spellbook_llm_test_{pool_id}?mode=memory&cache=shared");
+        let manager = SqliteConnectionManager::file(uri);
+        let pool = Pool::new(manager).expect("llm test pool");
+        {
+            let conn = pool.get().expect("llm test pool connection");
+            init_fts_test_schema(&conn);
+        }
+        Arc::new(pool)
     }
 
     fn insert_spell(conn: &Connection, id: i64, name: &str, description: &str) {
         conn.execute(
             "INSERT INTO spell (id, name, description, canonical_data) VALUES (?, ?, ?, NULL)",
             rusqlite::params![id, name, description],
+        )
+        .unwrap();
+    }
+
+    #[cfg(feature = "llm")]
+    fn insert_rag_spell(
+        conn: &Connection,
+        id: i64,
+        name: &str,
+        description: &str,
+        school: &str,
+        level: i64,
+    ) {
+        conn.execute(
+            "INSERT INTO spell (id, name, description, school, level, canonical_data) \
+             VALUES (?, ?, ?, ?, ?, NULL)",
+            rusqlite::params![id, name, description, school, level],
         )
         .unwrap();
     }
@@ -1330,28 +1410,117 @@ mod tests {
             "text-query results must match the direct bm25-ranked ordering for the same MATCH term"
         );
     }
-}
 
-#[tauri::command]
-pub async fn chat_answer(prompt: String) -> Result<ChatResponse, AppError> {
-    let result = call_sidecar("chat", json!({"prompt": prompt})).await?;
+    #[cfg(feature = "llm")]
+    #[test]
+    fn search_rag_spells_returns_top_matches_with_snippets() {
+        use super::{search_rag_spells_with_conn, RAG_DESCRIPTION_SNIPPET_MAX_CHARS};
 
-    let answer = result
-        .get("answer")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+        let conn = setup_fts_db();
+        insert_rag_spell(
+            &conn,
+            1,
+            "Fireball",
+            "A blazing bead of fire streaks outward and blossoms into an explosion.",
+            "Evocation",
+            3,
+        );
 
-    let citations = result
-        .get("citations")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
+        let results = search_rag_spells_with_conn(&conn, &["fireball".to_string()], 5).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].name, "Fireball");
+        assert_eq!(results[0].school.as_deref(), Some("Evocation"));
+        assert_eq!(results[0].level, 3);
+        assert!(
+            results[0].description_snippet.chars().count() <= RAG_DESCRIPTION_SNIPPET_MAX_CHARS
+        );
+    }
 
-    let meta = result.get("meta").cloned().unwrap_or(json!({}));
+    #[cfg(feature = "llm")]
+    #[test]
+    fn search_rag_spells_multi_term_or_retrieval() {
+        use super::search_rag_spells_with_conn;
 
-    Ok(ChatResponse {
-        answer,
-        citations,
-        meta,
-    })
+        let conn = setup_fts_db();
+        insert_spell(
+            &conn,
+            1,
+            "Fireball",
+            "A blazing bead of fire streaks outward and blossoms into an explosion.",
+        );
+        insert_spell(
+            &conn,
+            2,
+            "Frost Ray",
+            "A ray of frost chills the target with icy damage.",
+        );
+
+        let results =
+            search_rag_spells_with_conn(&conn, &["fireball".to_string(), "frost".to_string()], 5)
+                .unwrap();
+
+        let names: Vec<&str> = results.iter().map(|spell| spell.name.as_str()).collect();
+        assert!(names.contains(&"Fireball"));
+        assert!(names.contains(&"Frost Ray"));
+    }
+
+    #[cfg(feature = "llm")]
+    #[test]
+    fn search_rag_spells_top_five_cap() {
+        use super::{search_rag_spells_with_conn, RAG_RETRIEVAL_LIMIT};
+
+        let conn = setup_fts_db();
+        for id in 1..=8 {
+            insert_spell(
+                &conn,
+                id,
+                &format!("Arcane Bolt {id}"),
+                "arcane energy bolt spell",
+            );
+        }
+
+        let results =
+            search_rag_spells_with_conn(&conn, &["arcane".to_string()], RAG_RETRIEVAL_LIMIT)
+                .unwrap();
+        assert_eq!(results.len(), RAG_RETRIEVAL_LIMIT);
+    }
+
+    #[cfg(feature = "llm")]
+    #[test]
+    fn search_rag_spells_truncates_description_to_max_chars() {
+        use super::{search_rag_spells_with_conn, RAG_DESCRIPTION_SNIPPET_MAX_CHARS};
+
+        let conn = setup_fts_db();
+        let long_description = "x".repeat(RAG_DESCRIPTION_SNIPPET_MAX_CHARS + 50);
+        insert_spell(&conn, 1, "Verbose Spell", &long_description);
+
+        let results = search_rag_spells_with_conn(&conn, &["verbose".to_string()], 5).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].description_snippet.chars().count(),
+            RAG_DESCRIPTION_SNIPPET_MAX_CHARS
+        );
+    }
+
+    #[cfg(feature = "llm")]
+    #[test]
+    fn search_rag_spells_empty_terms_returns_empty() {
+        use super::search_rag_spells_with_conn;
+
+        let conn = setup_fts_db();
+        insert_spell(&conn, 1, "Fireball", "fire");
+        assert!(search_rag_spells_with_conn(&conn, &[], 5)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[cfg(feature = "llm")]
+    #[test]
+    fn truncate_to_chars_respects_unicode_boundaries() {
+        use super::truncate_to_chars;
+
+        let s = "éclair"; // 6 chars
+        assert_eq!(truncate_to_chars(s, 10), "éclair");
+        assert_eq!(truncate_to_chars(s, 3), "écl");
+    }
 }

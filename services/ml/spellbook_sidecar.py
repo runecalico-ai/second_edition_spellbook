@@ -37,10 +37,6 @@ def _write_response(payload: Dict[str, Any]) -> None:
     sys.stdout.flush()
 
 
-def _zero_vector(size: int = 384) -> List[float]:
-    return [0.0] * size
-
-
 def _compute_hash(path: Path) -> str:
     sha256 = hashlib.sha256()
     with path.open("rb") as f:
@@ -220,19 +216,6 @@ def _spell_from_docx(path: Path) -> Dict[str, Any]:
     }
     spell["schema_version"] = 2
     return spell
-
-
-def handle_embed(params: Dict[str, Any]) -> Dict[str, Any]:
-    texts = params.get("texts") or []
-    return {"vectors": [_zero_vector() for _ in texts]}
-
-
-def handle_llm_answer(params: Dict[str, Any]) -> Dict[str, Any]:
-    query = params.get("query") or ""
-    contexts = params.get("contexts") or []
-    citations = [c.get("citation") for c in contexts if c.get("citation")]
-    answer = "(stub) Local-only answer for: " + query
-    return {"answer": answer, "citations": citations, "meta": {"model": "stub"}}
 
 
 def handle_import(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -803,8 +786,6 @@ def main() -> None:
         method = request.get("method")
         params = request.get("params") or {}
         handlers = {
-            "embed": handle_embed,
-            "llm_answer": handle_llm_answer,
             "import": handle_import,
             "export": handle_export,
         }

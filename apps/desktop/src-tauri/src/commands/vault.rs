@@ -1375,11 +1375,14 @@ mod tests {
 
     #[test]
     fn test_vault_test_env_guard_recovers_after_panic_and_cleans_env() {
+        let panic_root = std::sync::Arc::new(std::sync::Mutex::new(None::<PathBuf>));
+        let panic_root_for_closure = std::sync::Arc::clone(&panic_root);
         let panic_result = panic::catch_unwind(AssertUnwindSafe(|| {
             let env = VaultTestEnvGuard::new_temp().expect("acquire isolated vault env");
             let active_root = std::env::var_os("SPELLBOOK_DATA_DIR")
                 .expect("isolated env should set SPELLBOOK_DATA_DIR");
             assert_eq!(PathBuf::from(active_root), env.path().to_path_buf());
+            *panic_root_for_closure.lock().unwrap() = Some(env.path().to_path_buf());
             panic!("intentional panic while holding isolated vault env");
         }));
 
@@ -1391,16 +1394,25 @@ mod tests {
             vault_env_lock().is_poisoned(),
             "panic should poison the raw test env lock before helper recovery"
         );
-        assert!(
-            std::env::var_os("SPELLBOOK_DATA_DIR").is_none(),
-            "isolated env guard must clean SPELLBOOK_DATA_DIR during unwind"
+
+        let panic_root = panic_root
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("panic path should capture the isolated root");
+        let lock = lock_vault_env_for_test();
+        let env_after_unwind = std::env::var_os("SPELLBOOK_DATA_DIR");
+        assert_ne!(
+            env_after_unwind,
+            Some(panic_root.as_os_str().to_os_string()),
+            "isolated env guard must not leak its panic-time SPELLBOOK_DATA_DIR during unwind"
         );
 
-        let recovered = VaultTestEnvGuard::new_temp()
+        let recovered = VaultTestEnvGuard::new_temp_with_lock(lock)
             .expect("isolated env guard should recover from a poisoned lock");
-        assert!(
-            recovered.previous_data_dir.is_none(),
-            "cleanup during unwind should leave no preexisting env for the next guard"
+        assert_eq!(
+            recovered.previous_data_dir, env_after_unwind,
+            "recovered guard should capture the current preexisting env state"
         );
         assert_eq!(
             std::env::var_os("SPELLBOOK_DATA_DIR"),
@@ -1877,6 +1889,94 @@ mod tests {
         assert!(!data_dir.join("restore-staging").exists());
         assert!(!data_dir.join("spells.old").exists());
         assert!(!data_dir.join("vault-settings.json.old").exists());
+    }
+
+    #[test]
+    fn test_restore_vault_preserves_existing_model_files() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let data_dir = temp_dir.path().join("data");
+        let _env = VaultTestEnvGuard::with_root(data_dir.clone()).expect("set isolated vault env");
+        std::fs::create_dir_all(data_dir.join("spells")).expect("create spells dir");
+        std::fs::create_dir_all(data_dir.join("models")).expect("create models dir");
+
+        // LLM/embedding model files live under the vault's models/ dir and are never part of
+        // the backup archive (see design.md Decision 12). Restore must leave them untouched.
+        std::fs::write(
+            data_dir
+                .join("models")
+                .join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"),
+            "fake-model-bytes",
+        )
+        .expect("write model file");
+        std::fs::write(data_dir.join("spells").join("old.json"), r#"{"id":"old"}"#)
+            .expect("write old spell");
+
+        // We need a proper sqlite file to setup the initial DB pool
+        let pool = crate::db::pool::init_db(None, false).expect("failed to init db pool");
+        let pool_arc = std::sync::Arc::new(pool);
+
+        // Build a minimal but real source sqlite db (with the `spell` table) so the backup
+        // restore + post-restore integrity check succeed, matching a genuine backup archive.
+        let source_db_path = temp_dir.path().join("source-spellbook.sqlite3");
+        {
+            let conn = rusqlite::Connection::open(&source_db_path).expect("create source db");
+            conn.execute_batch(
+                "CREATE TABLE spell (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    canonical_data TEXT,
+                    content_hash TEXT
+                );",
+            )
+            .expect("create spell table in source db");
+        }
+
+        let source_dir = temp_dir.path().join("source");
+        std::fs::create_dir_all(source_dir.join("spells")).expect("create source spells dir");
+        std::fs::write(
+            source_dir.join("vault-settings.json"),
+            r#"{"integrityCheckOnOpen":true}"#,
+        )
+        .expect("write settings");
+        std::fs::write(
+            source_dir.join("spells").join("new.json"),
+            r#"{"id":"new"}"#,
+        )
+        .expect("write new spell");
+
+        let backup_path = temp_dir.path().join("backup.zip");
+        let file = File::create(&backup_path).expect("create backup archive");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+
+        add_file_to_backup_archive(&mut zip, options, "spellbook.sqlite3", &source_db_path)
+            .expect("archive db");
+        add_file_to_backup_archive(
+            &mut zip,
+            options,
+            "vault-settings.json",
+            &source_dir.join("vault-settings.json"),
+        )
+        .expect("archive settings");
+        add_directory_to_backup_archive(&mut zip, options, &source_dir, &source_dir.join("spells"))
+            .expect("archive spells");
+        zip.finish().expect("finish archive");
+
+        restore_vault_impl(pool_arc, &data_dir, &backup_path, true)
+            .expect("restore should succeed");
+
+        let model_path = data_dir
+            .join("models")
+            .join("tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf");
+        assert!(model_path.exists(), "model file must survive restore");
+        assert_eq!(
+            std::fs::read_to_string(&model_path).expect("read model"),
+            "fake-model-bytes"
+        );
+        assert!(data_dir.join("spells").join("new.json").exists());
+        assert!(!data_dir.join("spells").join("old.json").exists());
     }
 
     #[test]

@@ -2,18 +2,20 @@ import { invoke } from "@tauri-apps/api/core";
 import clsx from "classnames";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import type { ShowModalOptions } from "../store/useModal";
-import { useModal } from "../store/useModal";
-import { useTheme } from "../store/useTheme";
-import Modal from "./components/Modal";
-import NotificationViewport from "./components/NotificationViewport";
+import { reindexEmbeddings, searchSpellsSemantic } from "../api/llm";
 import {
   formatVaultIntegritySummary,
   getVaultSettings,
   runVaultIntegrityCheck,
 } from "../api/vault";
-import VaultMaintenanceDialog from "./components/VaultMaintenanceDialog";
+import type { ShowModalOptions } from "../store/useModal";
+import { useModal } from "../store/useModal";
+import { useTheme } from "../store/useTheme";
 import type { VaultIntegritySummary } from "../types/vault";
+import Modal from "./components/Modal";
+import NotificationViewport from "./components/NotificationViewport";
+import VaultMaintenanceDialog from "./components/VaultMaintenanceDialog";
+import { spellbookE2EHarness } from "./spellbookE2EHarness";
 
 export function formatUnknownError(error: unknown): string {
   if (error instanceof Error) {
@@ -271,6 +273,26 @@ export default function App() {
       el.inert = isModalOpen;
     }
   }, [isModalOpen]);
+
+  // Playwright E2E only: installs a command-only bridge on window so a test
+  // can drive semantic search / reindex / scripted download / chat pause
+  // points through the public api/llm wrappers, never harness internals
+  // directly. No-op (returns undefined, no global set) whenever the local ML
+  // harness is inactive, so this effect is a safe no-op in production and in
+  // every non-local-ML test.
+  useEffect(() => {
+    const bridge = spellbookE2EHarness.localMl.createCommandBridge({
+      searchSpellsSemantic,
+      reindexEmbeddings,
+    });
+    if (!bridge) return;
+
+    window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__ = bridge;
+    return () => {
+      window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__ = undefined;
+      spellbookE2EHarness.localMl.reset();
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-stone-50 px-4 py-4 text-stone-950 dark:bg-neutral-950 dark:text-neutral-100">

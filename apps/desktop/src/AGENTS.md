@@ -1,3 +1,13 @@
+---
+description: 
+alwaysApply: false
+---
+
+---
+description: 
+alwaysApply: false
+---
+
 # UI Component Development Guidelines for E2E Testing
 
 This document provides guidelines for frontend developers to make UI components easily testable with Playwright E2E tests.
@@ -190,6 +200,47 @@ const levelInput = classRow.getByTestId('class-level-input');
 </form>
 ```
 
+### Local LLM Chat & Semantic Search
+
+Chat and Library semantic mode talk to Rust through typed wrappers in `src/api/llm.ts`. Types live in `src/types/llm.ts`. Do not `invoke` these commands with ad-hoc argument shapes.
+
+**Provisioning UI (Chat):** `ChatPanel` (`data-testid="chat-panel"`) shows `ChatProvisioningPrompt` (`chat-provisioning-empty-state`) when `canSendChat(llm.status)` is false (`status` is not `ready` or `loaded`). Required actions:
+
+| Action | Test id |
+| ------ | ------- |
+| Download TinyLlama | `chat-llm-download-button` |
+| Side-load TinyLlama | `chat-llm-import-button` |
+| Download embeddings (optional for chat) | `chat-embeddings-download-button` |
+| Side-load embeddings | `chat-embeddings-import-button` |
+| Retry after classified error | `chat-provisioning-retry-button` |
+
+Download progress uses `ModelDownloadModal` (`model-download-modal`) subscribed to `llm://download-progress` / `embeddings://download-progress` with camelCase `{ bytesDownloaded, totalBytes }`. Chat can be used without the embedding model (FTS-only RAG). Embeddings are required only for Library semantic mode.
+
+**Streaming hook:** Use `useLlmStream(streamId)` from `src/hooks/useLlmStream.ts`. Public state: `{ response, isGenerating, error, grounding, cancelled, timedOut, cancel }`.
+
+Rules:
+1. The frontend generates `streamId` via `createStreamId()` in `chatUtils.ts` (`chat-${Date.now()}-...`). Never let the backend mint it.
+2. Set `streamId` in React state **before** calling `startLlmChat`, so `useLlmStream` subscribes to `llm://token/<id>` and `llm://done/<id>` first. `useChatSession` already does this with a pending-request effect — copy that order; do not invoke then subscribe.
+3. Listen through `src/api/llmEvents.ts`, not a raw `@tauri-apps/api/event` import. Production and the Playwright harness share that adapter.
+4. Cancel with `cancel()` on the hook (calls `llm_cancel_generation`). Keep the partial assistant bubble visible.
+5. Chat history is session-only (in-memory). Do not persist transcripts.
+
+**Library semantic empty-state:** When Library mode is `semantic`, call `embeddings_status` and `deriveSemanticAvailability(mode, embeddingsState)` from `ui/library/librarySemantic.ts`. Render `LibrarySemanticProvisioning` instead of a result list unless availability is `ready`. `cosineDistance` stays in `SemanticSearchResult` but must not be shown in the Library UI.
+
+| Availability | Test id | User meaning |
+| ------------ | ------- | ------------ |
+| `notProvisioned` | `library-semantic-provisioning-state` | Empty state with `library-embeddings-download-button` and `library-embeddings-import-button` |
+| `downloading` | `library-semantic-downloading-state` | In progress; modal `library-embeddings-download-modal` |
+| `initializing` | `library-semantic-initializing-state` | Model present, not ready to search |
+| `error` | `library-semantic-error-state` | Failure with retry; not a broken hit list |
+| `ready` | (normal Library results) | `canRunSemanticSearch` is true |
+
+Keyword mode always returns `"keyword"` from `deriveSemanticAvailability` and must not show the semantic empty state.
+
+**IPC wrappers to reuse** (`src/api/llm.ts`): `getLlmStatus`, `downloadLlmModel`, `importLlmModelFile`, `cancelLlmDownload`, `cancelLlmGeneration`, `startLlmChat`, `getEmbeddingsStatus`, `downloadEmbeddingsModel`, `importEmbeddingsModelFile`, `cancelEmbeddingsDownload`, `searchSpellsSemantic`, `reindexEmbeddings`.
+
+**Settings reindex:** `SettingsPage` renders `EmbeddingsReindexSection` (`settings-embeddings-section`). Buttons call `reindexEmbeddings(false)` (`settings-reindex-missing-button`) and `reindexEmbeddings(true)` (`settings-reindex-all-button`). Subscribe to `embeddings://reindex-progress` with `useReindexProgress` (camelCase `{ current, total }`). Disable both buttons unless `embeddings_status.state === "ready"`. Do not display `cosineDistance`. Chat and Library remain the provisioning surfaces; Settings does not add download/import actions.
+
 ## Testing Checklist
 
 Before committing UI changes, verify:
@@ -307,3 +358,4 @@ await page.waitForResponse(resp => resp.url().includes("update_character_class_l
 await expect(page.getByText("Level 5")).toBeVisible();
 ```
 
+For chat streaming, wait on visible bubbles or harness observations, never `sleep`. Subscribe (`streamId` set) before `startLlmChat`. Token and done events are `llm://token/<streamId>` and `llm://done/<streamId>`.

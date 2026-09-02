@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: false
+---
+
 # AI Agent Development Guide for Spellbook Backend
 
 This document provides context for AI agents working on the Tauri/Rust backend.
@@ -11,10 +16,15 @@ src-tauri/
 ├── src/
 │   ├── commands/      # Tauri command handlers
 │   │   ├── characters.rs   # Character CRUD, spellbook management
+│   │   ├── embeddings.rs   # Embedding lifecycle, semantic search, reindex
 │   │   ├── export.rs       # PDF export, printing
 │   │   ├── import.rs       # File import, conflict resolution
-│   │   ├── search.rs       # Keyword/semantic search, facets
+│   │   ├── llm.rs          # LLM lifecycle, download, chat, cancellation
+│   │   ├── llm_rag.rs      # FTS-only RAG term extraction and prompt assembly
+│   │   ├── provisioning.rs # Approved model identities, SHA checks, RAM/disk guard
+    │   │   ├── search.rs       # Keyword search, facets
 │   │   ├── spells.rs       # Spell CRUD, validation
+│   │   ├── vault.rs        # Vault backup/restore (excludes models/)
 │   │   └── mod.rs          # Re-exports all commands
 │   ├── db/            # Database layer
 │   │   ├── migrations.rs   # Migration loading (SQLite)
@@ -22,12 +32,14 @@ src-tauri/
 │   │   └── mod.rs
 │   ├── models/        # Shared data structures
 │   │   ├── character.rs    # Character, PrintableCharacter, etc.
+│   │   ├── embeddings.rs   # EmbeddingsStatus, SemanticSearchResult
 │   │   ├── import.rs       # ImportSpell, ImportConflict, etc.
+│   │   ├── llm.rs          # LlmStatus, LlmStatusResponse, chat events
 │   │   ├── search.rs       # SearchFilters, Facets, etc.
 │   │   ├── spell.rs        # SpellDetail, SpellSummary, etc.
 │   │   └── mod.rs
 │   ├── sidecar/       # Python sidecar communication
-│   │   ├── client.rs       # Async sidecar client
+│   │   ├── client.rs       # Async sidecar client (import/export only)
 │   │   └── mod.rs
 │   ├── error.rs       # AppError enum (thiserror)
 │   ├── lib.rs         # Library entry point (app logic, command registry)
@@ -72,11 +84,14 @@ use crate::sidecar::call_sidecar;
 let result = call_sidecar("action_name", json!({"key": value})).await?;
 ```
 
+> [!CAUTION]
+> The sidecar handles **import/export only**. Do not add `embed` or `llm_answer` handlers. Local inference uses `llm_chat` in `commands/llm.rs`. Embeddings and semantic search use `commands/embeddings.rs`. Sidecar downtime must not block either path.
+
 ### Adding New Commands
 1. Create function in appropriate `commands/*.rs` file
 2. Add `#[tauri::command]` attribute
 3. Export from `commands/mod.rs`
-4. Register in `main.rs` `invoke_handler`
+4. Register in `lib.rs` `invoke_handler` (not `main.rs`; `main.rs` only calls `lib::run()`)
 
 ### Tauri IPC Casing
 Tauri automatically converts command parameters from Rust's `snake_case` to JavaScript's `camelCase`.
@@ -164,6 +179,13 @@ Key crates:
 - `serde` / `serde_json` - Serialization
 - `chrono` - Date/time handling
 - `regex` - Filename sanitization
+- `llama-cpp-2` (llama.cpp / `llama-cpp-sys-2`) - Local TinyLlama inference (see CRT pitfall below). Optional via default-on Cargo feature `llm`.
+- `fastembed` - all-MiniLM-L6-v2 embeddings via ONNX (`ort`). Optional via default-on Cargo feature `llm`.
+- `sha2` / `hex` - SHA-256 verification of approved model files
+- `reqwest` - resumable HTTP Range downloads for provisioning
+- `sysinfo` - free RAM/disk probes used by the provisioning thresholds
+
+`pnpm tauri:dev` and release builds use default features (`llm` on). `cargo check --no-default-features` (and `cargo clippy --no-default-features -- -D warnings`) omit chat and semantic-search commands for machines without the C++/ORT toolchain. `reqwest` / `sysinfo` / `sha2` stay compiled either way.
 
 ## Testing
 
@@ -302,11 +324,81 @@ pub async fn remove_character_spell(
 > [!IMPORTANT]
 > The legacy `spellbook` table is deprecated. All new spell associations should use `character_class_spell` with a `character_class_id` foreign key.
 
+## Local LLM & Embeddings
+
+Local chat and semantic search run in-process in Rust when the default-on Cargo feature `llm` is enabled. Model files live under `{SpellbookVault}/models/` (see `commands/provisioning.rs`). The Python sidecar is not on this path. `--no-default-features` skips `llama-cpp-2` / `fastembed` and does not register chat or semantic commands.
+
+Managed state is registered in `lib.rs`:
+- `Arc<LlmState>` (feature `llm` only)
+- `Arc<EmbeddingState>` (real model state with `llm`; no-op stub without it)
+- `Arc<ProvisioningState>` (feature `llm` only; one global high-bandwidth guard; overlapping LLM vs embeddings provisioning fails with the target-specific errors already returned by those commands)
+
+### Data Model
+
+**`LlmState`** (`commands/llm.rs`): `Mutex<Option<LlamaModel>>`, backend, `status: Mutex<LlmStatus>`, `last_error`, active generation, download state, reprovisioning epoch.
+
+**`LlmStatus`** wire values (`models/llm.rs`, `rename_all = "camelCase"`): `notProvisioned | downloading | ready | loaded | error`.
+
+**`LlmStatusResponse`** fields (camelCase over IPC): `status`, `modelPath`, `bytesDownloaded`, `totalBytes`, `lastError`. Use `status` — not `state`.
+
+**`EmbeddingState`** (`commands/embeddings.rs`): `Mutex<Option<Arc<Mutex<TextEmbedding>>>>`, `status: Mutex<EmbeddingsStatus>`, `last_error`, download state, reindex flag, per-spell embed generations.
+
+**`EmbeddingsStatus`** wire values: `notProvisioned | downloading | initializing | ready | error`.
+
+**`EmbeddingsStatusResponse`** fields: `state`, `downloadProgress`, `errorMessage`. `downloadProgress` is a 0–1 fraction during an active download (else omitted); it is not a byte count. Use `state` — not `status`.
+
+Approved files (do not accept arbitrary GGUF/ONNX):
+- LLM: `models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` — SHA-256 `9FECC3B3CD76BBA89D504F29B616EEDF7DA85B96540E490CA5824D3F7D2776A0`
+- Embeddings: `models/embeddings/all-MiniLM-L6-v2/` — five-file inventory in `EMBEDDING_EXPECTED_FILES` plus manifest `5f1b8cd78bc4fb444dd171e59b18f3a3af89a079`
+
+Thresholds (`BASELINE_MIN_FREE_DISK_BYTES` / `BASELINE_MIN_FREE_RAM_BYTES`): LLM download checks disk `>= 838860800` bytes (`require_download_disk_headroom`); LLM load checks RAM `>= 1610612736` bytes. Embeddings download checks both disk `>= 838860800` and RAM `>= 1610612736` (`ensure_resources_available`).
+
+### Command Patterns
+
+Register these in `lib.rs`. Frontend wrappers live in `src/api/llm.ts`.
+
+| Command | Role |
+| ------- | ---- |
+| `llm_status` | Current `LlmStatusResponse` |
+| `llm_download_model` | In-app download of the approved GGUF; emits `llm://download-progress` `{ bytesDownloaded, totalBytes }` |
+| `llm_import_model_file` | Verified side-load: exact filename identity + SHA-256, then copy into `models/` |
+| `llm_cancel_download` | Abort in-flight LLM download; restore the pre-download lifecycle (typically `notProvisioned` on a first download); keep partial bytes for resume |
+| `llm_cancel_generation` | Stop the active stream at the next token boundary; args: `streamId` |
+| `llm_chat` | Lazy-load model, FTS RAG, stream tokens. Args: `message`, `streamId`, `history` |
+| `embeddings_status` | Current `EmbeddingsStatusResponse` |
+| `embeddings_download_model` | In-app download of the approved ONNX bundle; emits `embeddings://download-progress` |
+| `embeddings_import_model_file` | Verified side-load of the approved bundle |
+| `embeddings_cancel_download` | Abort embedding download |
+| `search_spells_semantic` | Ranked results with `cosineDistance`. Replaces `search_semantic` (removed) |
+| `reindex_embeddings` | Args: `force: bool`. Emits `embeddings://reindex-progress` `{ current, total }`. Returns `ReindexResult` `{ total, indexed, skipped, failed }` |
+
+Do not reintroduce `search_semantic` or `chat_answer`. Chat uses `llm_chat` only.
+
+`chat_answer` and `search_semantic` are not registered. Do not add a compatibility wrapper. New UI and tests call `llm_chat` and `search_spells_semantic` only.
+
+**Streaming:** Frontend generates `streamId` (see frontend AGENTS.md). Backend emits:
+- `llm://token/{streamId}` payload `{ token }`
+- `llm://done/{streamId}` payload `{ fullResponse, cancelled, searchTerms, groundedSpells, timedOut }`
+
+`stream_id` must be non-empty. One inference at a time; a second `llm_chat` is rejected. Timeout is 120s.
+
+**Hooks already wired:** `create_spell` / `update_spell` / import completion embed in the background when the embedding model is `ready`. Failures log and must not fail the spell write. Startup runs embedding init plus `reindex_embeddings(force=false)` backfill.
+
+**Vault:** `backup_vault` archives the DB, `spells/`, and `vault-settings.json` only. It never adds `models/`. `restore_vault` must leave existing model files untouched.
+
+### Side-load rules
+
+1. User picks a local file/bundle through `llm_import_model_file` / `embeddings_import_model_file`.
+2. Validate exact approved identity (filename/layout) and SHA-256 / file inventory.
+3. On success, copy into `{SpellbookVault}/models/` and set LLM `ready` or embeddings `initializing`/`ready`.
+4. On rejection, leave status unchanged and return a validation error. Do not copy a mismatched file into the vault.
+
 ## Common Pitfalls
 
 1. **Type inference in closures**: Always use `Ok::<T, AppError>(value)` inside `spawn_blocking`
 2. **Migration paths**: Relative to the source file, currently `../../../../../db/migrations/`
 3. **Unused imports**: Run `cargo fix --lib` to auto-clean
+4. **CRT linkage on Windows**: `src-tauri/.cargo/config.toml` forces `STATIC_VCRUNTIME=false` (dynamic CRT, force-overridden). Every vendored native dependency (`rusqlite`'s bundled sqlite3, `sqlite-vec`, `llama-cpp-sys-2`, `ort`/onnxruntime via `fastembed`) links the dynamic CRT via `cc-rs`; tauri-build otherwise statically links the exe's CRT, and mixing the two crosses an allocator boundary and corrupts the heap (surfaces on debug builds as `_CrtIsValidHeapPointer` / `is_block_type_valid` assertion crashes at startup). Do not remove this setting or add a new vendored C/C++ dependency without checking it links the same (dynamic) CRT. Release builds now depend on the end-user machine having the standard MSVC runtime present rather than embedding it; `src-tauri/installer/vcredist-check.nsh` (wired via `bundle.windows.nsis.installerHooks`) warns the user at install time if it's missing, with a link to Microsoft's official redistributable — it only checks and warns, it does not bundle or silently install anything.
 
 ### Linting Best Practices (Clippy)
 

@@ -1,3 +1,6 @@
+use crate::commands::embeddings::{
+    cancel_spell_embedding_for_delete, enqueue_spell_embedding_if_ready, EmbeddingState,
+};
 use crate::commands::vault::export_spell_to_vault_by_hash;
 use crate::db::Pool;
 use crate::error::AppError;
@@ -827,10 +830,11 @@ pub async fn list_spells(state: State<'_, Arc<Pool>>) -> Result<Vec<SpellSummary
 #[tauri::command]
 pub async fn create_spell(
     state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
     spell: SpellCreate,
 ) -> Result<i64, AppError> {
     let pool = state.inner().clone();
-    let result = tokio::task::spawn_blocking(move || {
+    let (spell_id, name, description) = tokio::task::spawn_blocking(move || {
         validate_spell_fields(&spell.name, spell.level, &spell.description)?;
         validate_epic_and_quest_spells(
             spell.level,
@@ -920,36 +924,73 @@ pub async fn create_spell(
             )?;
             let spell_id = conn.last_insert_rowid();
             export_spell_to_vault_by_hash(&conn, &hash)?;
-            Ok::<i64, AppError>(spell_id)
+            Ok::<(i64, String, String), AppError>((
+                spell_id,
+                spell.name.clone(),
+                spell.description.clone(),
+            ))
         })
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
-    Ok(result)
+    // M-003: Task 4 Step 4.3 — propagate enqueue errors (plan lines 1374–1381).
+    enqueue_spell_embedding_if_ready(
+        Arc::clone(embedding_state.inner()),
+        Arc::clone(state.inner()),
+        spell_id,
+        name,
+        description,
+    )
+    .await?;
+
+    Ok(spell_id)
 }
 
 #[tauri::command]
 pub async fn update_spell(
     state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
     spell: SpellUpdate,
 ) -> Result<i64, AppError> {
     let pool = state.inner().clone();
-    let result = tokio::task::spawn_blocking(move || {
+    let (spell_id, name, description) = tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        apply_spell_update_with_conn(&conn, &spell)
+        let spell_id = apply_spell_update_with_conn(&conn, &spell)?;
+        let (name, description) = conn.query_row(
+            "SELECT name, description FROM spell WHERE id = ?1",
+            rusqlite::params![spell_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        Ok::<(i64, String, String), AppError>((spell_id, name, description))
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
-    Ok(result)
+    // M-003: Task 4 Step 4.3 — propagate enqueue errors (plan lines 1406–1413).
+    enqueue_spell_embedding_if_ready(
+        Arc::clone(embedding_state.inner()),
+        Arc::clone(state.inner()),
+        spell_id,
+        name,
+        description,
+    )
+    .await?;
+
+    Ok(spell_id)
 }
 
 #[tauri::command]
-pub async fn delete_spell(state: State<'_, Arc<Pool>>, id: i64) -> Result<(), AppError> {
+pub async fn delete_spell(
+    state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
+    id: i64,
+) -> Result<(), AppError> {
+    cancel_spell_embedding_for_delete(embedding_state.inner().as_ref(), id);
     let pool = state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
+        conn.execute("DELETE FROM spell_vec WHERE rowid = ?", [id])?;
         conn.execute("DELETE FROM spell WHERE id = ?", [id])?;
         Ok::<(), AppError>(())
     })
@@ -962,10 +1003,11 @@ pub async fn delete_spell(state: State<'_, Arc<Pool>>, id: i64) -> Result<(), Ap
 #[tauri::command]
 pub async fn upsert_spell(
     state: State<'_, Arc<Pool>>,
+    embedding_state: State<'_, Arc<EmbeddingState>>,
     spell: SpellDetail,
 ) -> Result<i64, AppError> {
     let pool = state.inner().clone();
-    let result = tokio::task::spawn_blocking(move || {
+    let (spell_id, name, description) = tokio::task::spawn_blocking(move || {
         validate_spell_fields(&spell.name, spell.level, &spell.description)?;
         validate_epic_and_quest_spells(
             spell.level,
@@ -1026,12 +1068,26 @@ pub async fn upsert_spell(
             })?
         };
         migration_manager::sync_check_spell(&conn, spell_id);
-        Ok::<i64, AppError>(spell_id)
+        let (name, description) = conn.query_row(
+            "SELECT name, description FROM spell WHERE id = ?1",
+            rusqlite::params![spell_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        Ok::<(i64, String, String), AppError>((spell_id, name, description))
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
 
-    Ok(result)
+    enqueue_spell_embedding_if_ready(
+        Arc::clone(embedding_state.inner()),
+        Arc::clone(state.inner()),
+        spell_id,
+        name,
+        description,
+    )
+    .await?;
+
+    Ok(spell_id)
 }
 
 #[cfg(test)]

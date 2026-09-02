@@ -14,11 +14,22 @@ r2d2 = "0.8"
 r2d2_sqlite = "0.24"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
+# H-001: `TextEmbedding::try_new` / `InitOptions` path requires `hf-hub`; ORT
+# binaries match the prior default-runtime expectation for desktop builds.
+# Optional: compiled when the default-on `llm` feature is enabled.
+fastembed = { version = "=5.13.3", optional = true, default-features = false, features = [
+    "hf-hub-native-tls",
+    "ort-download-binaries-native-tls",
+] }
+llama-cpp-2 = { version = "=0.1.145", optional = true, default-features = false }
+reqwest = { version = "=0.13.2", default-features = false, features = ["rustls", "stream"] }
+sysinfo = { version = "=0.38.4", default-features = false, features = ["disk", "system"] }
 wait-timeout = "0.2"
 walkdir = "2.5"
 zip = "2.2"
 sqlite-vec = "0.1.6"
-tokio = { version = "1.49.0", features = ["process", "io-util", "sync", "rt", "macros"] }
+tokio = { version = "1.49.0", features = ["process", "io-util", "sync", "rt", "rt-multi-thread", "macros"] }
+futures-util = { version = "=0.3.31", default-features = false, features = ["std"] }
 
 regex = "1.12.2"
 tempfile = "3.10"
@@ -31,6 +42,13 @@ jsonschema = "0.17"
 unicode-normalization = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+default = ["llm"]
+# Local TinyLlama chat + MiniLM embeddings. Default on for `pnpm tauri:dev` and
+# release. `--no-default-features` skips the C++/ORT toolchain and omits chat
+# and semantic-search commands.
+llm = ["dep:llama-cpp-2", "dep:fastembed"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

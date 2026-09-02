@@ -1,6 +1,7 @@
 import type { ChangeEvent } from "react";
 import type { ResolvedTheme, ThemeMode } from "../store/useTheme";
 import { useTheme } from "../store/useTheme";
+import { EmbeddingsReindexSection } from "./settings/EmbeddingsReindexSection";
 
 export function getSelectableThemeValue(
   mode: ThemeMode,
@@ -93,6 +94,8 @@ export function SettingsPage() {
           </label>
         </div>
       </section>
+
+      <EmbeddingsReindexSection />
     </section>
   );
 }

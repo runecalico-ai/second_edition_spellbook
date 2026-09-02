@@ -114,12 +114,15 @@ pub fn init_db(resource_dir: Option<&Path>, run_backfill: bool) -> Result<Pool, 
     let data_dir = app_data_dir()?;
     let _ = install_sqlite_vec_if_needed(&data_dir, resource_dir)?;
     let db_path = data_dir.join("spellbook.sqlite3");
-    let manager = SqliteConnectionManager::file(&db_path);
+    let data_dir_for_conn = data_dir.clone();
+    let manager = SqliteConnectionManager::file(&db_path).with_init(move |conn| {
+        conn.execute_batch("PRAGMA foreign_keys=ON;")?;
+        try_load_sqlite_vec(conn, &data_dir_for_conn);
+        Ok(())
+    });
     let pool = r2d2::Pool::new(manager)?;
     {
         let conn = pool.get()?;
-        conn.execute_batch("PRAGMA foreign_keys=ON;")?;
-        try_load_sqlite_vec(&conn, &data_dir);
         super::migrations::load_migrations(&conn)?;
         if run_backfill {
             if let Err(e) = crate::utils::migration_manager::run_hash_backfill(&conn, &data_dir) {

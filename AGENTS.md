@@ -45,5 +45,3 @@ This repository uses a structured documentation system. Refer to the specialized
 | [TESTING.md](./docs/TESTING.md) | Testing strategy for all components (Rust, Python, E2E) |
 | [TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) | Common issues, CLI tools, debugging workflows |
 | [OpenSpec Project Guide](./openspec/project.md) | Change proposals and spec-driven development |
-
-

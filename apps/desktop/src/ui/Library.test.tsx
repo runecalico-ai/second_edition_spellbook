@@ -22,6 +22,25 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(),
+}));
+
+function defaultModelStatusMocks(cmd: string): unknown | undefined {
+  switch (cmd) {
+    case "embeddings_status":
+      return { state: "ready" };
+    case "llm_status":
+      return { status: "notProvisioned", modelPath: "" };
+    default:
+      return undefined;
+  }
+}
+
 const emptyFacets = {
   schools: [] as string[],
   sources: [] as string[],
@@ -91,6 +110,8 @@ describe("Library heading hierarchy", () => {
   beforeEach(() => {
     useNotifications.setState({ notifications: [] });
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       switch (cmd) {
         case "list_facets":
           return emptyFacets;
@@ -99,7 +120,7 @@ describe("Library heading hierarchy", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -128,6 +149,8 @@ describe("Library notifications (Task 5)", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     useNotifications.setState({ notifications: [] });
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       switch (cmd) {
         case "list_facets":
           return emptyFacets;
@@ -136,7 +159,7 @@ describe("Library notifications (Task 5)", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -153,6 +176,8 @@ describe("Library notifications (Task 5)", () => {
 
   it("add-to-character success shows a toast in notification-viewport and does not call window.alert", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       if (cmd === "list_facets") return emptyFacets;
       if (cmd === "list_characters") return [{ id: 1, name: "Alice" }];
       if (cmd === "list_saved_searches") return [];
@@ -196,6 +221,8 @@ describe("Library notifications (Task 5)", () => {
 
   it("add-to-character failure shows an error toast and does not call window.alert", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       if (cmd === "list_facets") return emptyFacets;
       if (cmd === "list_characters") return [{ id: 1, name: "Alice" }];
       if (cmd === "list_saved_searches") return [];
@@ -237,6 +264,8 @@ describe("Library notifications (Task 5)", () => {
 
   it("save-search failure shows an error toast and does not call window.alert", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       if (cmd === "list_facets") return emptyFacets;
       if (cmd === "list_characters") return [];
       if (cmd === "list_saved_searches") return [];
@@ -300,6 +329,8 @@ describe("Library notifications (Task 5)", () => {
     });
 
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       if (cmd === "list_facets") return emptyFacets;
       if (cmd === "list_characters") return [];
       if (cmd === "list_saved_searches") {
@@ -353,6 +384,8 @@ describe("Library notifications (Task 5)", () => {
 
   it("toast message is not rendered outside notification-viewport", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       if (cmd === "list_facets") return emptyFacets;
       if (cmd === "list_characters") return [{ id: 1, name: "Alice" }];
       if (cmd === "list_saved_searches") return [];
@@ -392,6 +425,8 @@ describe("Library empty states", () => {
   beforeEach(() => {
     useNotifications.setState({ notifications: [] });
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       switch (cmd) {
         case "list_facets":
           return emptyFacets;
@@ -400,7 +435,7 @@ describe("Library empty states", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -418,6 +453,8 @@ describe("Library empty states", () => {
     it("waits for the current initial search to settle before rendering the empty-library state", async () => {
       const searchDeferred = createDeferred<unknown[]>();
       vi.mocked(invoke).mockImplementation((cmd: string) => {
+        const defaults = defaultModelStatusMocks(cmd);
+        if (defaults !== undefined) return Promise.resolve(defaults);
         switch (cmd) {
           case "list_facets":
             return Promise.resolve(emptyFacets);
@@ -427,7 +464,7 @@ describe("Library empty states", () => {
             return Promise.resolve([]);
           case "search_keyword":
             return searchDeferred.promise;
-          case "search_semantic":
+          case "search_spells_semantic":
             return Promise.resolve([]);
           default:
             return Promise.resolve(undefined);
@@ -476,6 +513,8 @@ describe("Library empty states", () => {
       let keywordSearchCalls = 0;
 
       vi.mocked(invoke).mockImplementation((cmd: string) => {
+        const defaults = defaultModelStatusMocks(cmd);
+        if (defaults !== undefined) return Promise.resolve(defaults);
         switch (cmd) {
           case "list_facets":
             return Promise.resolve(emptyFacets);
@@ -488,7 +527,7 @@ describe("Library empty states", () => {
             return keywordSearchCalls === 1
               ? initialSearchDeferred.promise
               : latestSearchDeferred.promise;
-          case "search_semantic":
+          case "search_spells_semantic":
             return Promise.resolve([]);
           default:
             return Promise.resolve(undefined);
@@ -532,6 +571,8 @@ describe("Library empty states", () => {
     it("renders the empty-search state for semantic mode after the semantic search settles", async () => {
       const semanticDeferred = createDeferred<unknown[]>();
       vi.mocked(invoke).mockImplementation((cmd: string) => {
+        const defaults = defaultModelStatusMocks(cmd);
+        if (defaults !== undefined) return Promise.resolve(defaults);
         switch (cmd) {
           case "list_facets":
             return Promise.resolve(emptyFacets);
@@ -541,7 +582,7 @@ describe("Library empty states", () => {
             return Promise.resolve([]);
           case "search_keyword":
             return Promise.resolve([]);
-          case "search_semantic":
+          case "search_spells_semantic":
             return semanticDeferred.promise;
           default:
             return Promise.resolve(undefined);
@@ -560,7 +601,10 @@ describe("Library empty states", () => {
       fireEvent.click(screen.getByTestId("library-search-button"));
 
       await waitFor(() => {
-        expect(invoke).toHaveBeenCalledWith("search_semantic", { query: "find hidden lore" });
+        expect(invoke).toHaveBeenCalledWith("search_spells_semantic", {
+          query: "find hidden lore",
+          limit: 100,
+        });
       });
       expect(screen.queryByText("No Results")).toBeNull();
 
@@ -620,6 +664,8 @@ describe("Library empty states", () => {
       let keywordSearchCalls = 0;
 
       vi.mocked(invoke).mockImplementation((cmd: string) => {
+        const defaults = defaultModelStatusMocks(cmd);
+        if (defaults !== undefined) return Promise.resolve(defaults);
         switch (cmd) {
           case "list_facets":
             return Promise.resolve(emptyFacets);
@@ -636,7 +682,7 @@ describe("Library empty states", () => {
               return firstEmptySearchDeferred.promise;
             }
             return secondEmptySearchDeferred.promise;
-          case "search_semantic":
+          case "search_spells_semantic":
             return Promise.resolve([]);
           default:
             return Promise.resolve(undefined);
@@ -695,6 +741,8 @@ describe("Library empty states", () => {
         >();
 
       vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+        const defaults = defaultModelStatusMocks(cmd);
+        if (defaults !== undefined) return Promise.resolve(defaults);
         switch (cmd) {
           case "list_facets":
             return Promise.resolve(emptyFacets);
@@ -710,7 +758,7 @@ describe("Library empty states", () => {
 
             return defaultLibraryDeferred.promise;
           }
-          case "search_semantic":
+          case "search_spells_semantic":
             return Promise.resolve([]);
           default:
             return Promise.resolve(undefined);
@@ -762,6 +810,8 @@ describe("Library empty states", () => {
 
     it("resetting filters from a saved-search empty state clears the saved-search selection", async () => {
       vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+        const defaults = defaultModelStatusMocks(cmd);
+        if (defaults !== undefined) return defaults;
         switch (cmd) {
           case "list_facets":
             return emptyFacets;
@@ -781,7 +831,7 @@ describe("Library empty states", () => {
               },
             ];
           case "search_keyword":
-          case "search_semantic":
+          case "search_spells_semantic":
             return [];
           default:
             return undefined;
@@ -822,6 +872,8 @@ describe("Library focus indicators", () => {
 
   it("adds visible focus rings to the search, filter, saved-search, and spell-row controls", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       switch (cmd) {
         case "list_facets":
           return {
@@ -860,7 +912,7 @@ describe("Library focus indicators", () => {
               isCantrip: 0,
             },
           ];
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -905,6 +957,8 @@ describe("Library focus indicators", () => {
 
   it("adds visible focus rings to the empty-state CTA buttons", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       switch (cmd) {
         case "list_facets":
           return emptyFacets;
@@ -913,7 +967,7 @@ describe("Library focus indicators", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -949,6 +1003,8 @@ describe("Library explicit search behavior", () => {
 
   it("does not rerun search when the query changes until submit is triggered", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       switch (cmd) {
         case "list_facets":
           return emptyFacets;
@@ -958,7 +1014,7 @@ describe("Library explicit search behavior", () => {
           return [];
         case "search_keyword":
           return [];
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -992,6 +1048,398 @@ describe("Library explicit search behavior", () => {
         vi.mocked(invoke).mock.calls.filter((call) => call[0] === "search_keyword"),
       ).toHaveLength(initialSearchCount + 1);
     });
+  });
+});
+
+describe("Library search", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useNotifications.setState({ notifications: [] });
+  });
+
+  afterEach(() => {
+    cleanup();
+    useNotifications.setState({ notifications: [] });
+    vi.restoreAllMocks();
+  });
+
+  it("shows semantic provisioning empty state when mode is semantic and embeddings are notProvisioned", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) {
+        if (cmd === "embeddings_status") return { state: "notProvisioned" };
+        return defaults;
+      }
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        default:
+          throw new Error(`unexpected invoke ${cmd}`);
+      }
+    });
+
+    renderLibraryWithViewport();
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+
+    expect(await screen.findByTestId("library-semantic-provisioning-state")).toBeTruthy();
+    expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic")).toBe(
+      false,
+    );
+  });
+
+  it("does not call search_spells_semantic while embeddings are initializing", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) {
+        if (cmd === "embeddings_status") return { state: "initializing" };
+        return defaults;
+      }
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        case "search_spells_semantic":
+          throw new Error("should not be called");
+        default:
+          throw new Error(`unexpected invoke ${cmd}`);
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    const semanticCallsBefore = vi
+      .mocked(invoke)
+      .mock.calls.filter((call) => call[0] === "search_spells_semantic").length;
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), { target: { value: "semantic" } });
+    fireEvent.change(screen.getByTestId("search-input"), { target: { value: "fire damage" } });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+
+    expect(await screen.findByTestId("library-semantic-initializing-state")).toBeTruthy();
+    expect(
+      vi.mocked(invoke).mock.calls.filter((call) => call[0] === "search_spells_semantic").length,
+    ).toBe(semanticCallsBefore);
+  });
+
+  it("strips cosineDistance from semantic results before rendering rows", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined && cmd !== "search_spells_semantic") return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        case "search_spells_semantic":
+          return [
+            {
+              id: 1,
+              name: "Fireball",
+              level: 3,
+              isQuestSpell: 0,
+              isCantrip: 0,
+              cosineDistance: 0.12,
+            },
+          ];
+        default:
+          throw new Error(`unexpected invoke ${cmd}`);
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), { target: { value: "semantic" } });
+    fireEvent.change(screen.getByTestId("search-input"), { target: { value: "fire" } });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+
+    expect(await screen.findByTestId("spell-row-fireball")).toBeTruthy();
+    expect(screen.queryByText("0.12")).toBeNull();
+  });
+
+  it("does not show empty-library state when semantic mode is blocked by missing embeddings", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) {
+        if (cmd === "embeddings_status") return { state: "notProvisioned" };
+        return defaults;
+      }
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+
+    expect(await screen.findByTestId("library-semantic-provisioning-state")).toBeTruthy();
+    expect(screen.queryByTestId("empty-library-state")).toBeNull();
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+  });
+
+  it("does not show empty-search when switching to semantic with a non-empty query from keyword mode", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("search-input"), {
+      target: { value: "fireball" },
+    });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+    await screen.findByText("No Results");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+    expect(screen.queryByText("No Results")).toBeNull();
+    expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic")).toBe(
+      false,
+    );
+  });
+
+  it("does not show empty-library or empty-search when toggling to semantic with embeddings ready", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+
+    expect(screen.queryByTestId("empty-library-state")).toBeNull();
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+    expect(screen.queryByText("No Spells Yet")).toBeNull();
+    expect(screen.queryByText("No Results")).toBeNull();
+  });
+
+  it("does not invoke semantic search or show empty-search for blank semantic query", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        case "search_spells_semantic":
+          throw new Error("should not be called for blank query");
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+
+    expect(vi.mocked(invoke).mock.calls.some((call) => call[0] === "search_spells_semantic")).toBe(
+      false,
+    );
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+    expect(screen.queryByText("No Results")).toBeNull();
+  });
+
+  it("shows semantic search error state with retry button when search fails", async () => {
+    let semanticSearchCalls = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined && cmd !== "search_spells_semantic") return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        case "search_spells_semantic":
+          semanticSearchCalls += 1;
+          throw new Error("embedding index unavailable");
+        default:
+          throw new Error(`unexpected invoke ${cmd}`);
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+    fireEvent.change(screen.getByTestId("search-input"), {
+      target: { value: "fire damage" },
+    });
+    fireEvent.click(screen.getByTestId("library-search-button"));
+
+    const errorState = await screen.findByTestId("library-semantic-search-error-state");
+    expect(
+      within(errorState).getByRole("heading", { name: "Semantic search failed" }),
+    ).toBeTruthy();
+    expect(within(errorState).getByText("embedding index unavailable")).toBeTruthy();
+    expect(screen.getByTestId("library-semantic-retry-button")).toBeTruthy();
+    expect(semanticSearchCalls).toBe(1);
+
+    fireEvent.click(screen.getByTestId("library-semantic-retry-button"));
+
+    await waitFor(() => {
+      expect(semanticSearchCalls).toBe(2);
+    });
+  });
+
+  it("shows embeddings error provisioning panel when embeddings are in error state", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) {
+        if (cmd === "embeddings_status") {
+          return { state: "error", errorMessage: "Model load failed" };
+        }
+        return defaults;
+      }
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [];
+        default:
+          return undefined;
+      }
+    });
+
+    renderLibraryWithViewport();
+    await screen.findByText("No Spells Yet");
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+
+    const errorState = await screen.findByTestId("library-semantic-error-state");
+    expect(within(errorState).getByText(/Model load failed/i)).toBeTruthy();
+    expect(screen.getByTestId("library-semantic-switch-keyword-button")).toBeTruthy();
+    expect(screen.queryByTestId("empty-library-state")).toBeNull();
+    expect(screen.queryByTestId("empty-search-state")).toBeNull();
+  });
+
+  it("restores keyword results when switching back from semantic mode", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined && cmd !== "search_keyword") return defaults;
+      switch (cmd) {
+        case "list_facets":
+          return emptyFacets;
+        case "list_characters":
+          return [];
+        case "list_saved_searches":
+          return [];
+        case "search_keyword":
+          return [
+            {
+              id: 10,
+              name: "Fireball",
+              school: "Evocation",
+              level: 3,
+              classList: "Mage",
+              components: "V, S, M",
+              isQuestSpell: 0,
+              isCantrip: 0,
+            },
+          ];
+        default:
+          throw new Error(`unexpected invoke ${cmd}`);
+      }
+    });
+
+    renderLibraryWithViewport();
+    expect(await screen.findByTestId("spell-row-fireball")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "semantic" },
+    });
+    expect(screen.queryByTestId("spell-row-fireball")).toBeNull();
+
+    fireEvent.change(screen.getByTestId("library-mode-select"), {
+      target: { value: "keyword" },
+    });
+
+    expect(await screen.findByTestId("spell-row-fireball")).toBeTruthy();
   });
 });
 
@@ -1039,6 +1487,8 @@ describe("Library saved-search delete modal", () => {
     useNotifications.setState({ notifications: [] });
 
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       switch (cmd) {
         case "list_facets":
           return emptyFacets;
@@ -1047,7 +1497,7 @@ describe("Library saved-search delete modal", () => {
         case "list_saved_searches":
           return [];
         case "search_keyword":
-        case "search_semantic":
+        case "search_spells_semantic":
           return [];
         default:
           return undefined;
@@ -1074,6 +1524,8 @@ describe("Library saved-search delete modal", () => {
 
   it("delete saved search opens the shared modal, cancels cleanly, and restores focus", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       if (cmd === "list_facets") return emptyFacets;
       if (cmd === "list_characters") return [];
       if (cmd === "list_saved_searches") {
@@ -1138,6 +1590,8 @@ describe("Library saved-search delete modal", () => {
 
   it("delete-saved-search failure shows an error toast via shared modal confirm", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      const defaults = defaultModelStatusMocks(cmd);
+      if (defaults !== undefined) return defaults;
       if (cmd === "list_facets") return emptyFacets;
       if (cmd === "list_characters") return [];
       if (cmd === "list_saved_searches") {

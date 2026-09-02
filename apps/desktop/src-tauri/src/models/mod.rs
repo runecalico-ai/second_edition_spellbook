@@ -1,15 +1,23 @@
 pub mod character;
 pub mod import;
+#[cfg(feature = "llm")]
+pub mod llm;
 pub mod search;
 pub mod spell;
 
 // Re-export common types for easier access
 pub use character::*;
 pub use import::*;
+#[cfg(feature = "llm")]
+pub use llm::*;
 pub use search::*;
 pub use spell::*;
 pub mod bundle;
 pub use bundle::*;
+#[cfg(feature = "llm")]
+pub mod embeddings;
+#[cfg(feature = "llm")]
+pub use embeddings::*;
 pub mod canonical_spell;
 pub use canonical_spell::*;
 

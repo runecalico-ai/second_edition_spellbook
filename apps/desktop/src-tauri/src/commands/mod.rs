@@ -5,9 +5,26 @@ pub mod search;
 pub mod spells;
 pub mod vault;
 
+#[cfg(feature = "llm")]
+pub mod embeddings;
+#[cfg(not(feature = "llm"))]
+#[path = "llm_stubs.rs"]
+pub mod embeddings;
+#[cfg(feature = "llm")]
+pub mod llm;
+#[cfg(feature = "llm")]
+pub mod llm_rag;
+#[cfg(feature = "llm")]
+pub mod provisioning;
+
 pub use characters::*;
+pub use embeddings::*;
 pub use export::*;
 pub use import::*;
+#[cfg(feature = "llm")]
+pub use llm::*;
+#[cfg(feature = "llm")]
+pub use provisioning::*;
 pub use search::*;
 pub use spells::*;
 pub use vault::*;

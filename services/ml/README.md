@@ -1,17 +1,13 @@
-# Spellbook ML Sidecar
+# Spellbook sidecar
 
-This sidecar provides local-only helpers for embeddings, import parsing, chat, and export.
+This process handles **document import and export only** (PDF, DOCX, Markdown parsing, and HTML/Markdown print rendering).
 
-## Running (development)
+Local LLM inference and embeddings run in the Tauri/Rust backend (`llm_chat`, `search_spells_semantic`). The sidecar `embed` and `llm_answer` handlers were removed.
 
-```bash
-python3 spellbook_sidecar.py <<EOF
-{"jsonrpc":"2.0","id":1,"method":"embed","params":{"texts":["test"]}}
-EOF
-```
+## Methods
+
+The stdin JSON-RPC dispatcher accepts only `import` and `export`. See `spellbook_sidecar.py` (`handle_import`, `handle_export`) and `services/ml/tests/` for request shapes.
 
 ## Environment
 
-Requires Python 3.14. The MVP is designed to run fully offline. When you are ready to enable real
-models, install the optional dependencies from `requirements.txt` and place models in a local
-folder. The sidecar will be extended to load those models without any network access.
+Requires Python 3.14. Use the repository-root virtualenv (see `docs/DEVELOPMENT.md`). Runtime dependencies: `services/ml/requirements.txt`.

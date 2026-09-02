@@ -4,6 +4,7 @@ import { expect } from "@playwright/test";
 import { TIMEOUTS } from "../fixtures/constants";
 import { dismissAllAppModals } from "../utils/dialog-handler";
 import { fillControlledTextInput } from "../utils/fill-controlled-text-input";
+import { LocalLlmChat } from "./LocalLlmChat";
 
 /** Common selectors used throughout the app */
 export const SELECTORS = {
@@ -97,7 +98,11 @@ interface SpellPickerFilterSnapshot {
  * Page Object Model for the Spellbook application.
  */
 export class SpellbookApp {
-  constructor(public page: Page) {}
+  readonly localLlm: LocalLlmChat;
+
+  constructor(public page: Page) {
+    this.localLlm = new LocalLlmChat(this.page);
+  }
 
   private getClassSection(className: string) {
     return this.page.getByLabel(`Class section for ${className}`);

@@ -259,7 +259,7 @@ If the database is unusable, you can restore from an automatic backup.
    ```
    *Note: Automatically restores the most recent backup without requiring a file path.*
 
-   **Vault and backup/restore:** Backups include the database plus the vault spell files (`spells/` directory) and `vault-settings.json`. When you restore a backup, the app restores the DB, then the `spells/` files and settings, then runs a vault integrity check. You do not need to rebuild vault files from the DB after restore; they are restored directly from the archive.
+   **Vault and backup/restore:** Backups include the database plus the vault spell files (`spells/` directory) and `vault-settings.json`. They do **not** include `{SpellbookVault}/models/` (TinyLlama GGUF and MiniLM embedding files). When you restore a backup, the app restores the DB, then the `spells/` files and settings, then runs a vault integrity check. Existing model files on that machine are left in place. You do not need to rebuild vault spell files from the DB after restore; they are restored directly from the archive. On a new machine you must provision models again (Chat download / Add Local Model, or Library semantic install actions).
 
 ### Vault Maintenance and Integrity
 

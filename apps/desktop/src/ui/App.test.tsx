@@ -3,10 +3,19 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockRejectedValue(new Error("tauri not available")),
 }));
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// The bridge lifecycle test only needs to prove App wires the two public
+// api/llm wrappers into the harness's command bridge -- command behavior
+// itself is already covered by spellbookE2EHarness.test.ts and api/llm.test.ts.
+vi.mock("../api/llm", () => ({
+  searchSpellsSemantic: vi.fn().mockResolvedValue([]),
+  reindexEmbeddings: vi.fn().mockResolvedValue({ total: 0, indexed: 0, skipped: 0, failed: 0 }),
+}));
+
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { reindexEmbeddings, searchSpellsSemantic } from "../api/llm";
 import { useNotifications } from "../store/useNotifications";
 import { useTheme } from "../store/useTheme";
 import App, {
@@ -14,6 +23,7 @@ import App, {
   createVaultStartupWarningModal,
   getThemeAnnouncement,
 } from "./App";
+import { spellbookE2EHarness } from "./spellbookE2EHarness";
 
 function resetThemeState() {
   useTheme.setState({
@@ -24,6 +34,14 @@ function resetThemeState() {
 
 function resetNotifications() {
   useNotifications.setState({ notifications: [] });
+}
+
+function resetLocalMlHarnessState() {
+  window.__IS_PLAYWRIGHT__ = undefined;
+  window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = undefined;
+  window.__SPELLBOOK_E2E_LOCAL_ML_OBSERVATIONS__ = undefined;
+  window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__ = undefined;
+  spellbookE2EHarness.localMl.reset();
 }
 
 function renderAppShell(pathname = "/") {
@@ -151,9 +169,13 @@ describe("App shell", () => {
   beforeEach(() => {
     resetThemeState();
     resetNotifications();
+    resetLocalMlHarnessState();
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    resetLocalMlHarnessState();
+  });
 
   it("renders the navigation and action controls with the standard focus ring pattern", () => {
     renderAppShell();
@@ -293,5 +315,40 @@ describe("App shell", () => {
     expect(screen.getByTestId("theme-announcement-live-region").textContent?.trim()).toBe(
       "Dark mode",
     );
+  });
+
+  it("does not install a local ML command bridge without an explicit scenario", async () => {
+    const { unmount } = renderAppShell();
+
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__).toBeUndefined();
+
+    unmount();
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__).toBeUndefined();
+  });
+
+  it("installs and tears down the local ML command bridge while a scenario is active", async () => {
+    window.__IS_PLAYWRIGHT__ = true;
+    window.__SPELLBOOK_E2E_LOCAL_ML_SCENARIO__ = {
+      llmStatus: { status: "loaded", modelPath: "C:/models/llm.gguf" },
+      embeddingsStatus: { state: "ready" },
+    };
+
+    const { unmount } = renderAppShell();
+
+    const bridge = window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__;
+    expect(bridge).toBeDefined();
+    expect(typeof bridge?.searchSpellsSemantic).toBe("function");
+    expect(typeof bridge?.reindexEmbeddings).toBe("function");
+    expect(typeof bridge?.advanceDownload).toBe("function");
+    expect(typeof bridge?.advanceChat).toBe("function");
+
+    await bridge?.searchSpellsSemantic("test query", 3);
+    expect(searchSpellsSemantic).toHaveBeenCalledWith("test query", 3);
+
+    await bridge?.reindexEmbeddings(true);
+    expect(reindexEmbeddings).toHaveBeenCalledWith(true);
+
+    unmount();
+    expect(window.__SPELLBOOK_E2E_LOCAL_ML_COMMANDS__).toBeUndefined();
   });
 });

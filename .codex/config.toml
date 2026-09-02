@@ -21,7 +21,7 @@ model_reasoning_effort = "high"
 approval_policy = "on-request"
 
 [windows]
-sandbox = "unelevated" # or "elevated
+sandbox = "unelevated" # or "elevated"
 
 ################################################################################
 # Sandbox settings (tables)

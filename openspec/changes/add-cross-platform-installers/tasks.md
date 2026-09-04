@@ -1,7 +1,7 @@
 ## 1. Pre-Build Resource Provisioning
 
 - [x] 1.1 Add script to download platform `vec0` library (sqlite-vec v0.1.6) into `src-tauri/resources/sqlite-vec/`; fail if empty
-- [ ] 1.2 Wire sqlite-vec script into release build pipeline (before `tauri build`)
+- [x] 1.2 Wire sqlite-vec script into release build pipeline (before `tauri build`)
 
 ## 2. Sidecar Bundling
 

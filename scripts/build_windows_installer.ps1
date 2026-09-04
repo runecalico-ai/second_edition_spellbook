@@ -4,19 +4,24 @@
     Builds the Spellbook Windows NSIS installer via Tauri.
 
 .DESCRIPTION
-    Runs `pnpm tauri build --bundles nsis` from apps/desktop and places the
+    Runs `pnpm exec tauri build --bundles nsis` from apps/desktop and places the
     resulting installer under OutputDirectory.
 
-    Tauri always emits NSIS artifacts under
-    src-tauri/target/<profile>/bundle/nsis/. When OutputDirectory differs from
-    that path, the installer file(s) are copied to OutputDirectory after a
-    successful build.
+    Tauri normally emits NSIS artifacts under
+    <cargo-target-dir>/<profile>/bundle/nsis/. This repo sets
+    target-dir = "../../../target" in apps/desktop/src-tauri/.cargo/config.toml,
+    so the default path is target/release/bundle/nsis at the repository root.
+    When that subfolder is missing, the script searches the rest of
+    <cargo-target-dir>/<profile>/bundle/ for installer executables.
+    When OutputDirectory differs from the discovered source path, installer file(s)
+    are copied there after a successful build.
 
 .PARAMETER OutputDirectory
     Directory that will contain the NSIS installer after the build.
-    Defaults to the standard Tauri NSIS bundle path for this repo:
-    apps/desktop/src-tauri/target/release/bundle/nsis
-    (or .../target/debug/bundle/nsis when -Debug is set).
+    Defaults to the Cargo target directory for this repo:
+    target/release/bundle/nsis at the repository root
+    (or target/debug/bundle/nsis when Configuration is Debug).
+    The directory is created if it does not exist.
 
 .PARAMETER Configuration
     Build configuration. Release (default) writes under target/release/bundle/nsis;
@@ -96,21 +101,112 @@ function New-ErrorRecord {
     )
 }
 
+function Ensure-Directory {
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    if (Test-Path -LiteralPath $resolved -PathType Container) {
+        return $resolved
+    }
+
+    if ($PSCmdlet.ShouldProcess($resolved, 'Create directory')) {
+        New-Item -ItemType Directory -Path $resolved -Force | Out-Null
+    }
+
+    return $resolved
+}
+
+function Get-CargoTargetDir {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$RepoRoot,
+
+        [Parameter(Mandatory)]
+        [string]$SrcTauriDir
+    )
+
+    $cargoConfig = Join-Path $SrcTauriDir '.cargo\config.toml'
+    if (-not (Test-Path -LiteralPath $cargoConfig -PathType Leaf)) {
+        return (Join-Path $SrcTauriDir 'target')
+    }
+
+    $configContent = Get-Content -LiteralPath $cargoConfig -Raw
+    if ($configContent -match 'target-dir\s*=\s*"([^"]+)"') {
+        $configuredTarget = $Matches[1]
+        return [System.IO.Path]::GetFullPath((Join-Path $SrcTauriDir $configuredTarget))
+    }
+
+    return (Join-Path $SrcTauriDir 'target')
+}
+
+function Get-NsisInstallerFiles {
+    [CmdletBinding()]
+    [OutputType([System.IO.FileInfo[]])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$BundleRoot,
+
+        [Parameter()]
+        [string]$PreferredNsisDir
+    )
+
+    if (Test-Path -LiteralPath $PreferredNsisDir -PathType Container) {
+        $preferredMatches = @(
+            Get-ChildItem -LiteralPath $PreferredNsisDir -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue
+        )
+        if ($preferredMatches.Count -gt 0) {
+            return $preferredMatches
+        }
+
+        $preferredExeMatches = @(
+            Get-ChildItem -LiteralPath $PreferredNsisDir -Filter '*.exe' -File -ErrorAction SilentlyContinue
+        )
+        if ($preferredExeMatches.Count -gt 0) {
+            return $preferredExeMatches
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $BundleRoot -PathType Container)) {
+        return @()
+    }
+
+    $bundleMatches = @(
+        Get-ChildItem -LiteralPath $BundleRoot -Recurse -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue
+    )
+    if ($bundleMatches.Count -gt 0) {
+        return $bundleMatches
+    }
+
+    return @(
+        Get-ChildItem -LiteralPath $BundleRoot -Recurse -Filter '*.exe' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notmatch '^(spellbook-desktop|.*\.dll\.exe)$' }
+    )
+}
+
 $repoRoot = Get-RepoRoot
 $desktopDir = Join-Path $repoRoot 'apps\desktop'
 $srcTauriDir = Join-Path $desktopDir 'src-tauri'
+$cargoTargetDir = Get-CargoTargetDir -RepoRoot $repoRoot -SrcTauriDir $srcTauriDir
 $isDebugBuild = $Configuration -eq 'Debug'
 $profile = if ($isDebugBuild) { 'debug' } else { 'release' }
-$tauriNsisDir = Join-Path $srcTauriDir "target\$profile\bundle\nsis"
+$bundleRoot = Join-Path $cargoTargetDir "$profile\bundle"
+$tauriNsisDir = Join-Path $bundleRoot 'nsis'
 
 if (-not $PSBoundParameters.ContainsKey('OutputDirectory') -or [string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = $tauriNsisDir
 }
 
-$OutputDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
-
 Write-Verbose "Repository root: $repoRoot"
 Write-Verbose "Desktop app directory: $desktopDir"
+Write-Verbose "Cargo target directory: $cargoTargetDir"
+Write-Verbose "Tauri bundle root: $bundleRoot"
 Write-Verbose "Tauri NSIS output: $tauriNsisDir"
 Write-Verbose "Requested OutputDirectory: $OutputDirectory"
 
@@ -134,6 +230,8 @@ if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
     )
 }
 
+$OutputDirectory = Ensure-Directory -Path $OutputDirectory
+
 $buildLabel = $Configuration.ToLowerInvariant()
 if (-not $PSCmdlet.ShouldProcess($desktopDir, "Build Windows NSIS installer ($buildLabel)")) {
     return
@@ -149,7 +247,25 @@ try {
         }
     }
 
-    $tauriArgs = @('tauri', 'build', '--bundles', 'nsis')
+    $prepareScript = Join-Path $repoRoot 'scripts\prepare_release_bundle.py'
+    Write-Verbose "Running: $prepareScript"
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $python) {
+        $venvPython = Join-Path $repoRoot '.venv\Scripts\python.exe'
+        if (Test-Path -LiteralPath $venvPython) {
+            $pythonPath = $venvPython
+        } else {
+            throw 'python is not available on PATH and .venv\\Scripts\\python.exe was not found.'
+        }
+    } else {
+        $pythonPath = $python.Source
+    }
+    & $pythonPath $prepareScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "prepare_release_bundle.py failed with exit code $LASTEXITCODE"
+    }
+
+    $tauriArgs = @('exec', 'tauri', 'build', '--bundles', 'nsis')
     if ($isDebugBuild) {
         $tauriArgs += '--debug'
     }
@@ -173,55 +289,39 @@ finally {
     Pop-Location
 }
 
-if (-not (Test-Path -LiteralPath $tauriNsisDir -PathType Container)) {
+$builtInstallers = @(Get-NsisInstallerFiles -BundleRoot $bundleRoot -PreferredNsisDir $tauriNsisDir)
+if ($builtInstallers.Count -eq 0) {
+    $searchedPaths = @($tauriNsisDir, $bundleRoot) -join '; '
     $PSCmdlet.ThrowTerminatingError(
         (New-ErrorRecord `
-            -Exception ([System.IO.DirectoryNotFoundException]::new("Tauri NSIS output directory was not created: $tauriNsisDir")) `
-            -ErrorId 'NsisOutputMissing' `
-            -Category ObjectNotFound `
-            -TargetObject $tauriNsisDir)
-    )
-}
-
-$builtInstallers = @(Get-ChildItem -LiteralPath $tauriNsisDir -Filter '*-setup.exe' -File -ErrorAction Stop)
-if ($builtInstallers.Count -eq 0) {
-    # Fall back to any .exe Tauri may have emitted in the NSIS folder.
-    $builtInstallers = @(Get-ChildItem -LiteralPath $tauriNsisDir -Filter '*.exe' -File -ErrorAction Stop)
-}
-
-if ($builtInstallers.Count -eq 0) {
-    $PSCmdlet.ThrowTerminatingError(
-        (New-ErrorRecord `
-            -Exception ([System.IO.FileNotFoundException]::new("No NSIS installer (.exe) found in $tauriNsisDir")) `
+            -Exception ([System.IO.FileNotFoundException]::new(
+                "No NSIS installer (.exe) found after build. Searched: $searchedPaths. " +
+                'Ensure NSIS is installed and `pnpm exec tauri build --bundles nsis` completed successfully.'
+            )) `
             -ErrorId 'InstallerExeMissing' `
             -Category ObjectNotFound `
-            -TargetObject $tauriNsisDir)
+            -TargetObject $bundleRoot)
     )
 }
 
-if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
-    if ($PSCmdlet.ShouldProcess($OutputDirectory, 'Create output directory')) {
-        New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
-    }
-}
-
-$tauriResolved = (Resolve-Path -LiteralPath $tauriNsisDir).Path
-$outputResolved = (Resolve-Path -LiteralPath $OutputDirectory).Path
-$sameDirectory = [string]::Equals($tauriResolved, $outputResolved, [System.StringComparison]::OrdinalIgnoreCase)
+$outputResolved = Ensure-Directory -Path $OutputDirectory
 
 $resultFiles = @()
-foreach ($installer in $builtInstallers) {
+foreach ($installer in ($builtInstallers | Sort-Object -Property FullName -Unique)) {
+    $installerDir = (Resolve-Path -LiteralPath $installer.DirectoryName).Path
+    $sameDirectory = [string]::Equals($installerDir, $outputResolved, [System.StringComparison]::OrdinalIgnoreCase)
+
     if ($sameDirectory) {
         $resultFiles += $installer
         continue
     }
 
-    $destination = Join-Path $OutputDirectory $installer.Name
+    $destination = Join-Path $outputResolved $installer.Name
     if ($PSCmdlet.ShouldProcess($destination, "Copy installer from $($installer.FullName)")) {
         Copy-Item -LiteralPath $installer.FullName -Destination $destination -Force
         $resultFiles += Get-Item -LiteralPath $destination
     }
 }
 
-Write-Verbose ("Installer(s) available in: {0}" -f $OutputDirectory)
+Write-Verbose ("Installer(s) available in: {0}" -f $outputResolved)
 $resultFiles | Write-Output

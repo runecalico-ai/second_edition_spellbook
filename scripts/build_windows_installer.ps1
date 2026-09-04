@@ -146,6 +146,62 @@ function Get-CargoTargetDir {
     return (Join-Path $SrcTauriDir 'target')
 }
 
+function Test-UsablePythonInterpreterPath {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if ($Path -like '*\WindowsApps\*') {
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+
+    $item = Get-Item -LiteralPath $Path
+    return ($item.Length -gt 0)
+}
+
+function Get-PythonForReleaseBuild {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$RepoRoot
+    )
+
+    $venvPython = Join-Path $RepoRoot '.venv\Scripts\python.exe'
+    $pythonPath = $null
+
+    if (Test-UsablePythonInterpreterPath -Path $venvPython) {
+        $pythonPath = $venvPython
+        Write-Verbose "Using venv Python: $pythonPath"
+    }
+    else {
+        $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($pythonCmd -and -not [string]::IsNullOrWhiteSpace($pythonCmd.Source) -and
+            (Test-UsablePythonInterpreterPath -Path $pythonCmd.Source)) {
+            $pythonPath = $pythonCmd.Source
+            Write-Verbose "Using PATH Python: $pythonPath"
+        }
+    }
+
+    if (-not $pythonPath) {
+        throw 'python was not found: .venv\Scripts\python.exe is missing or not a real interpreter, and no usable python is on PATH (Windows Store aliases are ignored).'
+    }
+
+    & $pythonPath -c 'import sys; raise SystemExit(0)'
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python interpreter failed a sanity check (exit code $LASTEXITCODE): $pythonPath"
+    }
+
+    return $pythonPath
+}
+
 function Get-NsisInstallerFiles {
     [CmdletBinding()]
     [OutputType([System.IO.FileInfo[]])]
@@ -157,19 +213,12 @@ function Get-NsisInstallerFiles {
         [string]$PreferredNsisDir
     )
 
-    if (Test-Path -LiteralPath $PreferredNsisDir -PathType Container) {
+    if ($PreferredNsisDir -and (Test-Path -LiteralPath $PreferredNsisDir -PathType Container)) {
         $preferredMatches = @(
             Get-ChildItem -LiteralPath $PreferredNsisDir -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue
         )
         if ($preferredMatches.Count -gt 0) {
             return $preferredMatches
-        }
-
-        $preferredExeMatches = @(
-            Get-ChildItem -LiteralPath $PreferredNsisDir -Filter '*.exe' -File -ErrorAction SilentlyContinue
-        )
-        if ($preferredExeMatches.Count -gt 0) {
-            return $preferredExeMatches
         }
     }
 
@@ -177,16 +226,8 @@ function Get-NsisInstallerFiles {
         return @()
     }
 
-    $bundleMatches = @(
-        Get-ChildItem -LiteralPath $BundleRoot -Recurse -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue
-    )
-    if ($bundleMatches.Count -gt 0) {
-        return $bundleMatches
-    }
-
     return @(
-        Get-ChildItem -LiteralPath $BundleRoot -Recurse -Filter '*.exe' -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -notmatch '^(spellbook-desktop|.*\.dll\.exe)$' }
+        Get-ChildItem -LiteralPath $BundleRoot -Recurse -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue
     )
 }
 
@@ -248,18 +289,11 @@ try {
     }
 
     $prepareScript = Join-Path $repoRoot 'scripts\prepare_release_bundle.py'
-    Write-Verbose "Running: $prepareScript"
-    $python = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $python) {
-        $venvPython = Join-Path $repoRoot '.venv\Scripts\python.exe'
-        if (Test-Path -LiteralPath $venvPython) {
-            $pythonPath = $venvPython
-        } else {
-            throw 'python is not available on PATH and .venv\\Scripts\\python.exe was not found.'
-        }
-    } else {
-        $pythonPath = $python.Source
+    if (-not (Test-Path -LiteralPath $prepareScript -PathType Leaf)) {
+        throw "prepare_release_bundle.py not found: $prepareScript"
     }
+    Write-Verbose "Running: $prepareScript"
+    $pythonPath = Get-PythonForReleaseBuild -RepoRoot $repoRoot
     & $pythonPath $prepareScript
     if ($LASTEXITCODE -ne 0) {
         throw "prepare_release_bundle.py failed with exit code $LASTEXITCODE"
@@ -295,7 +329,7 @@ if ($builtInstallers.Count -eq 0) {
     $PSCmdlet.ThrowTerminatingError(
         (New-ErrorRecord `
             -Exception ([System.IO.FileNotFoundException]::new(
-                "No NSIS installer (.exe) found after build. Searched: $searchedPaths. " +
+                "No NSIS installer (*-setup.exe) found after build. Searched: $searchedPaths. " +
                 'Ensure NSIS is installed and `pnpm exec tauri build --bundles nsis` completed successfully.'
             )) `
             -ErrorId 'InstallerExeMissing' `

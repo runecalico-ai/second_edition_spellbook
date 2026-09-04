@@ -5,7 +5,7 @@
 
 ## 2. Sidecar Bundling
 
-- [ ] 2.1 Audit sidecar runtime deps; confirm `pdfminer.six` and `python-docx` ship in frozen binary
+- [x] 2.1 Audit sidecar runtime deps; confirm `pdfminer.six` and `python-docx` ship in frozen binary
 - [ ] 2.2 Add PyInstaller spec and build script under `services/ml/` producing `spellbook-sidecar-{target-triple}` with Python 3.14
 - [ ] 2.3 Register sidecar in `tauri.conf.json` `bundle.externalBin` under `src-tauri/binaries/`
 - [ ] 2.4 Update `sidecar/client.rs`: probe for bundled binary via `current_exe().parent()`; dev fallback to script+venv when absent

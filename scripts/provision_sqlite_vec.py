@@ -9,6 +9,7 @@ import platform
 import sys
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -70,7 +71,11 @@ def stage_library(dest: Path, version: str, os_platform: str, arch: str) -> Path
     lib = library_name(os_platform)
     with tempfile.TemporaryDirectory() as tmp:
         archive_path = Path(tmp) / asset_name(version, os_platform, arch)
-        urllib.request.urlretrieve(url, archive_path)
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:
+                archive_path.write_bytes(response.read())
+        except (urllib.error.URLError, TimeoutError, urllib.error.HTTPError) as exc:
+            raise SystemExit(f"Failed to download sqlite-vec from {url}: {exc}") from exc
         with tarfile.open(archive_path, "r:gz") as tar:
             tar.extractall(path=tmp, filter="data")
         extracted = Path(tmp) / lib

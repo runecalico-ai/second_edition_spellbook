@@ -65,3 +65,7 @@ desktop.ini
 # MemPalace per-project files (issue #185)
 mempalace.yaml
 entities.json
+
+apps/desktop/src-tauri/resources/sqlite-vec/vec0.dll
+apps/desktop/src-tauri/resources/sqlite-vec/vec0.so
+apps/desktop/src-tauri/resources/sqlite-vec/vec0.dylib

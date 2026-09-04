@@ -90,6 +90,9 @@ jobs:
         working-directory: services/ml
         run: .venv/bin/python -m pytest
 
+      - name: Unit tests (release scripts)
+        run: services/ml/.venv/bin/python -m pytest scripts/test_provision_sqlite_vec.py
+
       - name: Install system dependencies (Rust)
         run: |
           sudo apt-get update

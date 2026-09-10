@@ -25,3 +25,10 @@ Transitive wheels (`charset-normalizer`, `lxml`, `cryptography`, etc.) are pulle
 - `pytest`
 - `ruff`
 - TinyLlama / MiniLM model files
+
+## Dependency provenance
+
+- Why: freeze `spellbook_sidecar.py` for Tauri `externalBin` (no existing freezer in-repo)
+- pyinstaller 6.22.2 from PyPI — https://pypi.org/project/pyinstaller/6.22.2/ — upstream https://github.com/pyinstaller/pyinstaller — verified via https://pyinstaller.org/en/stable/installation.html
+- pyinstaller-hooks-contrib 2026.7 from PyPI — required companion; resolved by `pip install pyinstaller==6.22.2` then `pip show`
+- Human approval: 2026-09-03 for `pyinstaller==6.22.2`

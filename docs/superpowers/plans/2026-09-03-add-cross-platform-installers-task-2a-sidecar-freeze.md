@@ -1,15 +1,15 @@
-# Cross-Platform Installers Task 2a Sidecar Freeze Implementation Plan
+﻿# Cross-Platform Installers Task 2a Sidecar Freeze Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Complete OpenSpec items 2.1–2.3 for `add-cross-platform-installers` by confirming freeze inputs (`pdfminer.six`, `python-docx`), adding a PyInstaller-backed freeze after Dependency Security approval, and registering `bundle.externalBin` as `binaries/spellbook-sidecar`.
+**Goal:** Complete OpenSpec items 2.1â€“2.3 for `add-cross-platform-installers` by confirming freeze inputs (`pdfminer.six`, `python-docx`), adding a PyInstaller-backed freeze after Dependency Security approval, and registering `bundle.externalBin` as `binaries/spellbook-sidecar`.
 
 **Architecture:** One-file console binary named `spellbook-sidecar` from `services/ml/spellbook_sidecar.py`. Copy/rename to `apps/desktop/src-tauri/binaries/spellbook-sidecar-<rustc-host-tuple>[.exe]`. Register `externalBin` only in `tauri.release.conf.json` so `pnpm tauri:dev` does not require a freeze. Installer scripts pass `--config src-tauri/tauri.release.conf.json`. Tauri strips the target-triple suffix at install time and places the binary next to `spellbook-desktop`. Runtime spawn is Task 2b.
 
 **Tech Stack:** Python 3.14, PyPI package **`pyinstaller`** (canonical name from https://pyinstaller.org/en/stable/installation.html and https://pypi.org/project/pyinstaller/), pin **`pyinstaller==6.22.2`** (changelog 2026-08-17) plus matching **`pyinstaller-hooks-contrib`**, Tauri v2 `externalBin`.
 
 **OpenSpec change:** `add-cross-platform-installers`  
-**Task group:** 2.1–2.3  
+**Task group:** 2.1â€“2.3  
 **Depends on:** Task group 1  
 **Unblocks:** Task 2b (resolution + wiring freeze into `prepare_release_bundle.py`)  
 **Sibling plans:**
@@ -29,7 +29,7 @@
 - Host tuple: `rustc --print host-tuple`, with fallback parse of `host:` from `rustc -vV`. v1 Windows must be `x86_64-pc-windows-msvc`; v1 Linux must be `x86_64-unknown-linux-gnu`. Fail the freeze script on any other triple.
 - OpenSpec 2.2 requires the freeze **build script under `services/ml/`**: implement `services/ml/build_sidecar.py` (not `scripts/freeze_sidecar.py`).
 - Install PyInstaller only into a venv (repo-root `.venv` locally; `services/ml/.venv` in CI), never system pip.
-- Do not rewrite delta specs. Flip only 2.1–2.3 in `tasks.md`.
+- Do not rewrite delta specs. Flip only 2.1â€“2.3 in `tasks.md`.
 - ML models stay out of this binary and out of the installer.
 
 ## Spec coverage map
@@ -52,7 +52,7 @@
 | `apps/desktop/src-tauri/tauri.release.conf.json` | Create: `externalBin` only |
 | `apps/desktop/src-tauri/binaries/.gitkeep` | Create |
 | `.gitignore` | Modify: ignore frozen binaries |
-| `openspec/changes/add-cross-platform-installers/tasks.md` | Flip 2.1–2.3 |
+| `openspec/changes/add-cross-platform-installers/tasks.md` | Flip 2.1â€“2.3 |
 
 ---
 
@@ -66,7 +66,7 @@
 - Consumes: `services/ml/requirements.txt` (`pdfminer.six>=20231228`, `python-docx>=1.1.0`), `spellbook_sidecar.py` imports
 - Produces: documented hiddenimports list used verbatim in Task 2's `.spec`
 
-- [ ] **Step 1: Confirm declared vs imported deps**
+- [x] **Step 1: Confirm declared vs imported deps**
 
 `services/ml/requirements.txt` already lists:
 
@@ -83,7 +83,7 @@ pytest>=8.3.4
 
 Export path uses stdlib only. `pytest` must **not** be collected into the frozen binary.
 
-- [ ] **Step 2: Write the freeze audit document**
+- [x] **Step 2: Write the freeze audit document**
 
 Create `services/ml/SIDECAR_FREEZE.md` with this content (do not invent extra runtime libraries):
 
@@ -117,7 +117,7 @@ Transitive wheels (`charset-normalizer`, `lxml`, `cryptography`, etc.) are pulle
 - TinyLlama / MiniLM model files
 ```
 
-- [ ] **Step 3: Mark OpenSpec 2.1 complete**
+- [x] **Step 3: Mark OpenSpec 2.1 complete**
 
 From:
 
@@ -131,7 +131,7 @@ To:
 - [x] 2.1 Audit sidecar runtime deps; confirm `pdfminer.six` and `python-docx` ship in frozen binary
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add services/ml/SIDECAR_FREEZE.md openspec/changes/add-cross-platform-installers/tasks.md
@@ -158,7 +158,7 @@ EOF
 - Consumes: audit hiddenimports from Task 1; Python 3.14 venv with runtime requirements installed
 - Produces: `build_sidecar.host_tuple() -> str`, `build_sidecar.binary_filename(host_tuple: str, windows: bool) -> str` returning `spellbook-sidecar-x86_64-pc-windows-msvc.exe` or `spellbook-sidecar-x86_64-unknown-linux-gnu`; writes that file under `apps/desktop/src-tauri/binaries/`
 
-- [x] **Step 1: Dependency Security gate — APPROVED 2026-09-03**
+- [x] **Step 1: Dependency Security gate â€” APPROVED 2026-09-03**
 
 Gate is closed. Do not re-ask for approval unless the pin changes.
 
@@ -169,7 +169,7 @@ Gate is closed. Do not re-ask for approval unless the pin changes.
 - Resolved hooks pin: `pyinstaller-hooks-contrib==2026.7` (installed with 6.22.2; PyInstaller requires `pyinstaller-hooks-contrib>=2026.6`).
 - Manifest: both pins already written to `services/ml/requirements-dev.txt`.
 
-- [ ] **Step 2: Write failing tests for naming helpers**
+- [x] **Step 2: Write failing tests for naming helpers**
 
 Create `services/ml/tests/test_build_sidecar.py`:
 
@@ -209,7 +209,7 @@ def test_allowed_triples() -> None:
 
 Pytest collects this automatically with `working-directory: services/ml` in CI. Add an empty `services/ml/tests/conftest.py` path hook only if import fails; prefer putting `sys.path.insert(0, str(Path(__file__).resolve().parents[1]))` at the top of the test file so `import build_sidecar` works.
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 ```powershell
 .\.venv\Scripts\python -m pytest services\ml\tests\test_build_sidecar.py -v
@@ -232,8 +232,8 @@ When creating `services/ml/SIDECAR_FREEZE.md` in Task 1 / remaining Task 2 steps
 ## Dependency provenance
 
 - Why: freeze `spellbook_sidecar.py` for Tauri `externalBin` (no existing freezer in-repo)
-- pyinstaller 6.22.2 from PyPI — https://pypi.org/project/pyinstaller/6.22.2/ — upstream https://github.com/pyinstaller/pyinstaller — verified via https://pyinstaller.org/en/stable/installation.html
-- pyinstaller-hooks-contrib 2026.7 from PyPI — required companion; resolved by `pip install pyinstaller==6.22.2` then `pip show`
+- pyinstaller 6.22.2 from PyPI â€” https://pypi.org/project/pyinstaller/6.22.2/ â€” upstream https://github.com/pyinstaller/pyinstaller â€” verified via https://pyinstaller.org/en/stable/installation.html
+- pyinstaller-hooks-contrib 2026.7 from PyPI â€” required companion; resolved by `pip install pyinstaller==6.22.2` then `pip show`
 - Human approval: 2026-09-03 for `pyinstaller==6.22.2`
 ```
 
@@ -243,7 +243,7 @@ Install into the repo-root venv when implementing the freeze:
 .\.venv\Scripts\pip install -r services\ml\requirements.txt -r services\ml\requirements-dev.txt
 ```
 
-- [ ] **Step 5: Add the spec file**
+- [x] **Step 5: Add the spec file**
 
 Create `services/ml/spellbook_sidecar.spec`:
 
@@ -294,7 +294,7 @@ exe = EXE(
 )
 ```
 
-- [ ] **Step 6: Implement `services/ml/build_sidecar.py`**
+- [x] **Step 6: Implement `services/ml/build_sidecar.py`**
 
 ```python
 #!/usr/bin/env python3
@@ -391,7 +391,7 @@ if __name__ == "__main__":
 
 Root `.gitignore` already ignores `dist/` and `build/`, which covers `services/ml/dist` and `services/ml/build`.
 
-- [ ] **Step 7: Run unit tests, then freeze once**
+- [x] **Step 7: Run unit tests, then freeze once**
 
 ```powershell
 .\.venv\Scripts\python -m pytest services\ml\tests\test_build_sidecar.py -v
@@ -412,13 +412,13 @@ $bin = Get-ChildItem apps\desktop\src-tauri\binaries\spellbook-sidecar-*.exe | S
 '{"jsonrpc":"2.0","id":1,"method":"import","params":{"files":[]}}' | & $bin.FullName
 ```
 
-Expected: JSON with `"result"` (empty import is valid) or a structured `"error"` — **not** a Python traceback about missing `pdfminer`.
+Expected: JSON with `"result"` (empty import is valid) or a structured `"error"` â€” **not** a Python traceback about missing `pdfminer`.
 
-- [ ] **Step 8: Extend CI script tests**
+- [x] **Step 8: Extend CI script tests**
 
 Do not add a second pytest path in `ci.yml` for this file; `pytest` under `services/ml` already picks up `tests/test_build_sidecar.py`. Keep the existing `scripts/test_provision_sqlite_vec.py` CI step from Task group 1.
 
-- [ ] **Step 9: Mark OpenSpec 2.2 complete**
+- [x] **Step 9: Mark OpenSpec 2.2 complete**
 
 From:
 
@@ -432,7 +432,7 @@ To:
 - [x] 2.2 Add PyInstaller spec and build script under `services/ml/` producing `spellbook-sidecar-{target-triple}` with Python 3.14
 ```
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add services/ml/requirements-dev.txt services/ml/spellbook_sidecar.spec services/ml/build_sidecar.py services/ml/tests/test_build_sidecar.py services/ml/SIDECAR_FREEZE.md openspec/changes/add-cross-platform-installers/tasks.md
@@ -460,7 +460,7 @@ EOF
 
 Grill lock: `pnpm tauri:dev` must start with no `binaries/spellbook-sidecar-*` files. If the CLI errors that the sidecar is missing, you merged `externalBin` into the wrong config.
 
-- [ ] **Step 1: Ignore generated binaries, keep the directory**
+- [x] **Step 1: Ignore generated binaries, keep the directory**
 
 Create `apps/desktop/src-tauri/binaries/.gitkeep`.
 
@@ -471,7 +471,7 @@ apps/desktop/src-tauri/binaries/spellbook-sidecar-*
 !apps/desktop/src-tauri/binaries/.gitkeep
 ```
 
-- [ ] **Step 2: Add the release overlay**
+- [x] **Step 2: Add the release overlay**
 
 Create `apps/desktop/src-tauri/tauri.release.conf.json`:
 
@@ -485,11 +485,11 @@ Create `apps/desktop/src-tauri/tauri.release.conf.json`:
 
 Do not add `externalBin` to `tauri.conf.json`. Do not set `bundle.targets` in this plan (Task group 3).
 
-- [ ] **Step 3: Confirm `tauri dev` still boots without a freeze**
+- [x] **Step 3: Confirm `tauri dev` still boots without a freeze**
 
-From `apps/desktop`, with **no** `src-tauri/binaries/spellbook-sidecar-*` present, run `pnpm tauri:dev` until the window appears, then stop. If it fails on a missing sidecar, fix the overlay split — do not freeze for every developer.
+From `apps/desktop`, with **no** `src-tauri/binaries/spellbook-sidecar-*` present, run `pnpm tauri:dev` until the window appears, then stop. If it fails on a missing sidecar, fix the overlay split â€” do not freeze for every developer.
 
-- [ ] **Step 4: Mark OpenSpec 2.3 complete**
+- [x] **Step 4: Mark OpenSpec 2.3 complete**
 
 The overlay is how release builds satisfy `bundle.externalBin`. Flip 2.3 after the overlay exists and `tauri:dev` works without the binary.
 
@@ -505,7 +505,7 @@ To:
 - [x] 2.3 Register sidecar in `tauri.conf.json` `bundle.externalBin` under `src-tauri/binaries/`
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/tauri.release.conf.json apps/desktop/src-tauri/binaries/.gitkeep .gitignore openspec/changes/add-cross-platform-installers/tasks.md

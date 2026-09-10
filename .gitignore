@@ -69,3 +69,6 @@ entities.json
 apps/desktop/src-tauri/resources/sqlite-vec/vec0.dll
 apps/desktop/src-tauri/resources/sqlite-vec/vec0.so
 apps/desktop/src-tauri/resources/sqlite-vec/vec0.dylib
+
+apps/desktop/src-tauri/binaries/spellbook-sidecar-*
+!apps/desktop/src-tauri/binaries/.gitkeep

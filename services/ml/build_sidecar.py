@@ -59,10 +59,18 @@ def binary_filename(tuple_name: str, windows: bool) -> str:
     return f"spellbook-sidecar-{tuple_name}{suffix}"
 
 
+def require_python_314(version_info: tuple[int, ...] = sys.version_info) -> None:
+    if version_info[:2] != (3, 14):
+        raise SystemExit(
+            f"sidecar freeze requires Python 3.14, got {version_info[0]}.{version_info[1]}"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-pyinstaller", action="store_true")
     args = parser.parse_args()
+    require_python_314()
     BINARIES_DIR.mkdir(parents=True, exist_ok=True)
     windows = sys.platform == "win32"
     dest = BINARIES_DIR / binary_filename(host_tuple(), windows)

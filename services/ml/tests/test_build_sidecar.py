@@ -5,7 +5,23 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from build_sidecar import ALLOWED_HOST_TUPLES, binary_filename, host_tuple_from_rustc_output
+import pytest
+
+from build_sidecar import (
+    ALLOWED_HOST_TUPLES,
+    binary_filename,
+    host_tuple_from_rustc_output,
+    require_python_314,
+)
+
+
+def test_require_python_314_rejects_other_versions() -> None:
+    with pytest.raises(SystemExit, match="sidecar freeze requires Python 3.14"):
+        require_python_314((3, 12, 0))
+
+
+def test_require_python_314_accepts_314() -> None:
+    require_python_314((3, 14, 4))
 
 
 def test_windows_filename() -> None:

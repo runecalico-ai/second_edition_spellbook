@@ -9,7 +9,7 @@
 - [x] 2.2 Add PyInstaller spec and build script under `services/ml/` producing `spellbook-sidecar-{target-triple}` with Python 3.14
 - [x] 2.3 Register sidecar in `tauri.conf.json` `bundle.externalBin` under `src-tauri/binaries/`
 - [x] 2.4 Update `sidecar/client.rs`: probe for bundled binary via `current_exe().parent()`; dev fallback to script+venv when absent
-- [ ] 2.5 Wire sidecar freeze step into pre-build script invoked by release workflow and local release docs
+- [x] 2.5 Wire sidecar freeze step into pre-build script invoked by release workflow and local release docs
 
 ## 3. Tauri Bundle Configuration
 

@@ -18,15 +18,24 @@ def run_provision_sqlite_vec() -> None:
         raise SystemExit(completed.returncode)
 
 
+def run_freeze_sidecar() -> None:
+    script = REPO_ROOT / "services" / "ml" / "build_sidecar.py"
+    completed = subprocess.run([sys.executable, str(script)], check=False)
+    if completed.returncode != 0:
+        raise SystemExit(completed.returncode)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--skip-sidecar",
         action="store_true",
-        help="Reserved: sidecar freeze is added in task group 2.",
+        help="Skip sidecar freeze after sqlite-vec staging.",
     )
-    parser.parse_args()
+    args = parser.parse_args()
     run_provision_sqlite_vec()
+    if not args.skip_sidecar:
+        run_freeze_sidecar()
     return 0
 
 

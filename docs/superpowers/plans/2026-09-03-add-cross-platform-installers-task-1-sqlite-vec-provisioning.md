@@ -64,7 +64,7 @@
 - Consumes: none
 - Produces: `provision_sqlite_vec.asset_name(version: str, platform: str, arch: str) -> str`, `provision_sqlite_vec.download_url(...) -> str`, `provision_sqlite_vec.library_name(platform: str) -> str`, `provision_sqlite_vec.ensure_populated(dest: Path) -> Path` (raises `SystemExit` / returns after writing `vec0.*`), CLI `python scripts/provision_sqlite_vec.py --dest <dir>`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `scripts/test_provision_sqlite_vec.py`:
 
@@ -118,7 +118,7 @@ def test_ensure_populated_ok_when_library_present(tmp_path: Path) -> None:
     assert ensure_populated(dest) == dest / "vec0.dll"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 From repository root, with the existing venv that already has pytest:
 
@@ -134,7 +134,7 @@ On Windows with repo-root `.venv`:
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'provision_sqlite_vec'` (or file not found).
 
-- [ ] **Step 3: Write the provisioner**
+- [x] **Step 3: Write the provisioner**
 
 Create `scripts/provision_sqlite_vec.py` (stdlib only). Put the test import path next to the script by running pytest with `scripts/` as cwd, **or** add `sys.path` in the test file:
 
@@ -259,7 +259,7 @@ if __name__ == "__main__":
 
 If the local Python is older than 3.12, drop `filter="data"` from `extractall`. CI and the spec use Python **3.14**, so keep the filter.
 
-- [ ] **Step 4: Create the resources placeholder and gitignore**
+- [x] **Step 4: Create the resources placeholder and gitignore**
 
 Create empty `apps/desktop/src-tauri/resources/sqlite-vec/.gitkeep`.
 
@@ -271,7 +271,7 @@ apps/desktop/src-tauri/resources/sqlite-vec/vec0.so
 apps/desktop/src-tauri/resources/sqlite-vec/vec0.dylib
 ```
 
-- [ ] **Step 5: Add script tests to PR CI without bundling**
+- [x] **Step 5: Add script tests to PR CI without bundling**
 
 In `.github/workflows/ci.yml`, after the existing Python unit tests step, add:
 
@@ -282,7 +282,7 @@ In `.github/workflows/ci.yml`, after the existing Python unit tests step, add:
 
 Do **not** add `tauri build` to `ci.yml`.
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 ```powershell
 .\.venv\Scripts\python -m pytest scripts\test_provision_sqlite_vec.py -v
@@ -310,7 +310,7 @@ New-Item -ItemType Directory -Force tmp-empty-vec | Out-Null
 
 Expected: non-zero exit and message `sqlite-vec resource directory is empty`.
 
-- [ ] **Step 7: Mark OpenSpec 1.1 complete**
+- [x] **Step 7: Mark OpenSpec 1.1 complete**
 
 In `openspec/changes/add-cross-platform-installers/tasks.md`, change only:
 
@@ -328,7 +328,7 @@ To:
 
 Leave 1.2 unchecked.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add scripts/provision_sqlite_vec.py scripts/test_provision_sqlite_vec.py apps/desktop/src-tauri/resources/sqlite-vec/.gitkeep .gitignore .github/workflows/ci.yml openspec/changes/add-cross-platform-installers/tasks.md
@@ -353,7 +353,7 @@ EOF
 - Consumes: `scripts/provision_sqlite_vec.py` CLI (`--dest` optional)
 - Produces: `scripts/prepare_release_bundle.py` with `main()` that currently only provisions sqlite-vec; later Task 2b adds sidecar freeze here. Exit non-zero if provisioner fails.
 
-- [ ] **Step 1: Write the orchestrator**
+- [x] **Step 1: Write the orchestrator**
 
 Create `scripts/prepare_release_bundle.py`:
 
@@ -396,7 +396,7 @@ if __name__ == "__main__":
 
 Keep `--skip-sidecar` as a no-op so Task 2b can implement it without renaming flags.
 
-- [ ] **Step 2: Call the orchestrator from the Windows installer helper**
+- [x] **Step 2: Call the orchestrator from the Windows installer helper**
 
 In `scripts/build_windows_installer.ps1`, inside the `Push-Location` `try` block, **after** optional `pnpm install` and **before** `$tauriArgs`:
 
@@ -426,7 +426,7 @@ In `scripts/build_windows_installer.ps1`, inside the `Push-Location` `try` block
     & $pythonPath $prepareScript
 ```
 
-- [ ] **Step 3: Smoke the wiring without a full Tauri compile (optional fast path)**
+- [x] **Step 3: Smoke the wiring without a full Tauri compile (optional fast path)**
 
 ```powershell
 .\.venv\Scripts\python scripts\prepare_release_bundle.py
@@ -436,7 +436,7 @@ Expected: download or reuse `vec0.dll` / `vec0.so`; exit 0.
 
 Do not require a full NSIS compile in this plan (that is Task group 4).
 
-- [ ] **Step 4: Mark OpenSpec 1.2 complete**
+- [x] **Step 4: Mark OpenSpec 1.2 complete**
 
 From:
 
@@ -450,7 +450,7 @@ To:
 - [x] 1.2 Wire sqlite-vec script into release build pipeline (before `tauri build`)
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/prepare_release_bundle.py scripts/build_windows_installer.ps1 openspec/changes/add-cross-platform-installers/tasks.md

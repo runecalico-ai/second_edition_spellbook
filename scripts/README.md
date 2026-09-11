@@ -10,9 +10,9 @@ Build a local NSIS installer with:
 .\scripts\build_windows_installer.ps1
 ```
 
-Default output (Tauri's standard NSIS path):
+Default output (this repo's Cargo `target-dir`):
 
-`apps/desktop/src-tauri/target/release/bundle/nsis/`
+`target/release/bundle/nsis/` at the repository root
 
 Copy the installer elsewhere:
 

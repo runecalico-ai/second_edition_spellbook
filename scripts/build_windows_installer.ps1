@@ -8,11 +8,14 @@
     from apps/desktop and places the resulting installer under OutputDirectory.
 
     Tauri normally emits NSIS artifacts under
-    <cargo-target-dir>/<profile>/bundle/nsis/. This repo sets
-    target-dir = "../../../target" in apps/desktop/src-tauri/.cargo/config.toml,
-    so the default path is target/release/bundle/nsis at the repository root.
+    <cargo-target-dir>/<profile>/bundle/nsis/. A non-empty CARGO_TARGET_DIR
+    environment variable is used first; otherwise this repo's
+    target-dir = "../../../target" in apps/desktop/src-tauri/.cargo/config.toml
+    resolves to target/release/bundle/nsis at the repository root.
     When that subfolder is missing, the script searches the rest of
     <cargo-target-dir>/<profile>/bundle/ for installer executables.
+    Among matching *-setup.exe files, the newest LastWriteTime wins so a
+    stale preferred-dir copy is not reported after a redirected Cargo build.
     When OutputDirectory differs from the discovered source path, installer file(s)
     are copied there after a successful build.
 
@@ -63,6 +66,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+. (Join-Path $PSScriptRoot 'windows_installer_paths.ps1')
 
 function Get-RepoRoot {
     [CmdletBinding()]
@@ -121,31 +126,6 @@ function Ensure-Directory {
     return $resolved
 }
 
-function Get-CargoTargetDir {
-    [CmdletBinding()]
-    [OutputType([string])]
-    param(
-        [Parameter(Mandatory)]
-        [string]$RepoRoot,
-
-        [Parameter(Mandatory)]
-        [string]$SrcTauriDir
-    )
-
-    $cargoConfig = Join-Path $SrcTauriDir '.cargo\config.toml'
-    if (-not (Test-Path -LiteralPath $cargoConfig -PathType Leaf)) {
-        return (Join-Path $SrcTauriDir 'target')
-    }
-
-    $configContent = Get-Content -LiteralPath $cargoConfig -Raw
-    if ($configContent -match 'target-dir\s*=\s*"([^"]+)"') {
-        $configuredTarget = $Matches[1]
-        return [System.IO.Path]::GetFullPath((Join-Path $SrcTauriDir $configuredTarget))
-    }
-
-    return (Join-Path $SrcTauriDir 'target')
-}
-
 function Test-UsablePythonInterpreterPath {
     [CmdletBinding()]
     [OutputType([bool])]
@@ -200,35 +180,6 @@ function Get-PythonForReleaseBuild {
     }
 
     return $pythonPath
-}
-
-function Get-NsisInstallerFiles {
-    [CmdletBinding()]
-    [OutputType([System.IO.FileInfo[]])]
-    param(
-        [Parameter(Mandatory)]
-        [string]$BundleRoot,
-
-        [Parameter()]
-        [string]$PreferredNsisDir
-    )
-
-    if ($PreferredNsisDir -and (Test-Path -LiteralPath $PreferredNsisDir -PathType Container)) {
-        $preferredMatches = @(
-            Get-ChildItem -LiteralPath $PreferredNsisDir -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue
-        )
-        if ($preferredMatches.Count -gt 0) {
-            return $preferredMatches
-        }
-    }
-
-    if (-not (Test-Path -LiteralPath $BundleRoot -PathType Container)) {
-        return @()
-    }
-
-    return @(
-        Get-ChildItem -LiteralPath $BundleRoot -Recurse -Filter '*-setup.exe' -File -ErrorAction SilentlyContinue
-    )
 }
 
 $repoRoot = Get-RepoRoot
@@ -305,6 +256,7 @@ try {
     }
 
     Write-Verbose ("Running: pnpm {0}" -f ($tauriArgs -join ' '))
+    $installerWrittenAfter = (Get-Date).AddSeconds(-2)
     & pnpm @tauriArgs
     if ($LASTEXITCODE -ne 0) {
         throw "pnpm tauri build failed with exit code $LASTEXITCODE"
@@ -323,7 +275,12 @@ finally {
     Pop-Location
 }
 
-$builtInstallers = @(Get-NsisInstallerFiles -BundleRoot $bundleRoot -PreferredNsisDir $tauriNsisDir)
+$builtInstallers = @(
+    Get-NsisInstallerFiles `
+        -BundleRoot $bundleRoot `
+        -PreferredNsisDir $tauriNsisDir `
+        -MustBeWrittenAfter $installerWrittenAfter
+)
 if ($builtInstallers.Count -eq 0) {
     $searchedPaths = @($tauriNsisDir, $bundleRoot) -join '; '
     $PSCmdlet.ThrowTerminatingError(

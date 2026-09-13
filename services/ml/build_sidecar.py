@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parent
@@ -16,6 +18,8 @@ ALLOWED_HOST_TUPLES = {
     "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
 }
+RUNTIME_MODULES = ("pdfminer.high_level", "docx")
+RUNTIME_PACKAGES = ("pdfminer.six>=20231228", "python-docx>=1.1.0")
 
 
 def host_tuple_from_rustc_output(raw: str) -> str:
@@ -66,6 +70,54 @@ def require_python_314(version_info: tuple[int, ...] = sys.version_info) -> None
         )
 
 
+def _missing_runtime_imports(
+    importer: Callable[[str], object] | None = None,
+) -> list[str]:
+    load = importer or importlib.import_module
+    missing: list[str] = []
+    for name in RUNTIME_MODULES:
+        try:
+            load(name)
+        except ImportError:
+            missing.append(name)
+    return missing
+
+
+def require_runtime_imports(
+    importer: Callable[[str], object] | None = None,
+) -> None:
+    missing = _missing_runtime_imports(importer)
+    if missing:
+        raise SystemExit(
+            "sidecar freeze requires "
+            + ", ".join(missing)
+            + "; install pdfminer.six and python-docx into the freeze interpreter "
+            "(hiddenimports cannot bundle wheels that were never installed)"
+        )
+
+
+def install_runtime_packages(packages: tuple[str, ...] = RUNTIME_PACKAGES) -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "pip", "install", *packages],
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise SystemExit(
+            f"failed to install freeze runtime packages {', '.join(packages)}"
+        )
+    importlib.invalidate_caches()
+
+
+def ensure_runtime_packages(
+    importer: Callable[[str], object] | None = None,
+    installer: Callable[[tuple[str, ...]], None] | None = None,
+) -> None:
+    if _missing_runtime_imports(importer):
+        install = installer or install_runtime_packages
+        install(RUNTIME_PACKAGES)
+    require_runtime_imports(importer=importer)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-pyinstaller", action="store_true")
@@ -75,6 +127,7 @@ def main() -> int:
     windows = sys.platform == "win32"
     dest = BINARIES_DIR / binary_filename(host_tuple(), windows)
     if not args.skip_pyinstaller:
+        ensure_runtime_packages()
         spec = ML_DIR / "spellbook_sidecar.spec"
         completed = subprocess.run(
             [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)],

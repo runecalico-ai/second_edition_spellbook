@@ -42,25 +42,55 @@ fn sqlite_vec_candidate_paths(data_dir: &Path) -> Vec<PathBuf> {
     names.into_iter().map(|name| data_dir.join(name)).collect()
 }
 
+fn sqlite_vec_paths_under_root(root: &Path) -> [PathBuf; 2] {
+    let lib = sqlite_vec_library_name();
+    [
+        root.join("sqlite-vec").join(lib),
+        root.join("resources").join("sqlite-vec").join(lib),
+    ]
+}
+
+fn sqlite_vec_bundled_source_candidates(
+    resource_dir: Option<&Path>,
+    exe_dir: Option<&Path>,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(dir) = resource_dir {
+        candidates.extend(sqlite_vec_paths_under_root(dir));
+    }
+    if let Some(dir) = exe_dir {
+        candidates.extend(sqlite_vec_paths_under_root(dir));
+    }
+    candidates
+}
+
+fn current_exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+}
+
 fn install_sqlite_vec_if_needed(
     data_dir: &Path,
     resource_dir: Option<&Path>,
+    exe_dir: Option<&Path>,
 ) -> Result<Option<PathBuf>, AppError> {
     let destination = data_dir.join(sqlite_vec_library_name());
     if destination.exists() {
         return Ok(Some(destination));
     }
 
-    let resource_dir = match resource_dir {
-        Some(dir) => dir,
-        None => return Ok(None),
-    };
-    let candidate = resource_dir
-        .join("sqlite-vec")
-        .join(sqlite_vec_library_name());
-    if !candidate.exists() {
+    let Some(candidate) = sqlite_vec_bundled_source_candidates(resource_dir, exe_dir)
+        .into_iter()
+        .find(|path| path.exists())
+    else {
+        warn!(
+            resource_dir = ?resource_dir,
+            exe_dir = ?exe_dir,
+            "sqlite-vec: no bundled library found in candidate paths"
+        );
         return Ok(None);
-    }
+    };
 
     fs::create_dir_all(data_dir)?;
     fs::copy(&candidate, &destination).map_err(|e| {
@@ -112,7 +142,8 @@ fn try_load_sqlite_vec(conn: &Connection, data_dir: &Path) {
 
 pub fn init_db(resource_dir: Option<&Path>, run_backfill: bool) -> Result<Pool, AppError> {
     let data_dir = app_data_dir()?;
-    let _ = install_sqlite_vec_if_needed(&data_dir, resource_dir)?;
+    let exe_dir = current_exe_dir();
+    let _ = install_sqlite_vec_if_needed(&data_dir, resource_dir, exe_dir.as_deref())?;
     let db_path = data_dir.join("spellbook.sqlite3");
     let data_dir_for_conn = data_dir.clone();
     let manager = SqliteConnectionManager::file(&db_path).with_init(move |conn| {
@@ -131,4 +162,124 @@ pub fn init_db(resource_dir: Option<&Path>, run_backfill: bool) -> Result<Pool, 
         }
     }
     Ok(pool)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn write_dummy_library(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create dummy library parent");
+        }
+        fs::write(path, b"fake-sqlite-vec").expect("write dummy library");
+    }
+
+    #[test]
+    fn install_sqlite_vec_copies_from_nsis_resources_layout() {
+        let tmp = tempdir().expect("temp dir");
+        let install_root = tmp.path().join("Spellbook");
+        let data_dir = tmp.path().join("vault");
+        fs::create_dir_all(&data_dir).expect("create vault");
+
+        let bundled = install_root
+            .join("resources")
+            .join("sqlite-vec")
+            .join(sqlite_vec_library_name());
+        write_dummy_library(&bundled);
+
+        let copied = install_sqlite_vec_if_needed(&data_dir, Some(&install_root), None)
+            .expect("install should not error")
+            .expect("NSIS resources/sqlite-vec layout should copy into the vault");
+
+        let destination = data_dir.join(sqlite_vec_library_name());
+        assert_eq!(copied, destination);
+        assert_eq!(
+            fs::read(&destination).expect("read copied library"),
+            b"fake-sqlite-vec"
+        );
+    }
+
+    #[test]
+    fn install_sqlite_vec_leaves_existing_destination_in_place() {
+        let tmp = tempdir().expect("temp dir");
+        let resource_dir = tmp.path().join("Spellbook");
+        let data_dir = tmp.path().join("vault");
+        fs::create_dir_all(&data_dir).expect("create vault");
+
+        let destination = data_dir.join(sqlite_vec_library_name());
+        fs::write(&destination, b"already-installed").expect("seed destination");
+
+        let bundled = resource_dir
+            .join("sqlite-vec")
+            .join(sqlite_vec_library_name());
+        write_dummy_library(&bundled);
+
+        let result = install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir), None)
+            .expect("install should not error")
+            .expect("existing destination should be returned");
+
+        assert_eq!(result, destination);
+        assert_eq!(
+            fs::read(&destination).expect("read destination"),
+            b"already-installed"
+        );
+    }
+
+    #[test]
+    fn install_sqlite_vec_returns_none_when_candidates_missing() {
+        let tmp = tempdir().expect("temp dir");
+        let resource_dir = tmp.path().join("Spellbook");
+        let data_dir = tmp.path().join("vault");
+        fs::create_dir_all(&resource_dir).expect("create install root");
+        fs::create_dir_all(&data_dir).expect("create vault");
+
+        let result = install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir), None)
+            .expect("missing candidates should not panic");
+        assert_eq!(result, None);
+        assert!(
+            !data_dir.join(sqlite_vec_library_name()).exists(),
+            "vault should not gain a library when no bundled candidate exists"
+        );
+    }
+
+    #[test]
+    fn install_sqlite_vec_copies_from_exe_dir_resources_layout() {
+        let tmp = tempdir().expect("temp dir");
+        let exe_dir = tmp.path().join("install");
+        let data_dir = tmp.path().join("vault");
+        fs::create_dir_all(&data_dir).expect("create vault");
+
+        let bundled = exe_dir
+            .join("resources")
+            .join("sqlite-vec")
+            .join(sqlite_vec_library_name());
+        write_dummy_library(&bundled);
+
+        let copied = install_sqlite_vec_if_needed(&data_dir, None, Some(&exe_dir))
+            .expect("install should not error")
+            .expect("exe-dir resources/sqlite-vec layout should copy into the vault");
+
+        let destination = data_dir.join(sqlite_vec_library_name());
+        assert_eq!(copied, destination);
+        assert_eq!(
+            fs::read(&destination).expect("read copied library"),
+            b"fake-sqlite-vec"
+        );
+    }
+
+    #[test]
+    fn sqlite_vec_bundled_source_candidates_include_nsis_and_exe_layouts() {
+        let resource_dir = Path::new("Spellbook");
+        let exe_dir = Path::new("install");
+        let lib = sqlite_vec_library_name();
+        let candidates = sqlite_vec_bundled_source_candidates(Some(resource_dir), Some(exe_dir));
+
+        assert!(candidates.contains(&resource_dir.join("sqlite-vec").join(lib)));
+        assert!(candidates.contains(&resource_dir.join("resources").join("sqlite-vec").join(lib)));
+        assert!(candidates.contains(&exe_dir.join("sqlite-vec").join(lib)));
+        assert!(candidates.contains(&exe_dir.join("resources").join("sqlite-vec").join(lib)));
+    }
 }

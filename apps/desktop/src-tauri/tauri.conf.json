@@ -11,6 +11,7 @@
     "devUrl": "http://127.0.0.1:5173"
   },
   "bundle": {
+    "targets": ["nsis", "appimage", "deb"],
     "resources": ["resources/sqlite-vec/*"],
     "windows": {
       "nsis": {

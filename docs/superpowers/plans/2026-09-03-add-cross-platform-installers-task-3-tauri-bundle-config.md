@@ -61,7 +61,7 @@
 
 Tauri v2 ignores OS-inappropriate targets on the host (NSIS on Linux is skipped; AppImage on Windows is skipped). Explicit list still documents intent and prevents default `"all"` from enabling RPM/macOS later by accident.
 
-- [ ] **Step 1: Set targets**
+- [x] **Step 1: Set targets**
 
 In `apps/desktop/src-tauri/tauri.conf.json`, `bundle` must include:
 
@@ -71,7 +71,7 @@ In `apps/desktop/src-tauri/tauri.conf.json`, `bundle` must include:
 
 Place it as the first key inside `bundle` for readability. Keep `resources`, `externalBin`, and `windows.nsis.installerHooks`.
 
-- [ ] **Step 2: Mark OpenSpec 3.1 complete**
+- [x] **Step 2: Mark OpenSpec 3.1 complete**
 
 From:
 
@@ -85,7 +85,7 @@ To:
 - [x] 3.1 Set `bundle.targets` for Windows (`nsis`) and Linux (`appimage`, `deb`) in `tauri.conf.json`
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/tauri.conf.json openspec/changes/add-cross-platform-installers/tasks.md
@@ -115,7 +115,7 @@ EOF
 - Consumes: a committed ≥256px PNG. v1 production icon is that committed set (navy `#1e3a5f` generated via `tauri icon` is acceptable). Branded artwork may replace the same filenames later without a spec change.
 - Produces: committed icon files; release builds fail if `icons/icon.png` is missing
 
-- [ ] **Step 1: Generate the icon set**
+- [x] **Step 1: Generate the icon set**
 
 From `apps/desktop`:
 
@@ -127,7 +127,7 @@ If `icon.png` does not exist yet, create a 1024×1024 source first. Preferred: m
 
 Do not leave the 1×1 bytes currently embedded in `build.rs` as the committed `icon.png`.
 
-- [ ] **Step 2: Point Tauri at the icons**
+- [x] **Step 2: Point Tauri at the icons**
 
 Add to `bundle` in `tauri.conf.json`:
 
@@ -142,7 +142,7 @@ Add to `bundle` in `tauri.conf.json`:
 
 If `tauri icon` also wrote `icons/icon.icns`, include it in the array. Missing icns is fine for v1 (no macOS target).
 
-- [ ] **Step 3: Gate placeholder generation**
+- [x] **Step 3: Gate placeholder generation**
 
 In `apps/desktop/src-tauri/build.rs`, keep dist-dir creation and the Windows manifest. Change icon generation so **release** never writes 1×1 files:
 
@@ -188,7 +188,7 @@ In `apps/desktop/src-tauri/build.rs`, keep dist-dir creation and the Windows man
 
 Because production icons are committed, local `cargo test` still works. A clean tree without icons fails **release** compiles.
 
-- [ ] **Step 4: Verify icon.png is not 1×1**
+- [x] **Step 4: Verify icon.png is not 1×1**
 
 PowerShell:
 
@@ -201,7 +201,7 @@ $img.Dispose()
 
 Expected: width and height **≥ 32** (prefer ≥ 256).
 
-- [ ] **Step 5: Mark OpenSpec 3.2 complete**
+- [x] **Step 5: Mark OpenSpec 3.2 complete**
 
 From:
 
@@ -215,7 +215,7 @@ To:
 - [x] 3.2 Replace placeholder icons with production assets; gate placeholder generation in `build.rs` to dev-only
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/icons apps/desktop/src-tauri/build.rs apps/desktop/src-tauri/tauri.conf.json openspec/changes/add-cross-platform-installers/tasks.md
@@ -255,11 +255,11 @@ Required file contents (must still match):
 
 Required config value: `"installerHooks": "installer/vcredist-check.nsh"`.
 
-- [ ] **Step 1: Verify hook is warning-only**
+- [x] **Step 1: Verify hook is warning-only**
 
 Confirm there is **no** `Abort` after the `MessageBox`. Confirm `tauri.conf.json` still points at this file after Tasks 1–2.
 
-- [ ] **Step 2: Mark OpenSpec 3.3 complete**
+- [x] **Step 2: Mark OpenSpec 3.3 complete**
 
 From:
 
@@ -273,7 +273,7 @@ To:
 - [x] 3.3 Confirm NSIS hook `installer/vcredist-check.nsh` still applies (non-blocking warning)
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add openspec/changes/add-cross-platform-installers/tasks.md
@@ -299,7 +299,7 @@ If the hook file itself had to be restored, include it in the same commit.
 - Consumes: Tauri CLI already on `devDependencies`
 - Produces: `tauri:build:win` → `tauri build --bundles nsis --config src-tauri/tauri.release.conf.json`; `tauri:build:linux` → `tauri build --bundles appimage,deb --config src-tauri/tauri.release.conf.json`; also update `"tauri:build"` to pass the same `--config` so a generic release build still embeds the sidecar.
 
-- [ ] **Step 1: Add scripts**
+- [x] **Step 1: Add scripts**
 
 In `apps/desktop/package.json` `scripts`:
 
@@ -313,7 +313,7 @@ Leave `"tauri:dev": "tauri dev"` **without** `--config` so it uses `tauri.conf.j
 
 In `scripts/build_windows_installer.ps1`, change the tauri args from `--bundles nsis` to also pass `--config src-tauri/tauri.release.conf.json` (working directory is already `apps/desktop`).
 
-- [ ] **Step 2: Mark OpenSpec 3.4 complete**
+- [x] **Step 2: Mark OpenSpec 3.4 complete**
 
 From:
 
@@ -327,7 +327,7 @@ To:
 - [x] 3.4 Add npm scripts `tauri:build:win` and `tauri:build:linux`
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/desktop/package.json scripts/build_windows_installer.ps1 openspec/changes/add-cross-platform-installers/tasks.md

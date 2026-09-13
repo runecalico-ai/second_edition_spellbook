@@ -53,4 +53,59 @@ Python exists on PATH (`C:\users\vitki\AppData\Local\Python\bin\python.exe`) but
 
 ### OpenSpec 4.1
 
-Not flipped. Required bar is app start + markdown import + HTML PDF-export + vec0 after first launch. vec0 copy on an unmodified installed launch failed.
+Not flipped after this first pass. Required bar is app start + markdown import + HTML PDF-export + vec0 after first launch. vec0 copy on an unmodified installed launch failed. Commit `4a57b80` overclaimed that sidecar and sqlite-vec already worked without a checkout; 4.1 remained open.
+
+### Re-smoke after packaging fixes
+
+- Date: 2026-09-13 (afternoon; after `3273880` / `b23b7c0` / `f8bfd90` / `3b8bf4b`)
+- Host OS: Windows 11 (win32 10.0.26200), `IsAdmin=False`
+- Installer filename: `Spellbook_0.1.0_x64-setup.exe`
+- Installer path used: `C:\WINDOWS\TEMP\cursor-sandbox-cache\ade67fc429fe2d13a05b78582153dcff\cargo-target\release\bundle\nsis\Spellbook_0.1.0_x64-setup.exe` (printed by `build_windows_installer.ps1`; copied only that file to `%TEMP%\spellbook-task4-nsis-iter2\`)
+- Installer size: 39,396,346 bytes
+- Installer SHA256: `9D729C3AE278058D67B36C456B87E396DE348C6AFB455CAAF55EF98D80B5ACFC`
+- Installer LastWriteTime: 2026-09-13 15:10:35
+- Frozen sidecar staged for this bundle: `apps\desktop\src-tauri\binaries\spellbook-sidecar-x86_64-pc-windows-msvc.exe` 25,788,805 bytes (first-pass freeze was 9,598,002 bytes without pdfminer/docx wheels)
+- Start Menu launch: yes
+- Markdown import: yes
+- DOCX import: yes
+- PDF import (pdfminer): yes
+- PDF export is HTML: yes
+- `%APPDATA%/SpellbookVault/vec0.dll` present after unmodified launch: yes
+- Notes:
+
+#### F4 (4a57b80 overclaim)
+
+Commit `4a57b80` body said the bundled sidecar and sqlite-vec resources work without a checkout. That original smoke **failed** DOCX import (`python-docx not installed`), PDF import (`pdfminer.six not installed`), and vec0 copy on an unmodified launch. 4.1 stayed open. This subsection is the incomplete-then-re-smoked gate: first pass recorded as a fail above; this rebuild/re-smoke is a separate pass.
+
+#### Rebuild
+
+- `.\.venv\Scripts\python.exe scripts\prepare_release_bundle.py` then `.\scripts\build_windows_installer.ps1 -SkipInstall` (exit 0). `CARGO_TARGET_DIR` was `C:\WINDOWS\TEMP\cursor-sandbox-cache\ade67fc429fe2d13a05b78582153dcff\cargo-target`; the PS1 reported that NSIS path (not the stale repo-root 14MB `target\release\bundle\nsis\` file).
+- Freeze installed `pdfminer.six` / `python-docx` into the venv interpreter and processed `hook-pdfminer.py` / `hook-docx.py` (no “Hidden import not found”).
+
+#### Install
+
+- Uninstalled previous current-user Spellbook (`%LOCALAPPDATA%\Spellbook\uninstall.exe /S`, exit 0). HKCU uninstall key gone; Start Menu shortcut gone.
+- Deleted `%APPDATA%\SpellbookVault\vec0.dll` **before** launch (it existed from the first-pass diagnostic `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` override).
+- **F7 non-silent attempt:** ran the copied `setup.exe` **without** `/S`. Process `Spellbook_0.1.0_x64-setup.exe` PID 20772 stayed alive ~76s with `MainWindowTitle=Spellbook Setup` (NSIS wizard). Install dir never appeared. No SmartScreen window was observed; no VC++ MessageBox was observed (the wizard never progressed). This agent could not click the wizard. Killed the process. **Did not click through SmartScreen.**
+- Fallback silent install: `setup.exe /S` (exit 0). Actual `InstallLocation` (HKCU): `C:\Users\vitki\AppData\Local\Spellbook` (not Program Files; Program Files and Program Files (x86) Spellbook dirs absent). Installed `spellbook-desktop.exe` 60,417,024 bytes; `spellbook-sidecar.exe` 25,788,805 bytes; `resources\sqlite-vec\vec0.dll` 278,016 bytes. Start Menu: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Spellbook.lnk`.
+- Task 3 payload grep must search `%LOCALAPPDATA%\Spellbook` as well as Program Files. Silent `/S` still skips SmartScreen and the VC++ MessageBox; F7 remains open.
+
+#### F6 Start Menu launch (not a constructed exe path)
+
+- Resolved `.lnk` target via `WScript.Shell`: `C:\Users\vitki\AppData\Local\Spellbook\spellbook-desktop.exe`, working directory the install dir. Launched the shortcut itself. `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` was unset/empty.
+- After GUI up: `spellbook-desktop.exe` PID 7024, `ExecutablePath`/`ImagePath` = `C:\Users\vitki\AppData\Local\Spellbook\spellbook-desktop.exe`, `MainWindowTitle=Spellbook`. In-app file-picker import was not driven (no UI automation for the Tauri WebView).
+- After 45s unmodified launch, `%APPDATA%\SpellbookVault\vec0.dll` existed (278,016 bytes). This is **not** an override pass.
+
+#### Sidecar JSON-RPC (installed exe only, after GUI up)
+
+Fixtures under `%TEMP%\spellbook-task4-smoke-iter2\`. Driven on stdin of installed `spellbook-sidecar.exe` (25,788,805 bytes). Repo `services\ml\spellbook_sidecar.py` was not used to parse.
+
+- **Markdown (no BOM):** yes. `test-spell-nobom.md` → `result.spells[0].name=Test Spell`, `level=1`, `conflicts=[]`.
+- **Markdown (UTF-8 BOM):** yes. `test-spell-bom.md` → same name/level, `conflicts=[]` (BOM stripped from `_raw_text`).
+- **DOCX:** yes. Minimal OOXML `.docx` → `conflicts=[]`, description contains `Fireball` / `Level: 3` (no `python-docx not installed`).
+- **PDF import:** yes. Minimal PDF fixture → `conflicts=[]`, description `Magic Missile Level: 1 A magic dart.` (no `pdfminer.six not installed`).
+- **PDF export is HTML:** yes. `method=export` `format=pdf` returned `"format": "html"`, path `spellbook_export_*.html` (1,397 bytes), note `Print-optimized HTML generated. Use browser 'Print to PDF' for PDF output.` File starts with `<!doctype html>`.
+
+#### OpenSpec 4.1 (re-smoke)
+
+Flipped to `[x]`. Bar met: Start Menu start yes, markdown import yes, PDF export HTML yes, vec0.dll present after unmodified launch, and DOCX/PDF import also yes after the freeze fix.

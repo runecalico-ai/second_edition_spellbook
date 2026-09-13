@@ -88,7 +88,19 @@ Commit `4a57b80` body said the bundled sidecar and sqlite-vec resources work wit
 - Deleted `%APPDATA%\SpellbookVault\vec0.dll` **before** launch (it existed from the first-pass diagnostic `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` override).
 - **F7 non-silent attempt:** ran the copied `setup.exe` **without** `/S`. Process `Spellbook_0.1.0_x64-setup.exe` PID 20772 stayed alive ~76s with `MainWindowTitle=Spellbook Setup` (NSIS wizard). Install dir never appeared. No SmartScreen window was observed; no VC++ MessageBox was observed (the wizard never progressed). This agent could not click the wizard. Killed the process. **Did not click through SmartScreen.**
 - Fallback silent install: `setup.exe /S` (exit 0). Actual `InstallLocation` (HKCU): `C:\Users\vitki\AppData\Local\Spellbook` (not Program Files; Program Files and Program Files (x86) Spellbook dirs absent). Installed `spellbook-desktop.exe` 60,417,024 bytes; `spellbook-sidecar.exe` 25,788,805 bytes; `resources\sqlite-vec\vec0.dll` 278,016 bytes. Start Menu: `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Spellbook.lnk`.
-- Task 3 payload grep must search `%LOCALAPPDATA%\Spellbook` as well as Program Files. Silent `/S` still skips SmartScreen and the VC++ MessageBox; F7 remains open.
+- Task 3 payload grep must search `%LOCALAPPDATA%\Spellbook` as well as Program Files. Silent `/S` skipped SmartScreen and the VC++ MessageBox; F7 was still open after that fallback (resolved in the re-drive below).
+
+#### F7 non-silent wizard (re-drive; resolved)
+
+- Date: 2026-09-13 15:32–15:49 (same host, same installer SHA256 `9D729C3AE278058D67B36C456B87E396DE348C6AFB455CAAF55EF98D80B5ACFC`)
+- Wizard completed without `/S`: **yes**
+- SmartScreen: shown **no**, clicked **no** (local TEMP copy; no “Windows protected your PC” window)
+- VC++ MessageBox: shown **no** (PREINSTALL hook did not fire; VC++ runtime already present)
+- Window titles observed (NSIS `#32770`): `Spellbook Setup` with pages **Welcome to Spellbook Setup** → **Choose Install Location** (`C:\Users\vitki\AppData\Local\Spellbook`, 82.5 MB) → **Installing** (extract `spellbook-desktop.exe` / `spellbook-sidecar.exe`) → **Installation Complete** (“Setup was completed successfully.”) → **Finish**
+- Drive method: started `Spellbook_0.1.0_x64-setup.exe` with no `/S` (PID 19760). First UIA `Invoke` pass failed (`Operation is not valid` / `Hot key is already registered`) and also produced a transient `Windows cannot find ' C:\Users\vitki\AppData\Local\Spellbook\spellbook-desktop.exe '` OK dialog (leading space in the path; not SmartScreen; not clicked as Run anyway). Same non-silent PID 19760 was then driven with Win32 `BM_CLICK` + mouse click on `&Next >` / `Finish`. Setup process exited after Finish (15:48:55).
+- HKCU after Finish: `DisplayName=Spellbook`, `InstallLocation="C:\Users\vitki\AppData\Local\Spellbook"`. `uninstall.exe` LastWriteTime 2026-09-13 15:43:40 (written during this interactive extract).
+- App start after Finish: `spellbook-desktop.exe` PID 13092, path `C:\Users\vitki\AppData\Local\Spellbook\spellbook-desktop.exe`, `MainWindowTitle=Spellbook`. A second constructed-path launch (PID 17928) also showed title `Spellbook`.
+- OpenSpec 4.1 was already `[x]`; not flipped.
 
 #### F6 Start Menu launch (not a constructed exe path)
 

@@ -59,7 +59,7 @@
   - `pub(crate) fn resolve_sidecar_command(exe_dir: Option<&Path>) -> Result<SidecarCommand, AppError>`
   - `call_sidecar` still `pub async fn call_sidecar(method: &str, params: serde_json::Value) -> Result<serde_json::Value, AppError>`
 
-- [ ] **Step 1: Write failing unit tests in `client.rs`**
+- [x] **Step 1: Write failing unit tests in `client.rs`**
 
 Append to `apps/desktop/src-tauri/src/sidecar/client.rs`:
 
@@ -135,7 +135,7 @@ mod tests {
 
 The last test requires a checkout of `services/ml/spellbook_sidecar.py` (true in this repo). If `CARGO_MANIFEST_DIR` layout changes, it should still resolve via `sidecar_path()`.
 
-- [ ] **Step 2: Run the new tests and confirm they fail**
+- [x] **Step 2: Run the new tests and confirm they fail**
 
 ```powershell
 cd apps\desktop\src-tauri
@@ -144,7 +144,7 @@ cargo test --lib sidecar::client::tests -- --nocapture
 
 Expected: FAIL with unresolved names `bundled_sidecar_path` / `resolve_sidecar_command` / `SidecarCommand`.
 
-- [ ] **Step 3: Implement resolution**
+- [x] **Step 3: Implement resolution**
 
 Replace the top of `client.rs` so `call_sidecar` uses `resolve_sidecar_command`. Keep `sidecar_path` and `python_command`, and extend `python_command` venv candidates.
 
@@ -268,7 +268,7 @@ pub async fn call_sidecar(
 
 Paste the existing request/response handling from the current `call_sidecar` (lines 61–109 of today's `client.rs`) after spawn. Do not change JSON-RPC `id: 1` or error mapping.
 
-- [ ] **Step 4: Run tests and clippy**
+- [x] **Step 4: Run tests and clippy**
 
 ```powershell
 cd apps\desktop\src-tauri
@@ -278,7 +278,7 @@ cargo clippy -- -D warnings
 
 Expected: PASS / no clippy warnings. `resolve_falls_back_when_bundle_missing` must pass from a developer checkout.
 
-- [ ] **Step 5: Mark OpenSpec 2.4 complete**
+- [x] **Step 5: Mark OpenSpec 2.4 complete**
 
 From:
 
@@ -292,7 +292,7 @@ To:
 - [x] 2.4 Update `sidecar/client.rs`: probe for bundled binary via `current_exe().parent()`; dev fallback to script+venv when absent
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/desktop/src-tauri/src/sidecar/client.rs openspec/changes/add-cross-platform-installers/tasks.md
@@ -316,7 +316,7 @@ EOF
 - Consumes: `services/ml/build_sidecar.py` (Task 2a), `scripts/provision_sqlite_vec.py` (Task 1)
 - Produces: `prepare_release_bundle.py --skip-sidecar` skips freeze; default path runs sqlite-vec **then** `services/ml/build_sidecar.py`. Local NSIS helper already invokes this orchestrator.
 
-- [ ] **Step 1: Extend `scripts/prepare_release_bundle.py`**
+- [x] **Step 1: Extend `scripts/prepare_release_bundle.py`**
 
 Replace `main` / add `run_freeze_sidecar`:
 
@@ -338,7 +338,7 @@ def main() -> int:
     return 0
 ```
 
-- [ ] **Step 2: Verify CLI**
+- [x] **Step 2: Verify CLI**
 
 ```powershell
 .\.venv\Scripts\python scripts\prepare_release_bundle.py --skip-sidecar
@@ -354,7 +354,7 @@ Full freeze (slow):
 
 Expected: `vec0.*` present and `apps/desktop/src-tauri/binaries/spellbook-sidecar-<tuple>.exe` present; exit 0.
 
-- [ ] **Step 3: Mark OpenSpec 2.5 complete**
+- [x] **Step 3: Mark OpenSpec 2.5 complete**
 
 From:
 
@@ -368,7 +368,7 @@ To:
 - [x] 2.5 Wire sidecar freeze step into pre-build script invoked by release workflow and local release docs
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts/prepare_release_bundle.py openspec/changes/add-cross-platform-installers/tasks.md

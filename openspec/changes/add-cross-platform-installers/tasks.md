@@ -14,7 +14,7 @@
 ## 3. Tauri Bundle Configuration
 
 - [x] 3.1 Set `bundle.targets` for Windows (`nsis`) and Linux (`appimage`, `deb`) in `tauri.conf.json`
-- [ ] 3.2 Replace placeholder icons with production assets; gate placeholder generation in `build.rs` to dev-only
+- [x] 3.2 Replace placeholder icons with production assets; gate placeholder generation in `build.rs` to dev-only
 - [ ] 3.3 Confirm NSIS hook `installer/vcredist-check.nsh` still applies (non-blocking warning)
 - [ ] 3.4 Add npm scripts `tauri:build:win` and `tauri:build:linux`
 

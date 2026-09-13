@@ -4,8 +4,8 @@
     Builds the Spellbook Windows NSIS installer via Tauri.
 
 .DESCRIPTION
-    Runs `pnpm exec tauri build --bundles nsis` from apps/desktop and places the
-    resulting installer under OutputDirectory.
+    Runs `pnpm exec tauri build --bundles nsis --config src-tauri/tauri.release.conf.json`
+    from apps/desktop and places the resulting installer under OutputDirectory.
 
     Tauri normally emits NSIS artifacts under
     <cargo-target-dir>/<profile>/bundle/nsis/. This repo sets
@@ -299,7 +299,7 @@ try {
         throw "prepare_release_bundle.py failed with exit code $LASTEXITCODE"
     }
 
-    $tauriArgs = @('exec', 'tauri', 'build', '--bundles', 'nsis')
+    $tauriArgs = @('exec', 'tauri', 'build', '--bundles', 'nsis', '--config', 'src-tauri/tauri.release.conf.json')
     if ($isDebugBuild) {
         $tauriArgs += '--debug'
     }
@@ -330,7 +330,7 @@ if ($builtInstallers.Count -eq 0) {
         (New-ErrorRecord `
             -Exception ([System.IO.FileNotFoundException]::new(
                 "No NSIS installer (*-setup.exe) found after build. Searched: $searchedPaths. " +
-                'Ensure NSIS is installed and `pnpm exec tauri build --bundles nsis` completed successfully.'
+                'Ensure NSIS is installed and `pnpm exec tauri build --bundles nsis --config src-tauri/tauri.release.conf.json` completed successfully.'
             )) `
             -ErrorId 'InstallerExeMissing' `
             -Category ObjectNotFound `

@@ -27,6 +27,7 @@
 *.eps  binary
 *.gif  binary
 *.ico  binary
+*.icns binary
 *.jng  binary
 *.jp2  binary
 *.jpg  binary

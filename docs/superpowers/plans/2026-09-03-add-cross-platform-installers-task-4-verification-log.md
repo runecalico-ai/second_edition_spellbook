@@ -172,6 +172,35 @@ Flipped to `[x]`. Bar met: Start Menu start yes, markdown import yes, PDF export
 - MESA/EGL warnings (`failed to get driver name`, `ZINK: failed to choose pdev`, software fallback). App still initialized the DB (migrations 0006–0015) and copied/loaded sqlite-vec. This counts as app start plus vault init; GPU-accelerated WebView was not verified.
 - AppImage `chmod +x` then launched from `/tmp/spellbook-task4-linux/Spellbook_0.1.0_amd64.AppImage`. Also stayed alive (PID 839), also loaded vec0 after a fresh copy. That AppImage copy's size/hash/RUNPATH is recorded in the AppImage vs deb identity subsection below; the original first-launch vault identity remains the deb 147,984 record.
 
+### WSLg GUI
+
+- Date: 2026-10-30 (same Ubuntu-24.04 WSL2 / WSLg host; installed deb `/usr/bin/spellbook-desktop`). T2-F3 re-drive. OpenSpec 4.2 checkbox was **not** changed.
+- Launch: `/usr/bin/spellbook-desktop` as `lvitki`, cwd `/tmp`, `DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0`. `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` unset (no `SPELLBOOK*` env at all). Process PID 394 stayed alive past 20s; stdout still `sqlite-vec: loaded extension path=/home/lvitki/.local/share/SpellbookVault/vec0.so` and migrations version 15.
+- MESA/EGL still falling back. Exact stderr from PID 394:
+
+```
+(spellbook-desktop:394): Gdk-CRITICAL **: 11:06:23.413: gdk_seat_get_keyboard: assertion 'GDK_IS_SEAT (seat)' failed
+libEGL warning: failed to get driver name for fd -1
+
+libEGL warning: MESA-LOADER: failed to retrieve device information
+
+libEGL warning: failed to get driver name for fd -1
+
+MESA: error: ZINK: failed to choose pdev
+libEGL warning: egl: failed to create dri2 screen
+```
+
+- Linux X11 queries did **not** see a named client (Weston/WSLg does not publish `_NET_CLIENT_LIST`):
+  - `wmctrl -l` / `wmctrl -l -x`: `Cannot get client list properties. (_NET_CLIENT_LIST or _WIN_CLIENT_LIST)`. `wmctrl -m` Name=`Weston WM`.
+  - `xdotool search --name Spellbook` and `xdotool search --class spellbook-desktop`: empty at 2s–20s.
+  - `xwininfo -root -tree`: root `0x438`; children only `0x200027 "Weston WM"` 10x10, unnamed `0x200002` 8192x8192, unnamed `0x200001` 10x10. No Spellbook / WebKit / Tauri name. `xprop` WM_CLASS: none (no client id).
+  - `import -window root`: failed (`unable to read X window image 'root': Resource temporarily unavailable`).
+- Window **did** exist on the WSLg RAIL path (this is the GUI proof):
+  - `/mnt/wslg/weston.log`: `appId: spellbook-desktop`, `appDesc: Spellbook (Ubuntu-24.04)`, `appWindowId: 0x2`, `ClientGetAppidReq: ... appId:spellbook-desktop WindowId:0x2`. Desktop file `StartupWMClass=spellbook-desktop`.
+  - Windows `msrdc` PID 18420: `MainWindowTitle=Spellbook (Ubuntu-24.04)`, Win32 class=`RAIL_WINDOW`, hwnd=`0x340980`, visible, 1252x852. In-window title bar: `Spellbook`. Screenshot showed the Spell Library WebView (Library tab, search/filters, “No Spells Yet”, Create Spell / Import Spells).
+- Desktop file also launches: `gtk-launch Spellbook` exit 0 (PID 887) and `gio launch /usr/share/applications/Spellbook.desktop` exit 0 (PID 1074); both repeated the same MESA/ZINK stderr and loaded vec0. Not counted as extra GUI proof beyond the first window.
+- Bound: 4.2 “app starts” on Linux is now process + vault init **and** a visible Spellbook window under WSLg. GPU-accelerated EGL/ZINK still failed; WebView rendered via the MESA fallback path.
+
 ### Sidecar smokes (bundled binary only)
 
 JSON-RPC on stdin of **installed** `/usr/bin/spellbook-sidecar` (and, separately, the AppImage-extracted `squashfs-root/usr/bin/spellbook-sidecar`). Fixtures under `/tmp/spellbook-task4-linux/fixtures/`. Repo `services/ml/spellbook_sidecar.py` and freeze venv were not used to parse. Driver was system Python 3.12.3 for fixture/JSON only.

@@ -21,7 +21,7 @@
 ## 4. Local Release Verification
 
 - [x] 4.1 Build NSIS installer locally on Windows; verify app starts, sidecar import/export, sqlite-vec load without repo checkout
-- [ ] 4.2 Build AppImage and `.deb` on Ubuntu 24.04; verify same smoke checks
+- [x] 4.2 Build AppImage and `.deb` on Ubuntu 24.04; verify same smoke checks
 - [ ] 4.3 Confirm installed app does not bundle model files; provisioning still works post-install
 - [ ] 4.4 Smoke-test LLM chat and semantic search on installed full build
 

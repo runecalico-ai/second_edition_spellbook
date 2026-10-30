@@ -121,3 +121,75 @@ Fixtures under `%TEMP%\spellbook-task4-smoke-iter2\`. Driven on stdin of install
 #### OpenSpec 4.1 (re-smoke)
 
 Flipped to `[x]`. Bar met: Start Menu start yes, markdown import yes, PDF export HTML yes, vec0.dll present after unmodified launch, and DOCX/PDF import also yes after the freeze fix.
+
+## Linux Ubuntu 24.04
+
+- Date: 2026-10-30
+- Distro: Ubuntu 24.04.5 LTS (noble), WSL2 distro name `Ubuntu-24.04` (not `Ubuntu-26.04`)
+- AppImage filename: `Spellbook_0.1.0_amd64.AppImage`
+- deb filename: `Spellbook_0.1.0_amd64.deb`
+- App starts without repo checkout: yes
+- Markdown import: yes
+- DOCX import: yes
+- PDF import: yes
+- PDF export is HTML: yes
+- `~/.local/share/SpellbookVault/vec0.so` present after first launch: yes
+- Notes:
+
+### Toolchain (Linux-native; Windows PATH sanitized)
+
+- Python 3.14.10 via uv (`cpython-3.14-linux-x86_64-gnu`). System `/usr/bin/python3` is 3.12.3 and was **not** used to freeze.
+- Node v24.22.2 (`/usr/bin/node`, NodeSource `node_24.x`)
+- pnpm 10.33.0 (`/usr/bin/pnpm`; corepack latest 12 was rejected)
+- rustc 1.99.1 (58cf8f9c3 2026-10-13), cargo 1.99.1 (5f94df478 2026-08-27), host `x86_64-unknown-linux-gnu`
+- Freeze venv: PyInstaller 6.22.2, pyinstaller-hooks-contrib 2026.7, pdfminer.six 20260107, python-docx 1.2.0. Freeze processed `hook-pdfminer.py` / `hook-docx.py`. No `Hidden import ... not found` lines.
+- Frozen sidecar: `apps/desktop/src-tauri/binaries/spellbook-sidecar-x86_64-unknown-linux-gnu` 31,863,976 bytes.
+
+### Installer build
+
+- Tree copied into WSL ext4 at `/home/lvitki/spellbook-task2-build` from commit `910f717` (`add-cross-platform-installers`). Build did **not** use `/mnt/c` as `CARGO_TARGET_DIR`.
+- `CARGO_TARGET_DIR` unset. `LIBCLANG_PATH` / Windows `CMAKE` unset so bindgen/cmake did not see `C:\Program Files\LLVM`.
+- `python scripts/prepare_release_bundle.py` (venv 3.14) then `cd apps/desktop && pnpm install --frozen-lockfile && pnpm tauri:build:linux`.
+- Artifacts under the clone's repo-root `target/release/bundle/`:
+  - `appimage/Spellbook_0.1.0_amd64.AppImage` 130,398,712 bytes, SHA256 `21788562488409125a7d37de87cadf9a1d833147fe45126bb19cf588787d05c4`
+  - `deb/Spellbook_0.1.0_amd64.deb` 55,965,362 bytes, SHA256 `0f5fb9e8f16dc88ea96a2c9017ce0a9c67ec0820b5d3d0a5caa3fe2657c2fc39`
+- Copies of those two files only were also written back to the Windows checkout `target/release/bundle/{appimage,deb}/` (gitignored).
+
+### Install (no repo checkout)
+
+- Copied **only** the AppImage and `.deb` to `/tmp/spellbook-task4-linux/`. Smokes used that folder and `/usr/bin/*`, not the clone and not `/mnt/c/...`.
+- `apt-get install -y /tmp/spellbook-task4-linux/Spellbook_0.1.0_amd64.deb` as root. Package name `spellbook` 0.1.0.
+- Install paths:
+  - `/usr/bin/spellbook-desktop` 76,432,040 bytes (ELF PIE)
+  - `/usr/bin/spellbook-sidecar` 31,863,976 bytes (target-triple suffix stripped)
+  - `/usr/lib/Spellbook/resources/sqlite-vec/vec0.so` 147,984 bytes
+  - Desktop: `/usr/share/applications/Spellbook.desktop` `Exec=spellbook-desktop`
+- `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` was unset/empty. `SPELLBOOK_DATA_DIR` unset.
+
+### App start
+
+- Launched `/usr/bin/spellbook-desktop` with cwd `/tmp/spellbook-task4-linux` (not `pnpm tauri:dev`, not the repo). `DISPLAY=:0` (WSLg). Process stayed alive (PID 612) until the smoke driver terminated it after vault init.
+- MESA/EGL warnings (`failed to get driver name`, `ZINK: failed to choose pdev`, software fallback). App still initialized the DB (migrations 0006–0015) and copied/loaded sqlite-vec. This counts as app start plus vault init; GPU-accelerated WebView was not verified.
+- AppImage `chmod +x` then launched from `/tmp/spellbook-task4-linux/Spellbook_0.1.0_amd64.AppImage`. Also stayed alive (PID 839), also loaded vec0 after a fresh copy.
+
+### Sidecar smokes (bundled binary only)
+
+JSON-RPC on stdin of **installed** `/usr/bin/spellbook-sidecar` (and, separately, the AppImage-extracted `squashfs-root/usr/bin/spellbook-sidecar`). Fixtures under `/tmp/spellbook-task4-linux/fixtures/`. Repo `services/ml/spellbook_sidecar.py` and freeze venv were not used to parse. Driver was system Python 3.12.3 for fixture/JSON only.
+
+- **Markdown:** yes. UTF-8 no-BOM `test-spell-nobom.md` front matter `name: Test Spell` / `level: 1`. `result.spells[0].name=Test Spell`, `level=1`, `conflicts=[]`.
+- **DOCX:** yes. Minimal OOXML `.docx` → `conflicts=[]`, description contains `Fireball` / `Level: 3` (no `python-docx not installed`).
+- **PDF import:** yes. Minimal PDF fixture → `conflicts=[]`, description `Magic Missile Level: 1 A magic dart.` (no `pdfminer.six not installed`).
+- **PDF export is HTML:** yes. `method=export` `format=pdf` returned `"format": "html"`, path `spellbook_export_*.html`, note `Print-optimized HTML generated. Use browser 'Print to PDF' for PDF output.` File starts with `<!doctype html>` (1,326 bytes on a repeat export through the same installed sidecar).
+
+AppImage-extracted sidecar repeated the same four checks: all yes.
+
+### sqlite-vec / vec0.so
+
+- Vault did not exist before first launch (`~/.local/share/SpellbookVault` absent).
+- Before the installed-deb launch, `vec0.so` was absent. `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` was **not** set.
+- After first `/usr/bin/spellbook-desktop` launch: log `sqlite-vec: loaded extension path=/home/lvitki/.local/share/SpellbookVault/vec0.so`. File size 147,984 bytes, SHA256 `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` (matches bundled `/usr/lib/Spellbook/resources/sqlite-vec/vec0.so`).
+- Probe used production resource/exe-dir candidates, not an env override. `pool.rs` `resources/sqlite-vec/vec0.so` under `/usr/lib/Spellbook` is the layout that copied.
+
+### OpenSpec 4.2
+
+Flipped to `[x]`. Bar met: app start (process alive + vault init) yes, markdown import yes, PDF export HTML yes, vec0.so present after unmodified first launch, and DOCX/PDF import also yes after the freeze fix. 4.3 (model exclusion) was not flipped.

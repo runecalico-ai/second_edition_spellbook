@@ -170,7 +170,7 @@ Flipped to `[x]`. Bar met: Start Menu start yes, markdown import yes, PDF export
 
 - Launched `/usr/bin/spellbook-desktop` with cwd `/tmp/spellbook-task4-linux` (not `pnpm tauri:dev`, not the repo). `DISPLAY=:0` (WSLg). Process stayed alive (PID 612) until the smoke driver terminated it after vault init.
 - MESA/EGL warnings (`failed to get driver name`, `ZINK: failed to choose pdev`, software fallback). App still initialized the DB (migrations 0006–0015) and copied/loaded sqlite-vec. This counts as app start plus vault init; GPU-accelerated WebView was not verified.
-- AppImage `chmod +x` then launched from `/tmp/spellbook-task4-linux/Spellbook_0.1.0_amd64.AppImage`. Also stayed alive (PID 839), also loaded vec0 after a fresh copy.
+- AppImage `chmod +x` then launched from `/tmp/spellbook-task4-linux/Spellbook_0.1.0_amd64.AppImage`. Also stayed alive (PID 839), also loaded vec0 after a fresh copy. That AppImage copy's size/hash/RUNPATH is recorded in the AppImage vs deb identity subsection below; the original first-launch vault identity remains the deb 147,984 record.
 
 ### Sidecar smokes (bundled binary only)
 
@@ -189,6 +189,17 @@ AppImage-extracted sidecar repeated the same four checks: all yes.
 - Before the installed-deb launch, `vec0.so` was absent. `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` was **not** set.
 - After first `/usr/bin/spellbook-desktop` launch: log `sqlite-vec: loaded extension path=/home/lvitki/.local/share/SpellbookVault/vec0.so`. File size 147,984 bytes, SHA256 `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` (matches bundled `/usr/lib/Spellbook/resources/sqlite-vec/vec0.so`).
 - Probe used production resource/exe-dir candidates, not an env override. `pool.rs` `resources/sqlite-vec/vec0.so` under `/usr/lib/Spellbook` is the layout that copied.
+
+### AppImage vs deb sqlite-vec / sidecar identity
+
+- Date: 2026-10-30 (same Ubuntu-24.04 WSL2 host; 4.2 artifacts still on disk). Re-hashed; not a rebuild.
+- Original first-launch vault record above is unchanged: after the installed-deb launch, vault `vec0.so` was 147,984 bytes, SHA256 `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233`, matching bundled `/usr/lib/Spellbook/resources/sqlite-vec/vec0.so`. That deb copy has **no** ELF RUNPATH/RPATH. Re-confirmed on disk 2026-10-30: installed `vec0.so` still 147,984 / `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233`, no RUNPATH.
+- AppImage squashfs (extracted from `/home/lvitki/spellbook-task2-build/target/release/bundle/appimage/Spellbook_0.1.0_amd64.AppImage`; AppImage SHA256 still `21788562488409125a7d37de87cadf9a1d833147fe45126bb19cf588787d05c4`, matching the Windows checkout copy under `target/release/bundle/appimage/`):
+  - `squashfs-root/usr/lib/Spellbook/resources/sqlite-vec/vec0.so` 155,168 bytes, SHA256 `f7c0d27d555e528a16301c26844959f326225827ffafc6d682e88e47e69f2ea4`, ELF RUNPATH `$ORIGIN`. Same size/hash/RUNPATH on the leftover linuxdeploy `Spellbook.AppDir` copy. **Not** the same bytes as the deb `vec0.so`.
+- Live vault `/home/lvitki/.local/share/SpellbookVault/vec0.so` currently holds the AppImage copy: 155,168 bytes, SHA256 `f7c0d27d555e528a16301c26844959f326225827ffafc6d682e88e47e69f2ea4`, RUNPATH `$ORIGIN`. `pool.rs` `install_sqlite_vec_if_needed` returns early when dest exists (`if destination.exists() { return Ok(Some(destination)); }`) and does **not** overwrite. This is first-copy-wins after dest was removed, then AppImage launched. It is **not** an in-place overwrite of the 147,984 deb copy; `pool.rs` was not changed.
+- Sidecar (confirmed on disk 2026-10-30):
+  - deb / installed `/usr/bin/spellbook-sidecar` 31,863,976 bytes, SHA256 `dffff91c83c2f380ad8bac9e2f9fefccfb345c84e74e04c8b7d22d64ba2624a1` (matches the freeze log 31,863,976-byte linux sidecar)
+  - AppImage squashfs `usr/bin/spellbook-sidecar` 31,868,072 bytes, SHA256 `a883177d057c2f9e97cb0e2de588d513610e770eef3f4a2ca89e76eaa5fa7efd`
 
 ### OpenSpec 4.2
 

@@ -19,7 +19,7 @@
     "storybook": "storybook dev -p 6006",
     "tauri:build": "tauri build --config src-tauri/tauri.release.conf.json",
     "tauri:build:win": "tauri build --bundles nsis --config src-tauri/tauri.release.conf.json",
-    "tauri:build:linux": "tauri build --bundles appimage,deb --config src-tauri/tauri.release.conf.json",
+    "tauri:build:linux": "bash ../../scripts/tauri_build_linux.sh",
     "tauri:check": "pnpm run typecheck && pnpm run tauri build --check",
     "tauri:dev": "tauri dev",
     "test:storybook": "vitest run --project=storybook",

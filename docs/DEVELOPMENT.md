@@ -75,6 +75,8 @@ Per-file inventory (`EMBEDDING_EXPECTED_FILES`):
 | `embeddings/all-MiniLM-L6-v2/special_tokens_map.json` | `695` | `5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a` |
 | `embeddings/all-MiniLM-L6-v2/tokenizer_config.json` | `1433` | `bd2e06a5b20fd1b13ca988bedc8763d332d242381b4fbc98f8fead4524158f79` |
 
+The embeddings runtime re-validates this inventory and loads these five files directly through fastembed's user-defined model API (mean pooling, L2-normalized, 384 dimensions). It never uses a Hugging Face hub cache (`models--Qdrant--…`) or contacts the network at load time; fastembed is built without its `hf-hub` feature. A missing or mismatched bundle fails the load with an error.
+
 ### Verified side-load rules
 
 1. Only the exact approved GGUF or the exact five-file MiniLM layout is accepted. Arbitrary "compatible" models are rejected.

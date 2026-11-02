@@ -378,18 +378,50 @@ fn require_embedding_dimension(vector: &[f32]) -> Result<(), AppError> {
     Ok(())
 }
 
-/// H-001: Task 3 Step 3.3 (`TextEmbedding::try_new` + `InitOptions` / `TextInitOptions`).
+/// Loads the verified all-MiniLM-L6-v2 bundle from `{models_root}/embeddings/all-MiniLM-L6-v2/`
+/// through fastembed's user-defined model API. `TextEmbedding::try_new` must not be used here:
+/// it resolves the model through the hf-hub cache and downloads unpinned revisions.
+/// Pooling, quantization, output key, and max length mirror fastembed 5.13.3's built-in
+/// `EmbeddingModel::AllMiniLML6V2` config; L2 normalization is always applied by `embed`.
 fn load_embedding_model_blocking(
     models_root: &std::path::Path,
 ) -> Result<Arc<Mutex<fastembed::TextEmbedding>>, AppError> {
-    use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+    use fastembed::{
+        InitOptionsUserDefined, Pooling, QuantizationMode, TextEmbedding, TokenizerFiles,
+        UserDefinedEmbeddingModel,
+    };
 
-    let mut options = InitOptions::new(EmbeddingModel::AllMiniLML6V2);
-    options.cache_dir = models_root.to_path_buf();
+    let bundle_root = models_root.join(EMBEDDING_DESTINATION);
+    validate_embedding_bundle_layout(&bundle_root).map_err(|error| {
+        AppError::Search(format!(
+            "approved embedding bundle is missing or invalid at {}: {error}",
+            bundle_root.display()
+        ))
+    })?;
 
-    TextEmbedding::try_new(options)
-        .map(|model| Arc::new(Mutex::new(model)))
-        .map_err(|e| AppError::Search(format!("failed to initialize fastembed runtime: {e}")))
+    let read_bundle_file = |name: &str| {
+        std::fs::read(bundle_root.join(name)).map_err(|error| {
+            AppError::Search(format!(
+                "failed to read embedding bundle file {name}: {error}"
+            ))
+        })
+    };
+    let tokenizer_files = TokenizerFiles {
+        tokenizer_file: read_bundle_file("tokenizer.json")?,
+        config_file: read_bundle_file("config.json")?,
+        special_tokens_map_file: read_bundle_file("special_tokens_map.json")?,
+        tokenizer_config_file: read_bundle_file("tokenizer_config.json")?,
+    };
+    let model = UserDefinedEmbeddingModel::new(read_bundle_file("model.onnx")?, tokenizer_files)
+        .with_pooling(Pooling::Mean)
+        .with_quantization(QuantizationMode::None);
+
+    TextEmbedding::try_new_from_user_defined(
+        model,
+        InitOptionsUserDefined::new().with_max_length(512),
+    )
+    .map(|model| Arc::new(Mutex::new(model)))
+    .map_err(|e| AppError::Search(format!("failed to initialize fastembed runtime: {e}")))
 }
 
 async fn await_ready_model_with_timeout(
@@ -3440,6 +3472,106 @@ mod tests {
         download_test_embedding_bundle_blocking(&cache_root)?;
         copy_directory_recursive(&cache_root, bundle_root)?;
         validate_embedding_bundle_layout(bundle_root)
+    }
+
+    fn top_level_entry_names(root: &std::path::Path) -> Vec<String> {
+        let mut names = std::fs::read_dir(root)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    fn hf_hub_cache_entries(models_root: &std::path::Path) -> Vec<String> {
+        top_level_entry_names(models_root)
+            .into_iter()
+            .filter(|name| name.starts_with("models--") || name == ".locks")
+            .collect()
+    }
+
+    #[test]
+    fn load_embedding_model_rejects_missing_vault_bundle_without_hf_hub_fallback() {
+        let models_root = tempfile::tempdir().expect("models root");
+
+        let err = load_embedding_model_blocking(models_root.path())
+            .err()
+            .expect("missing vault bundle must fail instead of downloading");
+
+        assert!(
+            matches!(err, AppError::Search(ref message) if message.contains("embedding bundle")),
+            "unexpected missing-bundle error: {err}"
+        );
+        assert!(
+            hf_hub_cache_entries(models_root.path()).is_empty(),
+            "loader must not create an hf-hub cache: {:?}",
+            top_level_entry_names(models_root.path())
+        );
+    }
+
+    #[test]
+    fn load_embedding_model_rejects_unverified_vault_bundle_without_hf_hub_fallback() {
+        let models_root = tempfile::tempdir().expect("models root");
+        let bundle_root = models_root.path().join(EMBEDDING_DESTINATION);
+        std::fs::create_dir_all(&bundle_root).expect("bundle dir");
+        for expected in EMBEDDING_EXPECTED_FILES {
+            std::fs::write(
+                bundle_root.join(expected_relative_path(expected.relative_path)),
+                b"{}",
+            )
+            .expect("write unverified bundle file");
+        }
+
+        let err = load_embedding_model_blocking(models_root.path())
+            .err()
+            .expect("unverified vault bundle must fail instead of downloading");
+
+        assert!(
+            matches!(err, AppError::Search(ref message) if message.contains("Embedding file size mismatch")),
+            "unexpected unverified-bundle error: {err}"
+        );
+        assert!(
+            hf_hub_cache_entries(models_root.path()).is_empty(),
+            "loader must not create an hf-hub cache: {:?}",
+            top_level_entry_names(models_root.path())
+        );
+    }
+
+    #[test]
+    fn load_embedding_model_reads_verified_vault_bundle_without_hf_hub_cache() {
+        let models_root = tempfile::tempdir().expect("models root");
+        let bundle_root = models_root.path().join(EMBEDDING_DESTINATION);
+        ensure_test_embedding_bundle_at(&bundle_root).expect("materialize approved bundle");
+
+        let model = load_embedding_model_blocking(models_root.path())
+            .expect("verified vault bundle must load offline");
+        let vectors = model
+            .lock()
+            .expect("embedding model lock")
+            .embed(vec!["Magic Missile\n\nA bolt of force."], None)
+            .expect("embed with vault bundle");
+
+        assert_eq!(vectors.len(), 1);
+        require_embedding_dimension(&vectors[0]).expect("MiniLM vectors are 384-dim");
+        let norm = vectors[0].iter().map(|v| v * v).sum::<f32>().sqrt();
+        assert!(
+            (norm - 1.0).abs() < 1e-3,
+            "vectors must stay L2-normalized, got norm {norm}"
+        );
+        assert!(
+            hf_hub_cache_entries(models_root.path()).is_empty(),
+            "loader must not create an hf-hub cache: {:?}",
+            top_level_entry_names(models_root.path())
+        );
+        assert_eq!(
+            top_level_entry_names(models_root.path()),
+            vec!["embeddings".to_string()],
+            "loader must only touch the provisioned embeddings bundle"
+        );
     }
 
     #[test]

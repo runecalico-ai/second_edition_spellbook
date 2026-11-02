@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"IPC for the main window: core APIs (event listen/unlisten for chat and progress streams), open/save file dialogs, and writes to paths the save dialog returns. Dialog-picked paths are added to the fs scope at runtime, so no static fs scope is granted.","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-open","dialog:allow-save","fs:allow-write-file","fs:allow-write-text-file"]}}

@@ -286,3 +286,25 @@ Sidecar identity (informational):
 - Rebuilt AppImage squashfs `usr/bin/spellbook-sidecar`: 31,872,168 bytes, SHA256 `dec4ba4c96186f9da1a04dc299482df511ada46cb3723e238f91e7c23ecbd655`, RUNPATH `$ORIGIN/../lib`. linuxdeploy still patches the sidecar (the wrapper skips only `vec0.so`). This rebuilt AppImage sidecar was not re-smoked for import/export here.
 
 The earlier 155,168-byte AppImage `vec0.so` (`f7c0d27d…`, RUNPATH `$ORIGIN`) and the 31,868,072-byte AppImage sidecar (`a883177d…`) are historical. They came from the `910f717` AppImage build (SHA256 `21788562…`).
+
+### Post-e4bdf65 AppImage sidecar re-smoke
+
+- Date: 2026-11-02 (same Ubuntu-24.04 WSL2 host, user `lvitki`). T2-F4. OpenSpec 4.2 checkbox was **not** changed. Packaging code was not changed. Evidence is under `/home/lvitki/spellbook-t2f4/` (`extract.log`, `smoke.log`, `fixtures/`, `rpc/<variant>/NN-*.{request,response}.json` + `.stderr.txt`, `export/<variant>/`).
+- AppImage: copied `/home/lvitki/spellbook-task2-build/target/release/bundle/appimage/Spellbook_0.1.0_amd64.AppImage` to `/home/lvitki/spellbook-t2f4/`. Size 130,370,040 bytes. SHA256 of the source and the copy: `9cc1acf64f2798f9ec4d7737d824693450a591533a3ca4f7a74b222a9cb688f9`. Ran `--appimage-extract` there.
+- Extracted `squashfs-root/usr/bin/spellbook-sidecar`: 31,872,168 bytes, SHA256 `dec4ba4c96186f9da1a04dc299482df511ada46cb3723e238f91e7c23ecbd655`, ELF RUNPATH `$ORIGIN/../lib` (`readelf -d`). NEEDED: `libdl.so.2`, `libz.so.1`, `libpthread.so.0`, `libc.so.6`.
+- `ldd`: all four NEEDED libs resolve from the system `/lib/x86_64-linux-gnu/` (plus `/lib64/ld-linux-x86-64.so.2`). **None** resolve from `squashfs-root/usr/lib`. linuxdeploy did not bundle `libz`/`libdl`/`libpthread`/`libc` there, so the `$ORIGIN/../lib` RUNPATH has no effect on this binary today. (This is the PyInstaller bootloader only. Its Python runtime libs come from its own embedded archive, not from `usr/lib`.)
+- Fixtures (system `/usr/bin/python3` 3.12.3 for fixtures/JSON only; no repo venv, no pip): `test-spell-nobom.md` (52 bytes, starts `---\n`, no BOM, `name: Test Spell` / `level: 1`), `fireball.docx` (926 bytes, `zipfile` OOXML, paragraphs `Fireball` / `Level: 3`), `magic-missile.pdf` (611 bytes, hand-written PDF-1.4, text `Magic Missile Level: 1 A magic dart.`).
+- Run: one sidecar process per request, request on stdin, cwd `/home/lvitki/spellbook-t2f4/run-cwd` (`git rev-parse` there: `fatal: not a git repository`). No `SPELLBOOK*` env. Two env variants:
+  - `direct`: inherited shell env minus `SPELLBOOK*`.
+  - `appimage-env`: same, plus the env a sidecar child of `spellbook-desktop` inherits under the AppImage: runtime `APPIMAGE` / `APPDIR` (`squashfs-root`) / `OWD` / `ARGV0`, and the `apprun-hooks/linuxdeploy-plugin-gtk.sh` exports (`GTK_*`, `GDK_BACKEND=x11`, `XDG_DATA_DIRS`, `GSETTINGS_SCHEMA_DIR`, `GDK_PIXBUF_MODULE_FILE`, `GIO_EXTRA_MODULES`). The hook does not set `LD_LIBRARY_PATH`.
+- Request shapes are the same as in the Sidecar smokes subsection: `method=import` `params.files=[<path>]`, `method=export` `params={spells:[{name:"Arcane Bolt",description:"Zap."}], format:"pdf", output_dir}`.
+
+Results (both variants returned the same values, rc 0 every time):
+
+- **Markdown:** yes. `result.spells[0].name=Test Spell`, `level=1`, `result.conflicts=[]`, description `Description here.`
+- **DOCX:** yes. `name=Fireball`, `level=3`, `conflicts=[]`, description `Fireball\n\nLevel: 3` (no `python-docx not installed`).
+- **PDF import:** yes. `name=Magic-Missile` (from the filename), `level=1`, `conflicts=[]`, description `Magic Missile Level: 1 A magic dart.` (no `pdfminer.six not installed`).
+- **PDF export is HTML:** yes. Response `{"path": ".../export/<variant>/spellbook_export_<hex>.html", "format": "html", "note": "Print-optimized HTML generated. Use browser 'Print to PDF' for PDF output."}`. File is 1,326 bytes and starts with `<!doctype html>` in both variants.
+- stderr for the import calls had only `spellbook_sidecar.py:25: DeprecationWarning: datetime.datetime.utcnow() is deprecated ...`. Export stderr was empty.
+
+This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `a883177d…`) for the current AppImage artifact (`9cc1acf6…`). The deb / installed `/usr/bin/spellbook-sidecar` evidence (31,863,976 / `dffff91c…`) is unchanged and was not re-run. Bound: the sidecar was run from the extracted `squashfs-root` with the AppImage env reproduced. It was not spawned by `spellbook-desktop` from the FUSE mount, so the GUI import/export path was not driven.

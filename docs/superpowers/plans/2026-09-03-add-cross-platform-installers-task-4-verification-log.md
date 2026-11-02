@@ -384,3 +384,92 @@ This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `
 - Not driven in-app. WebKitGTK has no CDP endpoint equivalent to WebView2's `--remote-debugging-port`, and the release build has no devtools.
 - Linux evidence is still the hand-verified copy: `~/.local/share/SpellbookVault/models/` has the same six files with the same SHA-256 values (re-hashed 2026-11-02). There is no `models--Qdrant--…` hub cache there, so the installed Linux app has not yet loaded embeddings from that vault. `/usr/lib/Spellbook` still contains only `resources/`.
 - The Windows run above is the proof that the in-app import path works on an installed build.
+
+### Offline embeddings load from verified bundle (installed build at 18fd267)
+
+- Date: 2026-11-02 (T3-F2). Host Windows 11 (win32 10.0.26200), `IsAdmin=False`. Branch `add-cross-platform-installers` at `18fd267` (commit time `2026-11-02T12:36:51-06:00`). Product tree clean. OpenSpec checkboxes were not changed.
+- This subsection **supersedes** the embeddings result in "In-app provisioning (installed Windows build)" above. There (`b46fb29`, installed exe `8E808985…`, pre-fix loader) `embeddings_status=ready` came from a hub download of `Qdrant/all-MiniLM-L6-v2-onnx` `main` (`d13954661f…`), not from the verified bundle.
+
+#### Build
+
+- `.\scripts\build_windows_installer.ps1 -SkipInstall` (exit 0). The PS1 ran `scripts\prepare_release_bundle.py` itself with repo `.venv` Python 3.14.4. `CARGO_TARGET_DIR=C:\WINDOWS\TEMP\cursor-sandbox-cache\b3f4b69d6bfd3f2a7a346bc89af6973c\cargo-target` (empty release cache; full compile, `release` profile 6m34s). The PS1 reported that NSIS path. Repo-root `target\` has no `*-setup.exe`.
+- Harness note: a first PS1 run with `*>&1` aborted inside `prepare_release_bundle.py` (PyInstaller INFO on stderr became an error record under the PS1's `ErrorActionPreference=Stop`). `prepare_release_bundle.py` alone then exited 0. The counted build is the rerun without the redirect.
+- `apps/desktop/src-tauri/Cargo.lock` has no `hf-hub` package.
+- NSIS: `C:\WINDOWS\TEMP\cursor-sandbox-cache\b3f4b69d6bfd3f2a7a346bc89af6973c\cargo-target\release\bundle\nsis\Spellbook_0.1.0_x64-setup.exe`, 38,855,332 bytes, SHA-256 `4E117300419850D5A6D6245DEF558E8D3068FF205D0309FD6ABD8E5D86CDD195`, LastWriteTime `2026-11-02T12:48:37-06:00` (after the `18fd267` commit time). Only that file was copied to `%TEMP%\spellbook-t3f2-nsis\` (same hash) and run from there.
+- Built `release\spellbook-desktop.exe` 58,167,808 bytes, SHA-256 `DC98913FAC13C131D4AFB673545354D5A4D386994A6F39B5C64AED159FD775DC`. Frozen sidecar `binaries\spellbook-sidecar-x86_64-pc-windows-msvc.exe` 25,791,496 bytes, SHA-256 `DCE339C9DEA55F698EA2E8A83B767FEEB60D79A227DF115686EAC5ADE69F605D`.
+
+#### Install
+
+- No `spellbook-desktop` / `spellbook-sidecar` process was running. `Spellbook_0.1.0_x64-setup.exe /S` over the existing current-user install, exit 0. HKCU `DisplayName=Spellbook`, `DisplayVersion=0.1.0`, `InstallLocation="C:\Users\vitki\AppData\Local\Spellbook"`.
+- Before: `spellbook-desktop.exe` 60,417,024 / `8E8089855AAC83A6E064E354E4E8BEBCBD36599F114CBEACC564BBDC21D33BA4` (iter2 build).
+- After:
+  - `spellbook-desktop.exe` 58,167,808, SHA-256 `DC98913FAC13C131D4AFB673545354D5A4D386994A6F39B5C64AED159FD775DC` (same as the built exe), mtime `2026-11-02T12:48:04-06:00`
+  - `spellbook-sidecar.exe` 25,791,496, SHA-256 `DCE339C9DEA55F698EA2E8A83B767FEEB60D79A227DF115686EAC5ADE69F605D`
+  - `resources\sqlite-vec\vec0.dll` 278,016, SHA-256 `74E63AB75299804773676A5C757372472E797E03E02A2D8FF5FD91730DBD7531` (unchanged)
+  - `uninstall.exe`, `resources\sqlite-vec\.gitkeep`. No other files.
+
+#### Vault prep (`%APPDATA%\SpellbookVault`)
+
+- Re-hashed the six model files first. All six matched DEVELOPMENT.md (values in "Attempt 2" above).
+- Removed `models\models--Qdrant--all-MiniLM-L6-v2-onnx\` (written 12:17 today by the pre-fix build during T3-F1): 20 entries: 5 `blobs\<sha>` files + 5 `blobs\<sha>.lock`, `refs\main`, `snapshots\d13954661f83248295ba75c1ed411eef3b7b936e\` with 5 entries, and the 3 dirs. `models\.locks` did not exist.
+- No other HF/fastembed cache on the profile: `%USERPROFILE%\.cache\huggingface` absent. `HF_HOME`, `HF_HUB_CACHE`, `HF_HUB_OFFLINE`, `FASTEMBED_CACHE_PATH` unset. `%LOCALAPPDATA%\SpellbookVault` is empty.
+- After cleanup `models\` held only `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` and `embeddings\all-MiniLM-L6-v2\` (five files). File mtimes `2026-11-02 09:08`, from the T3-F1 import.
+- DB: the fresh T3-F1 `spellbook.sqlite3` (not the blob-backed backup). `user_version=15`, `spell_vec` SQL `CREATE VIRTUAL TABLE spell_vec USING vec0(rowid INTEGER PRIMARY KEY, v float[384])`, 0 spells.
+
+#### Offline simulation
+
+- Launch: `Start-Process` of the installed exe, working dir = install dir, from a child `pwsh` (untracked `scripts/_t3f2_launch.ps1`). For that process only: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` = `http://127.0.0.1:9`, `NO_PROXY=127.0.0.1,localhost`, `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`, `RUST_LOG=info`. No `SPELLBOOK*` variables at process, User, or Machine scope. App stdout/stderr were redirected to files.
+- Host is not elevated, so no per-program firewall rule. The proxy blackhole is the offline simulation.
+- Also sampled `Get-NetTCPConnection` / `Get-NetUDPEndpoint` for the `spellbook-desktop` and `spellbook-sidecar` PIDs (untracked `scripts/_t3f2_netwatch.ps1`, 250 ms sleep between samples). These two processes owned **zero** TCP connections and zero UDP endpoints: 122 samples in the first ready run, 87 in negative A, 48 in the restore run. Negative B got only 1 sample (a slow per-sample process lookup, fixed before the restore run), so it is not counted.
+- Control (restore run): the same sampler saw the WebView2 browser process (child of the app, PID 9444) listening on `127.0.0.1:9222`. That proves the sampler can see sockets.
+- Bound: the host was **not** fully offline. The WebView2 browser process had two established TCP connections to `[2603:1063:2001:b18::365:ff1]:443` (Microsoft). WebView2 does not use the `HTTP_PROXY` environment variables. Embeddings load in-process in `spellbook-desktop.exe`, not in WebView2. The sampler can miss a connection shorter than one sample interval. The proxy blackhole and the missing hub-cache directory cover that gap.
+
+#### Ready run (installed exe, verified bundle, no hub cache)
+
+- PID 21920, started `12:50:07`. IPC through WebView2 CDP (`scripts/_t3f1_cdp.mjs`, untracked) on `window.__TAURI_INTERNALS__.invoke`. No import command was called. `embeddings_status=ready` on a cold start therefore comes from the startup path. That path is `initialize_embeddings_after_startup` → approved bundle check → `finalize_embedding_provision` → `load_embedding_model_blocking` → `Ready`.
+- First call (`12:51:08`; my CDP wait loop overshot to 61 s):
+  - `embeddings_status`: `{"state":"ready","downloadProgress":null,"errorMessage":null}`
+  - `llm_status`: `{"status":"ready","modelPath":"C:\\Users\\vitki\\AppData\\Roaming\\SpellbookVault\\models\\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf","bytesDownloaded":null,"totalBytes":null,"lastError":null}`
+  - The poll returned `ready` on the first read. `initializing` was not observed.
+- Commands that need the loaded model:
+  - `search_spells_semantic {query:"a bolt of magical force that never misses", limit:5}` with 0 spells: `{"ok":true,"value":[]}` in 8 ms.
+  - `reindex_embeddings {force:true}` with 0 spells: `{"total":0,"indexed":0,"skipped":0,"failed":0}`.
+  - Ranked check: `create_spell` for two temp spells, `T3F2 Magic Missile` (id 1, "A glowing dart of magical force…") and `T3F2 Light` (id 2, "…a luminous glow…"). Then `reindex_embeddings {force:true}` returned `{"total":2,"indexed":2,"skipped":0,"failed":0}`. The same `search_spells_semantic` query returned `[{"id":1,"name":"T3F2 Magic Missile",…,"cosineDistance":0.5045549},{"id":2,"name":"T3F2 Light",…,"cosineDistance":0.7471289}]` (create + reindex + search in 1,617 ms). Then `delete_spell` for both, and `reindex_embeddings {force:true}` returned `{"total":0,…}`. DB spell count is back to 0.
+  - After: `embeddings_status` and `llm_status` still `ready`.
+- App stdout had only the 10 `sqlite-vec: loaded extension path=C:\Users\vitki\AppData\Roaming\SpellbookVault\vec0.dll` lines. No WARN/ERROR lines. stderr was empty.
+- Not a 4.4 claim. This only shows that the installed loader embeds from the vault bundle.
+
+#### No hub cache created
+
+- After the ready run, the negative runs, and the restore run: no `models--*` and no `.locks` anywhere under `%APPDATA%\SpellbookVault` (recursive dir scan for `models--|\.locks|fastembed`: empty).
+- `models\` contents stayed exactly the six approved files. Sizes, SHA-256 values, and mtimes were unchanged, and all six matched after the ready and restore runs.
+- Install dir: recursive scan for `tinyllama|\.gguf|all-MiniLM|model\.onnx|SpellbookVault|models--` was empty. File list is still the five installed files.
+
+#### Negative offline check
+
+- **A. Missing file:** moved `embeddings\all-MiniLM-L6-v2\tokenizer.json` to `%TEMP%\spellbook-t3f2\aside\`. Relaunched offline the same way (PID 20816).
+  - `embeddings_status` stayed `{"state":"notProvisioned","downloadProgress":null,"errorMessage":null}` for the full 20 s poll.
+  - `search_spells_semantic`: `{"ok":false,"error":"Search error: Embedding model is unavailable"}` (21 ms).
+  - `llm_status` stayed `ready`.
+  - Bundle dir had 4 files. No `models--*` or `.locks`.
+  - Startup reports an incomplete file set as `notProvisioned`, not `error`.
+- **B. Corrupt file:** wrote a 2-byte `{}` as `tokenizer.json` and relaunched (PID 4256).
+  - `embeddings_status`: `{"state":"error","downloadProgress":null,"errorMessage":"embedding bundle validation failed: Validation error: Embedding file size mismatch for embeddings/all-MiniLM-L6-v2/tokenizer.json"}` on the first read, about 1 s after launch.
+  - `search_spells_semantic` returned the same message as an error.
+  - `llm_status` stayed `ready`.
+  - No `models--*` or `.locks`.
+- **Restore:** deleted the 2-byte file and moved the original back (711,661 bytes, `DA0E79933B9ED51798A3AE27893D3C5FA4A201126CEF75586296DF9B4D2C62A0`, mtime kept `09:08:07`). All six files matched before launch.
+  - Relaunched offline (PID 20184). `embeddings_status=ready` on the first read, about 1.3 s after launch. `llm_status=ready`.
+  - The temp-spell ranked check repeated with identical results (`indexed 2`, Magic Missile `0.5045549`, Light `0.7471289`). Temp spells were deleted again.
+  - No hub cache.
+
+#### Close and cleanup
+
+- Every run: `CloseMainWindow` → exited within 20 s. No `spellbook-desktop` / `spellbook-sidecar` left, and no listener on 9222 (`Get-NetTCPConnection`). After the last run, `netstat -ano` showed only `TIME_WAIT` entries on 9222.
+- `delete_spell` does not remove the content-hash JSON that `create_spell` writes under `spells\`. Removed the two `T3F2 …` JSON files by hand. The pre-existing July file was kept. No product code changed.
+- `spellbook.sqlite3` grew from 229,376 to 1,810,432 bytes after the first `vec0` writes (`vec0` chunk allocation). It still has 0 spells.
+- Raw JSON evidence (launch env, CDP steps, verify, netwatch, close, app stdout/stderr) is in `%TEMP%\spellbook-t3f2\` (`C:\WINDOWS\TEMP` in this shell). Not committed. Harness scripts are untracked `scripts/_t3f2_*`.
+
+#### Linux (pending)
+
+- Linux artifacts are still **pre-`18fd267`**: deb `0f5fb9e8…` and AppImage `9cc1acf6…` were built from `910f717` (+ `e4bdf65` packaging), before `18fd267`. They still have the old hf-hub `TextEmbedding::try_new` loader. The offline embeddings proof above is Windows-only. A Linux rebuild and offline re-check are pending.

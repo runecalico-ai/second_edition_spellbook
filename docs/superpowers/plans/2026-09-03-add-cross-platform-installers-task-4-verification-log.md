@@ -595,3 +595,109 @@ This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `
   - Socket sampling every 1 s can miss a connection shorter than one interval. The missing hub cache and the negative control cover that gap.
   - `embeddings_status` was not read over IPC on Linux. "Model loaded" is shown by the backfill writing normalized 384-dim vectors.
   - Not a 4.4 semantic-search claim.
+
+## LLM and semantic search (installed full build)
+
+- Chat produced tokens: no
+- Semantic search returned hits: yes
+
+**Result: 4.4 stays open.** Semantic search passes on the installed Windows build, using the vec0 path. In-app chat fails. The webview may not subscribe to Tauri events: `plugin:event|listen` returns `Command plugin:event|listen not allowed by ACL`. So no `llm://token/<id>` token reaches the UI. The backend loads TinyLlama and `llm_chat` completes, but no token is visible to the user.
+
+### Build and launch (Windows)
+
+- Date: 2026-11-02, 13:56–14:04 local (UTC-6). Branch `add-cross-platform-installers`, HEAD `a681126`.
+- Installed exe: `%LOCALAPPDATA%\Spellbook\spellbook-desktop.exe`, 58,167,808 bytes, SHA-256 `DC98913FAC13C131D4AFB673545354D5A4D386994A6F39B5C64AED159FD775DC`. NSIS `4E117300…` built at `18fd267` with the default `llm` feature. This is the same install as the offline embeddings run.
+- Vault `%APPDATA%\SpellbookVault`: the verified TinyLlama GGUF and MiniLM bundle under `models/`, and `vec0.dll` (278,016 bytes). 0 spells at start. `spells/` held one older file, `39a43b17….json` (2026-07-15), which was not touched.
+- Launch: untracked `scripts/_t4_launch.ps1`, a copy of `_t3f2_launch.ps1` with evidence under `%TEMP%\spellbook-t4\`. All `SPELLBOOK*` vars were removed from the process env, and there were none at user or machine level. Env set:
+  - `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`
+  - `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` = `http://127.0.0.1:9`
+  - `NO_PROXY=127.0.0.1,localhost`
+  - `RUST_LOG=info`
+- Launch details: cwd was the install dir. PID 14292. CDP was up after 1.1 s, with one page target at `http://tauri.localhost/`.
+- Driver: untracked `scripts/_t4_cdp.mjs`, an extension of `_t3f1_cdp.mjs`. It drives the real UI with CDP `Runtime.evaluate`. It sets values with the native value setter plus `input`/`change` events, then clicks by `data-testid`. It calls IPC through `window.__TAURI_INTERNALS__.invoke` for status, seeding, and raw results.
+- Watcher: untracked `scripts/_t4_watch.ps1`, sampling every 500 ms for the whole session (356 samples with the app running). It tracked `spellbook-sidecar` processes, non-WebView2 child processes of the app, and TCP connections.
+- `stdout`: 10x `sqlite-vec: loaded extension path=C:\Users\vitki\AppData\Roaming\SpellbookVault\vec0.dll`, `DB migration start/complete version=15`. There was no `falling back to blob-backed spell_vec table` line and no WARN or ERROR line.
+
+### Status
+
+- Before chat:
+  - `llm_status` = `{"status":"ready","modelPath":"C:\\Users\\vitki\\AppData\\Roaming\\SpellbookVault\\models\\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf","bytesDownloaded":null,"totalBytes":null,"lastError":null}`
+  - `embeddings_status` = `{"state":"ready","downloadProgress":null,"errorMessage":null}`
+  - The chat header badges read `LLM · Ready` and `Embeddings · Ready`.
+- After the chat attempt and at the end of the session:
+  - `llm_status.status` = `loaded`, `lastError` = null
+  - `embeddings_status.state` = `ready`
+
+### Seeded spells
+
+- Created with `create_spell` (IPC), all `classList: "Wizard"`:
+  - id 1 `Magic Missile`: Evocation 1, "glowing darts of pure magical force … 1d4+1 points of damage"
+  - id 2 `Light`: Alteration 1, "shed bright illumination like a torch, lighting a 20-foot radius …"
+  - id 3 `Fireball`: Evocation 3, "roaring explosion of fire … 1d6 points of fire damage per level"
+- The `create_spell` background hook embedded all three. `reindex_embeddings(force=false)` 3 s later returned `{"total":3,"indexed":0,"skipped":3,"failed":0}`.
+- Read-only DB probe while the app ran (untracked `scripts/_t4_dbprobe.py`, Python `sqlite3`, `mode=ro`):
+  - `spell_vec` SQL: `CREATE VIRTUAL TABLE spell_vec USING vec0(rowid INTEGER PRIMARY KEY, v float[384])`
+  - Shadow tables: `spell_vec_chunks`, `spell_vec_info`, `spell_vec_rowids`, `spell_vec_vector_chunks00`
+  - `SELECT COUNT(*) FROM spell_vec` without the extension fails with `no such module: vec0`
+  - After loading the vault `vec0.dll`: `vec_version()` = `v0.1.6`, and `spell_vec` rowids = `[1, 2, 3]`
+
+### Chat (UI): FAIL
+
+- Path: `nav-link-chat` → `/chat` (169 ms). Then type `What does the spell Light do?` into `chat-input` and click `btn-ask-chat`. Click time: 19:57:29.995Z.
+- DOM timeline (`chat-message-list`):
+  - +1 ms: user bubble shown. Assistant placeholder `chat-assistant-bubble` shown with `aria-busy=true` and empty text. `chat-model-loading-indicator` shown.
+  - +215 ms: the placeholder was removed and replaced by `chat-system-message`, which reads `Command plugin:event|listen not allowed by ACL`.
+  - The harness polled for 180 s. No assistant text appeared.
+- Cause: `useLlmStream` subscribes to `llm://token/<streamId>` and `llm://done/<streamId>` through `listen()` (`plugin:event|listen`). The core ACL rejects that call, so `useChatSession` swaps the bubble for a system error.
+  - Direct probes from the page also fail: `plugin:event|listen` → `not allowed by ACL`, and `plugin:event|emit` → `not allowed by ACL`.
+  - The repo has no capability file. There is no `apps/desktop/src-tauri/capabilities/` directory in git history, and `gen/schemas/capabilities.json` is `{}`. So no window gets `core:event:default`.
+  - This is not specific to packaging. It affects any build of this tree. It also affects `llm://download-progress`, `embeddings://download-progress`, `embeddings://reindex-progress`, and `plugin:dialog|open`. The last one is inferred and was not probed.
+- Backend side:
+  - The UI send still started `llm_chat`: `llm_status` went from `ready` to `loaded`, and stderr shows the llama.cpp context setup (CPU KV cache 16.50 MiB, 768 cells, 22 layers).
+  - A direct `llm_chat` invoke (`message: "What does the spell Light do?"`, `streamId: "t4-direct-1"`, `history: []`) resolved `ok` in 1,582 ms. Afterwards `llm_status` was still `loaded` with `lastError` null.
+  - No listener could be registered, so token count, reply text, and TTFT could not be observed. **No streamed tokens were observed.**
+- Sidecar: no `spellbook-sidecar` process at any sample during the session, including during and after both chat attempts. The only non-WebView2 child process of the app was `conhost.exe`, from the redirected stdio.
+- Network:
+  - The `spellbook-desktop` process had 0 TCP connections, loopback or not.
+  - WebView2 runtime processes had 3 non-loopback TCP connections to Microsoft 443 endpoints (`2603:1063:2001:b1b::365:ff1`, `2620:1ec:33::11`). These are WebView2/Edge runtime traffic, not app traffic.
+- Screenshot: `%TEMP%\spellbook-t4\chat-reply.png` (this session's `%TEMP%` = `C:\WINDOWS\TEMP`). It shows the user bubble and the red ACL system message.
+
+### Semantic search (UI): PASS
+
+- Path: `nav-link-export` → `nav-link-library`, which remounts the Library with clean state. Then set `library-mode-select` = `semantic`. The filters hint appeared and no `library-semantic-*-state` empty state was shown. Then type the query into `search-input` and click `library-search-button`. Before each search the table had 0 rows. After it, `library-semantic-search-error-state` was absent.
+- Query `glowing light source`:
+  - UI rows in `spell-library-table`, in order: 1 `Light` (Alteration 1), 2 `Magic Missile` (Evocation 1), 3 `Fireball` (Evocation 3)
+  - Raw `search_spells_semantic {query, limit: 10}`: `Light` 0.57646155, `Magic Missile` 0.6687119, `Fireball` 0.73271126
+- Query `explosion of flame`:
+  - UI rows: 1 `Fireball`, 2 `Magic Missile`, 3 `Light`
+  - Raw: `Fireball` 0.37222585, `Magic Missile` 0.6980117, `Light` 0.7879202
+- The UI order matches the raw `cosineDistance` order. As designed, the Library UI does not show distances.
+- vec0 path:
+  - `spell_vec` is the `vec0` virtual table shown above, and `vec0.dll` loaded at startup.
+  - `search_spells_semantic` calls `ensure_spell_vec_sqlite_vec_ready`, which rejects a blob-backed `spell_vec`. It then ranks with `vec_distance_cosine`. So a ranked result proves the vec0 path.
+  - No blob-fallback log line.
+- Screenshots: `%TEMP%\spellbook-t4\semantic-light.png` and `semantic-flame.png`.
+
+### Cleanup
+
+- `delete_spell` ids 1–3: all `ok`. After that, `search_keyword` returned `[]` and `search_spells_semantic("explosion of flame")` returned `[]`.
+- `delete_spell` left the three `spells\*.json` files (`46f9c993….json`, `49afea9c….json`, `6e0804fd….json`, named Magic Missile / Light / Fireball). They were removed by hand. `spells\` again holds only the older `39a43b17….json`.
+- Closed with `scripts/_t4_close.ps1` (`CloseMainWindow`): exited, no leftover `spellbook-desktop` or `spellbook-sidecar`, port 9222 not listening.
+- DB probe after close: 0 spells, `spell_vec` still `vec0`, vec0 rowids `[]`. The vault root holds only `imports/`, `models/`, `spells/`, `spellbook.sqlite3`, and `vec0.dll`. No migration log or backup files were added.
+
+### Linux (best effort): not exercised
+
+- Tried the installed deb (`/usr/bin/spellbook-desktop` `11eb82c1…`; `libwebkit2gtk-4.1-0` 2.52.6) with `WEBKIT_INSPECTOR_HTTP_SERVER=127.0.0.1:9223` (untracked `scripts/_t4_linux_probe.sh`).
+  - The inspector port listened, but the target list was `No targets found`. The release build does not enable WebKit developer extras, so the page cannot be inspected.
+  - The app loaded `vec0.so` (10x) with no WARN or ERROR lines. It was stopped with `SIGTERM`, and port 9223 then closed.
+- No xdotool or other GUI driver was installed (dependency policy). Linux 4.4 evidence is limited to two earlier results:
+  - the startup embeddings backfill on the rebuilt deb and AppImage (`a681126`): normalized 384-dim `spell_vec` rows
+  - the six-file model bundle in the vault
+- Chat and semantic search were not exercised on Linux. The missing capability file is part of the built app, not the platform, so Linux chat would hit the same ACL error.
+
+### Limitations
+
+- The proxy blackhole is the offline simulation; there was no firewall rule. App-process sockets were sampled every 500 ms.
+- Chat could not show streamed tokens because of the ACL denial. TTFT and reply text are unavailable. The direct `llm_chat` result shows only that backend generation finishes without error.
+- Seeding used `create_spell` over IPC, not the spell editor UI.
+- 4.4 needs the app to grant event permissions, for example a `capabilities/*.json` with `core:default` for the main window. After that, chat must be re-run. That change is product code and is out of scope for this verification task.

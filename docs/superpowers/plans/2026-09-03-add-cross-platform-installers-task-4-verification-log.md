@@ -233,3 +233,56 @@ AppImage-extracted sidecar repeated the same four checks: all yes.
 ### OpenSpec 4.2
 
 Flipped to `[x]`. Bar met: app start (process alive + vault init) yes, markdown import yes, PDF export HTML yes, vec0.so present after unmodified first launch, and DOCX/PDF import also yes after the freeze fix. 4.3 (model exclusion) was not flipped.
+
+### Post-e4bdf65 AppImage rebuild (T2-F1 close)
+
+- Date: 2026-11-02 (same Ubuntu-24.04 WSL2 / WSLg host, user `lvitki`). OpenSpec 4.2 checkbox was **not** changed.
+- Build context: WSL clone `/home/lvitki/spellbook-task2-build` is still at `910f717` plus the `e4bdf65` build changes as uncommitted files. `scripts/patchelf-skip-sqlite-vec`, `scripts/tauri_build_linux.sh`, and `apps/desktop/package.json` (`"tauri:build:linux": "bash ../../scripts/tauri_build_linux.sh"`) are byte-identical to `e4bdf65` (SHA256 match against `git show e4bdf65:<path>`). Only the AppImage was rebuilt through the wrapper. The `.deb` was **not** rebuilt; it never went through linuxdeploy/patchelf.
+- Artifacts under the clone's `target/release/bundle/`:
+  - `appimage/Spellbook_0.1.0_amd64.AppImage` 130,370,040 bytes, SHA256 `9cc1acf64f2798f9ec4d7737d824693450a591533a3ca4f7a74b222a9cb688f9`, mtime `2026-10-30 17:33:30 -0500`
+  - `deb/Spellbook_0.1.0_amd64.deb` 55,965,362 bytes, SHA256 `0f5fb9e8f16dc88ea96a2c9017ce0a9c67ec0820b5d3d0a5caa3fe2657c2fc39`, mtime `2026-10-30 10:26:04 -0500` (same deb as the Installer build subsection)
+
+`vec0.so` identity (re-hashed 2026-11-02; RUNPATH from `readelf -d`):
+
+| Copy | Path | Size (bytes) | SHA256 | RUNPATH |
+| ---- | ---- | ------------ | ------ | ------- |
+| Staged | `apps/desktop/src-tauri/resources/sqlite-vec/vec0.so` (WSL clone) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| deb payload | `usr/lib/Spellbook/resources/sqlite-vec/vec0.so` (`dpkg-deb -x`) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| AppImage squashfs | `usr/lib/Spellbook/resources/sqlite-vec/vec0.so` (`--appimage-extract`) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| Installed deb | `/usr/lib/Spellbook/resources/sqlite-vec/vec0.so` (package `spellbook` 0.1.0) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| New vault | `~/.local/share/SpellbookVault/vec0.so` (after AppImage launch below) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| Old vault (backup) | `~/.local/share/SpellbookVault/vec0.so.pre-e4bdf65.bak` | 155,168 | `f7c0d27d555e528a16301c26844959f326225827ffafc6d682e88e47e69f2ea4` | `$ORIGIN` |
+
+Vault refresh:
+
+- Before: vault `vec0.so` was still the old AppImage copy (155,168 / `f7c0d27d…` / RUNPATH `$ORIGIN`). `install_sqlite_vec_if_needed` keeps an existing vault copy, so a rebuilt AppImage alone would not replace it.
+- Moved it to `~/.local/share/SpellbookVault/vec0.so.pre-e4bdf65.bak` (`mv`, not deleted). Confirmed `vec0.so` absent before launch. `spellbook.sqlite3` was left in place.
+
+Launch (one run):
+
+- Copied only the AppImage to `/tmp/spellbook-t2f1b/` (outside any checkout), `chmod +x`, cwd `/tmp/spellbook-t2f1b`. FUSE mount (libfuse2 present; not `--appimage-extract-and-run`), mounted at `/tmp/.mount_SpellbAMpiiO`.
+- Command:
+
+```
+setsid env -u SPELLBOOK_SQLITE_VEC_RESOURCE_DIR -u SPELLBOOK_DATA_DIR \
+  DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 RUST_LOG=info \
+  ./Spellbook_0.1.0_amd64.AppImage
+```
+
+- Shell had no `SPELLBOOK*` env before the launch. Process group 410 (`spellbook-desktop`, `WebKitNetworkProcess`, `WebKitWebProcess`) was alive at 4s. Terminated with `SIGTERM` to the process group; it exited within 1s and the FUSE mount went away.
+- sqlite-vec load evidence (app tracing output captured from stdout/stderr, ANSI colour codes stripped; seen 2s after launch; vault `vec0.so` mtime `2026-11-02 08:53:39 -0600`):
+
+```
+2026-11-02T14:53:39.221497Z  INFO spellbook_desktop::db::pool: sqlite-vec: loaded extension path=/home/lvitki/.local/share/SpellbookVault/vec0.so
+2026-11-02T14:53:39.222673Z  INFO spellbook_desktop::db::migrations: DB migration start version=15
+2026-11-02T14:53:39.222684Z  INFO spellbook_desktop::db::migrations: DB migration complete version=15
+```
+
+- The `loaded extension` line repeated once per pooled connection (10 lines). No `failed to load extension` line. stderr head had only `libEGL warning: DRI3 error: Could not get DRI3 device` / `Ensure your X server supports DRI3`.
+
+Sidecar identity (informational):
+
+- deb payload `usr/bin/spellbook-sidecar`, installed `/usr/bin/spellbook-sidecar`, and staged `binaries/spellbook-sidecar-x86_64-unknown-linux-gnu`: 31,863,976 bytes, SHA256 `dffff91c83c2f380ad8bac9e2f9fefccfb345c84e74e04c8b7d22d64ba2624a1`, no RUNPATH.
+- Rebuilt AppImage squashfs `usr/bin/spellbook-sidecar`: 31,872,168 bytes, SHA256 `dec4ba4c96186f9da1a04dc299482df511ada46cb3723e238f91e7c23ecbd655`, RUNPATH `$ORIGIN/../lib`. linuxdeploy still patches the sidecar (the wrapper skips only `vec0.so`). This rebuilt AppImage sidecar was not re-smoked for import/export here.
+
+The earlier 155,168-byte AppImage `vec0.so` (`f7c0d27d…`, RUNPATH `$ORIGIN`) and the 31,868,072-byte AppImage sidecar (`a883177d…`) are historical. They came from the `910f717` AppImage build (SHA256 `21788562…`).

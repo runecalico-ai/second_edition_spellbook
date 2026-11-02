@@ -326,3 +326,61 @@ This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `
   - Method: verified side-load. Downloaded official HuggingFace URLs from `docs/DEVELOPMENT.md` into `%TEMP%\spellbook-task3-models\` (`curl -L`), verified sizes + SHA-256 against DEVELOPMENT.md / `provisioning.rs`, then copied into the user vault destinations (same gates as `llm_import_model_file` / `embeddings_import_model_file`). Tauri IPC / in-app download UI was not driven (no WebView automation for the installed binary).
   - Hashes verified before accept: TinyLlama SHA-256 `9FECC3B3CD76BBA89D504F29B616EEDF7DA85B96540E490CA5824D3F7D2776A0` (size 668788096); MiniLM `model.onnx` `bbd7b466f6d58e646fdc2bd5fd67b2f5e93c0b687011bd4548c420f7bd46f0c5` (90387630) plus the four sidecar JSON files matching DEVELOPMENT.md.
   - `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` was not used. OpenSpec 4.4 (chat / semantic search) not claimed here.
+  - **Correction (T3-F1, 2026-11-02):** the `01b9ebe` copies were checked by hand (curl, size + SHA-256 compare, file copy). They did **not** run the app's `llm_import_model_file` / `embeddings_import_model_file` gates, and no `llm_status` / `embeddings_status` was observed. The phrase "same gates as" above overstates that. The `%LOCALAPPDATA%\SpellbookVault\models\` mirror was never read by the app (`dirs::data_dir()` is Roaming on Windows) and was removed in T3-F1. The in-app proof is in the next subsection.
+  - All five MiniLM files (sizes / SHA-256, all matched in `01b9ebe` and again in T3-F1):
+    - `model.onnx` 90387630 `bbd7b466f6d58e646fdc2bd5fd67b2f5e93c0b687011bd4548c420f7bd46f0c5`
+    - `tokenizer.json` 711661 `da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0`
+    - `config.json` 650 `1b4d8e2a3988377ed8b519a31d8d31025a25f1c5f8606998e8014111438efcd7`
+    - `special_tokens_map.json` 695 `5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a`
+    - `tokenizer_config.json` 1433 `bd2e06a5b20fd1b13ca988bedc8763d332d242381b4fbc98f8fead4524158f79`
+
+### In-app provisioning (installed Windows build)
+
+- Date: 2026-11-02 (T3-F1). Installed NSIS build `C:\Users\vitki\AppData\Local\Spellbook\spellbook-desktop.exe` (60,417,024 bytes, SHA-256 `8E8089855AAC83A6E064E354E4E8BEBCBD36599F114CBEACC564BBDC21D33BA4`, release, default `llm` feature). No repo checkout, no `pnpm tauri:dev`.
+- **Staging (outside the vault):** hashed both vault copies first (all six files matched DEVELOPMENT.md in both). Moved `%APPDATA%\SpellbookVault\models` to `C:\Users\vitki\spellbook-t3f1-src\models`. Deleted the unused `%LOCALAPPDATA%\SpellbookVault\models` mirror (that folder was the only child; `%LOCALAPPDATA%\SpellbookVault` is now empty). No other LOCALAPPDATA files touched.
+- **Launch:** `Start-Process` of the installed exe, working dir = install dir, from a child `pwsh` that set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` for that process only. `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` and `SPELLBOOK_DATA_DIR` were removed from the process env and are unset at User and Machine scope.
+- **IPC driver:** untracked Node 24 script `scripts/_t3f1_cdp.mjs`. It reads `http://127.0.0.1:9222/json`, picks the single `page` target (`http://tauri.localhost/`, title `Spellbook`), opens its `webSocketDebuggerUrl`, and runs `Runtime.evaluate` (`awaitPromise: true`, `returnByValue: true`) on `window.__TAURI_INTERNALS__.invoke(cmd, args)`. Probe first: `typeof __TAURI_INTERNALS__ === "object"`, `typeof invoke === "function"`. No UI, no file picker.
+
+#### Attempt 1: embeddings rejected by the pre-existing vault DB
+
+- `llm_status` before: `{"status":"notProvisioned","modelPath":"C:\\Users\\vitki\\AppData\\Roaming\\SpellbookVault\\models\\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf","bytesDownloaded":null,"totalBytes":null,"lastError":null}`. `embeddings_status` before: `{"state":"notProvisioned","downloadProgress":null,"errorMessage":null}`.
+- `llm_import_model_file {filePath: "C:\\Users\\vitki\\spellbook-t3f1-src\\models\\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"}`: ok in 2,134 ms. `llm_status` after: `"status":"ready"`.
+- `embeddings_import_model_file {filePath: "C:\\Users\\vitki\\spellbook-t3f1-src\\models\\embeddings\\all-MiniLM-L6-v2"}`: **rejected** in 186 ms with `"Search error: semantic search requires sqlite-vec; spell_vec is blob-backed in this database"`. `embeddings_status` stayed `notProvisioned`.
+- Cause: the vault `spellbook.sqlite3` was created 2026-07-12, before `vec0.dll` first reached the vault (2026-09-13). Migration v1 then fell back to `CREATE TABLE spell_vec(rowid INTEGER PRIMARY KEY, v BLOB)`. Later launches never upgrade that table, even with `vec0.dll` present (vault copy hash `74E63AB7…DBD7531` = installed `resources\sqlite-vec\vec0.dll`). The DB had 0 spells and 0 `spell_vec` rows. A clean install does not hit this.
+- Side effect: before the sqlite-vec check failed, the import had already validated the bundle and promoted it to `%APPDATA%\SpellbookVault\models\embeddings\all-MiniLM-L6-v2\`. So the files were on disk but status was `notProvisioned`.
+- Reset: closed the app (`CloseMainWindow`, exited). Moved the old DB to `C:\Users\vitki\spellbook-t3f1-src\vault-db-backup\spellbook.sqlite3` (208,896 bytes, kept). Deleted the attempt-1 `models\` dir written by the app. `imports\`, `spells\`, `vec0.dll` left in place.
+
+#### Attempt 2: fresh vault DB (counted)
+
+- Relaunched the same way. The app created a new DB with `CREATE VIRTUAL TABLE spell_vec USING vec0(rowid INTEGER PRIMARY KEY, v float[384])`.
+- Before:
+  - `llm_status`: `{"status":"notProvisioned","modelPath":"C:\\Users\\vitki\\AppData\\Roaming\\SpellbookVault\\models\\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf","bytesDownloaded":null,"totalBytes":null,"lastError":null}`
+  - `embeddings_status`: `{"state":"notProvisioned","downloadProgress":null,"errorMessage":null}`
+- `llm_import_model_file {filePath: "C:\\Users\\vitki\\spellbook-t3f1-src\\models\\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"}`: `{"ok":true,"value":null}` in **2,170 ms**.
+- `embeddings_import_model_file {filePath: "C:\\Users\\vitki\\spellbook-t3f1-src\\models\\embeddings\\all-MiniLM-L6-v2"}` (the bundle **directory**; the Rust gate requires exactly the five files flat inside it, each size + SHA-256 checked, closed set): `{"ok":true,"value":null}` in **2,493 ms**.
+- After:
+  - `llm_status`: `{"status":"ready","modelPath":"C:\\Users\\vitki\\AppData\\Roaming\\SpellbookVault\\models\\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf","bytesDownloaded":null,"totalBytes":null,"lastError":null}`
+  - `embeddings_status`: `{"state":"ready","downloadProgress":null,"errorMessage":null}`
+- Vault files written by the app (`%APPDATA%\SpellbookVault\models\`), all six match DEVELOPMENT.md:
+  - `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` 668788096 `9FECC3B3CD76BBA89D504F29B616EEDF7DA85B96540E490CA5824D3F7D2776A0`
+  - `embeddings\all-MiniLM-L6-v2\model.onnx` 90387630 `BBD7B466F6D58E646FDC2BD5FD67B2F5E93C0B687011BD4548C420F7BD46F0C5`
+  - `embeddings\all-MiniLM-L6-v2\tokenizer.json` 711661 `DA0E79933B9ED51798A3AE27893D3C5FA4A201126CEF75586296DF9B4D2C62A0`
+  - `embeddings\all-MiniLM-L6-v2\config.json` 650 `1B4D8E2A3988377ED8B519A31D8D31025A25F1C5F8606998E8014111438EFCD7`
+  - `embeddings\all-MiniLM-L6-v2\special_tokens_map.json` 695 `5D5B662E421EA9FAC075174BB0688EE0D9431699900B90662ACD44B2A350503A`
+  - `embeddings\all-MiniLM-L6-v2\tokenizer_config.json` 1433 `BD2E06A5B20FD1B13CA988BEDC8763D332D242381B4FBC98F8FEAD4524158F79`
+- Install dir after import: recursive filename scan for `tinyllama|\.gguf|all-MiniLM|model\.onnx|SpellbookVault` is empty. Full file list is `spellbook-desktop.exe`, `spellbook-sidecar.exe`, `uninstall.exe`, `resources\sqlite-vec\.gitkeep`, `resources\sqlite-vec\vec0.dll`.
+- **Negative imports (same session, after the good imports):**
+  - 1 KB file named `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`: `"Validation error: Selected file size does not match the approved TinyLlama asset"` (4 ms).
+  - Correct name and size (668,788,096 zero bytes): `"Validation error: Selected file SHA-256 does not match the approved TinyLlama asset"` (451 ms).
+  - Wrong name `bogus.gguf`: `"Validation error: Selected file is not the approved TinyLlama file"` (3 ms).
+  - `embeddings_import_model_file` on an empty dir: `"Validation error: Missing required embedding bundle file: embeddings/all-MiniLM-L6-v2/model.onnx"` (2 ms).
+  - After these: `llm_status` still `ready`, `embeddings_status` still `ready`. Vault hashes unchanged (same six values, same timestamps).
+- **Concern: embeddings load is not offline and does not read the verified bundle.** `load_embedding_model_blocking` calls `fastembed::TextEmbedding::try_new(InitOptions::new(AllMiniLML6V2))` with `cache_dir = models/`. During the 2,493 ms import, fastembed wrote a HuggingFace hub cache `models\models--Qdrant--all-MiniLM-L6-v2-onnx\` (`refs/main` = `d13954661f83248295ba75c1ed411eef3b7b936e`, not the approved revision `5f1b8cd7…`). Its `tokenizer.json` (711,649 bytes, `851CA671…`) and `tokenizer_config.json` (1,412 bytes, `ABDA01C8…`) differ from the approved files. Its `model.onnx`, `config.json`, and `special_tokens_map.json` hashes match. There was no other HF cache on the profile, so these bytes came from the network. `embeddings_status=ready` therefore reflects a network fetch of the hub `main` revision, not the side-loaded bundle. This is a product issue (no product code changed here). It matters for the offline claim in DEVELOPMENT.md and for 4.4 semantic search.
+- Close: `CloseMainWindow` and the process exited within 20 s. No leftover `spellbook-desktop` / `spellbook-sidecar` and nothing listening on 9222.
+- Cleanup: the vault copies verified, so the staged `C:\Users\vitki\spellbook-t3f1-src\models` and the bogus inputs were deleted. Kept `C:\Users\vitki\spellbook-t3f1-src\vault-db-backup\spellbook.sqlite3`. Raw JSON evidence is in `%TEMP%\spellbook-t3f1\` (not committed).
+
+#### Linux
+
+- Not driven in-app. WebKitGTK has no CDP endpoint equivalent to WebView2's `--remote-debugging-port`, and the release build has no devtools.
+- Linux evidence is still the hand-verified copy: `~/.local/share/SpellbookVault/models/` has the same six files with the same SHA-256 values (re-hashed 2026-11-02). There is no `models--Qdrant--…` hub cache there, so the installed Linux app has not yet loaded embeddings from that vault. `/usr/lib/Spellbook` still contains only `resources/`.
+- The Windows run above is the proof that the in-app import path works on an installed build.

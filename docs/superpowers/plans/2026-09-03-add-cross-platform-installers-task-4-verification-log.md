@@ -473,3 +473,125 @@ This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `
 #### Linux (pending)
 
 - Linux artifacts are still **pre-`18fd267`**: deb `0f5fb9e8…` and AppImage `9cc1acf6…` were built from `910f717` (+ `e4bdf65` packaging), before `18fd267`. They still have the old hf-hub `TextEmbedding::try_new` loader. The offline embeddings proof above is Windows-only. A Linux rebuild and offline re-check are pending.
+- Closed by "Linux rebuild at `4799e41` (post embeddings fix)" below.
+
+### Linux rebuild at `4799e41` (post embeddings fix)
+
+- Date: 2026-11-02 (T3-F2, Linux side). Same Ubuntu-24.04 WSL2 / WSLg host, user `lvitki`. Product code was not changed. OpenSpec checkboxes were not changed.
+- This subsection **supersedes** the `9cc1acf6…` AppImage and the `0f5fb9e8…` deb as the current Linux build. Those older artifacts had the pre-`18fd267` hf-hub loader. They were moved to `/home/lvitki/spellbook-t3f2l/old-bundle/` before the build.
+- Evidence (logs, extracts, launch output) is under `/home/lvitki/spellbook-t3f2l/`. Not committed. Harness scripts are untracked `scripts/_t3f2l_*`.
+
+#### Clean-provenance checkout
+
+- The WSL clone `/home/lvitki/spellbook-task2-build` was at `910f717`, plus uncommitted copies of `apps/desktop/package.json`, `scripts/patchelf-skip-sqlite-vec`, and `scripts/tauri_build_linux.sh` (the T2-F1 hybrid). Those files and the untracked `gen/schemas/linux-schema.json` were copied to `pre-checkout-backup/` with SHA-256 values and `git diff`.
+- Ran `git fetch /mnt/c/localDev/runecalico-ai/second_edition_spellbook add-cross-platform-installers`. `FETCH_HEAD` = `4799e41b5c52e23536b04b5a1899813a875f6003`, which is the Windows branch HEAD. The three backed-up packaging files were byte-identical to `git show 4799e41:<path>`.
+- Ran `git checkout --force 4799e41…` (detached). `git rev-parse HEAD` = `4799e41b5c52e23536b04b5a1899813a875f6003` before and after both builds.
+- `git status --short --untracked-files=all` after the builds showed only `?? apps/desktop/src-tauri/gen/schemas/linux-schema.json`. Tauri writes that file during the build. Everything else (`.venv/`, `node_modules/`, `dist/`, staged sidecar, staged `vec0.so`, `services/ml/build|dist`, `target/`) is gitignored.
+- `apps/desktop/src-tauri/Cargo.lock` has no `hf-hub` package.
+
+#### Build
+
+- Toolchain was unchanged from "Toolchain" above: `.venv` Python 3.14.10 (uv `cpython-3.14.10-linux-x86_64-gnu`), PyInstaller 6.22.2, pdfminer.six 20260107, python-docx 1.2.0, pnpm 10.33.0, Node v24.22.2, rustc / cargo 1.99.1.
+- Build env: `/mnt/*` entries were removed from `PATH`. `LIBCLANG_PATH`, `CMAKE`, `CARGO_TARGET_DIR`, and `SPELLBOOK*` were unset. The build did not use `/mnt/c`.
+- Commands, run from the clone:
+  - `.venv/bin/python scripts/prepare_release_bundle.py`
+  - `cd apps/desktop && pnpm install --frozen-lockfile` (`Lockfile is up to date`)
+  - `pnpm tauri:build:linux`
+- Frozen sidecar: 31,863,968 bytes, SHA-256 `41b3340f5e3eaaa9fdc1a89af516789bd55b4d7dd4fa568e915c69352456fa19`, at both `services/ml/dist/spellbook-sidecar` and `binaries/spellbook-sidecar-x86_64-unknown-linux-gnu`.
+- **Build 1** (not counted) ran 13:09:20–13:11:36 and exited 0. The log had the wrapper banner `tauri_build_linux: using patchelf wrapper at /tmp/patchelf-skip.2mkxil/patchelf (PATCHELF=…)`. It did **not** have the per-file skip line, because Tauri hides linuxdeploy output unless `--verbose`. Its artifacts were kept in `build1-bundle/`: AppImage 127,154,680 bytes `de556b55…3409328`, deb 54,648,640 bytes `73d70b77…71490d2`.
+- **Build 2 (counted):** `pnpm install --frozen-lockfile`, then `pnpm tauri:build:linux --verbose`. The wrapper script passes `--verbose` to `tauri build`. Same staged sidecar and `vec0.so`. Ran 13:12:37–13:14:19 and exited 0. `Compiling spellbook-desktop` and `Compiling fastembed v5.13.3` both appear.
+- Wrapper evidence from `build-verbose.log`:
+  - Line 19: `tauri_build_linux: using patchelf wrapper at /tmp/patchelf-skip.WgPOXJ/patchelf (PATCHELF=/tmp/patchelf-skip.WgPOXJ/patchelf)`
+  - Line 539 (linuxdeploy main pass): `Setting rpath in ELF file …/Spellbook.AppDir/usr/lib/Spellbook/resources/sqlite-vec/vec0.so to patchelf-skip-sqlite-vec: skipping …/Spellbook.AppDir/usr/lib/Spellbook/resources/sqlite-vec/vec0.so:$ORIGIN`
+  - Line 2048 (gtk plugin pass): the same line, prefixed `[gtk/stdout]`.
+  - The skip message appears inside linuxdeploy's "Setting rpath … to …" line. linuxdeploy first ran `patchelf --print-rpath` on `vec0.so`. The wrapper printed its skip message instead of an rpath, and linuxdeploy used that text as the "existing" rpath. The `--set-rpath` call that followed was also skipped. The `vec0.so` table below confirms the file was not changed.
+- Artifacts under the clone's `target/release/bundle/`. Both mtimes are after the `18fd267` commit time `2026-11-02T12:36:51-06:00`:
+  - `appimage/Spellbook_0.1.0_amd64.AppImage` 127,154,680 bytes, SHA-256 `e1ce4e704fa88ebb1b365fc0d1e0ab55633aa6a634c00dbed083ab7661365cbb`, mtime `2026-11-02T13:14:17-06:00`
+  - `deb/Spellbook_0.1.0_amd64.deb` 54,648,642 bytes, SHA-256 `1846b14afd1660a83a2561790f6d7c73a4810e73da74bb8250933c639099bcdc`, mtime `2026-11-02T13:14:19-06:00`. `dpkg-deb -I`: `Package: spellbook`, `Version: 0.1.0`, `Architecture: amd64`.
+  - Built `target/release/spellbook-desktop` 73,128,312 bytes, SHA-256 `11eb82c18544c707cc7447f287a10f3cced7f13bc8a45954bd5da2174cf51ccf`
+- These artifacts are only in the WSL clone (plus evidence copies under `/home/lvitki/spellbook-t3f2l/pkg/` and `appimage/`). They were not copied to the Windows checkout's `target/release/bundle/`.
+
+#### Install
+
+- `sudo -n` needs a password on this host. The deb was installed as root through `wsl -d Ubuntu-24.04 -u root` (the same root path as "Install (no repo checkout)" above).
+- Before: no `spellbook` process was running. `spellbook` 0.1.0 was installed with `/usr/bin/spellbook-desktop` `80650c0e…` (the `910f717` deb).
+- Ran `apt-get install --reinstall -y /home/lvitki/spellbook-t3f2l/pkg/Spellbook_0.1.0_amd64.deb`. The copy's SHA-256 was `1846b14a…`. apt reported `Unpacking spellbook (0.1.0) over (0.1.0)` and `Setting up spellbook (0.1.0)`, exit 0. `dpkg -s`: `install ok installed`, `0.1.0`.
+- Installed files after:
+  - `/usr/bin/spellbook-desktop` 73,128,312 bytes, SHA-256 `11eb82c18544c707cc7447f287a10f3cced7f13bc8a45954bd5da2174cf51ccf` (same as the built binary and the deb payload)
+  - `/usr/bin/spellbook-sidecar` 31,863,968 bytes, SHA-256 `41b3340f5e3eaaa9fdc1a89af516789bd55b4d7dd4fa568e915c69352456fa19`
+  - `/usr/lib/Spellbook/resources/sqlite-vec/vec0.so` 147,984 bytes, SHA-256 `f285c46d…0961233`
+  - `dpkg -L spellbook` lists only those files, `/usr/lib/Spellbook/resources/sqlite-vec/.gitkeep`, `Spellbook.desktop`, and three icons.
+
+#### `vec0.so` parity
+
+| Copy | Path | Size (bytes) | SHA256 | RUNPATH |
+| ---- | ---- | ------------ | ------ | ------- |
+| Staged | `apps/desktop/src-tauri/resources/sqlite-vec/vec0.so` (WSL clone) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| deb payload | `usr/lib/Spellbook/resources/sqlite-vec/vec0.so` (`dpkg-deb -x`) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| AppImage squashfs | `usr/lib/Spellbook/resources/sqlite-vec/vec0.so` (`--appimage-extract`) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| Installed deb | `/usr/lib/Spellbook/resources/sqlite-vec/vec0.so` | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+| Vault | `~/.local/share/SpellbookVault/vec0.so` (kept from the T2-F1 run) | 147,984 | `f285c46d5496fe7571be40ab40c0b151d091892c141f89a503e02392e0961233` | none |
+
+#### Binary identity (informational)
+
+- Sidecar: the deb payload and installed `/usr/bin/spellbook-sidecar` match the staged binary (31,863,968 / `41b3340f…`, no RUNPATH). The AppImage `usr/bin/spellbook-sidecar` is 31,872,160 bytes, SHA-256 `56fee1856d72740df90a60e329a08b9f660b4580a85adfecf0ff34ff16423d1e`, RUNPATH `$ORIGIN/../lib`. As before, linuxdeploy patches the sidecar; the wrapper skips only `vec0.*`.
+- Desktop: the deb payload matches the built binary (`11eb82c1…`). The AppImage `usr/bin/spellbook-desktop` is 73,188,937 bytes, SHA-256 `0846300eef407a353d4973a4cc6bb5b62c10fe9476e854853ad793c16bcc93c1`, RUNPATH `$ORIGIN/../lib`.
+
+#### Models excluded
+
+- Pattern `tinyllama|\.gguf|minilm|model\.onnx|SpellbookVault/models` (`grep -Ei`):
+  - `dpkg-deb -c` of the new deb: empty
+  - `find` over the `dpkg-deb -x` tree: empty
+  - `find` over the new AppImage `squashfs-root`: empty
+  - `find /usr/lib/Spellbook /usr/bin/spellbook-*` after install: empty
+- The deb's full file list is the 8 files listed under Install.
+
+#### Sidecar smoke
+
+- Script: untracked `scripts/_t3f2l_smoke.py`. It is the T2-F4 smoke with paths changed to `/home/lvitki/spellbook-t3f2l/smoke/`. Driver: system `/usr/bin/python3` 3.12.3. Fixtures were regenerated (`test-spell-nobom.md` 52 bytes, `fireball.docx` 926 bytes, `magic-missile.pdf` 611 bytes).
+- The sidecar ran once per request, with the request on stdin. cwd was `smoke/run-cwd` (`git rev-parse`: `fatal: not a git repository`). No `SPELLBOOK*` env.
+- Three variants:
+  - `installed-direct`: `/usr/bin/spellbook-sidecar` (`41b3340f…`)
+  - `appimage-direct`: extracted `squashfs-root/usr/bin/spellbook-sidecar` (`56fee185…`)
+  - `appimage-env`: the extracted sidecar with the AppImage runtime + gtk hook env, as in T2-F4
+- All three variants passed every check (rc 0):
+  - **Markdown:** `name=Test Spell`, `level=1`, `conflicts=[]`, description `Description here.`
+  - **DOCX:** `name=Fireball`, `level=3`, `conflicts=[]`, description `Fireball\n\nLevel: 3`
+  - **PDF import:** `name=Magic-Missile`, `level=1`, `conflicts=[]`, description `Magic Missile Level: 1 A magic dart.`
+  - **Export `format=pdf`:** `"format": "html"`, file `spellbook_export_<hex>.html` 1,326 bytes starting `<!doctype html>`, note `Print-optimized HTML generated. Use browser 'Print to PDF' for PDF output.`
+- Import stderr had only the `datetime.utcnow()` DeprecationWarning.
+
+#### Offline embeddings load (installed deb and AppImage)
+
+- Linux has no CDP path, and a successful embeddings load writes no log line. `finalize_embedding_provision` logs only on failure, and `lib.rs` logs only `embedding startup initialization failed`. The positive signal used here is the startup backfill. After `Ready`, `finalize_embedding_provision` runs `reindex_embeddings_internal(force=false)`, which embeds every spell without a `spell_vec` row. So `spell_vec` rows appear for seeded spells only if the model loaded.
+- **Vault prep:**
+  - `~/.local/share/SpellbookVault/models/` had the six approved files. All six SHA-256 values matched DEVELOPMENT.md (values under "Models excluded" above; mtimes `2026-11-02 09:09`).
+  - No `models--*`, `.locks`, or `*fastembed*` under the vault. `~/.cache/huggingface` and `~/.cache/fastembed` were absent. No `HF_*` / `FASTEMBED*` env, so there was nothing to remove.
+  - DB `spellbook.sqlite3`: `user_version=15`, `spell_vec` = `vec0(rowid INTEGER PRIMARY KEY, v float[384])`, 0 spells. Saved as `vault-db-backup/spellbook.sqlite3` (SHA-256 `5ca1c45b88085c9c492bf41f823d7f69ae0fc0087e148963a4abeae05f0efe0d`).
+- **Each run:**
+  - Restore the baseline DB.
+  - Seed two temp spells with system `python3` `sqlite3`: `INSERT INTO spell(name, level, description)` for `T3F2L Magic Missile` (id 1) and `T3F2L Light` (id 2). `spell_vec_rowids` = 0 after seeding.
+  - Launch from `/home/lvitki/spellbook-t3f2l/run-cwd` (not a git repo) with `setsid env DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 RUST_LOG=info NO_COLOR=1 HTTP_PROXY=HTTPS_PROXY=ALL_PROXY=http://127.0.0.1:9` (lowercase too) `NO_PROXY=127.0.0.1,localhost`. No `SPELLBOOK*` in the shell. `/proc/<pid>/environ` was captured to `app.env` and confirmed the proxy vars.
+  - Run 40 s while sampling `ss -tunpH` once per second for every PID in the process group (`spellbook-desktop`, `WebKitNetworkProcess`, `WebKitWebProcess`).
+  - `SIGTERM` the process group. In every run it exited within 1 s, with no leftover process and no FUSE mount.
+- **Installed deb** (`/usr/bin/spellbook-desktop` `11eb82c1…`, PID 6586, 13:15:22):
+  - stdout had only 10× `sqlite-vec: loaded extension path=/home/lvitki/.local/share/SpellbookVault/vec0.so` and `DB migration start/complete version=15`. No WARN or ERROR lines.
+  - stderr: MESA/EGL fallback lines, then the hash backfill for the two seeded rows: `Failed to canonicalize spell … Must have a School (Arcane) or Sphere (Divine) defined`, `Backfill complete. Processed: 2, updated: 0, … hash failures: 0`. This is expected for rows without a school, and the rows were not changed.
+  - DB after: `spell_vec_rowids` has rowids 1 and 2. With `vec0` loaded (`vec_version` v0.1.6), each `spell_vec.v` is 384 floats with L2 norm 1.000000. Cosine distance between them is 0.441851.
+  - Socket samples: 40, all empty (no TCP/UDP sockets, loopback or not).
+- **AppImage** (copy of `e1ce4e70…`, FUSE mount, PID 7202, 13:16:18): same stdout lines, no WARN or ERROR lines. stderr had `libEGL warning: DRI3 error …` and the same backfill lines. `spell_vec` rows 1 and 2 had the same first components and the same 0.441851 distance as the deb run. Socket samples: 40, all empty.
+- **Negative control** (installed deb, 25 s): `embeddings/all-MiniLM-L6-v2/tokenizer.json` was moved to `/home/lvitki/spellbook-t3f2l/aside/`. Same seeding and launch.
+  - stdout: same lines, no WARN or ERROR lines.
+  - `spell_vec_rowids` stayed empty, so startup did not load a model and did not fetch one.
+  - Socket samples: 25, all empty. No hub cache.
+  - Restored `tokenizer.json` afterwards: 711,661 bytes, `da0e7993…`, mtime `09:09:40` kept.
+- **No hub cache:** after every run there were no `models--*`, `.locks`, or `*fastembed*` under the vault, and no `~/.cache/huggingface` or `~/.cache/fastembed`. The only files under `models/` were the six approved files, with the same sizes, SHA-256 values, and mtimes.
+- **Cleanup:**
+  - The hash backfill had written `migration.log` and `spells_backup_<ts>.db` (3 files) to the vault root. These were moved to `/home/lvitki/spellbook-t3f2l/vault-side-effects/`.
+  - Restored `spellbook.sqlite3` from the baseline (SHA-256 `5ca1c45b…`, 0 spells, 0 `spell_vec` rows). No `-wal` / `-shm` / `-journal` left; journal mode is `delete`.
+  - The vault root again holds only `models/`, `spellbook.sqlite3`, `vec0.so`, and `vec0.so.pre-e4bdf65.bak`.
+- **Bounds:**
+  - The proxy blackhole is the offline simulation; there was no firewall rule or network namespace.
+  - Socket sampling every 1 s can miss a connection shorter than one interval. The missing hub cache and the negative control cover that gap.
+  - `embeddings_status` was not read over IPC on Linux. "Model loaded" is shown by the backfill writing normalized 384-dim vectors.
+  - Not a 4.4 semantic-search claim.

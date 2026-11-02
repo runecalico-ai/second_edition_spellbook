@@ -308,3 +308,21 @@ Results (both variants returned the same values, rc 0 every time):
 - stderr for the import calls had only `spellbook_sidecar.py:25: DeprecationWarning: datetime.datetime.utcnow() is deprecated ...`. Export stderr was empty.
 
 This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `a883177d…`) for the current AppImage artifact (`9cc1acf6…`). The deb / installed `/usr/bin/spellbook-sidecar` evidence (31,863,976 / `dffff91c…`) is unchanged and was not re-run. Bound: the sidecar was run from the extracted `squashfs-root` with the AppImage env reproduced. It was not spawned by `spellbook-desktop` from the FUSE mount, so the GUI import/export path was not driven.
+
+## Models excluded
+
+- Date: 2026-11-02
+- Installer/payload grep for GGUF/ONNX: clean (both platforms)
+  - Windows install dir `C:\Users\vitki\AppData\Local\Spellbook` recursive filename scan for `tinyllama|\.gguf|all-MiniLM|model\.onnx|SpellbookVault`: empty. Program Files / Program Files (x86) Spellbook dirs absent.
+  - Windows NSIS used for Task 1 smoke (`%TEMP%\spellbook-task4-nsis-iter2\Spellbook_0.1.0_x64-setup.exe`, SHA256 `9D729C3AE278058D67B36C456B87E396DE348C6AFB455CAAF55EF98D80B5ACFC`, 39,396,346 bytes): `findstr /I /C` for `tinyllama`, `TinyLlama`, `.gguf`, `Q4_K_M`, `all-MiniLM`, `model.onnx`, `SpellbookVault` all MISS; ASCII binary scan for the same markers empty; `7z l` listing shows only `$PLUGINSDIR\*`, `spellbook-desktop.exe`, `spellbook-sidecar.exe`, `resources\sqlite-vec\.gitkeep`, `resources\sqlite-vec\vec0.dll` (no models).
+  - Linux deb `/home/lvitki/spellbook-task2-build/target/release/bundle/deb/Spellbook_0.1.0_amd64.deb` (SHA256 `0f5fb9e8f16dc88ea96a2c9017ce0a9c67ec0820b5d3d0a5caa3fe2657c2fc39`): `dpkg-deb -c | grep -Ei 'tinyllama|\.gguf|minilm|model\.onnx|SpellbookVault/models'` empty.
+  - Linux AppImage `/home/lvitki/spellbook-task2-build/target/release/bundle/appimage/Spellbook_0.1.0_amd64.AppImage` (SHA256 `9cc1acf64f2798f9ec4d7737d824693450a591533a3ca4f7a74b222a9cb688f9`): `--appimage-extract` then `find` for the same patterns empty (path and filename).
+  - Installed Linux `/usr/lib/Spellbook` and `/usr/bin/spellbook-*`: same pattern empty; tree under `/usr/lib/Spellbook` is only `resources/sqlite-vec`.
+- Post-install provisioning succeeded: yes (both platforms; TinyLlama + MiniLM five-file set)
+- Where models landed (paths):
+  - Windows runtime vault (`dirs::data_dir()` -> `%APPDATA%\SpellbookVault`): `%APPDATA%\SpellbookVault\models\tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` (668788096 bytes) and `%APPDATA%\SpellbookVault\models\embeddings\all-MiniLM-L6-v2\` (`model.onnx`, `tokenizer.json`, `config.json`, `special_tokens_map.json`, `tokenizer_config.json`). Also mirrored under `%LOCALAPPDATA%\SpellbookVault\models\` per the Task 3 brief; install dir `%LOCALAPPDATA%\Spellbook` remained free of model files.
+  - Linux: `~/.local/share/SpellbookVault/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` and `~/.local/share/SpellbookVault/models/embeddings/all-MiniLM-L6-v2/` (same five files). `/usr/lib/Spellbook` remained free of model files.
+- Notes:
+  - Method: verified side-load. Downloaded official HuggingFace URLs from `docs/DEVELOPMENT.md` into `%TEMP%\spellbook-task3-models\` (`curl -L`), verified sizes + SHA-256 against DEVELOPMENT.md / `provisioning.rs`, then copied into the user vault destinations (same gates as `llm_import_model_file` / `embeddings_import_model_file`). Tauri IPC / in-app download UI was not driven (no WebView automation for the installed binary).
+  - Hashes verified before accept: TinyLlama SHA-256 `9FECC3B3CD76BBA89D504F29B616EEDF7DA85B96540E490CA5824D3F7D2776A0` (size 668788096); MiniLM `model.onnx` `bbd7b466f6d58e646fdc2bd5fd67b2f5e93c0b687011bd4548c420f7bd46f0c5` (90387630) plus the four sidecar JSON files matching DEVELOPMENT.md.
+  - `SPELLBOOK_SQLITE_VEC_RESOURCE_DIR` was not used. OpenSpec 4.4 (chat / semantic search) not claimed here.

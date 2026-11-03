@@ -983,6 +983,15 @@ pub async fn update_spell(
     Ok(spell_id)
 }
 
+/// Matches `CanonicalSpell::compute_hash` output (lowercase hex SHA-256). The stored
+/// `content_hash` becomes a file name, so anything else could escape `spells/`.
+fn is_well_formed_content_hash(hash: &str) -> bool {
+    hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 pub(crate) fn delete_spell_with_conn(
     conn: &Connection,
     vault_root: &std::path::Path,
@@ -1004,6 +1013,13 @@ pub(crate) fn delete_spell_with_conn(
     let Some(hash) = content_hash else {
         return Ok(());
     };
+    if !is_well_formed_content_hash(&hash) {
+        tracing::warn!(
+            spell_id = id,
+            "deleted spell has a malformed content_hash; leaving vault files untouched"
+        );
+        return Ok(());
+    }
     if is_content_hash_live(conn, &hash)? {
         return Ok(());
     }
@@ -1692,6 +1708,32 @@ mod tests {
         assert!(
             spell_file_path_in_root(root.path(), &hash).exists(),
             "deferred GC owns cleanup while an import runs"
+        );
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_ignores_malformed_content_hash() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = setup_spell_delete_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Tampered', 1, 'Desc', '../escape')",
+            [],
+        )
+        .expect("seed tampered spell row");
+        std::fs::create_dir_all(root.path().join("spells")).expect("create spells dir");
+        let sentinel = root.path().join("escape.json");
+        std::fs::write(&sentinel, "{}").expect("write sentinel");
+
+        delete_spell_with_conn(&conn, root.path(), &VaultMaintenanceState::default(), 1)
+            .expect("delete spell");
+
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("count spells");
+        assert_eq!(remaining, 0);
+        assert!(
+            sentinel.exists(),
+            "a malformed hash must not map to a file outside spells/"
         );
     }
 

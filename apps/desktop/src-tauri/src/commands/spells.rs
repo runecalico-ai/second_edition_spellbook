@@ -1679,12 +1679,40 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_spell_with_conn_keeps_file_still_referenced_by_character() {
+    fn test_delete_spell_with_conn_keeps_file_referenced_by_other_row() {
         let root = tempfile::tempdir().expect("vault root");
         let conn = setup_spell_delete_test_db();
         let hash = seed_vaulted_spell(&conn, root.path(), 1, "Known Spell");
+        seed_vaulted_spell(&conn, root.path(), 2, "Other Spell");
         conn.execute(
-            "INSERT INTO character_class_spell (spell_id, character_class_id, spell_content_hash) VALUES (1, 1, ?1)",
+            "INSERT INTO character_class_spell (spell_id, character_class_id, spell_content_hash) VALUES (2, 1, ?1)",
+            [&hash],
+        )
+        .expect("seed cross-spell hash reference");
+
+        delete_spell_with_conn(&conn, root.path(), &VaultMaintenanceState::default(), 1)
+            .expect("delete spell");
+
+        assert!(spell_file_path_in_root(root.path(), &hash).exists());
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_cascades_own_character_rows_and_removes_file() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        crate::db::migrations::load_migrations(&conn).expect("load migrations");
+        conn.execute_batch("PRAGMA foreign_keys=ON;")
+            .expect("enable foreign keys");
+        let hash = seed_vaulted_spell(&conn, root.path(), 1, "Known Spell");
+        conn.execute_batch(
+            r#"
+            INSERT INTO "character" (id, name) VALUES (1, 'Elminster');
+            INSERT INTO character_class (id, character_id, class_name) VALUES (1, 1, 'Mage');
+            "#,
+        )
+        .expect("seed character parents");
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, spell_content_hash) VALUES (1, 1, 'KNOWN', ?1)",
             [&hash],
         )
         .expect("seed character reference");
@@ -1692,7 +1720,13 @@ mod tests {
         delete_spell_with_conn(&conn, root.path(), &VaultMaintenanceState::default(), 1)
             .expect("delete spell");
 
-        assert!(spell_file_path_in_root(root.path(), &hash).exists());
+        let references: i64 = conn
+            .query_row("SELECT COUNT(*) FROM character_class_spell", [], |row| {
+                row.get(0)
+            })
+            .expect("count character references");
+        assert_eq!(references, 0, "FK cascade must remove the spell's own rows");
+        assert!(!spell_file_path_in_root(root.path(), &hash).exists());
     }
 
     #[test]

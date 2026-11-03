@@ -710,6 +710,35 @@ fn collect_live_content_hashes(conn: &rusqlite::Connection) -> Result<HashSet<St
     Ok(live_hashes)
 }
 
+pub(crate) fn is_content_hash_live(
+    conn: &rusqlite::Connection,
+    content_hash: &str,
+) -> Result<bool, AppError> {
+    use rusqlite::OptionalExtension;
+
+    let referenced = |sql: &str| -> Result<bool, AppError> {
+        Ok(conn
+            .query_row(sql, [content_hash], |_| Ok(()))
+            .optional()?
+            .is_some())
+    };
+
+    if referenced("SELECT 1 FROM spell WHERE content_hash = ?1 LIMIT 1")? {
+        return Ok(true);
+    }
+    if crate::db::table_has_column(conn, "artifact", "spell_content_hash")
+        && referenced("SELECT 1 FROM artifact WHERE spell_content_hash = ?1 LIMIT 1")?
+    {
+        return Ok(true);
+    }
+    if crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash")
+        && referenced("SELECT 1 FROM character_class_spell WHERE spell_content_hash = ?1 LIMIT 1")?
+    {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 pub(crate) fn run_vault_gc_with_root(
     conn: &rusqlite::Connection,
     root: &Path,

@@ -190,6 +190,7 @@ Key crates:
 ## Testing
 
 Run `cargo check` before committing to verify compilation.
+Lint test code too: `cargo clippy --all-targets -- -D warnings` (CI runs this).
 E2E tests are in the frontend (`tests/` directory) using Playwright.
 
 ## Frontend Modal System

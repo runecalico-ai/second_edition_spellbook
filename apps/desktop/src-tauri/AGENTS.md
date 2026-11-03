@@ -93,6 +93,16 @@ let result = call_sidecar("action_name", json!({"key": value})).await?;
 3. Export from `commands/mod.rs`
 4. Register in `lib.rs` `invoke_handler` (not `main.rs`; `main.rs` only calls `lib::run()`)
 
+### Webview permissions (capabilities)
+App commands registered in `invoke_handler` need no permission. Core and plugin JS APIs do: `@tauri-apps/api/event` (`listen`), `@tauri-apps/plugin-dialog`, `@tauri-apps/plugin-fs`, window/webview APIs, and so on. Tauri v2 refuses any call not granted in `capabilities/default.json` with `Command plugin:<name>|<cmd> not allowed by ACL`, and only at runtime.
+
+When frontend code starts using a new core or plugin API:
+1. Add the narrowest permission (for example `core:window:allow-set-title`, not `core:default`) to `capabilities/default.json`.
+2. Add it to `EXPECTED_PERMISSIONS` in `src/capability_tests.rs`, plus an allow test for the new command.
+3. Run `cargo build` so `gen/schemas/capabilities.json` regenerates, then `cargo test capability`. Commit both files.
+
+Do not add static `fs` scopes: dialog-picked paths are added to the fs scope at runtime.
+
 ### Tauri IPC Casing
 Tauri automatically converts command parameters from Rust's `snake_case` to JavaScript's `camelCase`.
 

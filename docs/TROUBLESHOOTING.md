@@ -202,6 +202,10 @@ Select-String -Path "$env:APPDATA\SpellbookVault\migration.log" -Pattern "Spell 
     .\spellbook-desktop.exe --recompute-hashes
     ```
 
+### 4. "Command plugin:… not allowed by ACL"
+- **Cause**: The frontend called a core or plugin API that `apps/desktop/src-tauri/capabilities/default.json` does not grant. App commands are not affected, so most screens still work.
+- **Fix**: Grant the narrowest permission for that command, add it to `EXPECTED_PERMISSIONS` in `src/capability_tests.rs`, run `cargo build` and `cargo test capability`. See `apps/desktop/src-tauri/AGENTS.md` ("Webview permissions").
+
 ## Build and Compilation Issues
 
 ### 1. Linking Errors (LNK1318, etc.) on Windows

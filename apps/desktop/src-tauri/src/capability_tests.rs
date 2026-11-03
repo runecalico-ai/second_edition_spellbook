@@ -18,7 +18,8 @@ use tauri_plugin_fs::FsExt;
 const MAIN_WINDOW: &str = "main";
 
 const EXPECTED_PERMISSIONS: &[&str] = &[
-    "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:allow-write-file",
@@ -157,6 +158,37 @@ fn main_window_may_listen_and_unlisten_events() {
         HeaderMap::new(),
     )
     .expect("plugin:event|unlisten must be allowed");
+}
+
+#[test]
+fn main_window_is_denied_core_apis_the_ui_does_not_use() {
+    let (_app, webview) = build_app();
+
+    let unused = [
+        (
+            "plugin:event|emit",
+            serde_json::json!({ "event": "acl-test", "payload": null }),
+        ),
+        (
+            "plugin:window|title",
+            serde_json::json!({ "label": MAIN_WINDOW }),
+        ),
+        (
+            "plugin:image|from_path",
+            serde_json::json!({ "path": "x.png" }),
+        ),
+        ("plugin:tray|new", serde_json::json!({ "options": {} })),
+        (
+            "plugin:webview|internal_toggle_devtools",
+            serde_json::json!({}),
+        ),
+    ];
+
+    for (cmd, body) in unused {
+        let err = invoke(&webview, cmd, InvokeBody::Json(body), HeaderMap::new())
+            .expect_err("core APIs outside the UI's needs must be refused");
+        assert!(is_acl_denial(&err), "{cmd} must be ACL-denied, got: {err}");
+    }
 }
 
 #[test]

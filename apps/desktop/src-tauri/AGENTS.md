@@ -103,6 +103,9 @@ When frontend code starts using a new core or plugin API:
 
 Do not add static `fs` scopes: dialog-picked paths are added to the fs scope at runtime.
 
+### Content Security Policy
+`tauri.conf.json` `app.security.csp` applies to built assets (release and `pnpm tauri:build --debug`, which Playwright uses). Tauri hashes inline scripts in `dist/index.html` into `script-src` automatically. Do not add `'unsafe-eval'` or `'unsafe-inline'` to `script-src`. Loading anything from outside the app (URLs, fonts, images) needs an explicit source in the policy. `tests/content_security_policy.spec.ts` fails on any violation.
+
 ### Tauri IPC Casing
 Tauri automatically converts command parameters from Rust's `snake_case` to JavaScript's `camelCase`.
 

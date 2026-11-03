@@ -59,7 +59,7 @@
 - Consumes: none
 - Produces: `on.push.tags: ["v*"]` and `on.workflow_dispatch` with **no** `create_release` input
 
-- [ ] **Step 1: Create the workflow file with jobs stubbed to `true` only if you need a parse check; prefer real jobs in Tasks 2–3 of this same file.**
+- [x] **Step 1: Create the workflow file with jobs stubbed to `true` only if you need a parse check; prefer real jobs in Tasks 2–3 of this same file.**
 
 Write `.github/workflows/release.yml` starting with:
 
@@ -80,15 +80,17 @@ concurrency:
   cancel-in-progress: false
 ```
 
+> **As implemented:** workflow-level `permissions` is `contents: read` (least privilege for build jobs and dispatch dry runs). Task 5b's `publish` job grants `contents: write` at job level.
+
 Write `release.yml` with both jobs in the same working tree (Tasks 2 and 3 below supply the job bodies). Do not push a workflow whose `jobs:` map is empty. If you split commits, commit 5.1+5.2 together (a Windows-only `jobs:` map is valid YAML) then add the Linux job.
 
 Recommended: implement Tasks 1–3 together, then flip 5.1, 5.2, and 5.3 in one `tasks.md` commit after `actionlint` / YAML sanity.
 
-- [ ] **Step 2: YAML sanity**
+- [x] **Step 2: YAML sanity**
 
 If `actionlint` is installed: `actionlint .github/workflows/release.yml`. Otherwise open the file in the GitHub UI on a branch and confirm it parses.
 
-- [ ] **Step 3: Mark OpenSpec 5.1 complete** (after the file exists with both triggers)
+- [x] **Step 3: Mark OpenSpec 5.1 complete** (after the file exists with both triggers)
 
 From:
 
@@ -104,7 +106,7 @@ To:
 
 Leave 5.2–5.3 unchecked until those jobs are filled.
 
-- [ ] **Step 4: Commit** (if splitting)
+- [x] **Step 4: Commit** (if splitting) — not split; 5.1 committed with Task 2
 
 ```bash
 git add .github/workflows/release.yml openspec/changes/add-cross-platform-installers/tasks.md
@@ -130,7 +132,7 @@ If Tasks 2–3 land in the same commit, skip this commit and use Task 3’s comm
 - Consumes: `scripts/prepare_release_bundle.py`, `apps/desktop` pnpm scripts
 - Produces: job `windows` on `windows-latest`
 
-- [ ] **Step 1: Add the Windows job**
+- [x] **Step 1: Add the Windows job**
 
 ```yaml
 jobs:
@@ -187,7 +189,7 @@ jobs:
 
 Do **not** add checksum upload or cache steps yet (Task 5b). Leave those steps out of this file until that plan.
 
-- [ ] **Step 2: Mark OpenSpec 5.2 complete**
+- [x] **Step 2: Mark OpenSpec 5.2 complete**
 
 From:
 
@@ -201,7 +203,7 @@ To:
 - [x] 5.2 Add `windows-latest` job: Node 24, pnpm, Rust, Python 3.14, pre-build scripts, `pnpm tauri build`
 ```
 
-- [ ] **Step 3: Commit** (if splitting)
+- [x] **Step 3: Commit** (if splitting) — `747f76e` (carries 5.1 + 5.2)
 
 ```bash
 git add .github/workflows/release.yml openspec/changes/add-cross-platform-installers/tasks.md
@@ -225,7 +227,7 @@ EOF
 - Consumes: same pre-build script
 - Produces: job `linux` on `ubuntu-24.04`
 
-- [ ] **Step 1: Add the Linux job**
+- [x] **Step 1: Add the Linux job**
 
 ```yaml
   linux:
@@ -294,7 +296,7 @@ EOF
 
 Confirm `.github/workflows/ci.yml` still has **no** `tauri build` / `tauri:build` step.
 
-- [ ] **Step 2: Mark OpenSpec 5.3 complete**
+- [x] **Step 2: Mark OpenSpec 5.3 complete**
 
 From:
 
@@ -308,7 +310,7 @@ To:
 - [x] 5.3 Add `ubuntu-24.04` job: same toolchain plus Linux GTK/WebKit deps
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit** — `aef7ad0`
 
 ```bash
 git add .github/workflows/release.yml openspec/changes/add-cross-platform-installers/tasks.md

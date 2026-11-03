@@ -398,7 +398,7 @@ Do not reintroduce `search_semantic` or `chat_answer`. Chat uses `llm_chat` only
 
 `stream_id` must be non-empty. One inference at a time; a second `llm_chat` is rejected. Timeout is 120s.
 
-**Hooks already wired:** `create_spell` / `update_spell` / import completion embed in the background when the embedding model is `ready`. Failures log and must not fail the spell write. Startup runs embedding init plus `reindex_embeddings(force=false)` backfill.
+**Hooks already wired:** `create_spell` / `update_spell` / import completion embed in the background when the embedding model is `ready`. Failures log and must not fail the spell write. Startup runs embedding init plus a backfill reindex (`force=true` when `app_meta.embedding_index_revision` is missing or differs from `EMBEDDING_MANIFEST_SHA`, else `force=false`; see Database).
 
 **Vault:** `backup_vault` archives the DB, `spells/`, and `vault-settings.json` only. It never adds `models/`. `restore_vault` must leave existing model files untouched.
 

@@ -151,7 +151,14 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 15", [])?;
     }
 
-    info!(version = 15, "DB migration complete");
+    if version < 16 {
+        info!("Applying migration 0016");
+        let sql = include_str!("../../../../../db/migrations/0016_add_app_meta.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 16", [])?;
+    }
+
+    info!(version = 16, "DB migration complete");
 
     Ok(())
 }
@@ -234,7 +241,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("query user_version");
 
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         assert!(crate::db::table_has_column(
             &conn,
             "character_class_spell",
@@ -516,7 +523,7 @@ mod tests {
         let version: i32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("query user_version");
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         assert!(crate::db::table_has_column(
             &conn,
             "character_class_spell",
@@ -527,6 +534,25 @@ mod tests {
             "artifact",
             "spell_content_hash"
         ));
+    }
+
+    #[test]
+    fn test_migration_0016_creates_app_meta() {
+        let conn = Connection::open_in_memory().expect("open db");
+        load_migrations(&conn).expect("load migrations");
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("query user_version");
+        assert_eq!(version, 16);
+
+        assert_eq!(crate::db::get_app_meta(&conn, "k").expect("read"), None);
+        crate::db::set_app_meta(&conn, "k", "v1").expect("insert");
+        crate::db::set_app_meta(&conn, "k", "v2").expect("upsert");
+        assert_eq!(
+            crate::db::get_app_meta(&conn, "k").expect("read"),
+            Some("v2".to_string())
+        );
     }
 
     /// Benchmarks migration 0014 FTS rebuild with 10k spells; must complete in < 60s.

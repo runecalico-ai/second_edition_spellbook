@@ -1,6 +1,7 @@
 use crate::commands::{
     app_models_dir, ensure_resources_available, models_dir, LiveResourceProbe, ProvisioningState,
-    ProvisioningTarget, EMBEDDING_DESTINATION, EMBEDDING_EXPECTED_FILES, EMBEDDING_URL,
+    ProvisioningTarget, EMBEDDING_DESTINATION, EMBEDDING_EXPECTED_FILES, EMBEDDING_MANIFEST_SHA,
+    EMBEDDING_URL,
 };
 use crate::error::AppError;
 use crate::models::{
@@ -1062,6 +1063,23 @@ async fn reembed_pending_spells(state: Arc<EmbeddingState>, pool: Arc<crate::db:
     }
 }
 
+/// `app_meta` key holding the embedding-bundle revision that produced `spell_vec`.
+const EMBEDDING_INDEX_REVISION_KEY: &str = "embedding_index_revision";
+
+fn embedding_index_needs_full_rebuild(conn: &rusqlite::Connection) -> Result<bool, AppError> {
+    let recorded = crate::db::get_app_meta(conn, EMBEDDING_INDEX_REVISION_KEY)?;
+    Ok(recorded.as_deref() != Some(EMBEDDING_MANIFEST_SHA))
+}
+
+fn record_embedding_index_revision(conn: &rusqlite::Connection) -> Result<(), AppError> {
+    crate::db::set_app_meta(conn, EMBEDDING_INDEX_REVISION_KEY, EMBEDDING_MANIFEST_SHA)?;
+    Ok(())
+}
+
+fn should_record_embedding_index_revision(force: bool, result: &ReindexResult) -> bool {
+    force && result.failed == 0
+}
+
 pub async fn reindex_embeddings_internal(
     app: EmbeddingsCommandAppHandle,
     state: Arc<EmbeddingState>,
@@ -1073,6 +1091,25 @@ pub async fn reindex_embeddings_internal(
         let _reindex_guard = ReindexInProgressGuard::try_acquire(Arc::clone(&state))?;
         run_reindex_chunks(app, Arc::clone(&state), Arc::clone(&db), force).await
     };
+    if let Ok(summary) = &result {
+        if should_record_embedding_index_revision(force, summary) {
+            let pool = Arc::clone(&db);
+            match tokio::task::spawn_blocking(move || {
+                let conn = pool.get()?;
+                record_embedding_index_revision(&conn)
+            })
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(?error, "failed to record embedding index revision")
+                }
+                Err(join_error) => {
+                    tracing::warn!(?join_error, "embedding index revision task failed")
+                }
+            }
+        }
+    }
     reembed_pending_spells(Arc::clone(&state), db).await;
     result
 }
@@ -1252,7 +1289,34 @@ pub async fn finalize_embedding_provision(
 
     set_embeddings_status(&state, EmbeddingsStatus::Ready, None)?;
 
-    match reindex_embeddings_internal(app, Arc::clone(&state), pool, false).await {
+    let pool_for_revision = Arc::clone(&pool);
+    let full_rebuild = match tokio::task::spawn_blocking(move || {
+        let conn = pool_for_revision.get()?;
+        embedding_index_needs_full_rebuild(&conn)
+    })
+    .await
+    {
+        Ok(Ok(needed)) => needed,
+        Ok(Err(error)) => {
+            tracing::warn!(
+                ?error,
+                "embedding index revision check failed; using incremental backfill"
+            );
+            false
+        }
+        Err(join_error) => {
+            tracing::warn!(
+                ?join_error,
+                "embedding index revision task failed; using incremental backfill"
+            );
+            false
+        }
+    };
+    if full_rebuild {
+        tracing::info!("embedding model revision changed or unrecorded; re-embedding all spells");
+    }
+
+    match reindex_embeddings_internal(app, Arc::clone(&state), pool, full_rebuild).await {
         Ok(_) => {}
         Err(AppError::Validation(message))
             if message == EMBEDDING_REINDEX_ALREADY_IN_PROGRESS_MESSAGE =>
@@ -2074,6 +2138,52 @@ mod tests {
         assert_eq!(chunks[0].len(), 128);
         assert_eq!(chunks[1].len(), 128);
         assert_eq!(chunks[2].len(), 44);
+    }
+
+    fn migrated_meta_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("open db");
+        crate::db::migrations::load_migrations(&conn).expect("migrate");
+        conn
+    }
+
+    #[test]
+    fn embedding_index_needs_full_rebuild_when_no_revision_recorded() {
+        let conn = migrated_meta_conn();
+        assert!(embedding_index_needs_full_rebuild(&conn).expect("check"));
+    }
+
+    #[test]
+    fn embedding_index_needs_full_rebuild_for_other_model_revision() {
+        let conn = migrated_meta_conn();
+        crate::db::set_app_meta(&conn, EMBEDDING_INDEX_REVISION_KEY, "d13954661f")
+            .expect("seed pre-fix revision");
+        assert!(embedding_index_needs_full_rebuild(&conn).expect("check"));
+    }
+
+    #[test]
+    fn embedding_index_skips_full_rebuild_once_revision_recorded() {
+        let conn = migrated_meta_conn();
+        record_embedding_index_revision(&conn).expect("record");
+        assert!(!embedding_index_needs_full_rebuild(&conn).expect("check"));
+    }
+
+    #[test]
+    fn embedding_index_revision_recorded_only_after_clean_forced_reindex() {
+        let clean = ReindexResult {
+            total: 2,
+            indexed: 2,
+            skipped: 0,
+            failed: 0,
+        };
+        let partial = ReindexResult {
+            total: 2,
+            indexed: 1,
+            skipped: 0,
+            failed: 1,
+        };
+        assert!(should_record_embedding_index_revision(true, &clean));
+        assert!(!should_record_embedding_index_revision(true, &partial));
+        assert!(!should_record_embedding_index_revision(false, &clean));
     }
 
     #[test]

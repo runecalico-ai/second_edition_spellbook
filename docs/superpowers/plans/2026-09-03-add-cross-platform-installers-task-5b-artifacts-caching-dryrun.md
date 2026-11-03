@@ -91,7 +91,7 @@ Do this first so every step Tasks 1–2 add follows the same rules.
 | `sqlite-vec-0.1.6-loadable-linux-x86_64.tar.gz` | `438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f` |
 | `sqlite-vec-0.1.6-loadable-windows-x86_64.tar.gz` | `f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964` |
 
-- [ ] **Step 1: Re-verify the pins before using them**
+- [x] **Step 1: Re-verify the pins before using them**
 
 Re-run for each action (example for checkout) and confirm the peeled SHA equals the table:
 
@@ -102,7 +102,7 @@ git ls-remote https://github.com/dtolnay/rust-toolchain refs/heads/stable
 
 For `dtolnay/rust-toolchain`, a newer `stable` head is acceptable; record the SHA you use. For the sqlite-vec hashes, fetch `https://github.com/asg017/sqlite-vec/releases/download/v0.1.6/checksums.txt` and confirm both lines match. If anything differs, **stop and escalate** (see `docs/DEPENDENCY_SECURITY.md`).
 
-- [ ] **Step 2: Write failing sqlite-vec checksum tests**
+- [x] **Step 2: Write failing sqlite-vec checksum tests**
 
 In `scripts/test_provision_sqlite_vec.py`, add `import hashlib` and `import provision_sqlite_vec`, then add:
 
@@ -148,7 +148,7 @@ In the two existing tests that stage a fake payload successfully or reach extrac
 .\.venv\Scripts\python -m pytest scripts\test_provision_sqlite_vec.py -v
 ```
 
-- [ ] **Step 3: Implement the pin in `scripts/provision_sqlite_vec.py`**
+- [x] **Step 3: Implement the pin in `scripts/provision_sqlite_vec.py`**
 
 Add `import hashlib`, then below `RELEASE_BASE`:
 
@@ -199,7 +199,7 @@ $d = Join-Path $env:TEMP "sqlite-vec-pin-check"
 .\.venv\Scripts\python scripts\provision_sqlite_vec.py --dest $d
 ```
 
-- [ ] **Step 4: Harden the existing `windows` and `linux` jobs**
+- [x] **Step 4: Harden the existing `windows` and `linux` jobs**
 
 In `.github/workflows/release.yml`:
 
@@ -225,11 +225,11 @@ In `.github/workflows/release.yml`:
 
 Do not change `ci.yml`.
 
-- [ ] **Step 5: Sanity check**
+- [x] **Step 5: Sanity check**
 
 Parse `release.yml` with the `yaml` package already in the pnpm store (`apps/desktop/node_modules/.pnpm/yaml@*/node_modules/yaml`; `actionlint` is not installed, and do not install it). Assert every `uses:` matches `^[^@]+@[0-9a-f]{40}$`, every checkout has `persist-credentials: false`, every job has `timeout-minutes`, and every `dtolnay/rust-toolchain` step has `with.toolchain == 'stable'`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/provision_sqlite_vec.py scripts/test_provision_sqlite_vec.py .github/workflows/release.yml

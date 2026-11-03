@@ -56,7 +56,7 @@
 - Consumes: `.\scripts\build_windows_installer.ps1` (runs `prepare_release_bundle.py` then `tauri build --bundles nsis`)
 - Produces: installer under `target/release/bundle/nsis/` (repo-root Cargo `target-dir`)
 
-- [ ] **Step 1: Build NSIS on Windows**
+- [x] **Step 1: Build NSIS on Windows**
 
 From repo root, with Node 24, pnpm, Rust, Python 3.14, NSIS, and MSVC as in `docs/DEVELOPMENT.md`:
 
@@ -67,11 +67,11 @@ python scripts\prepare_release_bundle.py
 
 If `pnpm install` is still needed, omit `-SkipInstall`. Expected: `target\release\bundle\nsis\*setup.exe` exists. Filename should resemble `Spellbook_0.1.0_x64-setup.exe` (version from `tauri.conf.json`).
 
-- [ ] **Step 2: Install on a machine without the repo (or a second user profile)**
+- [x] **Step 2: Install on a machine without the repo (or a second user profile)**
 
 Copy **only** the setup exe to another folder (or a VM). Run it. If SmartScreen appears, use “More info” → “Run anyway”. If the VC++ warning appears, install https://aka.ms/vs/17/release/vc_redist.x64.exe or continue and expect launch failure until VC++ is present — **the installer must still complete**.
 
-- [ ] **Step 3: Smoke without Python on PATH (optional but required for the spec)**
+- [x] **Step 3: Smoke without Python on PATH (optional but required for the spec)**
 
 On the installed machine, confirm `python` is missing or unused. Launch Spellbook from the Start Menu.
 
@@ -79,7 +79,7 @@ Import a `.md` spell file and a `.docx` if available. Export with format PDF and
 
 Confirm vector search does not immediately degrade solely because `vec0.dll` was missing from the bundle: after first launch, `%APPDATA%\SpellbookVault\vec0.dll` should exist (copied from resources).
 
-- [ ] **Step 4: Write the Windows section of the verification log**
+- [x] **Step 4: Write the Windows section of the verification log**
 
 Create `docs/superpowers/plans/2026-09-03-add-cross-platform-installers-task-4-verification-log.md`:
 
@@ -102,7 +102,7 @@ Create `docs/superpowers/plans/2026-09-03-add-cross-platform-installers-task-4-v
 
 Fill in real yes/no values. Do not mark 4.1 complete with blanks.
 
-- [ ] **Step 5: Mark OpenSpec 4.1 complete**
+- [x] **Step 5: Mark OpenSpec 4.1 complete**
 
 From:
 
@@ -116,7 +116,7 @@ To:
 - [x] 4.1 Build NSIS installer locally on Windows; verify app starts, sidecar import/export, sqlite-vec load without repo checkout
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-09-03-add-cross-platform-installers-task-4-verification-log.md openspec/changes/add-cross-platform-installers/tasks.md
@@ -140,7 +140,7 @@ EOF
 - Consumes: `pnpm tauri:build:linux` from `apps/desktop` after `python scripts/prepare_release_bundle.py`
 - Produces: AppImage + `.deb` under `target/release/bundle/appimage` and `target/release/bundle/deb`
 
-- [ ] **Step 1: Install Linux build deps (Ubuntu 24.04)**
+- [x] **Step 1: Install Linux build deps (Ubuntu 24.04)**
 
 ```bash
 sudo apt-get update
@@ -151,7 +151,7 @@ sudo apt-get install -y \
 
 Plus Node 24, pnpm 10, Rust stable, Python 3.14, NSIS not required.
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 ```bash
 python3 scripts/prepare_release_bundle.py
@@ -162,14 +162,14 @@ pnpm tauri:build:linux
 
 Expected: an `.AppImage` and a `.deb` under repo-root `target/release/bundle/`.
 
-- [ ] **Step 3: Install/run on a clean Ubuntu 24.04**
+- [x] **Step 3: Install/run on a clean Ubuntu 24.04**
 
 - `.deb`: `sudo apt install ./Spellbook_*.deb` (or the actual filename Tauri emitted).
 - AppImage: `chmod +x` and run.
 
 Repeat the same import/export and `~/.local/share/SpellbookVault/vec0.so` checks as Windows.
 
-- [ ] **Step 4: Append Linux evidence**
+- [x] **Step 4: Append Linux evidence**
 
 ```markdown
 ## Linux Ubuntu 24.04
@@ -186,7 +186,7 @@ Repeat the same import/export and `~/.local/share/SpellbookVault/vec0.so` checks
 - Notes:
 ```
 
-- [ ] **Step 5: Mark OpenSpec 4.2 complete**
+- [x] **Step 5: Mark OpenSpec 4.2 complete**
 
 From:
 
@@ -200,7 +200,7 @@ To:
 - [x] 4.2 Build AppImage and `.deb` on Ubuntu 24.04; verify same smoke checks
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-09-03-add-cross-platform-installers-task-4-verification-log.md openspec/changes/add-cross-platform-installers/tasks.md
@@ -224,7 +224,7 @@ EOF
 - Consumes: built installer/AppImage/deb from Tasks 1–2
 - Produces: proof the payload has no GGUF/ONNX model directory
 
-- [ ] **Step 1: Search installer payloads for model files**
+- [x] **Step 1: Search installer payloads for model files**
 
 Windows (NSIS exe is a packed payload; also search the extracted install dir after install):
 
@@ -241,11 +241,11 @@ dpkg-deb -c target/release/bundle/deb/*.deb | grep -Ei 'tinyllama|\.gguf|minilm|
 
 Expected: **no** matches. `SpellbookVault/models/` must not ship inside the package.
 
-- [ ] **Step 2: Provision after install**
+- [x] **Step 2: Provision after install**
 
 On the installed app, run in-app `llm_download_model` **or** verified side-load of the approved TinyLlama GGUF from `docs/DEVELOPMENT.md`. Confirm files land under the **user** vault `SpellbookVault/models/`, not Program Files.
 
-- [ ] **Step 3: Log and mark 4.3**
+- [x] **Step 3: Log and mark 4.3**
 
 Append:
 
@@ -268,7 +268,7 @@ To:
 - [x] 4.3 Confirm installed app does not bundle model files; provisioning still works post-install
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-09-03-add-cross-platform-installers-task-4-verification-log.md openspec/changes/add-cross-platform-installers/tasks.md
@@ -292,15 +292,15 @@ EOF
 - Consumes: provisioned models from Task 3 on the **installed** full build (default `llm` feature)
 - Produces: one successful chat reply and one semantic search result
 
-- [ ] **Step 1: Chat**
+- [x] **Step 1: Chat**
 
 After LLM status is `ready`/`loaded`, send one short message in the in-app chat. Expected: streamed tokens, no sidecar involvement.
 
-- [ ] **Step 2: Semantic search**
+- [x] **Step 2: Semantic search**
 
 Ensure embeddings are `ready` and at least one spell exists. Run semantic search from the library UI. Expected: ranked hits (vector path). If `vec0` failed to load, the app falls back to blob tables — treat that as a **fail** for this task and return to group 1 resources.
 
-- [ ] **Step 3: Log and mark 4.4**
+- [x] **Step 3: Log and mark 4.4**
 
 ```markdown
 ## LLM and semantic search (installed full build)
@@ -321,7 +321,7 @@ To:
 - [x] 4.4 Smoke-test LLM chat and semantic search on installed full build
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-09-03-add-cross-platform-installers-task-4-verification-log.md openspec/changes/add-cross-platform-installers/tasks.md

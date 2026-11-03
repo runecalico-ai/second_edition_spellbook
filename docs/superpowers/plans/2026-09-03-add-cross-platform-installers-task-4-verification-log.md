@@ -601,7 +601,7 @@ This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `
 - Chat produced tokens: yes (installed Windows build at `f7221f6`; see "Re-smoke after capability fix (`f7221f6`)" below)
 - Semantic search returned hits: yes (same build; ranked results unchanged)
 
-**Result: 4.4 passes on Windows** after the capability fix. The first run (recorded at `435bd96`, installed exe `DC98913F…`) failed chat with `Command plugin:event|listen not allowed by ACL`. That FAIL is superseded by the re-smoke below. Linux artifacts predate the fix and were not re-smoked.
+**Result: 4.4 passes on Windows** after the capability fix. The first run (recorded at `435bd96`, installed exe `DC98913F…`) failed chat with `Command plugin:event|listen not allowed by ACL`. That FAIL is superseded by the re-smoke below. Linux packages were later rebuilt at `7c4ba8e` with the capability compiled in (see "Linux rebuild at 7c4ba8e (post capability fix)"); Linux chat and semantic search were not exercised in the UI, so 4.4 is verified at UI level on Windows only.
 
 The text from here to "Re-smoke after capability fix" records the first run. Semantic search passed on the installed Windows build, using the vec0 path. In-app chat failed. The webview could not subscribe to Tauri events: `plugin:event|listen` returned `Command plugin:event|listen not allowed by ACL`. So no `llm://token/<id>` token reached the UI. The backend loaded TinyLlama and `llm_chat` completed, but no token was visible to the user.
 

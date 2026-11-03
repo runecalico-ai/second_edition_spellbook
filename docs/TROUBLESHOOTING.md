@@ -206,6 +206,10 @@ Select-String -Path "$env:APPDATA\SpellbookVault\migration.log" -Pattern "Spell 
 - **Cause**: The frontend called a core or plugin API that `apps/desktop/src-tauri/capabilities/default.json` does not grant. App commands are not affected, so most screens still work.
 - **Fix**: Grant the narrowest permission for that command, add it to `EXPECTED_PERMISSIONS` in `src/capability_tests.rs`, run `cargo build` and `cargo test capability`. See `apps/desktop/src-tauri/AGENTS.md` ("Webview permissions").
 
+### 5. "semantic search requires sqlite-vec; spell_vec is blob-backed in this database"
+- **Cause**: The vault database was created before `vec0` loaded, so `spell_vec` is a plain table.
+- **Fix**: Make sure `vec0.dll` / `vec0.so` is in the vault (`SpellbookVault/`) and restart the app. Startup rebuilds `spell_vec` as a vec0 table and the embeddings backfill re-embeds all spells. Look for `sqlite-vec: rebuilt blob-backed spell_vec as vec0` in the log.
+
 ## Build and Compilation Issues
 
 ### 1. Linking Errors (LNK1318, etc.) on Windows

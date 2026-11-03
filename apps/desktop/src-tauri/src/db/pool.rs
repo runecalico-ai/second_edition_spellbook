@@ -155,6 +155,7 @@ pub fn init_db(resource_dir: Option<&Path>, run_backfill: bool) -> Result<Pool, 
     {
         let conn = pool.get()?;
         super::migrations::load_migrations(&conn)?;
+        super::migrations::repair_blob_backed_spell_vec(&conn)?;
         if run_backfill {
             if let Err(e) = crate::utils::migration_manager::run_hash_backfill(&conn, &data_dir) {
                 error!(error = %e, "Hash backfill failed");

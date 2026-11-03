@@ -166,6 +166,7 @@ The application includes a robust parsing engine for converting legacy AD&D 2e s
 
 - **Engine**: SQLite with `rusqlite` and `r2d2_sqlite` pooling
 - **Vector Search**: `sqlite-vec` extension for semantic search
+- **Blob-backed `spell_vec` repair**: Migration 0001 creates a plain BLOB `spell_vec` when vec0 is missing. `init_db` calls `migrations::repair_blob_backed_spell_vec` after migrations: once vec0 loads, it drops that table and recreates it as `vec0(rowid INTEGER PRIMARY KEY, v float[384])`. The embeddings startup backfill then re-embeds every spell. Unit tests are blob-backed unless they call `db::load_static_sqlite_vec_for_test`.
 
 ### Migration System
 The application uses a "Hash Backfill" system (`src/utils/migration_manager.rs`) to maintain data integrity across core updates.

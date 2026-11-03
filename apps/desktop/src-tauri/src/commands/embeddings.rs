@@ -1193,20 +1193,9 @@ pub async fn reindex_embeddings(
     reindex_embeddings_internal(app, state.inner().clone(), db.inner().clone(), force).await
 }
 
-fn spell_vec_uses_sqlite_vec(conn: &rusqlite::Connection) -> bool {
-    let Ok(sql): Result<String, _> = conn.query_row(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'spell_vec'",
-        [],
-        |row| row.get(0),
-    ) else {
-        return false;
-    };
-    sql.contains("vec0") || sql.contains("float[")
-}
-
 fn ensure_spell_vec_sqlite_vec_ready(pool: &crate::db::Pool) -> Result<(), AppError> {
     let conn = pool.get()?;
-    if spell_vec_uses_sqlite_vec(&conn) {
+    if crate::db::spell_vec_is_vec0(&conn) {
         Ok(())
     } else {
         Err(AppError::Search(
@@ -2294,7 +2283,7 @@ mod tests {
             "semantic_ranking_orders_by_cosine_distance_asc_and_serializes_camel_case",
         );
         let conn = isolated.pool.get().expect("test db connection");
-        if !spell_vec_uses_sqlite_vec(&conn) {
+        if !crate::db::spell_vec_is_vec0(&conn) {
             return;
         }
 

@@ -29,7 +29,7 @@
 
 - [x] 5.1 Create `.github/workflows/release.yml` triggered on `v*` tags and `workflow_dispatch`
 - [x] 5.2 Add `windows-latest` job: Node 24, pnpm, Rust, Python 3.14, pre-build scripts, `pnpm tauri build`
-- [ ] 5.3 Add `ubuntu-24.04` job: same toolchain plus Linux GTK/WebKit deps
+- [x] 5.3 Add `ubuntu-24.04` job: same toolchain plus Linux GTK/WebKit deps
 - [ ] 5.4 Upload release assets with versioned naming and `.sha256` checksum files
 - [ ] 5.5 Configure Cargo and PyInstaller caching
 - [ ] 5.6 Cut `v0.1.0-rc.1` tag for end-to-end dry run

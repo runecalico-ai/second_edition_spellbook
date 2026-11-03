@@ -39,7 +39,7 @@ test.describe("Content Security Policy", () => {
 
     await test.step("Verify: inline theme script ran and nothing was blocked", async () => {
       await expect(page.locator("html")).toHaveAttribute("data-theme", /^(light|dark)$/);
-      const violations = await page.evaluate(() => window.__SPELLBOOK_E2E_CSP_VIOLATIONS__ ?? []);
+      const violations = await page.evaluate(() => window.__SPELLBOOK_E2E_CSP_VIOLATIONS__);
       expect(violations).toEqual([]);
     });
 
@@ -62,6 +62,11 @@ test.describe("Content Security Policy", () => {
           }),
       );
       expect(evalOutcome).toBe("EvalError");
+      await expect
+        .poll(() => page.evaluate(() => window.__SPELLBOOK_E2E_CSP_VIOLATIONS__), {
+          timeout: TIMEOUTS.short,
+        })
+        .toEqual([expect.stringMatching(/^script-src(-elem)? eval$/)]);
     });
   });
 });

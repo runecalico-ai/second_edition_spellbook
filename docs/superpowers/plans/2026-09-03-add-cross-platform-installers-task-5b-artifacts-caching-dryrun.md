@@ -27,11 +27,17 @@
 - Cache PyInstaller: `~/.cache/pyinstaller` on Linux and `%LOCALAPPDATA%\pyinstaller` on Windows if present, plus leave `services/ml/dist` uncached in git.
 - One full installer per OS; no lite artifact.
 - Do not rewrite delta specs. Flip 5.4–5.6 only after each deliverable works.
+- Publish and version stamping run only on a real tag push: `github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')`. Never gate on the ref alone — a `workflow_dispatch` started from a tag ref has `github.ref == refs/tags/...` and must still be a dry run (no release, no version rewrite).
+- Workflow-level `permissions` stays `contents: read` (set in 5a). Only the `publish` job gets `contents: write`.
+- Every `uses:` in `release.yml` is pinned to a full commit SHA with a trailing `# vX.Y.Z` comment, using the values in Task 0. `ci.yml` keeps its tags (out of scope).
+- Every `actions/checkout` in `release.yml` sets `persist-credentials: false`. Every job sets `timeout-minutes` (build jobs `120`, `publish` `15`; retune after the 5.6 dry run).
+- The sqlite-vec archive download is verified against a pinned SHA-256 before extraction. Unpinned version/platform/arch combinations fail closed.
 
 ## Spec coverage map
 
 | OpenSpec item | Plan task | Completion signal |
 | ------------- | --------- | ----------------- |
+| — (hardening, no checkbox) | Task 0 | SHA-pinned actions, `persist-credentials: false`, `timeout-minutes`, sqlite-vec SHA-256 pin with tests |
 | 5.4 Upload versioned names and `.sha256` files | Task 1 | workflow uploads those files; checkbox `[x]` |
 | 5.5 Configure Cargo and PyInstaller caching | Task 2 | cache steps present with correct `target/` path; checkbox `[x]` |
 | 5.6 Cut `v0.1.0-rc.1` for end-to-end dry run | Task 3 | dispatch dry-run succeeded; tag dry-run documented; checkbox `[x]` |
@@ -43,8 +49,198 @@
 | `scripts/set_release_version.py` | Create |
 | `scripts/test_set_release_version.py` | Create |
 | `scripts/checksum_release_assets.py` | Create |
+| `scripts/provision_sqlite_vec.py` | Modify (SHA-256 pin) |
+| `scripts/test_provision_sqlite_vec.py` | Modify (checksum tests) |
 | `.github/workflows/release.yml` | Modify |
 | `openspec/changes/add-cross-platform-installers/tasks.md` | Flip 5.4–5.6 |
+
+---
+
+### Task 0: Harden the release workflow (no OpenSpec item)
+
+Do this first so every step Tasks 1–2 add follows the same rules.
+
+**Files:**
+- Modify: `scripts/provision_sqlite_vec.py`
+- Modify: `scripts/test_provision_sqlite_vec.py`
+- Modify: `.github/workflows/release.yml` (existing `windows` and `linux` jobs from 5a)
+
+**Interfaces:**
+- Produces: `provision_sqlite_vec.ARCHIVE_SHA256: dict[tuple[str, str, str], str]` keyed by `(version, os_platform, arch)`; `provision_sqlite_vec.expected_sha256(version, os_platform, arch) -> str` (raises `SystemExit` when unpinned)
+- Produces: pinned action references below, reused verbatim by Tasks 1–2
+
+**Pinned action SHAs** (resolved 2026-11-03 with `git ls-remote` against each upstream repo; the SHA is the peeled commit of the exact release tag, which matched the moving major tag at that time):
+
+| Action | Pin |
+| ------ | --- |
+| `actions/checkout` | `actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0` |
+| `pnpm/action-setup` | `pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0` |
+| `actions/setup-node` | `actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0` |
+| `dtolnay/rust-toolchain` | `dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable` |
+| `actions/setup-python` | `actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0` |
+| `actions/upload-artifact` | `actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2` |
+| `actions/download-artifact` | `actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0` |
+| `actions/cache` | `actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0` |
+
+`dtolnay/rust-toolchain` infers the toolchain from the ref name. When pinned to a SHA it **requires** `with: toolchain: stable`.
+
+**sqlite-vec v0.1.6 archive SHA-256** (computed locally on 2026-11-03 and matched against the release's own `checksums.txt`, uploaded by `github-actions[bot]` on 2024-11-20):
+
+| Asset | SHA-256 |
+| ----- | ------- |
+| `sqlite-vec-0.1.6-loadable-linux-x86_64.tar.gz` | `438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f` |
+| `sqlite-vec-0.1.6-loadable-windows-x86_64.tar.gz` | `f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964` |
+
+- [ ] **Step 1: Re-verify the pins before using them**
+
+Re-run for each action (example for checkout) and confirm the peeled SHA equals the table:
+
+```bash
+git ls-remote --tags https://github.com/actions/checkout 'refs/tags/v4.4.0^{}'
+git ls-remote https://github.com/dtolnay/rust-toolchain refs/heads/stable
+```
+
+For `dtolnay/rust-toolchain`, a newer `stable` head is acceptable; record the SHA you use. For the sqlite-vec hashes, fetch `https://github.com/asg017/sqlite-vec/releases/download/v0.1.6/checksums.txt` and confirm both lines match. If anything differs, **stop and escalate** (see `docs/DEPENDENCY_SECURITY.md`).
+
+- [ ] **Step 2: Write failing sqlite-vec checksum tests**
+
+In `scripts/test_provision_sqlite_vec.py`, add `import hashlib` and `import provision_sqlite_vec`, then add:
+
+```python
+def _pin_payload(
+    monkeypatch: pytest.MonkeyPatch, payload: bytes, os_platform: str = "windows", arch: str = "x86_64"
+) -> None:
+    monkeypatch.setitem(
+        provision_sqlite_vec.ARCHIVE_SHA256,
+        (SQLITE_VEC_VERSION, os_platform, arch),
+        hashlib.sha256(payload).hexdigest(),
+    )
+
+
+def test_pinned_archive_hashes() -> None:
+    assert provision_sqlite_vec.ARCHIVE_SHA256 == {
+        ("0.1.6", "linux", "x86_64"): "438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f",
+        ("0.1.6", "windows", "x86_64"): "f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964",
+    }
+
+
+def test_stage_library_rejects_checksum_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _targz_with_member("vec0.dll", b"tampered")
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(payload))
+    dest = tmp_path / "out"
+    with pytest.raises(SystemExit) as exc:
+        stage_library(dest, "0.1.6", "windows", "x86_64")
+    assert "SHA-256 mismatch" in str(exc.value)
+    assert not (dest / "vec0.dll").exists()
+
+
+def test_stage_library_rejects_unpinned_asset_before_download(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        stage_library(tmp_path / "out", "0.1.6", "macos", "aarch64")
+    assert "No pinned SHA-256" in str(exc.value)
+```
+
+The autouse `_block_network` fixture raises `AssertionError` on any `urlopen`, so the unpinned test also proves the check runs before the download.
+
+In the two existing tests that stage a fake payload successfully or reach extraction (`test_stage_library_copies_archive_root_dll`, `test_stage_library_rejects_nested_library`), call `_pin_payload(monkeypatch, payload)` before `stage_library`. Run and confirm the new tests fail:
+
+```powershell
+.\.venv\Scripts\python -m pytest scripts\test_provision_sqlite_vec.py -v
+```
+
+- [ ] **Step 3: Implement the pin in `scripts/provision_sqlite_vec.py`**
+
+Add `import hashlib`, then below `RELEASE_BASE`:
+
+```python
+# Values must match the upstream release's checksums.txt.
+ARCHIVE_SHA256: dict[tuple[str, str, str], str] = {
+    ("0.1.6", "linux", "x86_64"): "438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f",
+    ("0.1.6", "windows", "x86_64"): "f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964",
+}
+
+
+def expected_sha256(version: str, os_platform: str, arch: str) -> str:
+    try:
+        return ARCHIVE_SHA256[(version, os_platform, arch)]
+    except KeyError:
+        raise SystemExit(
+            f"No pinned SHA-256 for {asset_name(version, os_platform, arch)}; "
+            "add it to ARCHIVE_SHA256 from the release's checksums.txt"
+        ) from None
+```
+
+Change `stage_library` so the expected hash is looked up **before** the download and the bytes are verified **before** they are written or extracted:
+
+```python
+def stage_library(dest: Path, version: str, os_platform: str, arch: str) -> Path:
+    expected = expected_sha256(version, os_platform, arch)
+    dest.mkdir(parents=True, exist_ok=True)
+    url = download_url(version, os_platform, arch)
+    lib = library_name(os_platform)
+    with tempfile.TemporaryDirectory() as tmp:
+        archive_path = Path(tmp) / asset_name(version, os_platform, arch)
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:
+                data = response.read()
+        except (urllib.error.URLError, TimeoutError, urllib.error.HTTPError) as exc:
+            raise SystemExit(f"Failed to download sqlite-vec from {url}: {exc}") from exc
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != expected:
+            raise SystemExit(f"SHA-256 mismatch for {url}: expected {expected}, got {actual}")
+        archive_path.write_bytes(data)
+        # ... existing extract / copy / chmod code unchanged ...
+```
+
+Re-run the tests from Step 2; all must pass. Then do one real download to prove the pinned hash matches the live asset:
+
+```powershell
+$d = Join-Path $env:TEMP "sqlite-vec-pin-check"
+.\.venv\Scripts\python scripts\provision_sqlite_vec.py --dest $d
+```
+
+- [ ] **Step 4: Harden the existing `windows` and `linux` jobs**
+
+In `.github/workflows/release.yml`:
+
+1. Add `timeout-minutes: 120` to each job, directly under `runs-on:`.
+2. Replace every `uses:` with the pinned value from the table above.
+3. Give both checkout steps `persist-credentials: false`:
+
+```yaml
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+```
+
+4. Give both Rust steps an explicit toolchain:
+
+```yaml
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+```
+
+Do not change `ci.yml`.
+
+- [ ] **Step 5: Sanity check**
+
+Parse `release.yml` with the `yaml` package already in the pnpm store (`apps/desktop/node_modules/.pnpm/yaml@*/node_modules/yaml`; `actionlint` is not installed, and do not install it). Assert every `uses:` matches `^[^@]+@[0-9a-f]{40}$`, every checkout has `persist-credentials: false`, every job has `timeout-minutes`, and every `dtolnay/rust-toolchain` step has `with.toolchain == 'stable'`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/provision_sqlite_vec.py scripts/test_provision_sqlite_vec.py .github/workflows/release.yml
+git commit -m "$(cat <<'EOF'
+ci(release): pin actions and verify sqlite-vec download
+
+Pin release actions to commit SHAs, drop persisted checkout credentials,
+bound job runtime, and reject sqlite-vec archives that fail SHA-256.
+EOF
+)"
+```
 
 ---
 
@@ -192,11 +388,11 @@ After each platform build, add steps. Insert **Set version from tag** immediatel
 
 ```yaml
       - name: Set version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         run: .venv/bin/python scripts/set_release_version.py ${{ github.ref_name }}
 ```
 
-On Windows the interpreter is `.\.venv\Scripts\python`. Do **not** rewrite versions on `workflow_dispatch`.
+On Windows the interpreter is `.\.venv\Scripts\python`. Do **not** rewrite versions on `workflow_dispatch`, including a dispatch started from a tag ref (hence the `event_name` check).
 
 Windows collect/rename (then checksum, then unsigned check):
 
@@ -236,41 +432,43 @@ Upload:
 
 ```yaml
       - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: spellbook-${{ runner.os }}
           path: assets/*
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release create "${{ github.ref_name }}" assets/* --generate-notes --verify-tag
 ```
 
-Do not add `softprops/action-gh-release`. `workflow_dispatch` never hits this step. That is the spec dry-run: build + upload artifacts, skip GitHub Release.
+Do not add `softprops/action-gh-release`. `workflow_dispatch` never hits this step, even when dispatched from a tag ref, because the gate checks `github.event_name`. That is the spec dry-run: build + upload artifacts, skip GitHub Release.
 
 Linux and Windows jobs both need this publish step **or** a final `publish` job that downloads both artifacts — prefer a **third job** `publish` that `needs: [windows, linux]`, downloads artifacts, and runs `gh release create` once so a failed Linux job cannot publish a Windows-only release.
 
 ```yaml
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [windows, linux]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: assets
           merge-multiple: true
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: gh release create "${{ github.ref_name }}" assets/* --generate-notes --verify-tag
 ```
 
-Remove per-job Publish if you add `publish`. Keep per-job `upload-artifact`.
+Remove per-job Publish if you add `publish`. Keep per-job `upload-artifact`. The `publish` job has no checkout, so `gh` needs `GH_REPO` to know the repository.
 
 - [ ] **Step 5: Tests**
 
@@ -322,7 +520,7 @@ EOF
 
 ```yaml
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -333,7 +531,7 @@ EOF
             ${{ runner.os }}-release-cargo-
 
       - name: Cache PyInstaller
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cache/pyinstaller
@@ -397,6 +595,8 @@ git push origin v0.1.0-rc.1
 ```
 
 Expected: published GitHub Release (not draft) with auto notes, three binaries (exe, AppImage, deb) and three `.sha256` files. Windows exe is **unsigned**.
+
+Then dispatch once more with **Use workflow from** set to the `v0.1.0-rc.1` tag. Expected: both build jobs green, `publish` **skipped**, the "Set version from tag" steps **skipped**, and the existing release unchanged. This proves the `event_name` gate.
 
 If the tag must wait on human permission to push, record that in the log and **do not** flip 5.6 until the tag workflow has actually run.
 

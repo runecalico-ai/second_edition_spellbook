@@ -598,10 +598,12 @@ This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `
 
 ## LLM and semantic search (installed full build)
 
-- Chat produced tokens: no
-- Semantic search returned hits: yes
+- Chat produced tokens: yes (installed Windows build at `f7221f6`; see "Re-smoke after capability fix (`f7221f6`)" below)
+- Semantic search returned hits: yes (same build; ranked results unchanged)
 
-**Result: 4.4 stays open.** Semantic search passes on the installed Windows build, using the vec0 path. In-app chat fails. The webview may not subscribe to Tauri events: `plugin:event|listen` returns `Command plugin:event|listen not allowed by ACL`. So no `llm://token/<id>` token reaches the UI. The backend loads TinyLlama and `llm_chat` completes, but no token is visible to the user.
+**Result: 4.4 passes on Windows** after the capability fix. The first run (recorded at `435bd96`, installed exe `DC98913F…`) failed chat with `Command plugin:event|listen not allowed by ACL`. That FAIL is superseded by the re-smoke below. Linux artifacts predate the fix and were not re-smoked.
+
+The text from here to "Re-smoke after capability fix" records the first run. Semantic search passed on the installed Windows build, using the vec0 path. In-app chat failed. The webview could not subscribe to Tauri events: `plugin:event|listen` returned `Command plugin:event|listen not allowed by ACL`. So no `llm://token/<id>` token reached the UI. The backend loaded TinyLlama and `llm_chat` completed, but no token was visible to the user.
 
 ### Build and launch (Windows)
 
@@ -643,6 +645,7 @@ This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `
 
 ### Chat (UI): FAIL
 
+- Superseded by "Re-smoke after capability fix (`f7221f6`)" below.
 - Path: `nav-link-chat` → `/chat` (169 ms). Then type `What does the spell Light do?` into `chat-input` and click `btn-ask-chat`. Click time: 19:57:29.995Z.
 - DOM timeline (`chat-message-list`):
   - +1 ms: user bubble shown. Assistant placeholder `chat-assistant-bubble` shown with `aria-busy=true` and empty text. `chat-model-loading-indicator` shown.
@@ -701,3 +704,110 @@ This subsection replaces the `910f717` AppImage sidecar evidence (31,868,072 / `
 - Chat could not show streamed tokens because of the ACL denial. TTFT and reply text are unavailable. The direct `llm_chat` result shows only that backend generation finishes without error.
 - Seeding used `create_spell` over IPC, not the spell editor UI.
 - 4.4 needs the app to grant event permissions, for example a `capabilities/*.json` with `core:default` for the main window. After that, chat must be re-run. That change is product code and is out of scope for this verification task.
+- Closed by `f7221f6` and the re-smoke below.
+
+### Re-smoke after capability fix (`f7221f6`)
+
+- Date: 2026-11-02, 14:36–14:45 local (UTC-6). Host Windows 11 (win32 10.0.26200), `IsAdmin=False`. Branch `add-cross-platform-installers` at `f7221f66b7fb5aece42a3b5c4a92d8a00e5a9d06` (`fix(desktop): add Tauri capability for main window IPC`, commit time `2026-11-02T14:35:50-06:00`).
+- This subsection **supersedes** the chat FAIL above (recorded at `435bd96`, installed exe `DC98913F…`).
+
+#### Fix under test
+
+- `apps/desktop/src-tauri/capabilities/default.json`: identifier `default`, `windows: ["main"]`, permissions `core:default`, `dialog:allow-open`, `dialog:allow-save`, `fs:allow-write-file`, `fs:allow-write-text-file`. There is no static fs scope and no fs read permission.
+- `gen/schemas/capabilities.json` was `{}`. After `cargo build` it holds the `default` capability with `"local": true`.
+- No fs scope is needed because `tauri-plugin-dialog` 2.6.0 `open`/`save` call `window.try_fs_scope().allow_file(path)` on the path the user picks. That is the same runtime `tauri::fs::Scope` that `tauri-plugin-fs` 2.4.5 `resolve_path` checks first.
+- Unit test `src/capability_tests.rs` loads the compiled ACL with `generate_context!(test = true)`. It failed (4/4) before the capability file existed, with the same `not allowed` denials. It passes now.
+
+#### Build
+
+- `.\scripts\build_windows_installer.ps1 -SkipInstall` (exit 0, 14:36:30–14:39:16). The PS1 ran `scripts\prepare_release_bundle.py` with repo `.venv` Python 3.14.4. `CARGO_TARGET_DIR=C:\WINDOWS\TEMP\cursor-sandbox-cache\b3f4b69d6bfd3f2a7a346bc89af6973c\cargo-target`. `release` profile 1m 48s (incremental: only `spellbook-desktop` was compiled). Repo-root `target\` has no `*-setup.exe`.
+- NSIS: `…\cargo-target\release\bundle\nsis\Spellbook_0.1.0_x64-setup.exe`, 38,871,222 bytes, SHA-256 `346313252D0B8D8D74BC29F57EA4D2E2B2B595200650618FEFDA485D976360C0`, LastWriteTime `2026-11-02T14:39:16-06:00` (after the `f7221f6` commit time). Copied to `%TEMP%\spellbook-t4f1-nsis\` (same hash) and run from there.
+- Built `release\spellbook-desktop.exe` 58,391,040 bytes, SHA-256 `0D93209852648CB87254DE777695E2E075F149D739171E0F80F6314C642546E3`.
+- Frozen sidecar `binaries\spellbook-sidecar-x86_64-pc-windows-msvc.exe` 25,790,861 bytes, SHA-256 `998E45297E668DB1A472AB7447269D6687EA6D2784AB184A0AB5907417003105`. This hash is different from the `18fd267` freeze (`DCE339C9…`). The PyInstaller re-freeze is not byte-reproducible, and the sidecar source did not change.
+
+#### Install
+
+- No `spellbook-desktop` / `spellbook-sidecar` process was running. `Spellbook_0.1.0_x64-setup.exe /S` over the existing current-user install, exit 0. HKCU `DisplayName=Spellbook`, `DisplayVersion=0.1.0`, `InstallLocation="C:\Users\vitki\AppData\Local\Spellbook"`.
+- Before: `spellbook-desktop.exe` `DC98913F…` (the `18fd267` build).
+- After:
+  - `spellbook-desktop.exe` 58,391,040, SHA-256 `0D93209852648CB87254DE777695E2E075F149D739171E0F80F6314C642546E3` (same as the built exe), mtime `2026-11-02T14:38:44-06:00`
+  - `spellbook-sidecar.exe` 25,790,861, SHA-256 `998E45297E668DB1A472AB7447269D6687EA6D2784AB184A0AB5907417003105`
+  - `resources\sqlite-vec\vec0.dll` 278,016, SHA-256 `74E63AB75299804773676A5C757372472E797E03E02A2D8FF5FD91730DBD7531` (unchanged)
+  - `uninstall.exe`, `resources\sqlite-vec\.gitkeep`. No other files.
+
+#### Vault and launch
+
+- Vault `%APPDATA%\SpellbookVault` before launch: the same state as the first run. It had the six approved model files under `models\`, `vec0.dll`, `spellbook.sqlite3` with 0 spells, `spell_vec` = `vec0(rowid INTEGER PRIMARY KEY, v float[384])` (`vec_version` v0.1.6, rowids `[]`), and only `39a43b17….json` in `spells\`.
+- Launch: untracked `scripts/_t4f1_launch.ps1` (copy of `_t4_launch.ps1`, evidence dir `%TEMP%\spellbook-t4f1\`; this shell's `%TEMP%` = `C:\WINDOWS\TEMP`, copied to `C:\Users\vitki\AppData\Local\Temp\spellbook-t4f1\`). `SPELLBOOK*` unset at process, user, and machine scope. Env set:
+  - `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` = `http://127.0.0.1:9`
+  - `NO_PROXY=127.0.0.1,localhost`
+  - `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`
+  - `RUST_LOG=info`
+- PID 9848, started `14:40:19`. CDP was up after 1.07 s, with one page target at `http://tauri.localhost/`. The launch report confirmed the installed exe `0D932098…`.
+- Watcher: untracked `scripts/_t4f1_watch.ps1`, 500 ms interval for the whole session (222 samples with the app running).
+- `stdout`: 10x `sqlite-vec: loaded extension path=C:\Users\vitki\AppData\Roaming\SpellbookVault\vec0.dll`, `DB migration start/complete version=15`. There was no WARN, ERROR, `not allowed`, or blob-fallback line in stdout or stderr.
+
+#### Status
+
+- Before chat: `llm_status` = `{"status":"ready",…,"lastError":null}`. `embeddings_status` = `{"state":"ready","downloadProgress":null,"errorMessage":null}`. The chat header badges read `LLM · Ready` and `Embeddings · Ready`.
+- After both chats and at the end of the session: `llm_status.status` = `loaded`, `lastError` = null. `embeddings_status.state` = `ready`.
+
+#### ACL probes (installed build, CDP, no native dialog opened)
+
+- Untracked `scripts/_t4f1_steps_acl.json`, through `window.__TAURI_INTERNALS__.invoke`:
+  - `plugin:event|listen` on `llm://token/t4f1-acl-probe`: `ok` (eventId 0). Then `plugin:event|unlisten`: `ok`.
+  - `plugin:fs|write_text_file` to `C:\Users\vitki\AppData\Local\Temp\spellbook-t4f1\acl-probe-should-not-exist.txt`: `forbidden path: …`. This error comes from the fs scope, after the ACL check. The file was not created.
+  - `plugin:fs|read_text_file`: `Command plugin:fs|read_text_file not allowed by ACL` (not granted).
+  - `plugin:dialog|message`: `Command plugin:dialog|message not allowed by ACL` (not granted).
+- `plugin:dialog|open` / `plugin:dialog|save` were **not** invoked, because a call that clears the ACL opens a native modal. Evidence for those two is the generated ACL (`gen/schemas/capabilities.json`) and the unit test `main_window_may_open_and_save_dialogs_but_not_message_dialogs`. The test proves both clear the ACL. Character export (save dialog, then `writeFile` / `writeTextFile`) was not exercised for the same reason. The unit test `fs_writes_are_limited_to_paths_granted_at_runtime` covers the save-dialog grant followed by a write.
+
+#### Seeded spells
+
+- `create_spell` (IPC), the same three spells as the first run: id 1 `Magic Missile`, id 2 `Light`, id 3 `Fireball`. Each call returned `ok` in 17–29 ms. `reindex_embeddings(force=false)` 3 s later returned `{"total":3,"indexed":0,"skipped":3,"failed":0}`, so the `create_spell` hook had embedded all three.
+
+#### Chat (UI): PASS
+
+- Path: `nav-link-chat` → `/chat`. Then type `What does the spell Light do?` into `chat-input` and click `btn-ask-chat`. Click time: `20:40:51.082Z` (14:40:51 local). The model was `ready`, not `loaded`, so this first send includes the lazy TinyLlama load.
+- Poll snapshots of the newest `chat-assistant-bubble` (200 ms poll; ms after click, text length, `aria-busy`):
+  - +2 ms: 0 chars, busy `true`, `chat-model-loading-indicator` shown
+  - +1,627 ms: 40 chars, busy `true`: `The spell Light causes an object or area`
+  - +1,830 ms: 74 chars, busy `true`
+  - +2,034 ms: 94 chars, busy `true`
+  - +2,236 ms: 130 chars, busy `true`
+  - +2,439 ms: 147 chars, busy `false`, loading indicator gone
+- In-page `MutationObserver` on `chat-message-list`: 41 distinct bubble states. The first text (3 chars) was at +1,475 ms after the click. The text grew in steps of 2–7 chars about every 22 ms, reached 147 chars at +2,353 ms, and changed to busy `false` at +2,399 ms. **UI time to first token: about 1.48 s from Send** (includes model load).
+- Final reply: `The spell Light causes an object or area to shed bright illuminance like a torch, lighting a 20-foot radius so that the caster can see in the dark.`
+- `grounded-in-indicator`: `Grounded in: light (1 spell)`. No `chat-system-message` and no ACL error.
+- Harness note: the `_t4_cdp.mjs` invoke spy reported `not-writable` (the release build's `__TAURI_INTERNALS__.invoke` cannot be replaced). So the spy counted 0 tokens and never saw `done`, and its poll loop ran the full 180 s after the reply was complete. The DOM evidence above does not depend on the spy.
+- Direct token check (untracked `scripts/_t4f1_steps_chatdirect.json`): the page registered its own `plugin:event|listen` handlers for `llm://token/t4f1-direct-1` and `llm://done/t4f1-direct-1`, then invoked `llm_chat` with the same prompt. The model was already `loaded`.
+  - 39 token events. First token at +1,008 ms after the `llm_chat` invoke, last at +1,772 ms. `llm_chat` resolved `ok` in 1,814 ms. `done` arrived at +1,813 ms with `cancelled=false` and `timedOut=false`.
+  - First tokens: `The`, ` spell`, ` Light`, ` causes`, ` an`, ` object`, ` or`, ` area`, ` to`, ` shed` (about 20 ms apart).
+  - The joined tokens and `done.fullResponse` are both the same text as the UI reply. `searchTerms=["light"]`, `groundedSpells=[{id:2,name:"Light",…}]`.
+- Screenshot: `%TEMP%\spellbook-t4f1\chat-reply.png`. It shows the user bubble, the grounded assistant reply, and the `LLM · Ready` / `Embeddings · Ready` badges.
+
+#### Semantic search (UI): PASS
+
+- Same path as the first run: `nav-link-export` → `nav-link-library`, `library-mode-select` = `semantic`, then `search-input` and `library-search-button`. Before each search the table had 0 rows. `library-semantic-search-error-state` was absent.
+- Query `glowing light source`: UI rows 1 `Light`, 2 `Magic Missile`, 3 `Fireball`. Raw `search_spells_semantic {limit:10}`: `Light` 0.57646155, `Magic Missile` 0.6687119, `Fireball` 0.73271126.
+- Query `explosion of flame`: UI rows 1 `Fireball`, 2 `Magic Missile`, 3 `Light`. Raw: `Fireball` 0.37222585, `Magic Missile` 0.6980117, `Light` 0.7879202.
+- The UI order matches the raw order. The distances are identical to the first run, so there is no regression.
+- Screenshots: `%TEMP%\spellbook-t4f1\semantic-light.png` and `semantic-flame.png`.
+
+#### Sidecar and network
+
+- No `spellbook-sidecar` process at any of the 222 samples, including during both chats and both searches. The only non-WebView2 child process of the app was `conhost.exe` (redirected stdio).
+- The `spellbook-desktop` process had 0 TCP connections, loopback or not.
+- WebView2 runtime processes had 3 non-loopback TCP connections to Microsoft 443 endpoints (`2603:1063:2001:b0c::365:ff1`, `2620:1ec:33:1::11`). That is the same WebView2/Edge runtime traffic as the first run, not app traffic.
+- Bounds are the same as before: proxy blackhole only, no firewall rule, 500 ms sampling.
+
+#### Cleanup
+
+- `delete_spell` ids 1–3: all `ok`. Then `search_keyword` returned `[]` and `search_spells_semantic("explosion of flame")` returned `[]`.
+- `delete_spell` again left the three `spells\*.json` files (`46f9c993….json` Magic Missile, `49afea9c….json` Light, `6e0804fd….json` Fireball). They were removed by hand. `spells\` again holds only `39a43b17….json`.
+- Closed with `scripts/_t4f1_close.ps1` (`CloseMainWindow`): exited. No leftover `spellbook-desktop` or `spellbook-sidecar`, and port 9222 was not listening.
+- DB probe after close: 0 spells, `spell_vec` still `vec0`, vec0 rowids `[]`. The vault root holds only `imports/`, `models/`, `spells/`, `spellbook.sqlite3`, and `vec0.dll`. No `models--*`, `.locks`, or `fastembed` directory anywhere under the vault.
+- Raw evidence (launch env, ACL/seed/chat/chatdirect/semantic/cleanup JSON, watcher, close, stdout/stderr, screenshots) is in `%TEMP%\spellbook-t4f1\`. It is not committed. Harness scripts are untracked `scripts/_t4f1_*`.
+
+#### Linux
+
+- Not re-smoked. The Linux deb (`1846b14a…`) and AppImage (`e1ce4e70…`) were built at `4799e41`, **before** `f7221f6`. They have no capability, so their chat would hit the same ACL denial. They need a rebuild at or after `f7221f6`. This re-smoke makes no Linux claim.

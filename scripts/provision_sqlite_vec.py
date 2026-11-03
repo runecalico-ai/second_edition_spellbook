@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
 import sys
@@ -15,6 +16,12 @@ from pathlib import Path
 
 SQLITE_VEC_VERSION = "0.1.6"
 RELEASE_BASE = "https://github.com/asg017/sqlite-vec/releases/download"
+
+# Values must match the upstream release's checksums.txt.
+ARCHIVE_SHA256: dict[tuple[str, str, str], str] = {
+    ("0.1.6", "linux", "x86_64"): "438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f",
+    ("0.1.6", "windows", "x86_64"): "f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964",
+}
 
 
 def library_name(os_platform: str) -> str:
@@ -31,6 +38,16 @@ def asset_name(version: str, os_platform: str, arch: str) -> str:
 
 def download_url(version: str, os_platform: str, arch: str) -> str:
     return f"{RELEASE_BASE}/v{version}/{asset_name(version, os_platform, arch)}"
+
+
+def expected_sha256(version: str, os_platform: str, arch: str) -> str:
+    try:
+        return ARCHIVE_SHA256[(version, os_platform, arch)]
+    except KeyError:
+        raise SystemExit(
+            f"No pinned SHA-256 for {asset_name(version, os_platform, arch)}; "
+            "add it to ARCHIVE_SHA256 from the release's checksums.txt"
+        ) from None
 
 
 def detect_platform() -> str:
@@ -66,6 +83,7 @@ def ensure_populated(dest: Path) -> Path:
 
 
 def stage_library(dest: Path, version: str, os_platform: str, arch: str) -> Path:
+    expected = expected_sha256(version, os_platform, arch)
     dest.mkdir(parents=True, exist_ok=True)
     url = download_url(version, os_platform, arch)
     lib = library_name(os_platform)
@@ -73,9 +91,13 @@ def stage_library(dest: Path, version: str, os_platform: str, arch: str) -> Path
         archive_path = Path(tmp) / asset_name(version, os_platform, arch)
         try:
             with urllib.request.urlopen(url, timeout=60) as response:
-                archive_path.write_bytes(response.read())
+                data = response.read()
         except (urllib.error.URLError, TimeoutError, urllib.error.HTTPError) as exc:
             raise SystemExit(f"Failed to download sqlite-vec from {url}: {exc}") from exc
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != expected:
+            raise SystemExit(f"SHA-256 mismatch for {url}: expected {expected}, got {actual}")
+        archive_path.write_bytes(data)
         with tarfile.open(archive_path, "r:gz") as tar:
             tar.extractall(path=tmp, filter="data")
         extracted = Path(tmp) / lib

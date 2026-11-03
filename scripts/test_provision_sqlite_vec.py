@@ -1,3 +1,4 @@
+import hashlib
 import io
 import re
 import sys
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import pytest
 
+import provision_sqlite_vec
 from provision_sqlite_vec import (
     SQLITE_VEC_VERSION,
     asset_name,
@@ -45,6 +47,16 @@ def _targz_with_member(name: str, content: bytes) -> bytes:
         info.size = len(content)
         tar.addfile(info, io.BytesIO(content))
     return buf.getvalue()
+
+
+def _pin_payload(
+    monkeypatch: pytest.MonkeyPatch, payload: bytes, os_platform: str = "windows", arch: str = "x86_64"
+) -> None:
+    monkeypatch.setitem(
+        provision_sqlite_vec.ARCHIVE_SHA256,
+        (SQLITE_VEC_VERSION, os_platform, arch),
+        hashlib.sha256(payload).hexdigest(),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -109,6 +121,7 @@ def test_stage_library_copies_archive_root_dll(
         return _FakeResponse(payload)
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    _pin_payload(monkeypatch, payload)
     dest = tmp_path / "out"
     result = stage_library(dest, "0.1.6", "windows", "x86_64")
     assert captured["timeout"] == 60
@@ -126,11 +139,35 @@ def test_stage_library_rejects_nested_library(
         return _FakeResponse(payload)
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    _pin_payload(monkeypatch, payload)
     dest = tmp_path / "out"
     with pytest.raises(SystemExit) as exc:
         stage_library(dest, "0.1.6", "windows", "x86_64")
     assert exc.value.code not in (0, None)
     assert "vec0.dll" in str(exc.value)
+
+
+def test_pinned_archive_hashes() -> None:
+    assert provision_sqlite_vec.ARCHIVE_SHA256 == {
+        ("0.1.6", "linux", "x86_64"): "438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f",
+        ("0.1.6", "windows", "x86_64"): "f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964",
+    }
+
+
+def test_stage_library_rejects_checksum_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _targz_with_member("vec0.dll", b"tampered")
+    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(payload))
+    dest = tmp_path / "out"
+    with pytest.raises(SystemExit) as exc:
+        stage_library(dest, "0.1.6", "windows", "x86_64")
+    assert "SHA-256 mismatch" in str(exc.value)
+    assert not (dest / "vec0.dll").exists()
+
+
+def test_stage_library_rejects_unpinned_asset_before_download(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        stage_library(tmp_path / "out", "0.1.6", "macos", "aarch64")
+    assert "No pinned SHA-256" in str(exc.value)
 
 
 @pytest.mark.parametrize(

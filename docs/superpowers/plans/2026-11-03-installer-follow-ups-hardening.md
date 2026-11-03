@@ -55,7 +55,7 @@
 - Consumes: nothing.
 - Produces: normal (non-test) builds compile `tauri` without the `test` feature. `tauri::test::*` stays available inside `#[cfg(test)]` code (`src/capability_tests.rs`, `src/lib.rs` smoke apps, `commands/llm.rs`, `commands/embeddings.rs`).
 
-- [ ] **Step 1: Confirm the current release graph enables `test`**
+- [x] **Step 1: Confirm the current release graph enables `test`**
 
 Run (from `apps/desktop/src-tauri`):
 
@@ -65,7 +65,7 @@ cargo tree --edges normal,build,features --invert tauri --depth 1 | Select-Strin
 
 Expected: one match, `tauri feature "test"`.
 
-- [ ] **Step 2: Move the feature to dev-dependencies**
+- [x] **Step 2: Move the feature to dev-dependencies**
 
 In `apps/desktop/src-tauri/Cargo.toml`, change:
 
@@ -87,7 +87,7 @@ and replace the empty `[dev-dependencies]` section at the end of the file with:
 tauri = { version = "2", features = ["test"] }
 ```
 
-- [ ] **Step 3: Verify the release graph no longer enables `test`**
+- [x] **Step 3: Verify the release graph no longer enables `test`**
 
 Run:
 
@@ -98,7 +98,7 @@ cargo tree --edges dev,features --invert tauri --depth 1 | Select-String 'tauri 
 
 Expected: the first command prints nothing. The second prints `tauri feature "test"`.
 
-- [ ] **Step 4: Verify tests and builds still compile**
+- [x] **Step 4: Verify tests and builds still compile**
 
 Run:
 
@@ -111,7 +111,7 @@ cargo test llm_command_smoke_tests
 
 Expected: both checks succeed; `capability_tests` (4 tests) and `llm_command_smoke_tests` (5 tests) pass. `git diff --stat Cargo.lock` shows no change.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/Cargo.toml
@@ -131,7 +131,7 @@ git commit -m "build(desktop): enable tauri test feature only for tests" -m "Rel
 - Consumes: Task 1 Cargo layout.
 - Produces: `cargo clippy --all-targets -- -D warnings` exits 0. No public API change; all edits are `#[cfg(test)]` code.
 
-- [ ] **Step 1: Reproduce the five errors**
+- [x] **Step 1: Reproduce the five errors**
 
 Run: `cargo clippy --all-targets -- -D warnings`
 
@@ -142,7 +142,7 @@ Expected: FAIL with exactly these in `src\commands\llm.rs`:
 - `function install_test_llm_chat_harness is never used`
 - `redundant redefinition of a binding injected_preflight` (redundant_locals)
 
-- [ ] **Step 2: Make the chat-harness snapshot private**
+- [x] **Step 2: Make the chat-harness snapshot private**
 
 It is only called from `llm.rs`'s own `mod tests`. Change:
 
@@ -158,7 +158,7 @@ to:
 fn test_hooks_snapshot_for_chat_harness(
 ```
 
-- [ ] **Step 3: Delete the unused test hooks**
+- [x] **Step 3: Delete the unused test hooks**
 
 Delete these items entirely (each is preceded by `#[cfg(test)]`; delete the attribute too):
 
@@ -204,7 +204,7 @@ impl Drop for TestLlmChatHarnessGuard {
 }
 ```
 
-- [ ] **Step 4: Remove the redundant rebinding**
+- [x] **Step 4: Remove the redundant rebinding**
 
 In the chat run, change:
 
@@ -226,7 +226,7 @@ to:
 
 The `move` closure still takes ownership of `injected_preflight`.
 
-- [ ] **Step 5: Verify clippy and tests**
+- [x] **Step 5: Verify clippy and tests**
 
 Run:
 
@@ -238,7 +238,7 @@ cargo test llm
 
 Expected: both clippy runs exit 0; all `llm` tests pass.
 
-- [ ] **Step 6: Enforce in CI and document**
+- [x] **Step 6: Enforce in CI and document**
 
 In `.github/workflows/ci.yml`, change the "Clippy (Rust)" step:
 
@@ -271,7 +271,7 @@ Lint test code too: `cargo clippy --all-targets -- -D warnings` (CI runs this).
 E2E tests are in the frontend (`tests/` directory) using Playwright.
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/commands/llm.rs .github/workflows/ci.yml apps/desktop/src-tauri/AGENTS.md
@@ -294,7 +294,7 @@ git commit -m "chore(desktop): clean clippy --all-targets in llm tests" -m "Remo
 
 The frontend uses only `@tauri-apps/api/core` `invoke`, `@tauri-apps/api/event` `listen` (`src/api/llmEvents.ts`), `@tauri-apps/plugin-dialog` `open`/`save`, and `@tauri-apps/plugin-fs` `writeFile`/`writeTextFile`. Re-check with `rg -n "@tauri-apps/" apps/desktop/src --glob "!*.test.*"` before editing; if a new import appears, add its permission instead of removing it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `src/capability_tests.rs`, change `EXPECTED_PERMISSIONS` to:
 
@@ -335,13 +335,13 @@ fn main_window_is_denied_core_apis_the_ui_does_not_use() {
 }
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [x] **Step 2: Run the tests to see them fail**
 
 Run: `cargo test capability`
 
 Expected: FAIL. `default_capability_targets_main_window_with_minimal_permissions` reports a set mismatch (`core:default` present). `main_window_is_denied_core_apis_the_ui_does_not_use` panics on `plugin:event|emit` because `core:default` allows it.
 
-- [ ] **Step 3: Narrow the capability**
+- [x] **Step 3: Narrow the capability**
 
 Replace `apps/desktop/src-tauri/capabilities/default.json` with:
 
@@ -362,7 +362,7 @@ Replace `apps/desktop/src-tauri/capabilities/default.json` with:
 }
 ```
 
-- [ ] **Step 4: Rebuild and run the tests**
+- [x] **Step 4: Rebuild and run the tests**
 
 Run:
 
@@ -374,7 +374,7 @@ git diff --stat apps/desktop/src-tauri/gen/schemas/capabilities.json
 
 Expected: all 5 capability tests pass. `gen/schemas/capabilities.json` changed (it now lists the six permissions).
 
-- [ ] **Step 5: Smoke the UI paths that use IPC**
+- [x] **Step 5: Smoke the UI paths that use IPC**
 
 Run `pnpm --dir apps/desktop tauri:dev` with models provisioned in the vault. Then:
 1. Chat: send "What does the spell Light do?". Expected: the reply streams in. No `not allowed by ACL` text appears.
@@ -383,7 +383,7 @@ Run `pnpm --dir apps/desktop tauri:dev` with models provisioned in the vault. Th
 
 Stop the dev app when done.
 
-- [ ] **Step 6: Document the permissions file**
+- [x] **Step 6: Document the permissions file**
 
 In `apps/desktop/src-tauri/AGENTS.md`, after the numbered list under `### Adding New Commands`, add:
 
@@ -407,7 +407,7 @@ In `docs/TROUBLESHOOTING.md`, under `## Common Issues` after `### 3. Search Not 
 - **Fix**: Grant the narrowest permission for that command, add it to `EXPECTED_PERMISSIONS` in `src/capability_tests.rs`, run `cargo build` and `cargo test capability`. See `apps/desktop/src-tauri/AGENTS.md` ("Webview permissions").
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/capabilities/default.json apps/desktop/src-tauri/src/capability_tests.rs apps/desktop/src-tauri/gen/schemas/capabilities.json apps/desktop/src-tauri/AGENTS.md docs/TROUBLESHOOTING.md
@@ -439,7 +439,7 @@ Notes that shape this policy (Tauri 2.9.5 source, `tauri-codegen` `context.rs` a
 - `img-src data:` covers CSS data-URI icons.
 - In `tauri dev` the page comes from the Vite server, not Tauri's asset protocol, so this CSP is not injected there.
 
-- [ ] **Step 1: Declare the E2E global**
+- [x] **Step 1: Declare the E2E global**
 
 In `apps/desktop/src/globals.d.ts`, inside `interface Window`, after `__IS_PLAYWRIGHT__?: boolean;`, add:
 
@@ -448,7 +448,7 @@ In `apps/desktop/src/globals.d.ts`, inside `interface Window`, after `__IS_PLAYW
     __SPELLBOOK_E2E_CSP_VIOLATIONS__?: string[];
 ```
 
-- [ ] **Step 2: Write the failing E2E spec**
+- [x] **Step 2: Write the failing E2E spec**
 
 Create `apps/desktop/tests/content_security_policy.spec.ts`:
 
@@ -514,7 +514,7 @@ test.describe("Content Security Policy", () => {
 });
 ```
 
-- [ ] **Step 3: Run the spec to see it fail**
+- [x] **Step 3: Run the spec to see it fail**
 
 Run (from `apps/desktop`):
 
@@ -525,7 +525,7 @@ npx playwright test tests/content_security_policy.spec.ts
 
 Expected: FAIL at "Verify: CSP is active" with `Expected: "EvalError"` / `Received: "allowed"`.
 
-- [ ] **Step 4: Add the CSP**
+- [x] **Step 4: Add the CSP**
 
 In `apps/desktop/src-tauri/tauri.conf.json`, change the `app` object to:
 
@@ -545,7 +545,7 @@ In `apps/desktop/src-tauri/tauri.conf.json`, change the `app` object to:
   }
 ```
 
-- [ ] **Step 5: Run the CSP spec and the specs most likely to break**
+- [x] **Step 5: Run the CSP spec and the specs most likely to break**
 
 Run (from `apps/desktop`):
 
@@ -556,7 +556,7 @@ npx playwright test tests/content_security_policy.spec.ts tests/theme_and_feedba
 
 Expected: all pass. If `content_security_policy.spec.ts` lists violations, fix the policy for the reported directive only (for example a `connect-src` source) and re-run. Never add `'unsafe-eval'` or `'unsafe-inline'` to `script-src`.
 
-- [ ] **Step 6: Check dev mode is unaffected**
+- [x] **Step 6: Check dev mode is unaffected**
 
 Run `pnpm --dir apps/desktop tauri:dev`. Expected: the Library renders and the DevTools console (right-click, Inspect) shows no `Content Security Policy` errors. If it does show CSP errors, add this `devCsp` next to `csp` and re-check:
 
@@ -564,7 +564,7 @@ Run `pnpm --dir apps/desktop tauri:dev`. Expected: the Library renders and the D
       "devCsp": "default-src 'self' http://127.0.0.1:5173; script-src 'self' 'unsafe-inline' http://127.0.0.1:5173; style-src 'self' 'unsafe-inline' http://127.0.0.1:5173; img-src 'self' data: http://127.0.0.1:5173; font-src 'self' data: http://127.0.0.1:5173; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:5173 ws://127.0.0.1:5173; object-src 'none'; base-uri 'self'"
 ```
 
-- [ ] **Step 7: Lint and document**
+- [x] **Step 7: Lint and document**
 
 Run (from `apps/desktop`): `pnpm typecheck` and `npx biome lint tests src/globals.d.ts`. Expected: no errors.
 
@@ -575,7 +575,7 @@ In `apps/desktop/src-tauri/AGENTS.md`, after the "Webview permissions (capabilit
 `tauri.conf.json` `app.security.csp` applies to built assets (release and `pnpm tauri:build --debug`, which Playwright uses). Tauri hashes inline scripts in `dist/index.html` into `script-src` automatically. Do not add `'unsafe-eval'` or `'unsafe-inline'` to `script-src`. Loading anything from outside the app (URLs, fonts, images) needs an explicit source in the policy. `tests/content_security_policy.spec.ts` fails on any violation.
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/tauri.conf.json apps/desktop/tests/content_security_policy.spec.ts apps/desktop/src/globals.d.ts apps/desktop/src-tauri/AGENTS.md
@@ -603,7 +603,7 @@ git commit -m "feat(desktop): add content security policy for built assets" -m "
 
 Background: migration 0001 falls back to `CREATE TABLE spell_vec (rowid INTEGER PRIMARY KEY, v BLOB)` when vec0 is missing, and only runs at `user_version < 1`. Vaults created before `vec0` was bundled keep that table forever, and `finalize_embedding_provision` rejects them with `semantic search requires sqlite-vec; spell_vec is blob-backed in this database`. Vectors are derived data, so dropping and recreating the table is safe; the embeddings startup backfill (`reindex_embeddings(force=false)`) repopulates it. Unit tests do not load `vec0.dll`, so test DBs are blob-backed unless a test loads sqlite-vec statically.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `mod tests` in `src/db/migrations.rs`:
 
@@ -669,13 +669,13 @@ Append to `mod tests` in `src/db/migrations.rs`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [x] **Step 2: Run the tests to see them fail**
 
 Run: `cargo test --lib db::migrations`
 
 Expected: FAIL to compile with `cannot find function repair_blob_backed_spell_vec`, `spell_vec_is_vec0` and `load_static_sqlite_vec_for_test`.
 
-- [ ] **Step 3: Add the db helpers**
+- [x] **Step 3: Add the db helpers**
 
 Append to `src/db/utils.rs`:
 
@@ -722,7 +722,7 @@ pub(crate) use utils::load_static_sqlite_vec_for_test;
 pub use utils::{spell_vec_is_vec0, table_has_column};
 ```
 
-- [ ] **Step 4: Add the repair**
+- [x] **Step 4: Add the repair**
 
 In `src/db/migrations.rs`, add after `load_migrations`:
 
@@ -775,13 +775,13 @@ to:
 use rusqlite::{Connection, OptionalExtension};
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cargo test --lib db::migrations`
 
 Expected: all migration tests pass, including the three new `repair_*` tests.
 
-- [ ] **Step 6: Wire the repair into startup and reuse the helper**
+- [x] **Step 6: Wire the repair into startup and reuse the helper**
 
 In `src/db/pool.rs` `init_db`, change:
 
@@ -804,7 +804,7 @@ In `src/commands/embeddings.rs`, delete `fn spell_vec_uses_sqlite_vec` and repla
 
 Run: `rg -n "spell_vec_uses_sqlite_vec" apps/desktop/src-tauri/src` — expected: no matches.
 
-- [ ] **Step 7: Run the full Rust gate**
+- [x] **Step 7: Run the full Rust gate**
 
 Run:
 
@@ -817,7 +817,7 @@ cargo test
 
 Expected: all pass.
 
-- [ ] **Step 8: Document**
+- [x] **Step 8: Document**
 
 In `apps/desktop/src-tauri/AGENTS.md` under `## Database`, after `- **Vector Search**: ...`, add:
 
@@ -833,7 +833,7 @@ In `docs/TROUBLESHOOTING.md` under `## Common Issues`, add:
 - **Fix**: Make sure `vec0.dll` / `vec0.so` is in the vault (`SpellbookVault/`) and restart the app. Startup rebuilds `spell_vec` as a vec0 table and the embeddings backfill re-embeds all spells. Look for `sqlite-vec: rebuilt blob-backed spell_vec as vec0` in the log.
 ```
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/db/utils.rs apps/desktop/src-tauri/src/db/mod.rs apps/desktop/src-tauri/src/db/migrations.rs apps/desktop/src-tauri/src/db/pool.rs apps/desktop/src-tauri/src/commands/embeddings.rs apps/desktop/src-tauri/AGENTS.md docs/TROUBLESHOOTING.md
@@ -861,7 +861,7 @@ git commit -m "fix(db): rebuild blob-backed spell_vec once sqlite-vec loads" -m 
 
 Behavior: the startup backfill (`finalize_embedding_provision`) runs `force = true` when `app_meta.embedding_index_revision` differs from `EMBEDDING_MANIFEST_SHA` (including when it is missing), else `force = false`. Any forced reindex with `failed == 0` records the revision. Pre-fix builds embedded with hub revision `d13954661f…`, and any vault without a recorded revision gets one full rebuild.
 
-- [ ] **Step 1: Write the failing migration test**
+- [x] **Step 1: Write the failing migration test**
 
 In `src/db/migrations.rs` tests, change both `assert_eq!(version, 15);` lines (in `test_load_migrations_adds_hash_reference_columns` and `test_migration_0015_is_idempotent_when_columns_already_exist`) to `assert_eq!(version, 16);`, and add:
 
@@ -886,7 +886,7 @@ In `src/db/migrations.rs` tests, change both `assert_eq!(version, 15);` lines (i
     }
 ```
 
-- [ ] **Step 2: Write the failing embeddings tests**
+- [x] **Step 2: Write the failing embeddings tests**
 
 In `src/commands/embeddings.rs`, inside `mod tests`, add:
 
@@ -938,13 +938,13 @@ In `src/commands/embeddings.rs`, inside `mod tests`, add:
     }
 ```
 
-- [ ] **Step 3: Run the tests to see them fail**
+- [x] **Step 3: Run the tests to see them fail**
 
 Run: `cargo test --lib db::migrations` and `cargo test --lib embedding_index`
 
 Expected: FAIL to compile (`get_app_meta`, `set_app_meta`, `embedding_index_needs_full_rebuild`, `record_embedding_index_revision`, `should_record_embedding_index_revision`, `EMBEDDING_INDEX_REVISION_KEY` not found).
 
-- [ ] **Step 4: Add migration 0016 and the meta helpers**
+- [x] **Step 4: Add migration 0016 and the meta helpers**
 
 Create `db/migrations/0016_add_app_meta.sql`:
 
@@ -1016,7 +1016,7 @@ In `src/db/mod.rs`, change `pub use utils::{spell_vec_is_vec0, table_has_column}
 pub use utils::{get_app_meta, set_app_meta, spell_vec_is_vec0, table_has_column};
 ```
 
-- [ ] **Step 5: Add the embeddings revision helpers**
+- [x] **Step 5: Add the embeddings revision helpers**
 
 In `src/commands/embeddings.rs`, extend the first import:
 
@@ -1049,13 +1049,13 @@ fn should_record_embedding_index_revision(force: bool, result: &ReindexResult) -
 }
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `cargo test --lib db::migrations` and `cargo test --lib embedding_index`
 
 Expected: all pass.
 
-- [ ] **Step 7: Record the revision after clean forced reindexes**
+- [x] **Step 7: Record the revision after clean forced reindexes**
 
 Change `reindex_embeddings_internal` to:
 
@@ -1095,7 +1095,7 @@ pub async fn reindex_embeddings_internal(
 }
 ```
 
-- [ ] **Step 8: Force the startup backfill when the revision differs**
+- [x] **Step 8: Force the startup backfill when the revision differs**
 
 In `finalize_embedding_provision`, change:
 
@@ -1134,7 +1134,7 @@ to:
     match reindex_embeddings_internal(app, Arc::clone(&state), pool, full_rebuild).await {
 ```
 
-- [ ] **Step 9: Run the full Rust gate**
+- [x] **Step 9: Run the full Rust gate**
 
 Run:
 
@@ -1147,7 +1147,7 @@ cargo test
 
 Expected: all pass.
 
-- [ ] **Step 10: Document**
+- [x] **Step 10: Document**
 
 In `apps/desktop/src-tauri/AGENTS.md` under `## Database`, after the blob-backed repair bullet from Task 5, add:
 
@@ -1155,7 +1155,7 @@ In `apps/desktop/src-tauri/AGENTS.md` under `## Database`, after the blob-backed
 - **Embedding index revision**: `app_meta.embedding_index_revision` (migration 0016) records the MiniLM bundle revision (`EMBEDDING_MANIFEST_SHA`) that produced `spell_vec`. The embeddings startup backfill runs a forced reindex when it is missing or different, and every forced reindex with no failures records it. Changing the approved embedding bundle therefore re-embeds every vault once.
 ```
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```powershell
 git add db/migrations/0016_add_app_meta.sql apps/desktop/src-tauri/src/db/migrations.rs apps/desktop/src-tauri/src/db/utils.rs apps/desktop/src-tauri/src/db/mod.rs apps/desktop/src-tauri/src/commands/embeddings.rs apps/desktop/src-tauri/AGENTS.md
@@ -1179,7 +1179,7 @@ git commit -m "feat(embeddings): re-embed when the model revision changes" -m "R
 
 Rules: delete the DB rows first. Remove `spells/<hash>.json` only if no row still references the hash and vault maintenance is idle (`start_gc` succeeds). If an import or GC is running, leave the file for deferred GC. A failed file removal logs a warning and does not fail the delete.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `spells.rs` `mod tests`, add after `setup_spell_update_test_db`:
 
@@ -1274,13 +1274,13 @@ In `spells.rs` `mod tests`, add after `setup_spell_update_test_db`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [x] **Step 2: Run the tests to see them fail**
 
 Run: `cargo test --lib test_delete_spell_with_conn`
 
 Expected: FAIL to compile (`delete_spell_with_conn` and `spell_file_path_in_root` not found in scope).
 
-- [ ] **Step 3: Add `is_content_hash_live`**
+- [x] **Step 3: Add `is_content_hash_live`**
 
 In `src/commands/vault.rs`, add after `collect_live_content_hashes`:
 
@@ -1315,7 +1315,7 @@ pub(crate) fn is_content_hash_live(
 }
 ```
 
-- [ ] **Step 4: Add `delete_spell_with_conn` and use it in `delete_spell`**
+- [x] **Step 4: Add `delete_spell_with_conn` and use it in `delete_spell`**
 
 In `src/commands/spells.rs`, change:
 
@@ -1401,13 +1401,13 @@ pub async fn delete_spell(
 
 `OptionalExtension` is already imported in `spells.rs` (`use rusqlite::{Connection, OptionalExtension};`). `VaultMaintenanceState` is managed in `lib.rs` `run()` (`app.manage(Arc::new(VaultMaintenanceState::default()))`).
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cargo test --lib test_delete_spell_with_conn` and `cargo test --lib vault`
 
 Expected: the 3 new tests pass; existing vault GC tests still pass.
 
-- [ ] **Step 6: Run the full Rust gate and the delete E2E path**
+- [x] **Step 6: Run the full Rust gate and the delete E2E path**
 
 Run:
 
@@ -1422,7 +1422,7 @@ Expected: all pass.
 
 Then from `apps/desktop`: `pnpm tauri:build --debug` and `npx playwright test tests/spell_editor_save_workflow.spec.ts tests/vault.spec.ts`. Expected: pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/commands/vault.rs apps/desktop/src-tauri/src/commands/spells.rs

@@ -62,12 +62,40 @@ jobs:
           python -m venv .venv
           .\.venv\Scripts\python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
 
+      - name: Set version from tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: .\.venv\Scripts\python scripts/set_release_version.py "$env:REF_NAME"
+
       - name: Prepare release resources
         run: .\.venv\Scripts\python scripts/prepare_release_bundle.py
 
       - name: Build NSIS installer
         working-directory: apps/desktop
         run: pnpm tauri:build:win
+
+      - name: Stage Windows assets
+        shell: pwsh
+        run: |
+          $bundleDir = 'target/release/bundle/nsis'
+          $exes = @(Get-ChildItem -Path $bundleDir -Filter *.exe -File -ErrorAction SilentlyContinue)
+          if ($exes.Count -ne 1) { throw "expected exactly one NSIS installer in $bundleDir, found $($exes.Count): $($exes.Name -join ', ')" }
+          New-Item -ItemType Directory -Force assets | Out-Null
+          $pkg = Get-Content -Raw apps/desktop/package.json | ConvertFrom-Json
+          $name = "Spellbook_$($pkg.version)_x64-setup.exe"
+          Copy-Item $exes[0].FullName "assets/$name"
+          .\.venv\Scripts\python scripts/checksum_release_assets.py "assets/$name"
+          if ($LASTEXITCODE -ne 0) { throw "checksum failed with exit code $LASTEXITCODE" }
+          $sig = Get-AuthenticodeSignature "assets/$name"
+          if ($sig.Status -ne 'NotSigned') { throw "expected unsigned installer, got $($sig.Status)" }
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: spellbook-${{ runner.os }}
+          path: assets/*
+          if-no-files-found: error
 
   linux:
     runs-on: ubuntu-24.04
@@ -130,9 +158,69 @@ jobs:
           python -m venv .venv
           .venv/bin/python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
 
+      - name: Set version from tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: .venv/bin/python scripts/set_release_version.py "$REF_NAME"
+
       - name: Prepare release resources
         run: .venv/bin/python scripts/prepare_release_bundle.py
 
       - name: Build AppImage and deb
         working-directory: apps/desktop
         run: pnpm tauri:build:linux
+
+      - name: Stage Linux assets
+        run: |
+          shopt -s nullglob
+          appimages=(target/release/bundle/appimage/*.AppImage)
+          debs=(target/release/bundle/deb/*.deb)
+          if [ "${#appimages[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one AppImage in target/release/bundle/appimage, found ${#appimages[@]}: ${appimages[*]}"
+            exit 1
+          fi
+          if [ "${#debs[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one .deb in target/release/bundle/deb, found ${#debs[@]}: ${debs[*]}"
+            exit 1
+          fi
+          mkdir -p assets
+          VERSION=$(.venv/bin/python -c "import json; print(json.load(open('apps/desktop/package.json'))['version'])")
+          cp "${appimages[0]}" "assets/Spellbook_${VERSION}_amd64.AppImage"
+          cp "${debs[0]}" "assets/Spellbook_${VERSION}_amd64.deb"
+          .venv/bin/python scripts/checksum_release_assets.py \
+            "assets/Spellbook_${VERSION}_amd64.AppImage" \
+            "assets/Spellbook_${VERSION}_amd64.deb"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: spellbook-${{ runner.os }}
+          path: assets/*
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download workflow artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          args=(release create "$REF_NAME" --generate-notes --verify-tag)
+          if [[ "$REF_NAME" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}" assets/*

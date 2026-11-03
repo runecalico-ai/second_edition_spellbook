@@ -91,7 +91,11 @@ jobs:
         run: .venv/bin/python -m pytest
 
       - name: Unit tests (release scripts)
-        run: services/ml/.venv/bin/python -m pytest scripts/test_provision_sqlite_vec.py
+        run: >-
+          services/ml/.venv/bin/python -m pytest
+          scripts/test_provision_sqlite_vec.py
+          scripts/test_set_release_version.py
+          scripts/test_checksum_release_assets.py
 
       - name: Install system dependencies (Rust)
         run: |

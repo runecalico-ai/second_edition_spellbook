@@ -589,11 +589,17 @@ EOF
 
 **Interfaces:**
 - Consumes: merged `release.yml` on the default branch
-- Produces: one successful `workflow_dispatch` (artifacts only) and one `v0.1.0-rc.1` tag run (published prerelease assets)
+- Produces: two successful default-branch `workflow_dispatch` runs (cold and warm cache; artifacts only) and one `v0.1.0-rc.1` tag run (published prerelease assets)
 
 - [ ] **Step 1: Dispatch dry run**
 
 GitHub → Actions → Release → Run workflow. Expected: both jobs green; artifacts `Spellbook_*` + `.sha256`; **no** GitHub Release.
+
+This first dispatch is the cold, cache-seeding run. Expected: `Restore Cargo cache` misses and `Save Cargo cache` runs in both jobs. Record each job's duration (cold build; compare with `timeout-minutes: 120`) and the saved cache key and size per OS (Actions → Caches, or `gh cache list`).
+
+Dispatch a second time from the default branch. Expected: `Restore Cargo cache` reports an exact hit, `Save Cargo cache` is skipped, and staging still finds exactly one bundle per format (so `target/release/bundle` was not restored). Record the warm durations.
+
+Dispatch artifacts are test-only: they are built from caches that default-branch workflows can write. Only tag-push assets are distributable.
 
 - [ ] **Step 2: Tag dry run**
 
@@ -604,9 +610,9 @@ git tag v0.1.0-rc.1
 git push origin v0.1.0-rc.1
 ```
 
-Expected: published GitHub Release (not draft) with auto notes, three binaries (exe, AppImage, deb) and three `.sha256` files. Windows exe is **unsigned**.
+Expected: published GitHub Release (not draft) with auto notes, three binaries (exe, AppImage, deb) and three `.sha256` files. Windows exe is **unsigned**. In both build jobs, `Restore Cargo cache` and `Save Cargo cache` are **skipped**, and setup-node and setup-python log no cache restore. Record the cold tag build duration per job.
 
-Then dispatch once more with **Use workflow from** set to the `v0.1.0-rc.1` tag. Expected: both build jobs green, `publish` **skipped**, the "Set version from tag" steps **skipped**, and the existing release unchanged. This proves the `event_name` gate.
+Then dispatch once more with **Use workflow from** set to the `v0.1.0-rc.1` tag. Expected: both build jobs green, `publish` **skipped**, the "Set version from tag" steps **skipped**, and the existing release unchanged. This proves the `event_name` gate. `Restore Cargo cache` hits (a tag-ref run can read the default-branch cache) and `Save Cargo cache` is skipped.
 
 If the tag must wait on human permission to push, record that in the log and **do not** flip 5.6 until the tag workflow has actually run.
 
@@ -616,13 +622,18 @@ If the tag must wait on human permission to push, record that in the log and **d
 ## Release workflow
 
 - workflow_dispatch conclusion:
+- Cold dispatch durations (windows / linux):
+- Cargo cache saved (key, size per OS):
+- Warm dispatch: cache hit + durations:
 - v0.1.0-rc.1 Release URL:
 - Asset names:
+- Tag run: cache steps skipped (yes/no) + durations:
+- Tag-ref dispatch: cache hit, publish/version skipped:
 ```
 
 - [ ] **Step 4: Mark OpenSpec 5.6 complete**
 
-Tick 5.4 and 5.5 in the same edit (deferred from Tasks 1 and 2).
+Tick 5.4 and 5.5 in the same edit (deferred from Tasks 1 and 2), but only if the Step 3 log fields show the expected results above.
 
 From:
 

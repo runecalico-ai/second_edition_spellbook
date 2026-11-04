@@ -83,11 +83,19 @@ Direct `pnpm tauri:build:*` commands need the prepare script first, with the ven
 .venv/bin/python scripts/prepare_release_bundle.py
 ```
 
-Or, on Windows after the prepare script, from `apps/desktop`: `pnpm tauri:build:win` — the same `tauri build` the script runs, without its install, staging, and copy steps.
+Or, on Windows after the prepare script (from repository root) — the same `tauri build` the script runs, without its installer copy step:
 
-Linux (Ubuntu 24.04, from `apps/desktop` after the prepare script):
+```powershell
+cd apps/desktop
+pnpm install --frozen-lockfile
+pnpm tauri:build:win
+```
+
+Linux (Ubuntu 24.04, from repository root after the prepare script):
 
 ```bash
+cd apps/desktop
+pnpm install --frozen-lockfile
 pnpm tauri:build:linux
 ```
 

@@ -20,10 +20,10 @@ Copy the installer elsewhere:
 .\scripts\build_windows_installer.ps1 -OutputDirectory 'C:\dist\spellbook'
 ```
 
-Release builds must run resource staging first (sqlite-vec into `apps/desktop/src-tauri/resources/sqlite-vec/` and the frozen sidecar into `apps/desktop/src-tauri/binaries/`):
+Release builds must run resource staging first (sqlite-vec into `apps/desktop/src-tauri/resources/sqlite-vec/` and the frozen sidecar into `apps/desktop/src-tauri/binaries/`) with the repository-root `.venv` interpreter (setup: [Release builds](../docs/DEVELOPMENT.md#release-builds-windows-nsis-linux-appimage-and-deb)):
 
 ```powershell
-python scripts\prepare_release_bundle.py
+.\.venv\Scripts\python scripts\prepare_release_bundle.py
 .\scripts\build_windows_installer.ps1
 ```
 

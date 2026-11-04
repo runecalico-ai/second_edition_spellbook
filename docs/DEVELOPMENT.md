@@ -43,8 +43,22 @@ Ubuntu 24.04 also needs:
 
 Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` does not.
 
+The prepare script freezes the sidecar with PyInstaller (from `services/ml/requirements-dev.txt`) and must run under Python 3.14. Like CI, create the repository-root `.venv` and run it with the venv interpreter. On Ubuntu 24.04, install Python 3.14 separately (system `python3` is 3.12).
+
+Windows (PowerShell, from repository root):
+
+```powershell
+py -3.14 -m venv .venv
+.\.venv\Scripts\python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
+.\.venv\Scripts\python scripts/prepare_release_bundle.py
+```
+
+Linux (bash, from repository root):
+
 ```bash
-python scripts/prepare_release_bundle.py
+python3.14 -m venv .venv
+.venv/bin/python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
+.venv/bin/python scripts/prepare_release_bundle.py
 ```
 
 Windows (from repository root):

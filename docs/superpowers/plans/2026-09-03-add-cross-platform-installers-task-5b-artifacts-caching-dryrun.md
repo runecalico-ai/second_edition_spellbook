@@ -24,7 +24,7 @@
 - Linux: product + version + architecture for AppImage and `.deb`, each with `.sha256`.
 - Checksum file format: one line `{sha256}  {filename}` (GNU `sha256sum` style).
 - Cache Cargo at **repo-root** `target/` (this repo sets `target-dir = "../../../target"`). Do not cache only `apps/desktop/src-tauri/target` (that path is unused).
-- Cache PyInstaller: `~/.cache/pyinstaller` on Linux and `%LOCALAPPDATA%\pyinstaller` on Windows if present, plus leave `services/ml/dist` uncached in git.
+- Cache PyInstaller: `~/.cache/pyinstaller` on Linux and `%LOCALAPPDATA%\pyinstaller` on Windows if present, plus leave `services/ml/dist` uncached in git. (superseded: no PyInstaller cache, see Task 2 outcome)
 - One full installer per OS; no lite artifact.
 - Do not rewrite delta specs. Flip 5.4–5.6 only after each deliverable works.
 - Publish and version stamping run only on a real tag push: `github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')`. Never gate on the ref alone — a `workflow_dispatch` started from a tag ref has `github.ref == refs/tags/...` and must still be a dry run (no release, no version rewrite).
@@ -38,8 +38,8 @@
 | OpenSpec item | Plan task | Completion signal |
 | ------------- | --------- | ----------------- |
 | — (hardening, no checkbox) | Task 0 | SHA-pinned actions, `persist-credentials: false`, `timeout-minutes`, sqlite-vec SHA-256 pin with tests |
-| 5.4 Upload versioned names and `.sha256` files | Task 1 | workflow uploads those files; checkbox `[x]` |
-| 5.5 Configure Cargo and PyInstaller caching | Task 2 | cache steps present with correct `target/` path; checkbox `[x]` |
+| 5.4 Upload versioned names and `.sha256` files | Task 1 | workflow uploads those files; checkbox `[x]` in Task 3 |
+| 5.5 Configure Cargo and PyInstaller caching | Task 2 | Cargo restore/save steps present with correct `target/` paths; PyInstaller cache dropped (see Task 2 outcome); checkbox `[x]` in Task 3 |
 | 5.6 Cut `v0.1.0-rc.1` for end-to-end dry run | Task 3 | dispatch dry-run succeeded; tag dry-run documented; checkbox `[x]` |
 
 ## Planned file structure
@@ -510,6 +510,12 @@ EOF
 
 ### Task 2: Cargo and PyInstaller caches (OpenSpec 5.5)
 
+> **Outcome (human rulings, 2026-11-03):** The YAML sample below is superseded by `.github/workflows/release.yml`.
+> - **Tag pushes use no caches.** No Cargo cache restore or save, and the setup-node pnpm and setup-python pip caches are off on push. This closes any cache-poisoning route into published installers; slower tag builds are accepted.
+> - **Cargo cache on `workflow_dispatch` only.** Dispatch runs restore it; only dispatch on the default branch saves it (caches are ref-scoped). Paths: `~/.cargo/registry/index`, `~/.cargo/registry/cache`, `~/.cargo/git/db`, `target/release/*`, `!target/release/bundle` (bare `target` would ignore the exclusion and cache stale installers). Exact key, no `restore-keys`.
+> - **No PyInstaller cache.** `services/ml/build_sidecar.py` runs PyInstaller with `--clean`, which empties the cache directory, and `spellbook_sidecar.spec` sets `strip=False, upx=False`, so the cache is never filled.
+> - **Checkboxes.** 5.4 and 5.5 stay `[ ]` until the Task 3 dry run proves them; Task 3 ticks 5.4, 5.5 and 5.6 together. 5.5 is ticked on the Cargo cache plus setup-python's pip cache (dispatch runs).
+
 **Files:**
 - Modify: `.github/workflows/release.yml`
 - Modify: `openspec/changes/add-cross-platform-installers/tasks.md` (5.5 only)
@@ -546,6 +552,8 @@ EOF
 Windows `~/AppData/Local/pyinstaller` is the usual hooks cache; if the directory never appears, the cache step still succeeds.
 
 - [ ] **Step 2: Mark OpenSpec 5.5 complete**
+
+Deferred to Task 3: 5.5 stays `[ ]` until the dry run proves the cache.
 
 From:
 
@@ -613,6 +621,8 @@ If the tag must wait on human permission to push, record that in the log and **d
 ```
 
 - [ ] **Step 4: Mark OpenSpec 5.6 complete**
+
+Tick 5.4 and 5.5 in the same edit (deferred from Tasks 1 and 2).
 
 From:
 

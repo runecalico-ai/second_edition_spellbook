@@ -16,6 +16,8 @@ Minimum supported distribution: **Ubuntu 24.04 LTS**. Newer Ubuntu releases may 
 
 Install the `.deb` with the system package manager, or run the AppImage after marking it executable.
 
+If the AppImage fails to start with a `libfuse.so.2` error, install FUSE 2 with `sudo apt install libfuse2t64` (the Ubuntu 24.04 package name), or use the `.deb` instead.
+
 User data lives in `~/.local/share/SpellbookVault` (or `$XDG_DATA_HOME/SpellbookVault`).
 
 ## Models and offline use

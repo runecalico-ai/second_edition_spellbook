@@ -46,4 +46,4 @@ Getting the model files the **first** time requires network access: either the i
 ## PDF import and export
 
 - **Import:** PDF files are parsed by `pdfminer.six` inside the bundled sidecar. A system Python install is not required.
-- **Export:** Choosing PDF export writes print-optimized **HTML**. Use the browser **Print to PDF** command. Spellbook does not ship a PDF engine.
+- **Export:** Choosing PDF export writes a print-optimized **HTML** file and shows its path. Open that file in a web browser, choose **Print**, and select a PDF destination such as **Save as PDF** (or **Microsoft Print to PDF** on Windows). Spellbook does not ship a PDF engine.

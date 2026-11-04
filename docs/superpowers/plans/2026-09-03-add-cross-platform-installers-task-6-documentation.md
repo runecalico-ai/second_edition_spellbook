@@ -225,7 +225,7 @@ EOF
 - Consumes: existing sidecar behavior (`format: "pdf"` → HTML)
 - Produces: user-visible documentation
 
-- [ ] **Step 1: Append to `docs/RELEASE.md`**
+- [x] **Step 1: Append to `docs/RELEASE.md`**
 
 ```markdown
 ## PDF import and export
@@ -234,7 +234,7 @@ EOF
 - **Export:** Choosing PDF export writes print-optimized **HTML**. Use the browser **Print to PDF** command. Spellbook does not ship a PDF engine.
 ```
 
-- [ ] **Step 2: Mark OpenSpec 6.3 complete**
+- [x] **Step 2: Mark OpenSpec 6.3 complete**
 
 From:
 
@@ -248,7 +248,7 @@ To:
 - [x] 6.3 Document PDF behavior: export → HTML (browser print-to-PDF); import → bundled pdfminer
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/RELEASE.md openspec/changes/add-cross-platform-installers/tasks.md

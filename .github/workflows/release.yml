@@ -58,14 +58,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-release-cargo-${{ steps.rust.outputs.cachekey }}-
 
-      - name: Cache PyInstaller
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ~/AppData/Local/pyinstaller
-          key: ${{ runner.os }}-pyinstaller-${{ hashFiles('services/ml/requirements-dev.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pyinstaller-
-
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -180,14 +172,6 @@ jobs:
           key: ${{ runner.os }}-release-cargo-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-release-cargo-${{ steps.rust.outputs.cachekey }}-
-
-      - name: Cache PyInstaller
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ~/.cache/pyinstaller
-          key: ${{ runner.os }}-pyinstaller-${{ hashFiles('services/ml/requirements-dev.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pyinstaller-
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0

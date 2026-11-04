@@ -308,7 +308,7 @@ git commit -m "fix(sidecar): use sheet and pack templates for HTML" -m "The html
 - Consumes: `open` from `@tauri-apps/plugin-dialog`. `importEmbeddingsModelFile(path: string)` from `src/api/llm.ts`, which takes the bundle folder path.
 - Produces: `ChatPanel`-local `pickModelFolder(): Promise<string | null>`. It is not exported.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `apps/desktop/src/ui/components/chat/ChatPanel.test.tsx`, in the test `"clicking Add Local Model opens the file picker and imports the selected file"`, add this line directly after `expect(mockRefresh).toHaveBeenCalled();`. The line makes sure that TinyLlama keeps the file picker:
 
@@ -364,13 +364,13 @@ Replace the whole test `"unwraps an array result from the file picker"` with the
   });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `pnpm --dir apps/desktop exec vitest run --project=unit src/ui/components/chat/ChatPanel.test.tsx`
 
 Expected: 1 FAILED, `"clicking Add Local Embedding Model opens a folder picker and imports the selected folder"`. The error is at `expect(mockOpen).toHaveBeenCalledWith({ directory: true, multiple: false })`, because the received call is `{ multiple: false }`. All other tests pass.
 
-- [ ] **Step 3: Add the folder picker and use it for embeddings**
+- [x] **Step 3: Add the folder picker and use it for embeddings**
 
 In `apps/desktop/src/ui/components/chat/ChatPanel.tsx`, replace:
 
@@ -408,12 +408,12 @@ In `handleImportEmbeddings`, change `const path = await pickModelFile();` to:
 
 `handleImportLlm` continues to call `pickModelFile()`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `pnpm --dir apps/desktop exec vitest run --project=unit src/ui/components/chat/ChatPanel.test.tsx src/hooks/useEmbeddingsProvisioning.test.tsx`
 Expected: all pass (32 tests: the 30 in the baseline plus 2 net new).
 
-- [ ] **Step 5: Correct the docs**
+- [x] **Step 5: Correct the docs**
 
 `docs/RELEASE.md` line 40: change `**Add Local Embedding Model** (MiniLM, in Library semantic search; select the model folder)` to:
 
@@ -433,7 +433,7 @@ Expected: all pass (32 tests: the 30 in the baseline plus 2 net new).
 | Side-load embeddings (folder picker) | `chat-embeddings-import-button` |
 ```
 
-- [ ] **Step 6: Run the frontend gates**
+- [x] **Step 6: Run the frontend gates**
 
 Run each from the repo root:
 - `pnpm --dir apps/desktop typecheck`
@@ -442,7 +442,7 @@ Run each from the repo root:
 
 Expected: each exits 0. If `format:check` reports the edited files, run `pnpm --dir apps/desktop exec biome format --write src/ui/components/chat/ChatPanel.tsx src/ui/components/chat/ChatPanel.test.tsx` and run it again.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add apps/desktop/src/ui/components/chat/ChatPanel.tsx apps/desktop/src/ui/components/chat/ChatPanel.test.tsx docs/RELEASE.md docs/DEVELOPMENT.md apps/desktop/src/AGENTS.md

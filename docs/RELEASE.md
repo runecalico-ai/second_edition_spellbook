@@ -20,4 +20,4 @@ User data lives in `~/.local/share/SpellbookVault` (or `$XDG_DATA_HOME/Spellbook
 
 ## Models and offline use
 
-Installers do **not** include TinyLlama or MiniLM model files. After install, use in-app download or verified side-load into `SpellbookVault/models/`. The **first** model download or import requires network access. All other core features (library, keyword search, import/export via the bundled sidecar) work offline after install.
+Installers do **not** include TinyLlama or MiniLM model files. After install, use in-app download or verified side-load into `SpellbookVault/models/`. Getting the model files the **first** time requires network access: either the in-app download, or downloading the approved files elsewhere for side-load. The side-load (import) step itself works offline. All other core features (library, keyword search, import/export via the bundled sidecar) work offline after install.

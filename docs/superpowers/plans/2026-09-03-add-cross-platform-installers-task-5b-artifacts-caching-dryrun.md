@@ -597,7 +597,7 @@ GitHub → Actions → Release → Run workflow. Expected: both jobs green; arti
 
 This first dispatch is the cold, cache-seeding run. Expected: `Restore Cargo cache` misses and `Save Cargo cache` runs in both jobs. Record each job's duration (cold build; compare with `timeout-minutes: 120`) and the saved cache key and size per OS (Actions → Caches, or `gh cache list`).
 
-Dispatch a second time from the default branch. Expected: `Restore Cargo cache` reports an exact hit, `Save Cargo cache` is skipped, and `Assert cache restored no bundles` ran (not skipped) and passed in both jobs. In both jobs, `Set up Python` logs a pip cache restore (`Cache restored from key: ...pip...`) and `Set up Node.js` logs a pnpm cache restore. Record the warm durations.
+Dispatch a second time from the default branch. Expected: `Restore Cargo cache` reports an exact hit, `Save Cargo cache` is skipped, and `Assert cache restored no bundles` ran (not skipped) and passed in both jobs. In both jobs, `Set up Python` logs a pip cache restore (`Cache restored from key: ...pip...`) and `Set up Node.js` logs a pnpm cache restore. The warm `Build NSIS installer` / `Build AppImage and deb` log shows `Compiling` lines only for the workspace crate(s); third-party crates are reused, not recompiled. The warm build step is clearly shorter than the cold one. Record the warm durations.
 
 Dispatch artifacts are test-only: they are built from caches that default-branch workflows can write. Only tag-push assets are distributable.
 
@@ -626,6 +626,7 @@ If the tag must wait on human permission to push, record that in the log and **d
 - Cargo cache saved (key, size per OS):
 - Warm dispatch: cache hit + bundle guard passed + durations:
 - Warm dispatch: pip / pnpm cache restored (windows / linux):
+- Cold vs warm build step: duration and `Compiling` line count (windows / linux):
 - v0.1.0-rc.1 Release URL:
 - Asset names:
 - Tag run: Cargo cache steps skipped, Node/Python `cache` input empty and no cache lines (yes/no) + durations:

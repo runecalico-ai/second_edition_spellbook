@@ -32,7 +32,7 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
+          cache: ${{ github.event_name != 'push' && 'pnpm' || '' }}
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
 
       - name: Set up Rust
@@ -63,7 +63,7 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.14"
-          cache: pip
+          cache: ${{ github.event_name != 'push' && 'pip' || '' }}
           cache-dependency-path: |
             services/ml/requirements*.txt
 
@@ -162,7 +162,7 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: pnpm
+          cache: ${{ github.event_name != 'push' && 'pnpm' || '' }}
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
 
       - name: Set up Rust
@@ -193,7 +193,7 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.14"
-          cache: pip
+          cache: ${{ github.event_name != 'push' && 'pip' || '' }}
           cache-dependency-path: |
             services/ml/requirements*.txt
 

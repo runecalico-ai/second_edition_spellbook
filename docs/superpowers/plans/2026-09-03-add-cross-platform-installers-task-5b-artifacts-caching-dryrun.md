@@ -585,7 +585,7 @@ EOF
 
 **Files:**
 - Modify: verification notes in `docs/superpowers/plans/2026-09-03-add-cross-platform-installers-task-4-verification-log.md` **or** add a short section there named “Release workflow dry run”
-- Modify: `openspec/changes/add-cross-platform-installers/tasks.md` (5.6 only)
+- Modify: `openspec/changes/add-cross-platform-installers/tasks.md` (5.4–5.6)
 
 **Interfaces:**
 - Consumes: merged `release.yml` on the default branch
@@ -597,7 +597,7 @@ GitHub → Actions → Release → Run workflow. Expected: both jobs green; arti
 
 - [ ] **Step 2: Tag dry run**
 
-Only after Step 1 is green and groups 1–5.5 are `[x]`:
+Only after Step 1 is green and groups 1–5.3 are `[x]` (5.4/5.5 are ticked in Step 4 after this run):
 
 ```bash
 git tag v0.1.0-rc.1

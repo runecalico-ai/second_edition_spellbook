@@ -75,7 +75,7 @@ Tasks 1 and 2 are independent. Task 3 needs Task 1.
 - Consumes: the existing `_render_character_sheet_html(character)`, `_render_spellbook_pack_html(spells, character, class_name, layout)`, and `_render_print_html(spells, mode, layout, character)`.
 - Produces: `_render_export_html(spells: List[Dict[str, Any]], mode: str, layout: str, character: Dict[str, Any], class_name: str) -> str`. This is a private helper. The sidecar's JSON-RPC contract does not change.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `services/ml/tests/test_export.py`:
 
@@ -196,13 +196,13 @@ def test_handle_export_print_html_wraps_spells_in_body(tmp_path, mode):
     assert "Invisible barrier." in body
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.\.venv\Scripts\python.exe -m pytest services/ml/tests/test_export.py -v`
 
 Expected: 4 FAILED and 6 PASSED. The failures are `character_sheet...[html]`, `spellbook_pack...[html]`, `print_html_wraps_spells_in_body[single]`, and `print_html_wraps_spells_in_body[spellbook]`. Each one fails at `assert content.count("<body>") == 1`. The `[pdf]` cases and the 4 tests that were already in the file pass.
 
-- [ ] **Step 3: Add the dispatcher and the `<body>` tag**
+- [x] **Step 3: Add the dispatcher and the `<body>` tag**
 
 In `services/ml/spellbook_sidecar.py`, add this function directly above `def _render_print_html(`:
 
@@ -268,12 +268,12 @@ to:
 """
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `.\.venv\Scripts\python.exe -m pytest services/ml/tests/test_export.py -v`
 Expected: 10 passed.
 
-- [ ] **Step 5: Run the full sidecar suite and Ruff**
+- [x] **Step 5: Run the full sidecar suite and Ruff**
 
 Run: `.\.venv\Scripts\python.exe -m pytest services/ml -q`
 Expected: all pass.
@@ -288,7 +288,7 @@ Expected: `2 files already formatted`.
 
 Do not use `format --check .` as this task's gate. On `fb5c0f9`, `tests/test_build_sidecar.py` and `tests/test_sidecar.py` already fail it (lines over 88 characters, last touched in `3b8bf4b`). That drift is not part of this plan.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add services/ml/spellbook_sidecar.py services/ml/tests/test_export.py

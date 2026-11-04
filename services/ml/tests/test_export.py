@@ -197,18 +197,34 @@ def _escaped(field: str) -> str:
 
 @pytest.mark.parametrize("fmt", ["html", "pdf"])
 def test_handle_export_character_sheet_escapes_user_strings(tmp_path, fmt):
-    fields = ["name", "race", "alignment", "notes", "classLabel", "spellNotes"]
+    fields = [
+        "name",
+        "characterType",
+        "race",
+        "alignment",
+        "notes",
+        "classLabel",
+        "className",
+        "spellName",
+        "spellNotes",
+    ]
     character = {
         **CHARACTER,
         "name": _hostile("name"),
+        "characterType": _hostile("characterType"),
         "race": _hostile("race"),
         "alignment": _hostile("alignment"),
         "notes": _hostile("notes"),
         "classes": [
-            {"className": "Mage", "classLabel": _hostile("classLabel"), "level": 3}
+            {"className": "Mage", "classLabel": _hostile("classLabel"), "level": 3},
+            {"className": _hostile("className"), "level": 1},
         ],
         "characterSpells": [
-            {**CHARACTER["characterSpells"][0], "notes": _hostile("spellNotes")}
+            {
+                **CHARACTER["characterSpells"][0],
+                "name": _hostile("spellName"),
+                "notes": _hostile("spellNotes"),
+            }
         ],
     }
     result = handle_export(
@@ -228,15 +244,18 @@ def test_handle_export_character_sheet_escapes_user_strings(tmp_path, fmt):
     assert "<script>" not in content
 
 
+@pytest.mark.parametrize("layout", ["compact", "stat-block"])
 @pytest.mark.parametrize("fmt", ["html", "pdf"])
-def test_handle_export_spellbook_pack_escapes_user_strings(tmp_path, fmt):
+def test_handle_export_spellbook_pack_escapes_user_strings(tmp_path, fmt, layout):
+    detail_fields = ["classList", "range", "components", "duration", "savingThrow"]
     spells = [
         {
-            "name": "Sleep",
+            "name": _hostile("spellName"),
             "level": 1,
-            "school": "Enchantment",
-            "description": "Puts creatures to sleep.",
+            "school": _hostile("school"),
+            "description": _hostile("description"),
             "notes": _hostile("spellNotes"),
+            **{field: _hostile(field) for field in detail_fields},
         }
     ]
     result = handle_export(
@@ -246,7 +265,7 @@ def test_handle_export_spellbook_pack_escapes_user_strings(tmp_path, fmt):
             "class_name": _hostile("class_name"),
             "spells": spells,
             "format": fmt,
-            "layout": "compact",
+            "layout": layout,
             "output_dir": str(tmp_path),
         }
     )
@@ -256,8 +275,13 @@ def test_handle_export_spellbook_pack_escapes_user_strings(tmp_path, fmt):
         f"<title>{_escaped('name')}'s Spellbook - {_escaped('class_name')}</title>"
         in content
     )
-    for field in ["name", "class_name", "spellNotes"]:
+    fields = ["name", "class_name", "spellName", "school", "description", "spellNotes"]
+    # Compact layout omits savingThrow and double-escapes the other detail fields.
+    if layout == "stat-block":
+        fields += detail_fields
+    for field in fields:
         assert _escaped(field) in content
+    for field in [*fields, *detail_fields]:
         assert _hostile(field) not in content
     assert "<script>" not in content
 

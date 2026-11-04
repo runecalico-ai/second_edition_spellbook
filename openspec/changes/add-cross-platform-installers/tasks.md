@@ -39,7 +39,7 @@
 - [x] 6.1 Add release build section to `docs/DEVELOPMENT.md` (prerequisites, commands, artifacts)
 - [x] 6.2 Document end-user requirements: VC++ redistributable (Windows), Ubuntu 24.04+ (Linux), model provisioning (network on first run), unsigned SmartScreen workaround
 - [x] 6.3 Document PDF behavior: export → HTML (browser print-to-PDF); import → bundled pdfminer
-- [ ] 6.4 Note lite installer variant as planned future artifact
+- [x] 6.4 Note lite installer variant as planned future artifact
 
 ## 7. Resolved Decisions (reference)
 

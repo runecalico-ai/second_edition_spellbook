@@ -47,3 +47,7 @@ Getting the model files the **first** time requires network access: either the i
 
 - **Import:** PDF files are parsed by `pdfminer.six` inside the bundled sidecar. A system Python install is not required.
 - **Export:** Choosing PDF export writes a print-optimized **HTML** file and shows its path. Open that file in a web browser, choose **Print**, and select a PDF destination such as **Save as PDF** (or **Microsoft Print to PDF** on Windows). Spellbook does not ship a PDF engine.
+
+## Future lite installer
+
+v1 publishes **one full installer per platform** (LLM and embedding natives included). A smaller lite installer without default `llm` features is planned for a later release and is **not** required for v1.

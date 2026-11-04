@@ -42,3 +42,8 @@ Installers do **not** include TinyLlama or MiniLM model files. After install, us
 The MiniLM folder you select must contain only these five files at its top level: `model.onnx`, `tokenizer.json`, `config.json`, `special_tokens_map.json`, and `tokenizer_config.json`. Do not include other files or subfolders: the import rejects any extra file. For example, do not select a full Hugging Face repository download that also includes `README.md` or `.gitattributes`.
 
 Getting the model files the **first** time requires network access: either the in-app download, or downloading the approved files elsewhere for side-load. The side-load (import) step itself works offline. All other core features (library, keyword search, import/export via the bundled sidecar) work offline after install.
+
+## PDF import and export
+
+- **Import:** PDF files are parsed by `pdfminer.six` inside the bundled sidecar. A system Python install is not required.
+- **Export:** Choosing PDF export writes print-optimized **HTML**. Use the browser **Print to PDF** command. Spellbook does not ship a PDF engine.

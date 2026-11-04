@@ -56,6 +56,8 @@ vi.mock("../../../hooks/useModelDownloadProgress", () => ({
   useModelDownloadProgress: () => ({ bytesDownloaded: 100, totalBytes: 200, fraction: 0.5 }),
 }));
 
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 const originalShowModal = HTMLDialogElement.prototype.showModal;
 const originalClose = HTMLDialogElement.prototype.close;
 
@@ -227,7 +229,9 @@ describe("ChatPanel", () => {
     await vi.waitFor(() => {
       expect(mockOpen).toHaveBeenCalledTimes(1);
     });
+    await flushPromises();
     expect(mockImportLlmModelFile).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it("clicking Add Local Embedding Model opens a folder picker and imports the selected folder", async () => {
@@ -257,7 +261,9 @@ describe("ChatPanel", () => {
     await vi.waitFor(() => {
       expect(mockOpen).toHaveBeenCalledTimes(1);
     });
+    await flushPromises();
     expect(mockImportEmbeddingsModelFile).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it("unwraps an array result from the folder picker", async () => {

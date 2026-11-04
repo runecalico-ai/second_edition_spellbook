@@ -314,7 +314,7 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
 
     if fmt == "html":
         html_path = output_dir / f"spellbook_export_{unique_id}.html"
-        html = _render_print_html(spells, mode, layout, character)
+        html = _render_export_html(spells, mode, layout, character, class_name)
         html_path.write_text(html, encoding="utf-8")
         return {"path": str(html_path), "format": "html"}
 
@@ -322,13 +322,7 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
         # Generate print-optimized HTML instead of PDF
         # Users can use browser "Print to PDF" for actual PDF output
         html_path = output_dir / f"spellbook_export_{unique_id}.html"
-        if mode == "character_sheet":
-            html = _render_character_sheet_html(character)
-        elif mode == "spellbook_pack":
-            html = _render_spellbook_pack_html(spells, character, class_name, layout)
-        else:
-            html = _render_print_html(spells, mode, layout, character)
-
+        html = _render_export_html(spells, mode, layout, character, class_name)
         html_path.write_text(html, encoding="utf-8")
 
         # Return HTML path with note that it's print-optimized
@@ -339,6 +333,20 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     raise ValueError(f"Unsupported export format: {fmt}")
+
+
+def _render_export_html(
+    spells: List[Dict[str, Any]],
+    mode: str,
+    layout: str,
+    character: Dict[str, Any],
+    class_name: str,
+) -> str:
+    if mode == "character_sheet":
+        return _render_character_sheet_html(character)
+    if mode == "spellbook_pack":
+        return _render_spellbook_pack_html(spells, character, class_name, layout)
+    return _render_print_html(spells, mode, layout, character)
 
 
 def _render_print_html(
@@ -419,6 +427,7 @@ def _render_print_html(
     }}
   </style>
 </head>
+<body>
     {body}
 </body>
 </html>

@@ -19,3 +19,12 @@ Copy the installer elsewhere:
 ```powershell
 .\scripts\build_windows_installer.ps1 -OutputDirectory 'C:\dist\spellbook'
 ```
+
+Release builds must run resource staging first (sqlite-vec into `apps/desktop/src-tauri/resources/sqlite-vec/` and the frozen sidecar into `apps/desktop/src-tauri/binaries/`):
+
+```powershell
+python scripts\prepare_release_bundle.py
+.\scripts\build_windows_installer.ps1
+```
+
+`build_windows_installer.ps1` invokes `prepare_release_bundle.py` itself before `tauri build`.

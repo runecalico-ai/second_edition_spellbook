@@ -29,6 +29,47 @@ pnpm install
 pnpm tauri:dev
 ```
 
+### Release builds (Windows NSIS, Linux AppImage and deb)
+
+Maintainers can produce v1 installers locally without GitHub Actions. Run pre-build staging first so `resources/sqlite-vec/` is populated and `spellbook-sidecar-<target-triple>` exists under `apps/desktop/src-tauri/binaries/`.
+
+Prerequisites: Node 24+, pnpm 10, Rust stable, Python 3.14.
+
+Windows also needs MSVC and NSIS.
+
+Ubuntu 24.04 also needs:
+
+    sudo apt-get install -y libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf file libfuse2
+
+Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` does not.
+
+```bash
+python scripts/prepare_release_bundle.py
+```
+
+Windows (from repository root):
+
+```powershell
+.\scripts\build_windows_installer.ps1
+```
+
+Equivalent from `apps/desktop`: `pnpm tauri:build:win`.
+
+Linux (Ubuntu 24.04, from `apps/desktop` after the prepare script):
+
+```bash
+pnpm tauri:build:linux
+```
+
+Artifacts (this repo’s Cargo `target-dir` is the repository-root `target/`):
+
+- Windows: `target/release/bundle/nsis/` — NSIS `*setup.exe`
+- Linux: `target/release/bundle/appimage/` and `target/release/bundle/deb/`
+
+CI publishes renamed assets `Spellbook_{version}_x64-setup.exe`, `Spellbook_{version}_amd64.AppImage`, `Spellbook_{version}_amd64.deb` plus `.sha256` files. Local filenames may still be Tauri defaults until renamed.
+
+Do not add `tauri build` to pull-request CI. Tagged releases use `.github/workflows/release.yml`.
+
 ## Local Model Provisioning
 
 Approved TinyLlama and MiniLM assets are staged under the fixed path `SpellbookVault/models/` (`commands/provisioning.rs`). Paths are not configurable. After a successful download or verified side-load, chat and embeddings run offline.

@@ -610,7 +610,7 @@ git tag v0.1.0-rc.1
 git push origin v0.1.0-rc.1
 ```
 
-Expected: published GitHub Release (not draft) with auto notes, three binaries (exe, AppImage, deb) and three `.sha256` files. Windows exe is **unsigned**. In both build jobs, `Restore Cargo cache` and `Save Cargo cache` are **skipped**. In both jobs, `Set up Node.js` and `Set up Python` show an empty `cache` input in their logged `with:` inputs, and neither those steps nor their `Post ...` steps print any cache line (e.g. `Cache restored`, `cache is not found`, `Cache not found`, `Cache saved`, `Cache hit occurred`). A cache miss also restores nothing, so only these checks prove the cache is off. Record the cold tag build duration per job.
+Expected: published GitHub Release (not draft) with auto notes, three binaries (exe, AppImage, deb) and three `.sha256` files. Windows exe is **unsigned**. In both build jobs, `Restore Cargo cache` and `Save Cargo cache` are **skipped**. In both jobs, the `with:` block of `Set up Node.js` / `Set up Python` has **no** `cache:` line (the runner omits empty inputs), whereas dispatch runs show `cache: pnpm` / `cache: pip`. Neither those steps nor their `Post` steps print `Cache restored from key`, `cache is not found`, `Cache saved` or `Cache hit occurred` (tool-cache lines such as `Found in cache @` are unrelated). A cache miss also restores nothing, so only these checks prove the cache is off. Record the cold tag build duration per job.
 
 Then dispatch once more with **Use workflow from** set to the `v0.1.0-rc.1` tag. Expected: both build jobs green, `publish` **skipped**, the "Set version from tag" steps **skipped**, and the existing release unchanged. This proves the `event_name` gate. `Restore Cargo cache` hits (a tag-ref run can read the default-branch cache) and `Save Cargo cache` is skipped.
 
@@ -629,7 +629,7 @@ If the tag must wait on human permission to push, record that in the log and **d
 - Cold vs warm build step: duration and `Compiling` line count (windows / linux):
 - v0.1.0-rc.1 Release URL:
 - Asset names:
-- Tag run: Cargo cache steps skipped, Node/Python `cache` input empty and no cache lines (yes/no) + durations:
+- Tag run: Cargo cache steps skipped, no `cache:` line in Node/Python `with:` and no dependency-cache lines (yes/no) + durations:
 - Tag-ref dispatch: cache hit, publish/version skipped:
 ```
 

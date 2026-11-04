@@ -35,11 +35,17 @@ Maintainers can produce v1 installers locally without GitHub Actions. Run pre-bu
 
 Prerequisites: Node 24+, pnpm 10, Rust stable, Python 3.14.
 
-Windows also needs MSVC and NSIS.
+The default `llm` feature compiles `llama-cpp-2`, which needs CMake and libclang.
 
-Ubuntu 24.04 also needs:
+Windows also needs MSVC, NSIS, LLVM (libclang, with `LIBCLANG_PATH` set), and CMake. See the Windows toolchain pins under [Local Model Provisioning](#local-model-provisioning).
+
+Ubuntu 24.04 also needs (same list as CI):
 
     sudo apt-get install -y libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf file libfuse2
+
+The CI list relies on build tools that GitHub runners preinstall. On a fresh Ubuntu 24.04 install, also run:
+
+    sudo apt-get install -y build-essential cmake clang libclang-dev pkg-config libssl-dev
 
 Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` does not.
 

@@ -157,7 +157,7 @@ EOF
 - Consumes: none
 - Produces: install doc covering VC++, Ubuntu 24.04, models, SmartScreen
 
-- [ ] **Step 1: Write `docs/RELEASE.md`**
+- [x] **Step 1: Write `docs/RELEASE.md`**
 
 Use this content (keep headings):
 
@@ -187,7 +187,7 @@ User data lives in `~/.local/share/SpellbookVault` (or `$XDG_DATA_HOME/Spellbook
 Installers do **not** include TinyLlama or MiniLM model files. After install, use in-app download or verified side-load into `SpellbookVault/models/`. The **first** model download or import requires network access. All other core features (library, keyword search, import/export via the bundled sidecar) work offline after install.
 ```
 
-- [ ] **Step 2: Mark OpenSpec 6.2 complete**
+- [x] **Step 2: Mark OpenSpec 6.2 complete**
 
 From:
 
@@ -201,7 +201,7 @@ To:
 - [x] 6.2 Document end-user requirements: VC++ redistributable (Windows), Ubuntu 24.04+ (Linux), model provisioning (network on first run), unsigned SmartScreen workaround
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/RELEASE.md openspec/changes/add-cross-platform-installers/tasks.md

@@ -163,7 +163,7 @@ The embeddings runtime re-validates this inventory and loads these five files di
 3. Validate identity (destination filename / relative paths) and SHA-256 (or the five-file inventory) before copying into `SpellbookVault/models/`.
 4. Success: LLM status becomes `ready`; embeddings status becomes `initializing` or `ready`.
 5. Failure: status unchanged; no vault write of the rejected payload.
-6. Chat UI labels this "Add Local Model" (`chat-llm-import-button` / `chat-embeddings-import-button`). Library semantic empty-state uses `library-embeddings-import-button`.
+6. In Chat, the TinyLlama action is "Add Local Model" (`chat-llm-import-button`, file picker) and the MiniLM action is "Add Local Embedding Model" (`chat-embeddings-import-button`, folder picker). The Library semantic empty-state uses `library-embeddings-import-button` (folder picker).
 7. In-app download remains the other provisioning path (`llm_download_model` / `embeddings_download_model`) with HTTP Range resume and the same hashes.
 
 Generation cancellation is implemented (OpenSpec Outcome B): the inference worker polls an `AtomicBool` at token boundaries via `llm_cancel_generation`.

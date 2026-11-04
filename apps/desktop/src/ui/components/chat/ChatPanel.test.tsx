@@ -214,6 +214,7 @@ describe("ChatPanel", () => {
       expect(mockImportLlmModelFile).toHaveBeenCalledWith("/path/to/model.gguf");
     });
     expect(mockRefresh).toHaveBeenCalled();
+    expect(mockOpen).toHaveBeenCalledWith({ multiple: false });
   });
 
   it("does not import when the file picker is cancelled", async () => {
@@ -229,8 +230,8 @@ describe("ChatPanel", () => {
     expect(mockImportLlmModelFile).not.toHaveBeenCalled();
   });
 
-  it("unwraps an array result from the file picker", async () => {
-    mockOpen.mockResolvedValue(["/first/path.gguf", "/second/path.gguf"]);
+  it("clicking Add Local Embedding Model opens a folder picker and imports the selected folder", async () => {
+    mockOpen.mockResolvedValue("/models/all-MiniLM-L6-v2");
     mockImportEmbeddingsModelFile.mockResolvedValue(undefined);
     llmStatus = { status: "notProvisioned", modelPath: "" };
     embeddingsStatus = { state: "notProvisioned" };
@@ -239,7 +240,37 @@ describe("ChatPanel", () => {
     fireEvent.click(screen.getByTestId("chat-embeddings-import-button"));
 
     await vi.waitFor(() => {
-      expect(mockImportEmbeddingsModelFile).toHaveBeenCalledWith("/first/path.gguf");
+      expect(mockImportEmbeddingsModelFile).toHaveBeenCalledWith("/models/all-MiniLM-L6-v2");
+    });
+    expect(mockOpen).toHaveBeenCalledWith({ directory: true, multiple: false });
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it("does not import embeddings when the folder picker is cancelled", async () => {
+    mockOpen.mockResolvedValue(null);
+    llmStatus = { status: "notProvisioned", modelPath: "" };
+    embeddingsStatus = { state: "notProvisioned" };
+    render(<ChatPanel />);
+
+    fireEvent.click(screen.getByTestId("chat-embeddings-import-button"));
+
+    await vi.waitFor(() => {
+      expect(mockOpen).toHaveBeenCalledTimes(1);
+    });
+    expect(mockImportEmbeddingsModelFile).not.toHaveBeenCalled();
+  });
+
+  it("unwraps an array result from the folder picker", async () => {
+    mockOpen.mockResolvedValue(["/first/all-MiniLM-L6-v2", "/second/all-MiniLM-L6-v2"]);
+    mockImportEmbeddingsModelFile.mockResolvedValue(undefined);
+    llmStatus = { status: "notProvisioned", modelPath: "" };
+    embeddingsStatus = { state: "notProvisioned" };
+    render(<ChatPanel />);
+
+    fireEvent.click(screen.getByTestId("chat-embeddings-import-button"));
+
+    await vi.waitFor(() => {
+      expect(mockImportEmbeddingsModelFile).toHaveBeenCalledWith("/first/all-MiniLM-L6-v2");
     });
   });
 

@@ -37,7 +37,7 @@ User data lives in `~/.local/share/SpellbookVault` (or `$XDG_DATA_HOME/Spellbook
 
 ## Models and offline use
 
-Installers do **not** include TinyLlama or MiniLM model files. After install, use the in-app download, or side-load with **Add Local Model** (TinyLlama, in Chat) or **Add Local Embedding Model** (MiniLM, in Library semantic search; select the model folder). Side-load verifies the file(s) and copies them into `SpellbookVault/models/`. Only the approved artifacts are accepted: the TinyLlama file `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` and the `all-MiniLM-L6-v2` ONNX folder (sources and hashes: [TinyLlama](DEVELOPMENT.md#approved-tinyllama-gguf), [MiniLM](DEVELOPMENT.md#approved-embedding-bundle-all-minilm-l6-v2-onnx)).
+Installers do **not** include TinyLlama or MiniLM model files. After install, use the in-app download, or side-load with **Add Local Model** (TinyLlama, in Chat) or **Add Local Embedding Model** (MiniLM, in Chat or in Library semantic search; select the model folder). Side-load verifies the file(s) and copies them into `SpellbookVault/models/`. Only the approved artifacts are accepted: the TinyLlama file `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` and the `all-MiniLM-L6-v2` ONNX folder (sources and hashes: [TinyLlama](DEVELOPMENT.md#approved-tinyllama-gguf), [MiniLM](DEVELOPMENT.md#approved-embedding-bundle-all-minilm-l6-v2-onnx)).
 
 The MiniLM folder you select must contain only these five files at its top level: `model.onnx`, `tokenizer.json`, `config.json`, `special_tokens_map.json`, and `tokenizer_config.json`. Do not include other files or subfolders: the import rejects any extra file. For example, do not select a full Hugging Face repository download that also includes `README.md` or `.gitattributes`.
 

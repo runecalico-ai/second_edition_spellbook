@@ -524,7 +524,7 @@ EOF
 - Consumes: `apps/desktop/src-tauri/Cargo.lock`
 - Produces: cache keys per OS
 
-- [ ] **Step 1: Insert cache steps after toolchain setup on both jobs**
+- [x] **Step 1: Insert cache steps after toolchain setup on both jobs**
 
 ```yaml
       - name: Cache Cargo
@@ -567,7 +567,7 @@ To:
 - [x] 5.5 Configure Cargo and PyInstaller caching
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .github/workflows/release.yml openspec/changes/add-cross-platform-installers/tasks.md

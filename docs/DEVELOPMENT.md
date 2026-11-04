@@ -31,7 +31,7 @@ pnpm tauri:dev
 
 ### Release builds (Windows NSIS, Linux AppImage and deb)
 
-Maintainers can produce v1 installers locally without GitHub Actions. Run pre-build staging first so `resources/sqlite-vec/` is populated and `spellbook-sidecar-<target-triple>` exists under `apps/desktop/src-tauri/binaries/`.
+Maintainers can produce v1 installers locally without GitHub Actions. Every installer build needs pre-build staging (`scripts/prepare_release_bundle.py`) so `resources/sqlite-vec/` is populated and `spellbook-sidecar-<target-triple>` exists under `apps/desktop/src-tauri/binaries/`. The Windows installer script runs staging itself; the direct `pnpm tauri:build:*` commands do not.
 
 Prerequisites: Node 24+, pnpm 10, Rust stable, Python 3.14.
 
@@ -49,31 +49,41 @@ The CI list relies on build tools that GitHub runners preinstall. On a fresh Ubu
 
 Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` does not.
 
-The prepare script freezes the sidecar with PyInstaller (from `services/ml/requirements-dev.txt`) and must run under Python 3.14. Like CI, create the repository-root `.venv` and run it with the venv interpreter. On Ubuntu 24.04, install Python 3.14 separately (system `python3` is 3.12).
+The prepare script freezes the sidecar with PyInstaller (from `services/ml/requirements-dev.txt`) and must run under Python 3.14. Like CI, create the repository-root `.venv` before any build path (the Windows installer script also uses it). On Ubuntu 24.04, install Python 3.14 separately (system `python3` is 3.12).
 
-Windows (PowerShell, from repository root):
+Python environment, Windows (PowerShell, from repository root):
 
 ```powershell
 py -3.14 -m venv .venv
 .\.venv\Scripts\python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
-.\.venv\Scripts\python scripts/prepare_release_bundle.py
 ```
 
-Linux (bash, from repository root):
+Python environment, Linux (bash, from repository root):
 
 ```bash
 python3.14 -m venv .venv
 .venv/bin/python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
-.venv/bin/python scripts/prepare_release_bundle.py
 ```
 
-Windows (from repository root):
+Windows installer (from repository root):
 
 ```powershell
 .\scripts\build_windows_installer.ps1
 ```
 
-Equivalent from `apps/desktop`: `pnpm tauri:build:win`.
+The script is the standalone Windows path. It runs `pnpm install --frozen-lockfile`, runs `prepare_release_bundle.py` with `.venv\Scripts\python.exe` (falls back to `python` on `PATH`), runs `tauri build`, and copies the installer to `-OutputDirectory` if given. Do not run the prepare script separately before it.
+
+Direct `pnpm tauri:build:*` commands need the prepare script first, with the venv interpreter (from repository root):
+
+```powershell
+.\.venv\Scripts\python scripts/prepare_release_bundle.py
+```
+
+```bash
+.venv/bin/python scripts/prepare_release_bundle.py
+```
+
+Or, on Windows after the prepare script, from `apps/desktop`: `pnpm tauri:build:win` — the same `tauri build` the script runs, without its install, staging, and copy steps.
 
 Linux (Ubuntu 24.04, from `apps/desktop` after the prepare script):
 

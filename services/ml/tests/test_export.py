@@ -187,6 +187,81 @@ def test_handle_export_spellbook_pack_uses_pack_template(tmp_path, fmt):
     assert "Puts creatures to sleep." in body
 
 
+def _hostile(field: str) -> str:
+    return f"<script>{field}</script>"
+
+
+def _escaped(field: str) -> str:
+    return f"&lt;script&gt;{field}&lt;/script&gt;"
+
+
+@pytest.mark.parametrize("fmt", ["html", "pdf"])
+def test_handle_export_character_sheet_escapes_user_strings(tmp_path, fmt):
+    fields = ["name", "race", "alignment", "notes", "classLabel", "spellNotes"]
+    character = {
+        **CHARACTER,
+        "name": _hostile("name"),
+        "race": _hostile("race"),
+        "alignment": _hostile("alignment"),
+        "notes": _hostile("notes"),
+        "classes": [
+            {"className": "Mage", "classLabel": _hostile("classLabel"), "level": 3}
+        ],
+        "characterSpells": [
+            {**CHARACTER["characterSpells"][0], "notes": _hostile("spellNotes")}
+        ],
+    }
+    result = handle_export(
+        {
+            "mode": "character_sheet",
+            "character": character,
+            "format": fmt,
+            "output_dir": str(tmp_path),
+        }
+    )
+
+    content = Path(result["path"]).read_text(encoding="utf-8")
+    assert f"<title>{_escaped('name')} - Character Sheet</title>" in content
+    for field in fields:
+        assert _escaped(field) in content
+        assert _hostile(field) not in content
+    assert "<script>" not in content
+
+
+@pytest.mark.parametrize("fmt", ["html", "pdf"])
+def test_handle_export_spellbook_pack_escapes_user_strings(tmp_path, fmt):
+    spells = [
+        {
+            "name": "Sleep",
+            "level": 1,
+            "school": "Enchantment",
+            "description": "Puts creatures to sleep.",
+            "notes": _hostile("spellNotes"),
+        }
+    ]
+    result = handle_export(
+        {
+            "mode": "spellbook_pack",
+            "character": {**CHARACTER, "name": _hostile("name")},
+            "class_name": _hostile("class_name"),
+            "spells": spells,
+            "format": fmt,
+            "layout": "compact",
+            "output_dir": str(tmp_path),
+        }
+    )
+
+    content = Path(result["path"]).read_text(encoding="utf-8")
+    assert (
+        f"<title>{_escaped('name')}'s Spellbook - {_escaped('class_name')}</title>"
+        in content
+    )
+    for field in ["name", "class_name", "spellNotes"]:
+        assert _escaped(field) in content
+        assert _hostile(field) not in content
+    assert "<script>" not in content
+
+
 @pytest.mark.parametrize("mode", ["single", "spellbook"])
 def test_handle_export_print_html_wraps_spells_in_body(tmp_path, mode):
     spells = [

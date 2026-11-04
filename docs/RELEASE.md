@@ -5,7 +5,13 @@ Spellbook ships **unsigned** Windows NSIS installers and Linux AppImage plus `.d
 ## Windows
 
 1. Download `Spellbook_{version}_x64-setup.exe` and its `.sha256` file from the GitHub Release.
-2. Verify SHA256 before running the installer.
+2. Verify SHA256 before running the installer. In PowerShell, in the download folder, run:
+
+   ```powershell
+   Get-FileHash -Algorithm SHA256 .\Spellbook_{version}_x64-setup.exe
+   ```
+
+   The `Hash` value must match the first field of `Spellbook_{version}_x64-setup.exe.sha256` (the comparison is case-insensitive). Do not run the installer if they differ.
 3. Windows SmartScreen may warn because the installer is **not Authenticode-signed**. Choose **More info**, then **Run anyway**. Signing is not planned.
 4. If the installer warns that the Microsoft Visual C++ Redistributable (x64) is missing, install it from https://aka.ms/vs/17/release/vc_redist.x64.exe. The Spellbook installer does **not** silently install the redistributable. You may continue past the warning; the app will fail to launch if the runtime is truly absent.
 5. User data lives in `%APPDATA%\SpellbookVault` and survives upgrades.
@@ -13,6 +19,15 @@ Spellbook ships **unsigned** Windows NSIS installers and Linux AppImage plus `.d
 ## Linux
 
 Minimum supported distribution: **Ubuntu 24.04 LTS**. Newer Ubuntu releases may work; older glibc/GTK stacks are not supported.
+
+Download `Spellbook_{version}_amd64.AppImage` or `Spellbook_{version}_amd64.deb`, plus its `.sha256` file, from the GitHub Release. Before installing, verify SHA256 in the download folder:
+
+```bash
+sha256sum -c Spellbook_{version}_amd64.AppImage.sha256
+sha256sum -c Spellbook_{version}_amd64.deb.sha256
+```
+
+Run the line for each file you downloaded. It must print `OK`; do not install the file if it reports `FAILED`.
 
 Install the `.deb` with the system package manager, or run the AppImage after marking it executable.
 

@@ -258,7 +258,7 @@ EOF
 - Consumes: git tag `GITHUB_REF_NAME` (e.g. `v0.1.0-rc.1`) or workflow input `version`
 - Produces: `set_release_version.strip_v_prefix("v0.1.0-rc.1") -> "0.1.0-rc.1"`; updates `apps/desktop/package.json` `"version"`, `apps/desktop/src-tauri/tauri.conf.json` `"version"`, `apps/desktop/src-tauri/Cargo.toml` `version =`; `checksum_release_assets.write_sha256(path) -> path.with_suffix(path.suffix + ".sha256")` wait: for `foo.exe` write `foo.exe.sha256`
 
-- [ ] **Step 1: Write failing version tests**
+- [x] **Step 1: Write failing version tests**
 
 ```python
 import sys
@@ -280,7 +280,7 @@ def test_replace_json_version_first_only() -> None:
     assert '"name": "spellbook-desktop"' in replace_json_version(raw, "0.2.0")
 ```
 
-- [ ] **Step 2: Run to see fail, then implement `scripts/set_release_version.py`**
+- [x] **Step 2: Run to see fail, then implement `scripts/set_release_version.py`**
 
 ```python
 #!/usr/bin/env python3
@@ -336,7 +336,7 @@ if __name__ == "__main__":
 
 Preserve JSON key order by regex-replacing only the first `"version"` string in `package.json` and `tauri.conf.json`. Do not `json.dumps` the whole file.
 
-- [ ] **Step 3: Checksum helper**
+- [x] **Step 3: Checksum helper**
 
 `scripts/checksum_release_assets.py`:
 
@@ -382,7 +382,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Rename + upload steps in both jobs**
+- [x] **Step 4: Rename + upload steps in both jobs**
 
 After each platform build, add steps. Insert **Set version from tag** immediately **before** `Prepare release resources` in both jobs from Task 5a (use `.venv` Python).
 
@@ -470,7 +470,7 @@ Linux and Windows jobs both need this publish step **or** a final `publish` job 
 
 Remove per-job Publish if you add `publish`. Keep per-job `upload-artifact`. The `publish` job has no checkout, so `gh` needs `GH_REPO` to know the repository.
 
-- [ ] **Step 5: Tests**
+- [x] **Step 5: Tests**
 
 ```powershell
 .\.venv\Scripts\python -m pytest scripts\test_set_release_version.py -v
@@ -479,6 +479,8 @@ Remove per-job Publish if you add `publish`. Keep per-job `upload-artifact`. The
 Extend CI pytest list with `scripts/test_set_release_version.py`.
 
 - [ ] **Step 6: Mark OpenSpec 5.4 complete**
+
+Deferred to Task 3: 5.4 stays `[ ]` until the dry run proves upload and publish on GitHub.
 
 From:
 
@@ -492,7 +494,7 @@ To:
 - [x] 5.4 Upload release assets with versioned naming and `.sha256` checksum files
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/set_release_version.py scripts/test_set_release_version.py scripts/checksum_release_assets.py .github/workflows/release.yml .github/workflows/ci.yml openspec/changes/add-cross-platform-installers/tasks.md

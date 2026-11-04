@@ -14,13 +14,21 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def verify_checksum(path: Path, sidecar: Path) -> None:
+    expected = f"{sha256_file(path)}  {path.name}\n".encode()
+    recorded = sidecar.read_bytes()
+    if recorded != expected:
+        raise SystemExit(
+            f"checksum verification failed: {sidecar} contains {recorded!r}, "
+            f"expected {expected!r}"
+        )
+
+
 def write_checksum(path: Path) -> Path:
     sidecar = path.with_name(path.name + ".sha256")
     digest = sha256_file(path)
     sidecar.write_text(f"{digest}  {path.name}\n", encoding="utf-8", newline="\n")
-    recorded = sidecar.read_text(encoding="utf-8").split()[0]
-    if recorded != digest:
-        raise SystemExit(f"checksum mismatch after write: {sidecar}")
+    verify_checksum(path, sidecar)
     return sidecar
 
 

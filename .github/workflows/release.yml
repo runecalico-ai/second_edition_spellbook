@@ -87,6 +87,12 @@ jobs:
           Copy-Item $exes[0].FullName "assets/$name"
           .\.venv\Scripts\python scripts/checksum_release_assets.py "assets/$name"
           if ($LASTEXITCODE -ne 0) { throw "checksum failed with exit code $LASTEXITCODE" }
+          $sidecar = Get-Content -Raw -LiteralPath "assets/$name.sha256"
+          $tokens = $sidecar.TrimEnd("`n") -split '  ', 2
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "assets/$name").Hash.ToLowerInvariant()
+          if ($tokens[0] -cne $hash) { throw "sidecar digest '$($tokens[0])' does not match Get-FileHash '$hash'" }
+          if ($tokens[1] -cne $name) { throw "sidecar names '$($tokens[1])', expected '$name'" }
+          if ($sidecar -cne "$hash  $name`n") { throw "sidecar for $name is not a single LF-terminated line" }
           $sig = Get-AuthenticodeSignature "assets/$name"
           if ($sig.Status -ne 'NotSigned') { throw "expected unsigned installer, got $($sig.Status)" }
 
@@ -191,6 +197,9 @@ jobs:
           .venv/bin/python scripts/checksum_release_assets.py \
             "assets/Spellbook_${VERSION}_amd64.AppImage" \
             "assets/Spellbook_${VERSION}_amd64.deb"
+          (cd assets && sha256sum -c --strict -- \
+            "Spellbook_${VERSION}_amd64.AppImage.sha256" \
+            "Spellbook_${VERSION}_amd64.deb.sha256")
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -211,7 +220,39 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: assets
+          pattern: spellbook-*
           merge-multiple: true
+
+      - name: Verify release assets
+        working-directory: assets
+        run: |
+          shopt -s nullglob dotglob
+          all=(*)
+          expected=()
+          for pattern in 'Spellbook_*_x64-setup.exe' 'Spellbook_*_amd64.AppImage' 'Spellbook_*_amd64.deb'; do
+            matches=($pattern)
+            if [ "${#matches[@]}" -ne 1 ] || [ ! -f "${matches[0]}" ]; then
+              echo "::error::expected exactly one $pattern file, found ${#matches[@]}: ${matches[*]}"
+              exit 1
+            fi
+            asset="${matches[0]}"
+            if [ ! -f "$asset.sha256" ]; then
+              echo "::error::missing checksum sidecar $asset.sha256"
+              exit 1
+            fi
+            listed=""
+            read -r _ listed < "$asset.sha256" || true
+            if [ "$listed" != "$asset" ]; then
+              echo "::error::$asset.sha256 lists '$listed', expected '$asset'"
+              exit 1
+            fi
+            expected+=("$asset" "$asset.sha256")
+          done
+          if [ "${#all[@]}" -ne "${#expected[@]}" ]; then
+            echo "::error::expected exactly ${expected[*]}, found ${all[*]}"
+            exit 1
+          fi
+          sha256sum -c --strict -- *.sha256
 
       - name: Create GitHub Release
         env:

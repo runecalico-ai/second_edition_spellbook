@@ -597,7 +597,7 @@ GitHub → Actions → Release → Run workflow. Expected: both jobs green; arti
 
 This first dispatch is the cold, cache-seeding run. Expected: `Restore Cargo cache` misses and `Save Cargo cache` runs in both jobs. Record each job's duration (cold build; compare with `timeout-minutes: 120`) and the saved cache key and size per OS (Actions → Caches, or `gh cache list`).
 
-Dispatch a second time from the default branch. Expected: `Restore Cargo cache` reports an exact hit, `Save Cargo cache` is skipped, and staging still finds exactly one bundle per format (so `target/release/bundle` was not restored). Record the warm durations.
+Dispatch a second time from the default branch. Expected: `Restore Cargo cache` reports an exact hit, `Save Cargo cache` is skipped, and `Assert cache restored no bundles` ran (not skipped) and passed in both jobs. Record the warm durations.
 
 Dispatch artifacts are test-only: they are built from caches that default-branch workflows can write. Only tag-push assets are distributable.
 
@@ -624,7 +624,7 @@ If the tag must wait on human permission to push, record that in the log and **d
 - workflow_dispatch conclusion:
 - Cold dispatch durations (windows / linux):
 - Cargo cache saved (key, size per OS):
-- Warm dispatch: cache hit + durations:
+- Warm dispatch: cache hit + bundle guard passed + durations:
 - v0.1.0-rc.1 Release URL:
 - Asset names:
 - Tag run: cache steps skipped (yes/no) + durations:

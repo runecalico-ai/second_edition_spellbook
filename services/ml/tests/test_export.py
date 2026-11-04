@@ -128,6 +128,9 @@ CHARACTER = {
 def _body(content: str) -> str:
     assert content.count("<body>") == 1
     assert content.index("</head>") < content.index("<body>")
+    assert content.count("</body>") == 1
+    assert content.index("<body>") < content.index("</body>")
+    assert content.rstrip().endswith("</html>")
     return content.split("<body>", 1)[1].split("</body>", 1)[0]
 
 

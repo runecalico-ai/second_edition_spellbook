@@ -272,7 +272,7 @@ EOF
 - Consumes: design decision “lite deferred”
 - Produces: non-normative future note; v1 still one full artifact per OS
 
-- [ ] **Step 1: Append to `docs/RELEASE.md`**
+- [x] **Step 1: Append to `docs/RELEASE.md`**
 
 ```markdown
 ## Future lite installer
@@ -280,7 +280,7 @@ EOF
 v1 publishes **one full installer per platform** (LLM and embedding natives included). A smaller lite installer without default `llm` features is planned for a later release and is **not** required for v1.
 ```
 
-- [ ] **Step 2: Mark OpenSpec 6.4 complete**
+- [x] **Step 2: Mark OpenSpec 6.4 complete**
 
 From:
 
@@ -296,7 +296,7 @@ To:
 
 Do **not** mark the whole change archived. Leave delta specs untouched.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/RELEASE.md openspec/changes/add-cross-platform-installers/tasks.md

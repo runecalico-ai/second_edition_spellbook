@@ -57,7 +57,7 @@
 - Consumes: `python scripts/prepare_release_bundle.py`, `pnpm tauri:build:win`, `pnpm tauri:build:linux`, `.\scripts\build_windows_installer.ps1`
 - Produces: copy-pasteable maintainer steps
 
-- [ ] **Step 1: Insert this section into `docs/DEVELOPMENT.md`**
+- [x] **Step 1: Insert this section into `docs/DEVELOPMENT.md`**
 
 ```markdown
 ### Release builds (Windows NSIS, Linux AppImage and deb)
@@ -104,7 +104,7 @@ Do not add `tauri build` to pull-request CI. Tagged releases use `.github/workfl
 
 Close the markdown code fences correctly in the real file (the inner fences above are examples for maintainers).
 
-- [ ] **Step 2: Update `scripts/README.md`**
+- [x] **Step 2: Update `scripts/README.md`**
 
 After the existing Windows installer examples, add:
 
@@ -119,7 +119,7 @@ python scripts\prepare_release_bundle.py
 `build_windows_installer.ps1` invokes `prepare_release_bundle.py` itself before `tauri build`.
 ```
 
-- [ ] **Step 3: Mark OpenSpec 6.1 complete**
+- [x] **Step 3: Mark OpenSpec 6.1 complete**
 
 From:
 
@@ -133,7 +133,7 @@ To:
 - [x] 6.1 Add release build section to `docs/DEVELOPMENT.md` (prerequisites, commands, artifacts)
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/DEVELOPMENT.md scripts/README.md openspec/changes/add-cross-platform-installers/tasks.md

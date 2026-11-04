@@ -54,6 +54,7 @@ jobs:
           path: |
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
+            ~/.cargo/registry/src
             ~/.cargo/git/db
             target/release/*
             !target/release/bundle
@@ -103,6 +104,7 @@ jobs:
           path: |
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
+            ~/.cargo/registry/src
             ~/.cargo/git/db
             target/release/*
             !target/release/bundle
@@ -189,6 +191,7 @@ jobs:
           path: |
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
+            ~/.cargo/registry/src
             ~/.cargo/git/db
             target/release/*
             !target/release/bundle
@@ -239,6 +242,7 @@ jobs:
           path: |
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
+            ~/.cargo/registry/src
             ~/.cargo/git/db
             target/release/*
             !target/release/bundle

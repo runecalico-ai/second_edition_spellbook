@@ -512,7 +512,7 @@ EOF
 
 > **Outcome (human rulings, 2026-11-03):** The YAML sample below is superseded by `.github/workflows/release.yml`.
 > - **Tag pushes use no caches.** No Cargo cache restore or save, and the setup-node pnpm and setup-python pip caches are off on push. This closes any cache-poisoning route into published installers; slower tag builds are accepted.
-> - **Cargo cache on `workflow_dispatch` only.** Dispatch runs restore it; only dispatch on the default branch saves it (caches are ref-scoped). Paths: `~/.cargo/registry/index`, `~/.cargo/registry/cache`, `~/.cargo/git/db`, `target/release/*`, `!target/release/bundle` (bare `target` would ignore the exclusion and cache stale installers). Exact key, no `restore-keys`.
+> - **Cargo cache on `workflow_dispatch` only.** Dispatch runs restore it; only dispatch on the default branch saves it (caches are ref-scoped). Paths: `~/.cargo/registry/index`, `~/.cargo/registry/cache`, `~/.cargo/registry/src`, `~/.cargo/git/db`, `target/release/*`, `!target/release/bundle` (bare `target` would ignore the exclusion and cache stale installers; `registry/src` is cached because build scripts such as `llama-cpp-sys-2` track source directories, and re-extraction gives those directories new mtimes, which forces a rebuild). Exact key, no `restore-keys`.
 > - **No PyInstaller cache.** `services/ml/build_sidecar.py` runs PyInstaller with `--clean`, which empties the cache directory, and `spellbook_sidecar.spec` sets `strip=False, upx=False`, so the cache is never filled.
 > - **Checkboxes.** 5.4 and 5.5 stay `[ ]` until the Task 3 dry run proves them; Task 3 ticks 5.4, 5.5 and 5.6 together. 5.5 is ticked on the Cargo cache plus setup-python's pip cache (dispatch runs).
 

@@ -45,6 +45,9 @@ jobs:
         working-directory: apps/desktop
         run: pnpm typecheck
 
+      - name: Unit tests (build scripts)
+        run: node --test scripts/tauri_build.test.mjs
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:

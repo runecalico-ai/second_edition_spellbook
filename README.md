@@ -28,7 +28,7 @@ pnpm tauri:dev
 > **Debug Builds vs. Release Builds**
 > When running the app in development mode (`tauri:dev`), the Tauri window acts as a browser pointing to your local Vite server (`http://127.0.0.1:5173`).
 > **Do not launch the `.exe` directly** from the `src-tauri/target/debug` folder; it will show a blank screen unless the Vite server is already running and reachable.
-> For a standalone executable, you must use `pnpm tauri:build` to bundle the frontend assets into the binary.
+> For a standalone executable, use `pnpm tauri:build --debug` to bundle the frontend assets into the binary. Installers need the release staging step; see [Release builds](docs/DEVELOPMENT.md#release-builds-windows-nsis-linux-appimage-and-deb).
 
 Backend runtime logging (Tauri/Rust) uses structured `tracing` logs. For local verbosity while developing, set `RUST_LOG` before starting Tauri:
 

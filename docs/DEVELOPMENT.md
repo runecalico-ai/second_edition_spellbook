@@ -47,7 +47,7 @@ The CI list relies on build tools that GitHub runners preinstall. On a fresh Ubu
 
     sudo apt-get install -y build-essential cmake clang libclang-dev pkg-config libssl-dev
 
-Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` does not. Release builds run the frozen `spellbook-sidecar` installed next to the app. Debug builds run `services/ml/spellbook_sidecar.py` with the repository venv and use a frozen copy next to the exe only when the script is missing.
+Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` and `pnpm tauri:build --debug` do not: `scripts/tauri_build.mjs` adds that config only to release builds, so debug builds need no staging. Release builds run the frozen `spellbook-sidecar` installed next to the app. Debug builds run `services/ml/spellbook_sidecar.py` with the repository venv and use a frozen copy next to the exe only when the script is missing.
 
 The prepare script freezes the sidecar with PyInstaller (from `services/ml/requirements-dev.txt`) and must run under Python 3.14. Like CI, create the repository-root `.venv` before any build path (the Windows installer script also uses it). On Ubuntu 24.04, install Python 3.14 separately (system `python3` is 3.12).
 

@@ -27,3 +27,7 @@ Only direct `pnpm tauri:build:win` or `pnpm tauri:build:linux` invocations need 
 ```powershell
 .\.venv\Scripts\python scripts\prepare_release_bundle.py
 ```
+
+## `pnpm tauri:build`
+
+`apps/desktop` runs `tauri_build.mjs` for `pnpm tauri:build`. Release builds get `--config src-tauri/tauri.release.conf.json`, which bundles the frozen sidecar, so run `prepare_release_bundle.py` first. `--debug` (or `-d`) builds skip that config and need no staging. Tests: `node --test scripts/tauri_build.test.mjs`.

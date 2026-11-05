@@ -76,19 +76,32 @@ fn python_command() -> PathBuf {
     }
 }
 
-pub(crate) fn resolve_sidecar_command(exe_dir: Option<&Path>) -> Result<SidecarCommand, AppError> {
-    if let Some(dir) = exe_dir {
-        if let Some(program) = bundled_sidecar_path(dir) {
-            return Ok(SidecarCommand {
-                program,
-                args: Vec::new(),
-            });
-        }
-    }
+fn script_command() -> Result<SidecarCommand, AppError> {
     Ok(SidecarCommand {
         program: python_command(),
         args: vec![sidecar_path()?],
     })
+}
+
+/// Release builds run the frozen sidecar installed next to the exe. Debug builds run
+/// `services/ml/spellbook_sidecar.py` so Python edits apply without re-freezing; a
+/// frozen copy next to a debug exe is used only when the script is missing.
+pub(crate) fn resolve_sidecar_command(
+    exe_dir: Option<&Path>,
+    prefer_bundled: bool,
+) -> Result<SidecarCommand, AppError> {
+    let bundled = exe_dir.and_then(bundled_sidecar_path);
+    let bundled_command = |program| SidecarCommand {
+        program,
+        args: Vec::new(),
+    };
+    if prefer_bundled {
+        return match bundled {
+            Some(program) => Ok(bundled_command(program)),
+            None => script_command(),
+        };
+    }
+    script_command().or_else(|error| bundled.map(bundled_command).ok_or(error))
 }
 
 /// Release builds use the GUI subsystem, so a console child would get its own window.
@@ -114,7 +127,7 @@ pub async fn call_sidecar(
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf));
-    let command = resolve_sidecar_command(exe_dir.as_deref())?;
+    let command = resolve_sidecar_command(exe_dir.as_deref(), !cfg!(debug_assertions))?;
     let mut child = sidecar_process(&command).spawn().map_err(AppError::Io)?;
 
     let request = json!({
@@ -216,29 +229,42 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn resolve_prefers_bundled_binary() {
-        let dir = temp_dir();
-        let name = if cfg!(windows) {
+    fn bundled_name() -> &'static str {
+        if cfg!(windows) {
             "spellbook-sidecar.exe"
         } else {
             "spellbook-sidecar"
-        };
-        let file = dir.join(name);
-        fs::write(&file, b"not-a-real-binary").unwrap();
-        let command = resolve_sidecar_command(Some(&dir)).unwrap();
-        assert_eq!(command.program, file);
-        assert!(command.args.is_empty());
-        let _ = fs::remove_dir_all(&dir);
+        }
     }
 
     #[test]
-    fn resolve_falls_back_when_bundle_missing() {
+    fn release_resolution_prefers_bundled_binary() {
         let dir = temp_dir();
-        let command = resolve_sidecar_command(Some(&dir));
+        let file = dir.join(bundled_name());
+        fs::write(&file, b"not-a-real-binary").unwrap();
+        let command = resolve_sidecar_command(Some(&dir), true).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(command.program, file);
+        assert!(command.args.is_empty());
+    }
+
+    #[test]
+    fn debug_resolution_prefers_repo_script_over_bundled_binary() {
+        let dir = temp_dir();
+        let file = dir.join(bundled_name());
+        fs::write(&file, b"stale-frozen-sidecar").unwrap();
+        let command = resolve_sidecar_command(Some(&dir), false).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+        assert_ne!(command.program, file);
+        assert!(command.args[0].ends_with("spellbook_sidecar.py"));
+    }
+
+    #[test]
+    fn release_resolution_falls_back_to_script_when_bundle_missing() {
+        let dir = temp_dir();
+        let command = resolve_sidecar_command(Some(&dir), true);
         let _ = fs::remove_dir_all(&dir);
         let command = command.unwrap();
-        assert!(!command.args.is_empty());
         assert!(command.args[0].ends_with("spellbook_sidecar.py"));
     }
 

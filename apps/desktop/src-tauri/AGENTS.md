@@ -84,6 +84,8 @@ use crate::sidecar::call_sidecar;
 let result = call_sidecar("action_name", json!({"key": value})).await?;
 ```
 
+`resolve_sidecar_command` picks the program. Release builds prefer the frozen `spellbook-sidecar` next to the exe. Debug builds (`pnpm tauri:dev`, `pnpm tauri:build --debug`) prefer `services/ml/spellbook_sidecar.py` with the repository venv, so Python edits apply without re-freezing.
+
 > [!CAUTION]
 > The sidecar handles **import/export only**. Do not add `embed` or `llm_answer` handlers. Local inference uses `llm_chat` in `commands/llm.rs`. Embeddings and semantic search use `commands/embeddings.rs`. Sidecar downtime must not block either path.
 

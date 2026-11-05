@@ -19,7 +19,7 @@ For backend runtime and command debugging, the app uses structured logging via `
 If the application fails to start during the migration phase:
 - **Check `migration.log`**: Locate this file in your data directory (e.g., `%APPDATA%\SpellbookVault`).
 - **Look for constraint violations**: If the log or stderr shows a message like "Hash collision: two or more spells produced the same content_hash. Migration aborted. See migration.log. Fix duplicates or run --detect-collisions.", you have duplicate content hashes.
-    - **Fix**: Run `.\spellbook-desktop.exe --detect-collisions` to list duplicate groups. The tool reports "Duplicate content (same spell data)" when spells are identical (safe to deduplicate) or "True hash collision (different content, same hash)" when content differs (requires manual resolution). Resolve duplicates (e.g. delete or merge via SQL or the UI), then restart.
+    - **Fix**: Run `--detect-collisions` (see [CLI Recovery Tools](#cli-recovery-tools)) to list duplicate groups. The tool reports "Duplicate content (same spell data)" when spells are identical (safe to deduplicate) or "True hash collision (different content, same hash)" when content differs (requires manual resolution). Resolve duplicates (e.g. delete or merge via SQL or the UI), then restart.
 
 ### 2. Missing or Incorrect Parsed Data
 If spells have unexpected values in structured fields (e.g., `kind: "special"` when a specific pattern was expected):
@@ -160,9 +160,9 @@ Check if the pattern should theoretically be supported by consulting [PARSER_COV
 After editing spell text to fix parse issues:
 
 1. **Via UI**: Save the spell - parsing re-runs automatically
-2. **Via CLI**: Run the recompute command:
+2. **Via CLI**: Run the recompute command (see [CLI Recovery Tools](#cli-recovery-tools)):
    ```powershell
-   .\spellbook-desktop.exe --recompute-hashes
+   Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--recompute-hashes' -NoNewWindow -Wait
    ```
 3. **Verify**: Check the log for the previously failing spell ID
 
@@ -171,7 +171,7 @@ After editing spell text to fix parse issues:
 To generate a summary of all parse issues for review:
 
 ```powershell
-.\spellbook-desktop.exe --export-migration-report
+Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--export-migration-report' -NoNewWindow -Wait
 ```
 
 This creates `migration_report_<timestamp>.json` with all log entries in JSON format, useful for bulk analysis or support requests.
@@ -185,8 +185,9 @@ Get-Content "$env:APPDATA\SpellbookVault\migration.log" | Select-Object -Last 50
 # 2. Find specific spell failures
 Select-String -Path "$env:APPDATA\SpellbookVault\migration.log" -Pattern "Spell 142:"
 
-# 3. After fixing the spell text in the UI, re-run migration
-.\spellbook-desktop.exe --recompute-hashes
+# 3. After fixing the spell text in the UI, re-run migration.
+#    -Wait makes PowerShell wait until the log is written.
+Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--recompute-hashes' -NoNewWindow -Wait
 
 # 4. Verify the fix
 Select-String -Path "$env:APPDATA\SpellbookVault\migration.log" -Pattern "Spell 142:" | Select-Object -Last 1
@@ -199,7 +200,7 @@ Select-String -Path "$env:APPDATA\SpellbookVault\migration.log" -Pattern "Spell 
 - **Cause**: Hash index might be corrupted or incomplete.
 - **Fix**: Force re-indexing.
     ```powershell
-    .\spellbook-desktop.exe --recompute-hashes
+    Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--recompute-hashes' -NoNewWindow -Wait
     ```
 
 ### 4. "Command plugin:… not allowed by ACL"
@@ -236,18 +237,35 @@ If tests fail with a linker error but `cargo check` passes:
 
 The application includes built-in tools to help you recover.
 
-On an installed Windows build, run the tools from the install folder (default `%LOCALAPPDATA%\Spellbook`). The installed exe is a windowed program, so PowerShell shows its prompt again before the output arrives. Pipe the command into `Write-Output` to make PowerShell wait for it, for example `.\spellbook-desktop.exe --list-backups | Write-Output`.
+On an installed Windows build, run the tools from the install folder (default `%LOCALAPPDATA%\Spellbook`). The installed exe is a windowed program, so PowerShell does not wait for it. The prompt comes back before the output, `$LASTEXITCODE` is not set, and `> file` captures nothing. Start the tools with `Start-Process -NoNewWindow -Wait`:
+
+```powershell
+$p = Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--list-backups' -NoNewWindow -Wait -PassThru
+$p.ExitCode   # 0 on success
+```
+
+- To save the output, add `-RedirectStandardOutput out.txt -RedirectStandardError err.txt`. Some problems are reported on stderr, so check both files.
+- Put a path that contains spaces in double quotes inside the single quotes, for example `-ArgumentList '--restore-backup', '"C:\My Backups\spells_backup_20261105_120000.db"'`.
+- In cmd.exe, a batch file or `cmd /c` waits for the tool, and `> report.txt 2>&1` works. At an interactive cmd prompt, use `start "" /wait /b spellbook-desktop.exe --list-backups`.
+
+Development builds (`pnpm tauri:dev`, `cargo run`, `pnpm tauri:build --debug`) are console programs, so the shell waits for them.
 
 ### Integrity Check
 Scans the database for spells without hashes or with collisions.
 ```powershell
-.\spellbook-desktop.exe --check-integrity
+Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--check-integrity' -NoNewWindow -Wait
+```
+
+### Detect Collisions
+Lists groups of spells that share a `content_hash`.
+```powershell
+Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--detect-collisions' -NoNewWindow -Wait
 ```
 
 ### Export Migration Report
 Generates a JSON summary of the migration status suitable for support requests.
 ```powershell
-.\spellbook-desktop.exe --export-migration-report
+Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--export-migration-report' -NoNewWindow -Wait
 ```
 
 ### Restore from Backup
@@ -255,17 +273,17 @@ If the database is unusable, you can restore from an automatic backup.
 
 1. **List available backups**:
    ```powershell
-   .\spellbook-desktop.exe --list-backups
+   Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--list-backups' -NoNewWindow -Wait
    ```
 2. **Restore specific backup**:
    ```powershell
-   .\spellbook-desktop.exe --restore-backup "C:\Users\You\...\spells_backup_123456.db"
+   Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--restore-backup', '"C:\Users\You\...\spells_backup_123456.db"' -NoNewWindow -Wait
    ```
    *Note: This will overwrite your current database. After copying the backup, the app runs `PRAGMA integrity_check` on the restored DB; if the result is not "ok", the restore fails and an error is reported.*
 
 3. **Quick rollback to latest backup**:
    ```powershell
-   .\spellbook-desktop.exe --rollback-migration
+   Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--rollback-migration' -NoNewWindow -Wait
    ```
    *Note: Automatically restores the most recent backup without requiring a file path.*
 

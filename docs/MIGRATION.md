@@ -18,20 +18,20 @@ When you start the application after updating, a background process ("Hash Backf
 This process is **non-destructive**. Your original data is preserved.
 
 ### Troubleshooting
-If you suspect data issues:
+If you suspect data issues, use the steps below. The installed Windows app is a windowed program, so start its command-line tools with `Start-Process -NoNewWindow -Wait` as shown. Otherwise PowerShell does not wait for them. See [CLI Recovery Tools](./TROUBLESHOOTING.md#cli-recovery-tools) for exit codes, saving output, and cmd.exe.
 - **Check the logs**: A `migration.log` file is created in your data directory. Logs are automatically rotated when they exceed 10MB or 30 days of age (rotated file: `migration.log.old`).
 - **Run Integrity Check**: Run the application with the `--check-integrity` flag. It verifies that every spell's stored `content_hash` matches the hash recomputed from its `canonical_data`, and reports NULL hashes, orphan references, and duplicate hashes.
-  ```bash
-  .\spellbook-desktop.exe --check-integrity
+  ```powershell
+  Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--check-integrity' -NoNewWindow -Wait
   ```
 - **Re-run Migration**: If you need to force a re-computation of all hashes:
-  ```bash
-  .\spellbook-desktop.exe --recompute-hashes
+  ```powershell
+  Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--recompute-hashes' -NoNewWindow -Wait
   ```
   The command reports "Recomputed N hashes, M updated." to stderr and migration.log (N = total spells, M = count whose hash changed).
 - **Detect hash collisions**: If you have duplicate `content_hash` values, run `--detect-collisions`. The tool compares `canonical_data` for each duplicate group and reports either "Duplicate content (same spell data)" or "True hash collision (different content, same hash)" so you can fix or merge duplicates.
-  ```bash
-  .\spellbook-desktop.exe --detect-collisions
+  ```powershell
+  Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--detect-collisions' -NoNewWindow -Wait
   ```
 
 ### Dual-write scope

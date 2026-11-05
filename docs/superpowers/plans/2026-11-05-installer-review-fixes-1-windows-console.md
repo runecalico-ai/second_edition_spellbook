@@ -49,9 +49,9 @@
 - Consumes: `SidecarCommand { program: PathBuf, args: Vec<PathBuf> }`, `resolve_sidecar_command`, `python_command()` (all in `client.rs`).
 - Produces: `fn sidecar_process(command: &SidecarCommand) -> tokio::process::Command` (private). It sets the args, pipes stdin/stdout/stderr, and on Windows sets `CREATE_NO_WINDOW`. `call_sidecar` spawns through it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-Add to the `tests` module in `client.rs`. Extend its `use super::{…}` line to `use super::{bundled_sidecar_path, python_command, resolve_sidecar_command, sidecar_process, SidecarCommand};`.
+Add to the `tests` module in `client.rs`. Below its `use super::{bundled_sidecar_path, resolve_sidecar_command};` line, add `#[cfg(windows)] use super::{python_command, sidecar_process, SidecarCommand};`. Only the Windows test uses them; ungated, they fail `clippy -D warnings` on the Ubuntu CI job.
 
 ```rust
     #[cfg(windows)]
@@ -96,7 +96,7 @@ Add to the `tests` module in `client.rs`. Extend its `use super::{…}` line to 
 
 The probe lists the processes attached to the child's console. Without `CREATE_NO_WINDOW`, the child shares the test process's console, so the test's own process ID is in the list. With the flag, the child gets a new console that has no window, so the list holds only the probe's own processes. `GetConsoleWindow` cannot tell the two apart: it returns `0` in both cases whenever the parent console has no window (agent shells, CI). Verified on 2026-11-05 with the same probe from Python `subprocess`. Without the flag the parent's ID was listed; with `0x08000000` it was not. If the test process has no console at all, the test passes even without the flag. That cannot happen under `cargo test` started from a terminal or a CI shell step.
 
-- [ ] **Step 2: Extract `sidecar_process` without the flag and watch the test fail**
+- [x] **Step 2: Extract `sidecar_process` without the flag and watch the test fail**
 
 Add above `call_sidecar`:
 
@@ -122,7 +122,7 @@ In `call_sidecar`, replace the lines from `let command = resolve_sidecar_command
 Run (from `apps/desktop/src-tauri`): `cargo test sidecar::client`
 Expected: `sidecar_process_does_not_share_the_app_console` FAILS with `sidecar child must get its own hidden console, not the app's`. The printed list includes the test process's ID. The other four `sidecar::client` tests pass.
 
-- [ ] **Step 3: Set `CREATE_NO_WINDOW`**
+- [x] **Step 3: Set `CREATE_NO_WINDOW`**
 
 Add above `sidecar_process`:
 
@@ -141,14 +141,14 @@ In `sidecar_process`, insert before the final `process`:
 
 `creation_flags` is a Windows-only method on `tokio::process::Command`. No import is needed.
 
-- [ ] **Step 4: Run the tests and the Rust gate**
+- [x] **Step 4: Run the tests and the Rust gate**
 
 Run: `cargo test sidecar::client`
 Expected: 5 passed.
 
 Run the Rust gate from Global Constraints. Expected: all exit 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/sidecar/client.rs

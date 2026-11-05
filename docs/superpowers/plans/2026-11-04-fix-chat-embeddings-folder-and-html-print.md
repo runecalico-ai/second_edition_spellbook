@@ -462,7 +462,7 @@ git commit -m "fix(chat): pick a folder for embedding side-load" -m "Chat's Add 
 
 The existing `"should apply selected options when printing character sheet"` test selects Markdown, so its HTML `else` branch never runs. This new test uses the default HTML format for both prints.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Add inside `test.describe("Character Print Options Dialog", ...)`, after the last test:
 
@@ -517,12 +517,12 @@ Add inside `test.describe("Character Print Options Dialog", ...)`, after the las
   });
 ```
 
-- [ ] **Step 2: Lint the spec**
+- [x] **Step 2: Lint the spec**
 
 Run: `pnpm --dir apps/desktop exec biome lint tests/character_print_options.spec.ts`
 Expected: no errors.
 
-- [ ] **Step 3: Rebuild the frozen sidecar and the debug app**
+- [x] **Step 3: Rebuild the frozen sidecar and the debug app**
 
 The bundled sidecar exe takes precedence over `spellbook_sidecar.py`. Thus, rebuild it so that the binary contains Task 1:
 
@@ -534,7 +534,7 @@ Expected: build succeeds (about 4–5 minutes incremental). The build copies the
 
 The Playwright fixture (`tests/fixtures/tauri-fixture.ts` `getTauriBinaryPath`) always reads the repo-root `target\debug\spellbook-desktop.exe`. If `CARGO_TARGET_DIR` is set (agent sandboxes set it to a temp `cargo-target` folder), the build writes elsewhere and Playwright runs the old binary. Check with `$env:CARGO_TARGET_DIR`. If it is set, copy `spellbook-desktop.exe` and `spellbook-sidecar.exe` from `$env:CARGO_TARGET_DIR\debug` to the repo-root `target\debug` before Step 4.
 
-- [ ] **Step 4: Run the spec**
+- [x] **Step 4: Run the spec**
 
 Run (from `apps/desktop`, in a shell with window-station access): `npx playwright test tests/character_print_options.spec.ts`
 Expected: `5 passed`, including the new test. The log line `Tauri app exited with error code 1` during cleanup is normal (the fixture kills the app).
@@ -547,7 +547,9 @@ Run `pnpm --dir apps/desktop tauri:dev` with an empty `SpellbookVault/models/emb
 1. Chat: click **Add Local Embedding Model**. Expected: a native *folder* picker opens. Select an approved `all-MiniLM-L6-v2` folder that has exactly the five files. Expected: the embeddings badge goes to `Initializing` or `Ready`, and no `chat-embeddings-error-message` appears.
 2. Chat: click **Add Local Model**. Expected: a native *file* picker opens. Cancel it.
 
-- [ ] **Step 6: Commit**
+Status (2026-11-04): still open, human pre-merge gate. `local_llm_chat.spec.ts` (commit `6420a00`) intercepts `plugin:dialog|open` and asserts the picker options for both buttons. It does not cover the native dialog or a real MiniLM import.
+
+- [x] **Step 6: Commit**
 
 ```powershell
 git add apps/desktop/tests/character_print_options.spec.ts

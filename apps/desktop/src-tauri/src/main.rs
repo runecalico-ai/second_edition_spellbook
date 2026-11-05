@@ -42,24 +42,38 @@ fn attach_parent_console() {
         fn AttachConsole(process_id: u32) -> i32;
         fn GetStdHandle(std_handle: u32) -> *mut c_void;
         fn SetStdHandle(std_handle: u32, handle: *mut c_void) -> i32;
+        fn GetFileType(handle: *mut c_void) -> u32;
     }
     const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
     const STD_OUTPUT_HANDLE: u32 = 0xFFFF_FFF5;
     const STD_ERROR_HANDLE: u32 = 0xFFFF_FFF4;
+    const FILE_TYPE_UNKNOWN: u32 = 0;
 
-    // SAFETY: plain Win32 calls; the CONOUT$ handle is intentionally kept for the
-    // life of the process because it becomes the process's stdout/stderr.
+    // SAFETY: plain Win32 calls on handles owned by this process; the CONOUT$
+    // handle is intentionally kept for the life of the process because it
+    // becomes the process's stdout/stderr.
     unsafe {
+        let is_usable = |handle: *mut c_void| {
+            !handle.is_null() && handle as isize != -1 && GetFileType(handle) != FILE_TYPE_UNKNOWN
+        };
+        let std_handles = [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+        let inherited = std_handles.map(|std_handle| GetStdHandle(std_handle));
         if AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
             return;
         }
-        for std_handle in [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
-            let current = GetStdHandle(std_handle);
-            if !current.is_null() && current as isize != -1 {
-                continue;
-            }
-            if let Ok(console) = std::fs::OpenOptions::new().write(true).open("CONOUT$") {
-                SetStdHandle(std_handle, console.into_raw_handle());
+        // AttachConsole replaces std handles inherited without STARTF_USESTDHANDLES,
+        // so redirections such as `> report.txt` must be restored.
+        for (std_handle, inherited) in std_handles.into_iter().zip(inherited) {
+            if is_usable(inherited) {
+                SetStdHandle(std_handle, inherited);
+            } else if !is_usable(GetStdHandle(std_handle)) {
+                if let Ok(console) = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open("CONOUT$")
+                {
+                    SetStdHandle(std_handle, console.into_raw_handle());
+                }
             }
         }
     }

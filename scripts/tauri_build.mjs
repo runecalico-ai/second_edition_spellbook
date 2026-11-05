@@ -4,8 +4,9 @@
 // need scripts/prepare_release_bundle.py first. Debug builds run
 // services/ml/spellbook_sidecar.py and must not depend on that staging step.
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 export const RELEASE_CONFIG = "src-tauri/tauri.release.conf.json";
 
@@ -13,6 +14,17 @@ export function tauriBuildArgs(cliArgs) {
   const debug = cliArgs.includes("--debug") || cliArgs.includes("-d");
   const releaseConfig = debug ? [] : ["--config", RELEASE_CONFIG];
   return ["build", ...releaseConfig, ...cliArgs];
+}
+
+export function isMainModule(moduleUrl, scriptPath) {
+  if (!scriptPath) {
+    return false;
+  }
+  try {
+    return fs.realpathSync(fileURLToPath(moduleUrl)) === fs.realpathSync(scriptPath);
+  } catch {
+    return false;
+  }
 }
 
 function main() {
@@ -26,6 +38,6 @@ function main() {
   process.exit(result.status ?? 1);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   main();
 }

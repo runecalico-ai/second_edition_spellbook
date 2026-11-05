@@ -8,6 +8,17 @@ import { RELEASE_CONFIG, isMainModule, tauriBuildArgs } from "./tauri_build.mjs"
 
 const wrapperPath = fileURLToPath(new URL("./tauri_build.mjs", import.meta.url));
 const wrapperUrl = pathToFileURL(wrapperPath).href;
+const desktopDir = fileURLToPath(new URL("../apps/desktop/", import.meta.url));
+
+test("pnpm tauri:build runs the wrapper from apps/desktop", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(desktopDir, "package.json"), "utf8"));
+  assert.equal(pkg.scripts["tauri:build"], "node ../../scripts/tauri_build.mjs");
+  assert.equal(path.resolve(desktopDir, "../../scripts/tauri_build.mjs"), wrapperPath);
+});
+
+test("the release config exists relative to apps/desktop", () => {
+  assert.equal(fs.existsSync(path.join(desktopDir, RELEASE_CONFIG)), true);
+});
 
 test("release builds add the release config", () => {
   assert.deepEqual(tauriBuildArgs([]), ["build", "--config", RELEASE_CONFIG]);

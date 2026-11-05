@@ -91,6 +91,22 @@ pub(crate) fn resolve_sidecar_command(exe_dir: Option<&Path>) -> Result<SidecarC
     })
 }
 
+/// Release builds use the GUI subsystem, so a console child would get its own window.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn sidecar_process(command: &SidecarCommand) -> Command {
+    let mut process = Command::new(&command.program);
+    process
+        .args(&command.args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    process.creation_flags(CREATE_NO_WINDOW);
+    process
+}
+
 pub async fn call_sidecar(
     method: &str,
     params: serde_json::Value,
@@ -99,16 +115,7 @@ pub async fn call_sidecar(
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf));
     let command = resolve_sidecar_command(exe_dir.as_deref())?;
-    let mut child = Command::new(&command.program);
-    for arg in &command.args {
-        child.arg(arg);
-    }
-    let mut child = child
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(AppError::Io)?;
+    let mut child = sidecar_process(&command).spawn().map_err(AppError::Io)?;
 
     let request = json!({
         "jsonrpc": "2.0",
@@ -162,7 +169,10 @@ pub async fn call_sidecar(
 
 #[cfg(test)]
 mod tests {
-    use super::{bundled_sidecar_path, resolve_sidecar_command};
+    use super::{
+        bundled_sidecar_path, python_command, resolve_sidecar_command, sidecar_process,
+        SidecarCommand,
+    };
     use std::fs;
     use std::path::PathBuf;
 
@@ -231,5 +241,44 @@ mod tests {
         let command = command.unwrap();
         assert!(!command.args.is_empty());
         assert!(command.args[0].ends_with("spellbook_sidecar.py"));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn sidecar_process_does_not_share_the_app_console() {
+        let probe = SidecarCommand {
+            program: python_command(),
+            args: vec![
+                PathBuf::from("-c"),
+                PathBuf::from(
+                    "import ctypes; ids = (ctypes.c_uint32 * 64)(); \
+                     n = ctypes.windll.kernel32.GetConsoleProcessList(ids, 64); \
+                     print(' '.join(str(ids[i]) for i in range(n)))",
+                ),
+            ],
+        };
+
+        let output = sidecar_process(&probe)
+            .output()
+            .await
+            .expect("run python console probe");
+
+        assert!(
+            output.status.success(),
+            "probe failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let console_pids: Vec<u32> = String::from_utf8_lossy(&output.stdout)
+            .split_whitespace()
+            .map(|pid| pid.parse().expect("console process id"))
+            .collect();
+        assert!(
+            !console_pids.is_empty(),
+            "probe must run attached to a console"
+        );
+        assert!(
+            !console_pids.contains(&std::process::id()),
+            "sidecar child must get its own hidden console, not the app's: {console_pids:?}"
+        );
     }
 }

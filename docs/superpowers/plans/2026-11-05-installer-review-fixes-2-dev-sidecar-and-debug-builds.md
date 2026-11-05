@@ -58,7 +58,7 @@ Tasks 1 and 2 are independent.
 - Consumes: `bundled_sidecar_path(exe_dir: &Path) -> Option<PathBuf>`, `python_command() -> PathBuf`, `sidecar_path() -> Result<PathBuf, AppError>` (all in `client.rs`, unchanged).
 - Produces: `pub(crate) fn resolve_sidecar_command(exe_dir: Option<&Path>, prefer_bundled: bool) -> Result<SidecarCommand, AppError>`, plus a private `fn script_command() -> Result<SidecarCommand, AppError>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In the `tests` module of `client.rs`, replace `resolve_prefers_bundled_binary` and `resolve_falls_back_when_bundle_missing` with:
 
@@ -103,12 +103,12 @@ In the `tests` module of `client.rs`, replace `resolve_prefers_bundled_binary` a
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run (from `apps/desktop/src-tauri`): `cargo test sidecar::client`
 Expected: compile error, `this function takes 1 argument but 2 arguments were supplied` for `resolve_sidecar_command`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace `resolve_sidecar_command` with:
 
@@ -148,14 +148,14 @@ In `call_sidecar`, change `resolve_sidecar_command(exe_dir.as_deref())?` to:
 resolve_sidecar_command(exe_dir.as_deref(), !cfg!(debug_assertions))?
 ```
 
-- [ ] **Step 4: Run the tests and the Rust gate**
+- [x] **Step 4: Run the tests and the Rust gate**
 
 Run: `cargo test sidecar::client`
 Expected: all `sidecar::client` tests pass: 5, or 6 if Part 1 Task 1 is already merged.
 
 Run the Rust gate from Global Constraints. Expected: all exit 0.
 
-- [ ] **Step 5: Document which sidecar each build runs**
+- [x] **Step 5: Document which sidecar each build runs**
 
 In `apps/desktop/src-tauri/AGENTS.md`, under `### Sidecar Calls`, after the code block that ends with `let result = call_sidecar("action_name", json!({"key": value})).await?;`, insert:
 
@@ -175,7 +175,7 @@ with:
 Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` does not. Release builds run the frozen `spellbook-sidecar` installed next to the app. Debug builds run `services/ml/spellbook_sidecar.py` with the repository venv and use a frozen copy next to the exe only when the script is missing.
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/sidecar/client.rs apps/desktop/src-tauri/AGENTS.md docs/DEVELOPMENT.md

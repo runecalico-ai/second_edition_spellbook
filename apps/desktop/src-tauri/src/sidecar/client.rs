@@ -169,10 +169,9 @@ pub async fn call_sidecar(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        bundled_sidecar_path, python_command, resolve_sidecar_command, sidecar_process,
-        SidecarCommand,
-    };
+    use super::{bundled_sidecar_path, resolve_sidecar_command};
+    #[cfg(windows)]
+    use super::{python_command, sidecar_process, SidecarCommand};
     use std::fs;
     use std::path::PathBuf;
 

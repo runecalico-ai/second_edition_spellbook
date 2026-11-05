@@ -236,6 +236,8 @@ If tests fail with a linker error but `cargo check` passes:
 
 The application includes built-in tools to help you recover.
 
+On an installed Windows build, run the tools from the install folder (default `%LOCALAPPDATA%\Spellbook`). The installed exe is a windowed program, so PowerShell shows its prompt again before the output arrives. Pipe the command into `Write-Output` to make PowerShell wait for it, for example `.\spellbook-desktop.exe --list-backups | Write-Output`.
+
 ### Integrity Check
 Scans the database for spells without hashes or with collisions.
 ```powershell

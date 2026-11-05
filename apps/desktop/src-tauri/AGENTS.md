@@ -178,6 +178,9 @@ The application uses a "Hash Backfill" system (`src/utils/migration_manager.rs`)
 - **Sync check**: On every spell *write* (including `update_spell`, `upsert_spell`, and import), a sync check compares flat columns to `canonical_data` and logs discrepancies (no env toggle). It is not run on read (e.g. `get_spell`).
 
 **CLI Recovery Tools**:
+
+Windows release builds use the GUI subsystem (`main.rs`). The flags below attach to the console of the terminal that started the exe. A new flag must also be added to `MAINTENANCE_FLAGS` in `main.rs`; `every_flag_main_handles_is_a_maintenance_flag` fails otherwise.
+
 - `--check-integrity`: Recompute hash from `canonical_data` for each spell and compare to stored `content_hash`; report mismatches, NULL hashes, orphan `character_class_spell` rows, and duplicate hashes.
 - `--recompute-hashes`: Force refresh of all structured data.
 - `--detect-collisions`: List duplicate `content_hash` groups; for each group compare `canonical_data` and report "Duplicate content (same spell data)" or "True hash collision (different content, same hash)".

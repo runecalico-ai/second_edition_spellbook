@@ -197,7 +197,7 @@ git commit -m "fix(sidecar): debug builds run the repo sidecar script" -m "A fro
 - Consumes: `apps/desktop/node_modules/@tauri-apps/cli/tauri.js` (installed by `pnpm install`). pnpm runs package scripts with `apps/desktop` as the working directory.
 - Produces: `export const RELEASE_CONFIG = "src-tauri/tauri.release.conf.json"` and `export function tauriBuildArgs(cliArgs: string[]): string[]` in `scripts/tauri_build.mjs`.
 
-- [ ] **Step 1: Confirm the current failure**
+- [x] **Step 1: Confirm the current failure**
 
 Move the staged sidecar aside, then build:
 
@@ -209,7 +209,7 @@ pnpm --dir apps/desktop tauri:build --debug
 
 Expected: the build fails in the `tauri-build` build script with an error that names `binaries\spellbook-sidecar-x86_64-pc-windows-msvc.exe`. Leave the sidecar moved aside until Step 7.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `scripts/tauri_build.test.mjs`:
 
@@ -241,12 +241,12 @@ test("other arguments pass through after the release config", () => {
 });
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run (from the repository root): `node --test scripts/tauri_build.test.mjs`
 Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `scripts/tauri_build.mjs`.
 
-- [ ] **Step 4: Implement the wrapper**
+- [x] **Step 4: Implement the wrapper**
 
 Create `scripts/tauri_build.mjs`:
 
@@ -300,12 +300,12 @@ with:
 
 Leave `tauri:build:win` and `tauri:build:linux` unchanged.
 
-- [ ] **Step 5: Run the unit tests**
+- [x] **Step 5: Run the unit tests**
 
 Run: `node --test scripts/tauri_build.test.mjs`
 Expected: 4 passed.
 
-- [ ] **Step 6: Verify the debug build without a staged sidecar**
+- [x] **Step 6: Verify the debug build without a staged sidecar**
 
 Run: `pnpm --dir apps/desktop tauri:build --debug`
 Expected: the build succeeds while the sidecar is still moved aside (Step 1). `target\debug\spellbook-desktop.exe` has a fresh timestamp.
@@ -313,7 +313,7 @@ Expected: the build succeeds while the sidecar is still moved aside (Step 1). `t
 Then confirm that release builds still require the sidecar: `pnpm --dir apps/desktop tauri:build`
 Expected: fails with the same `binaries\spellbook-sidecar-x86_64-pc-windows-msvc.exe` error as Step 1. You can stop it as soon as that error appears.
 
-- [ ] **Step 7: Restore the staged sidecar and remove the stale debug copy**
+- [x] **Step 7: Restore the staged sidecar and remove the stale debug copy**
 
 ```powershell
 Get-ChildItem .tmp\sidecar-aside -Filter 'spellbook-sidecar-*' | Move-Item -Destination apps\desktop\src-tauri\binaries
@@ -321,7 +321,7 @@ Remove-Item -Force -ErrorAction SilentlyContinue target\debug\spellbook-sidecar.
 Remove-Item -Recurse -Force .tmp\sidecar-aside
 ```
 
-- [ ] **Step 8: Run the wrapper tests in CI**
+- [x] **Step 8: Run the wrapper tests in CI**
 
 In `.github/workflows/ci.yml`, directly after the `Type check (JS)` step, insert:
 
@@ -330,7 +330,7 @@ In `.github/workflows/ci.yml`, directly after the `Type check (JS)` step, insert
         run: node --test scripts/tauri_build.test.mjs
 ```
 
-- [ ] **Step 9: Update the build-command docs**
+- [x] **Step 9: Update the build-command docs**
 
 In `AGENTS.md`, replace:
 
@@ -373,7 +373,7 @@ At the end of `scripts/README.md`, append:
 `apps/desktop` runs `tauri_build.mjs` for `pnpm tauri:build`. Release builds get `--config src-tauri/tauri.release.conf.json`, which bundles the frozen sidecar, so run `prepare_release_bundle.py` first. `--debug` (or `-d`) builds skip that config and need no staging. Tests: `node --test scripts/tauri_build.test.mjs`.
 ```
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```powershell
 git add scripts/tauri_build.mjs scripts/tauri_build.test.mjs apps/desktop/package.json .github/workflows/ci.yml AGENTS.md README.md scripts/README.md docs/DEVELOPMENT.md

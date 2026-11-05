@@ -17,8 +17,14 @@ For backend runtime and command debugging, the app uses structured logging via `
 
 ### 1. "Migration Failed" or Application Crash on Start
 If the application fails to start during the migration phase:
-- **Check `migration.log`**: Locate this file in your data directory (e.g., `%APPDATA%\SpellbookVault`).
-- **Look for constraint violations**: If the log or stderr shows a message like "Hash collision: two or more spells produced the same content_hash. Migration aborted. See migration.log. Fix duplicates or run --detect-collisions.", you have duplicate content hashes.
+- **Check `migration.log`**: Locate this file in your data directory (e.g., `%APPDATA%\SpellbookVault\migration.log`, see [Migration Log Location](#migration-log-location)). The hash backfill runs on every start. When it finds spells without a hash, it writes its progress, summary, and errors there.
+- **Capture the startup output**: The installed Windows app has no console. Its stdout and stderr are lost, and a failed start closes with no message. Start it from PowerShell with the output redirected:
+    ```powershell
+    $p = Start-Process -FilePath "$env:LOCALAPPDATA\Spellbook\spellbook-desktop.exe" -RedirectStandardOutput out.txt -RedirectStandardError err.txt -Wait -PassThru
+    $p.ExitCode   # 101 if the app panicked during startup
+    ```
+    If the app starts, PowerShell waits until you close it. Startup errors are in `err.txt`, for example `Failed to setup app: error encountered during setup hook: Database error: file is not a database`. Log lines are in `out.txt`. See [CLI Recovery Tools](#cli-recovery-tools) for more about the installed exe. Development builds are console programs and show this output in the terminal.
+- **Look for constraint violations**: If `migration.log` or `err.txt` shows a message like "Hash collision: two or more spells produced the same content_hash. Migration aborted. See migration.log. Fix duplicates or run --detect-collisions.", you have duplicate content hashes.
     - **Fix**: Run `--detect-collisions` (see [CLI Recovery Tools](#cli-recovery-tools)) to list duplicate groups. The tool reports "Duplicate content (same spell data)" when spells are identical (safe to deduplicate) or "True hash collision (different content, same hash)" when content differs (requires manual resolution). Resolve duplicates (e.g. delete or merge via SQL or the UI), then restart.
 
 ### 2. Missing or Incorrect Parsed Data

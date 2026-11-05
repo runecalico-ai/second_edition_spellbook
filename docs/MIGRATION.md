@@ -40,6 +40,8 @@ Only **legacy → canonical** dual-write is implemented: when spells are created
 ### Backfill behavior
 During hash backfill, the application logs progress every 100 spells (e.g. "Migrating spell 100 of 1000...") and writes a final summary to stderr and `migration.log`: processed count, updated count, parse fallback count, hash failure count, and success/fallback percentages. If the backfill fails due to a hash collision (UNIQUE constraint on `content_hash`), a clear message is written to `migration.log` and stderr; fix duplicates or run `--detect-collisions` and retry.
 
+The backfill runs on every normal start. The installed Windows app has no console, so its stderr is not shown. Read `migration.log`, or capture stderr as shown in [Migration Failed or Application Crash on Start](./TROUBLESHOOTING.md#1-migration-failed-or-application-crash-on-start). Development builds show stderr in the terminal.
+
 > [!NOTE]
 > This stderr/`migration.log` output is intentional for migration/report CLI workflows. General backend runtime and command diagnostics use structured `tracing` logs controlled by `RUST_LOG`.
 

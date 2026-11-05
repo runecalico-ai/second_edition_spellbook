@@ -171,7 +171,7 @@ git commit -m "fix(sidecar): spawn without a console window on Windows" -m "Rele
   - `fn is_maintenance_invocation(args: &[String]) -> bool`. True when any argument after `args[0]` is in `MAINTENANCE_FLAGS`.
   - `fn attach_parent_console()`. On Windows release builds, attaches to the parent console and points stdout/stderr at it when they are not redirected. No-op elsewhere.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `apps/desktop/src-tauri/src/main.rs`:
 
@@ -232,12 +232,14 @@ mod tests {
 
 The scan in `every_flag_main_handles_is_a_maintenance_flag` stops at whitespace because `main.rs` line 80 logs `"--restore-backup requires a file path argument"`. Without that stop, the scan would read the whole message as a flag.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run (from `apps/desktop/src-tauri`): `cargo test --bin spellbook-desktop`
 Expected: compile error, `unresolved imports super::is_maintenance_invocation, super::MAINTENANCE_FLAGS`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
+
+> Landed as below in `ca5b60e`, then changed by review fix `cd8306d`: `attach_parent_console` saves the std handles before `AttachConsole` and restores the usable ones (checked with `GetFileType`), because `AttachConsole` replaces handles inherited without `STARTF_USESTDHANDLES` and `cmd /c "… > report.txt"` produced empty files. The `CONOUT$` fallback opens read/write so Rust's `GetConsoleMode` check sees a console. `main.rs` is the source of truth.
 
 At the very top of `main.rs`, before the `use` lines:
 
@@ -324,14 +326,16 @@ fn main() {
 
 Rust's stdout on Windows looks up the standard handle on every write, so `tracing` output reaches the console after `SetStdHandle`. Redirected handles (pipes, files) are already valid and stay as they are.
 
-- [ ] **Step 4: Run the tests and the Rust gate**
+- [x] **Step 4: Run the tests and the Rust gate**
 
 Run: `cargo test --bin spellbook-desktop`
 Expected: 4 passed.
 
 Run the Rust gate from Global Constraints. Also run `cargo clippy --release -- -D warnings` so the `cfg(not(debug_assertions))` code is linted. Expected: all exit 0.
 
-- [ ] **Step 5: Document the console behavior**
+- [x] **Step 5: Document the console behavior**
+
+> Landed as below in `ca5b60e`. Review fixes `f77d3cd` and `f2ae414` replaced the `| Write-Output` advice: piping garbles non-ASCII and splits stderr from stdout. The docs now use `Start-Process … -NoNewWindow -Wait -PassThru` (plus `-RedirectStandardOutput`/`-RedirectStandardError` to capture), the cmd.exe forms, and startup-output capture for installed builds, in `docs/TROUBLESHOOTING.md`, `docs/MIGRATION.md` and `docs/TESTING.md`.
 
 In `apps/desktop/src-tauri/AGENTS.md`, directly under the line `**CLI Recovery Tools**:`, insert:
 
@@ -345,7 +349,9 @@ In `docs/TROUBLESHOOTING.md`, directly under `The application includes built-in 
 On an installed Windows build, run the tools from the install folder (default `%LOCALAPPDATA%\Spellbook`). The installed exe is a windowed program, so PowerShell shows its prompt again before the output arrives. Pipe the command into `Write-Output` to make PowerShell wait for it, for example `.\spellbook-desktop.exe --list-backups | Write-Output`.
 ```
 
-- [ ] **Step 6: Verify on an installed Windows build (manual)**
+- [x] **Step 6: Verify on an installed Windows build (manual)**
+
+> Done 2026-11-05 on the `ca5b60e` working tree; results are in that commit's body. The app ran on a throwaway `SPELLBOOK_DATA_DIR`, because the existing `%APPDATA%\SpellbookVault` (`user_version` 4, `spell` table without `description`) fails migration 5 at startup, which is unrelated to this plan. The import check used a background window poller with a `conhost` positive control. It saw two sidecar processes and no new console window.
 
 This needs Task 1 and a working installer setup (`docs/DEVELOPMENT.md`, "Release builds").
 
@@ -357,7 +363,7 @@ This needs Task 1 and a working installer setup (`docs/DEVELOPMENT.md`, "Release
 
 Record the results in the commit body.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/main.rs apps/desktop/src-tauri/AGENTS.md docs/TROUBLESHOOTING.md

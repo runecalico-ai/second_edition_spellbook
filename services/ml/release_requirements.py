@@ -30,6 +30,7 @@ LOCK_HEADER = (
 INLINE_COMMENT = re.compile(r"\s+#.*$")
 NAME = re.compile(r"[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?")
 VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+!_-]*")
+SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 @dataclass(frozen=True)
@@ -78,12 +79,18 @@ def release_sha256s(pin: Pin, fetch: Callable[[str], bytes] | None = None) -> li
     if not any(file.get("packagetype") == "bdist_wheel" for file in files):
         raise SystemExit(f"{pin.name}=={pin.version} publishes no wheel on PyPI")
     try:
-        return sorted(file["digests"]["sha256"] for file in files)
+        digests = [file["digests"]["sha256"] for file in files]
     except (KeyError, TypeError) as exc:
         raise SystemExit(
             f"PyPI file entry for {pin.name}=={pin.version} has no sha256 digest: "
             f"{exc!r}"
         ) from exc
+    for digest in digests:
+        if not isinstance(digest, str) or not SHA256.fullmatch(digest):
+            raise SystemExit(
+                f"{pin.name}=={pin.version} has a malformed sha256 digest: {digest!r}"
+            )
+    return sorted(digests)
 
 
 def render_lock(pins: list[Pin], hashes: dict[Pin, list[str]]) -> str:

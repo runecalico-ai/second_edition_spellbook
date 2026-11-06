@@ -120,6 +120,18 @@ def test_release_sha256s_hashes_sdist_and_wheel() -> None:
     ]
 
 
+@pytest.mark.parametrize("digest", ["abc", "A" * 64, 123])
+def test_release_sha256s_rejects_malformed_digest(digest: object) -> None:
+    entry = {
+        "digests": {"sha256": digest},
+        "yanked": False,
+        "packagetype": "bdist_wheel",
+    }
+    body = json.dumps({"urls": [entry]}).encode()
+    with pytest.raises(SystemExit, match=r"lxml==6\.1\.3 .*sha256"):
+        release_sha256s(Pin("lxml", "6.1.3"), lambda _url: body)
+
+
 def test_release_sha256s_names_pin_on_http_error() -> None:
     def fetch(url: str) -> bytes:
         raise urllib.error.HTTPError(url, 404, "Not Found", None, None)

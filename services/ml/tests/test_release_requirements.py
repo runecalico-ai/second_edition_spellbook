@@ -29,8 +29,13 @@ def _block_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(urllib.request, "urlopen", blocked)
 
 
-def _release_json(*digests: str, yanked: bool = False) -> bytes:
-    files = [{"digests": {"sha256": d}, "yanked": yanked} for d in digests]
+def _release_json(
+    *digests: str, yanked: bool = False, packagetype: str = "bdist_wheel"
+) -> bytes:
+    files = [
+        {"digests": {"sha256": d}, "yanked": yanked, "packagetype": packagetype}
+        for d in digests
+    ]
     return json.dumps({"urls": files}).encode()
 
 
@@ -91,6 +96,30 @@ def test_release_sha256s_rejects_release_without_files() -> None:
         release_sha256s(Pin("lxml", "6.1.3"), lambda _url: _release_json())
 
 
+def test_release_sha256s_rejects_release_without_wheel() -> None:
+    with pytest.raises(SystemExit, match=r"lxml==6\.1\.3 .*wheel"):
+        release_sha256s(
+            Pin("lxml", "6.1.3"),
+            lambda _url: _release_json("a" * 64, "b" * 64, packagetype="sdist"),
+        )
+
+
+def test_release_sha256s_hashes_sdist_and_wheel() -> None:
+    files = [
+        {"digests": {"sha256": "b" * 64}, "yanked": False, "packagetype": "sdist"},
+        {
+            "digests": {"sha256": "a" * 64},
+            "yanked": False,
+            "packagetype": "bdist_wheel",
+        },
+    ]
+    body = json.dumps({"urls": files}).encode()
+    assert release_sha256s(Pin("lxml", "6.1.3"), lambda _url: body) == [
+        "a" * 64,
+        "b" * 64,
+    ]
+
+
 def test_release_sha256s_names_pin_on_http_error() -> None:
     def fetch(url: str) -> bytes:
         raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
@@ -105,8 +134,9 @@ def test_release_sha256s_names_pin_on_invalid_json() -> None:
 
 
 def test_release_sha256s_names_pin_on_file_without_digest() -> None:
-    body = json.dumps({"urls": [{"yanked": False}]}).encode()
-    with pytest.raises(SystemExit, match=r"lxml==6\.1\.3"):
+    entry = {"yanked": False, "packagetype": "bdist_wheel"}
+    body = json.dumps({"urls": [entry]}).encode()
+    with pytest.raises(SystemExit, match=r"lxml==6\.1\.3 has no sha256 digest"):
         release_sha256s(Pin("lxml", "6.1.3"), lambda _url: body)
 
 

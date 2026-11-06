@@ -75,6 +75,8 @@ def release_sha256s(pin: Pin, fetch: Callable[[str], bytes] | None = None) -> li
         raise SystemExit(f"PyPI lists no files for {pin.name}=={pin.version}")
     if any(file.get("yanked") for file in files):
         raise SystemExit(f"{pin.name}=={pin.version} is yanked on PyPI")
+    if not any(file.get("packagetype") == "bdist_wheel" for file in files):
+        raise SystemExit(f"{pin.name}=={pin.version} publishes no wheel on PyPI")
     try:
         return sorted(file["digests"]["sha256"] for file in files)
     except (KeyError, TypeError) as exc:

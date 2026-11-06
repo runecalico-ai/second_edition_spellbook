@@ -222,9 +222,10 @@ The application SHALL provide a `reindex_embeddings` command to generate missing
 - **AND** this operation SHALL NOT block application startup or any user-facing commands
 
 #### Scenario: Embedding index revision recorded
-- **WHEN** a forced reindex completes with zero failures
+- **WHEN** a forced reindex completes and no vectors from an older embedding revision remain in `spell_vec`
 - **THEN** the backend SHALL record the approved embedding bundle revision in `app_meta.embedding_index_revision`
-- **AND** a forced reindex with failures SHALL NOT record it, so the next startup retries the full rebuild
+- **AND** when a chunk fails during a forced reindex, the backend SHALL delete that chunk's existing vectors, so those spells have no vector and the next startup's incremental backfill retries only them
+- **AND** if deleting a failed chunk's vectors fails, the backend SHALL NOT record the revision, so the next startup retries the full rebuild
 
 ## Non-Functional Requirements
 - **Search latency**: Results MUST return in < 500ms for libraries of 10k spells.

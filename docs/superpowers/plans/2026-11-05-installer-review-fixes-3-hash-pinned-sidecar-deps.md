@@ -521,7 +521,7 @@ git commit -m "build(sidecar): pin release freeze packages with hashes" -m "Appr
   - `require_locked_versions(lock_path: Path = LOCK_PATH, installed_version: Callable[[str], str] | None = None) -> None`. Raises `SystemExit` naming the install command.
   - `require_runtime_imports` stays (import check only).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `services/ml/tests/test_build_sidecar.py`:
 
@@ -576,12 +576,12 @@ def test_require_locked_versions_accepts_a_matching_install(tmp_path: Path) -> N
     require_locked_versions(lock, installed_version=_versions({"lxml": "6.1.3"}))
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.\.venv\Scripts\python -m pytest services/ml/tests/test_build_sidecar.py -v`
 Expected: collection error, `ImportError: cannot import name 'lock_mismatches' from 'build_sidecar'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `services/ml/build_sidecar.py`:
 
@@ -647,7 +647,7 @@ def require_locked_versions(
         require_runtime_imports()
 ```
 
-- [ ] **Step 4: Run the sidecar test suite and Ruff**
+- [x] **Step 4: Run the sidecar test suite and Ruff**
 
 Run: `.\.venv\Scripts\python -m pytest services/ml -v`
 Expected: all pass (the three removed install tests no longer exist). On 2026-11-05 a scratch copy with these edits gave 27 passed for `tests/test_build_sidecar.py` plus `tests/test_release_requirements.py`.
@@ -655,7 +655,7 @@ Expected: all pass (the three removed install tests no longer exist). On 2026-11
 Run (from `services/ml`): `uvx ruff@0.6.9 format build_sidecar.py tests/test_build_sidecar.py`, then `uvx ruff@0.6.9 check .` and `uvx ruff@0.6.9 format --check build_sidecar.py tests/test_build_sidecar.py`
 Expected: both pass. The format run also rewraps the pre-existing long line in `test_parse_host_tuple_flag`; keep that change.
 
-- [ ] **Step 5: Install the release environment from the lock in the release workflow**
+- [x] **Step 5: Install the release environment from the lock in the release workflow**
 
 In `.github/workflows/release.yml`, in both jobs, change the `Set up Python` step's `cache-dependency-path` from:
 
@@ -697,7 +697,7 @@ with:
 
 No other release step needs pytest or Ruff. `set_release_version.py`, `checksum_release_assets.py`, and `provision_sqlite_vec.py` use only the stdlib.
 
-- [ ] **Step 6: Update the local release setup docs**
+- [x] **Step 6: Update the local release setup docs**
 
 In `docs/DEVELOPMENT.md` ("Release builds"), replace the sentence `The prepare script freezes the sidecar with PyInstaller (from \`services/ml/requirements-dev.txt\`) and must run under Python 3.14.` with:
 
@@ -723,7 +723,7 @@ After the Linux code block, add:
 To run the sidecar tests in the same venv, also install `services/ml/requirements-dev.txt`. pip keeps the locked versions because they already satisfy `requirements.txt`.
 ```
 
-- [ ] **Step 7: Freeze from the lock-only venv and smoke-test the binary (Windows)**
+- [x] **Step 7: Freeze from the lock-only venv and smoke-test the binary (Windows)**
 
 Use the venv from Task 2 Step 4 (it has only the locked packages):
 
@@ -759,7 +759,7 @@ Remove-Item -Recurse -Force .tmp\release-lock-check, .tmp\lock-drift.lock, .tmp\
 
 The release workflow change is verified by the first `workflow_dispatch` run after `release.yml` is on the default branch. Both jobs must pass `Create Python venv and install` and `Prepare release resources`. Note this in the commit body.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add services/ml/build_sidecar.py services/ml/tests/test_build_sidecar.py .github/workflows/release.yml docs/DEVELOPMENT.md

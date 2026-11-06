@@ -72,3 +72,6 @@ apps/desktop/src-tauri/resources/sqlite-vec/vec0.dylib
 
 apps/desktop/src-tauri/binaries/spellbook-sidecar-*
 !apps/desktop/src-tauri/binaries/.gitkeep
+
+# AI Generated Temp directories
+.tmp/

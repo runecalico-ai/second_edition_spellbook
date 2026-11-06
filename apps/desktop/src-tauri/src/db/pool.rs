@@ -76,14 +76,14 @@ fn install_sqlite_vec_if_needed(
     exe_dir: Option<&Path>,
 ) -> Result<Option<PathBuf>, AppError> {
     let destination = data_dir.join(sqlite_vec_library_name());
-    if destination.exists() {
-        return Ok(Some(destination));
-    }
-
-    let Some(candidate) = sqlite_vec_bundled_source_candidates(resource_dir, exe_dir)
+    let bundled = sqlite_vec_bundled_source_candidates(resource_dir, exe_dir)
         .into_iter()
-        .find(|path| path.exists())
-    else {
+        .find(|path| path.exists());
+
+    let Some(candidate) = bundled else {
+        if destination.exists() {
+            return Ok(Some(destination));
+        }
         warn!(
             resource_dir = ?resource_dir,
             exe_dir = ?exe_dir,
@@ -91,6 +91,25 @@ fn install_sqlite_vec_if_needed(
         );
         return Ok(None);
     };
+
+    if destination.exists() {
+        if same_file_contents(&candidate, &destination) {
+            return Ok(Some(destination));
+        }
+        match replace_file(&candidate, &destination) {
+            Ok(()) => info!(
+                path = %destination.display(),
+                "sqlite-vec: refreshed vault copy from the bundled library"
+            ),
+            Err(error) => warn!(
+                source = %candidate.display(),
+                destination = %destination.display(),
+                %error,
+                "sqlite-vec: could not refresh vault copy; keeping the existing library"
+            ),
+        }
+        return Ok(Some(destination));
+    }
 
     fs::create_dir_all(data_dir)?;
     fs::copy(&candidate, &destination).map_err(|e| {
@@ -108,6 +127,34 @@ fn install_sqlite_vec_if_needed(
         fs::set_permissions(&destination, perms)?;
     }
     Ok(Some(destination))
+}
+
+fn same_file_contents(a: &Path, b: &Path) -> bool {
+    match (fs::read(a), fs::read(b)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+/// Stages the copy beside `destination` and renames it into place, so a failed or
+/// interrupted copy never leaves a truncated library where `try_load_sqlite_vec`
+/// will load it.
+fn replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
+    let mut staged_name = destination.as_os_str().to_os_string();
+    staged_name.push(".new");
+    let staged = PathBuf::from(staged_name);
+    let result = fs::copy(source, &staged).and_then(|_| {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&staged, fs::Permissions::from_mode(0o755))?;
+        }
+        fs::rename(&staged, destination)
+    });
+    if result.is_err() {
+        let _ = fs::remove_file(&staged);
+    }
+    result
 }
 
 fn try_load_sqlite_vec(conn: &Connection, data_dir: &Path) {
@@ -205,30 +252,99 @@ mod tests {
         );
     }
 
+    fn staged_copy_path(destination: &Path) -> PathBuf {
+        let mut name = destination.as_os_str().to_os_string();
+        name.push(".new");
+        PathBuf::from(name)
+    }
+
     #[test]
-    fn install_sqlite_vec_leaves_existing_destination_in_place() {
+    fn install_sqlite_vec_replaces_outdated_vault_copy() {
         let tmp = tempdir().expect("temp dir");
         let resource_dir = tmp.path().join("Spellbook");
         let data_dir = tmp.path().join("vault");
         fs::create_dir_all(&data_dir).expect("create vault");
-
         let destination = data_dir.join(sqlite_vec_library_name());
-        fs::write(&destination, b"already-installed").expect("seed destination");
-
-        let bundled = resource_dir
-            .join("sqlite-vec")
-            .join(sqlite_vec_library_name());
-        write_dummy_library(&bundled);
+        fs::write(&destination, b"old-sqlite-vec").expect("seed outdated vault copy");
+        write_dummy_library(
+            &resource_dir
+                .join("sqlite-vec")
+                .join(sqlite_vec_library_name()),
+        );
 
         let result = install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir), None)
-            .expect("install should not error")
-            .expect("existing destination should be returned");
+            .expect("install should not error");
 
-        assert_eq!(result, destination);
+        assert_eq!(result, Some(destination.clone()));
         assert_eq!(
-            fs::read(&destination).expect("read destination"),
-            b"already-installed"
+            fs::read(&destination).expect("read vault copy"),
+            b"fake-sqlite-vec"
         );
+        assert!(!staged_copy_path(&destination).exists());
+    }
+
+    #[test]
+    fn install_sqlite_vec_keeps_identical_vault_copy() {
+        let tmp = tempdir().expect("temp dir");
+        let resource_dir = tmp.path().join("Spellbook");
+        let data_dir = tmp.path().join("vault");
+        fs::create_dir_all(&data_dir).expect("create vault");
+        let destination = data_dir.join(sqlite_vec_library_name());
+        fs::write(&destination, b"fake-sqlite-vec").expect("seed vault copy");
+        write_dummy_library(
+            &resource_dir
+                .join("sqlite-vec")
+                .join(sqlite_vec_library_name()),
+        );
+
+        let result = install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir), None)
+            .expect("install should not error");
+
+        assert_eq!(result, Some(destination.clone()));
+        assert_eq!(
+            fs::read(&destination).expect("read vault copy"),
+            b"fake-sqlite-vec"
+        );
+    }
+
+    #[test]
+    fn install_sqlite_vec_keeps_vault_copy_without_bundled_library() {
+        let tmp = tempdir().expect("temp dir");
+        let data_dir = tmp.path().join("vault");
+        fs::create_dir_all(&data_dir).expect("create vault");
+        let destination = data_dir.join(sqlite_vec_library_name());
+        fs::write(&destination, b"dev-sqlite-vec").expect("seed vault copy");
+
+        let result =
+            install_sqlite_vec_if_needed(&data_dir, None, None).expect("install should not error");
+
+        assert_eq!(result, Some(destination.clone()));
+        assert_eq!(
+            fs::read(&destination).expect("read vault copy"),
+            b"dev-sqlite-vec"
+        );
+    }
+
+    #[test]
+    fn install_sqlite_vec_keeps_vault_entry_when_refresh_fails() {
+        let tmp = tempdir().expect("temp dir");
+        let resource_dir = tmp.path().join("Spellbook");
+        let data_dir = tmp.path().join("vault");
+        let destination = data_dir.join(sqlite_vec_library_name());
+        // A directory at the destination makes the rename fail on every platform.
+        fs::create_dir_all(&destination).expect("create blocking directory");
+        write_dummy_library(
+            &resource_dir
+                .join("sqlite-vec")
+                .join(sqlite_vec_library_name()),
+        );
+
+        let result = install_sqlite_vec_if_needed(&data_dir, Some(&resource_dir), None)
+            .expect("a failed refresh must not fail startup");
+
+        assert_eq!(result, Some(destination.clone()));
+        assert!(destination.is_dir());
+        assert!(!staged_copy_path(&destination).exists());
     }
 
     #[test]

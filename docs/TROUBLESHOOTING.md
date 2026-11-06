@@ -215,7 +215,7 @@ Select-String -Path "$env:APPDATA\SpellbookVault\migration.log" -Pattern "Spell 
 
 ### 5. "semantic search requires sqlite-vec; spell_vec is blob-backed in this database"
 - **Cause**: The vault database was created before `vec0` loaded, so `spell_vec` is a plain table.
-- **Fix**: Make sure `vec0.dll` / `vec0.so` is in the vault (`SpellbookVault/`) and restart the app. Startup rebuilds `spell_vec` as a vec0 table and the embeddings backfill re-embeds all spells. Look for `sqlite-vec: rebuilt blob-backed spell_vec as vec0` in the log.
+- **Fix**: Make sure `vec0.dll` / `vec0.so` is in the vault (`SpellbookVault/`) and restart the app. Startup rebuilds `spell_vec` as a vec0 table and the embeddings backfill re-embeds all spells. Look for `sqlite-vec: rebuilt blob-backed spell_vec as vec0` in the log. After an app upgrade, startup replaces the vault copy with the newly installed library. If the log shows `sqlite-vec: could not refresh vault copy`, close every Spellbook window and start the app again.
 
 ## Build and Compilation Issues
 

@@ -25,6 +25,24 @@ def _now_iso() -> str:
     return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _configure_utf8_stdio() -> None:
+    """Force UTF-8 on stdio so JSON-RPC never depends on Windows cp1252."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError, AttributeError):
+            continue
+
+
+def _strip_bom(text: str) -> str:
+    if text.startswith("\ufeff"):
+        return text[1:]
+    return text
+
+
 def _read_request() -> Dict[str, Any]:
     raw = sys.stdin.readline()
     if not raw:
@@ -33,7 +51,8 @@ def _read_request() -> Dict[str, Any]:
 
 
 def _write_response(payload: Dict[str, Any]) -> None:
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    # ensure_ascii=True keeps stdout encodable even if the console is cp1252.
+    sys.stdout.write(json.dumps(payload, ensure_ascii=True) + "\n")
     sys.stdout.flush()
 
 
@@ -65,7 +84,7 @@ def _parse_front_matter(text: str) -> Dict[str, Any]:
 
 
 def _spell_from_markdown(path: Path) -> Dict[str, Any]:
-    text = path.read_text(encoding="utf-8", errors="ignore")
+    text = _strip_bom(path.read_text(encoding="utf-8-sig", errors="ignore"))
     meta = _parse_front_matter(text)
     description = text
     if text.startswith("---"):
@@ -150,7 +169,7 @@ def _spell_from_markdown(path: Path) -> Dict[str, Any]:
 def _spell_from_pdf(path: Path) -> Dict[str, Any]:
     if not extract_pdf_text:
         raise ImportError("pdfminer.six not installed")
-    text = extract_pdf_text(str(path))
+    text = _strip_bom(extract_pdf_text(str(path)))
     # Heuristic: First line is name? Or filename fallback.
     # Level extraction heuristic
     level = 0
@@ -187,7 +206,7 @@ def _spell_from_docx(path: Path) -> Dict[str, Any]:
         raise ImportError("python-docx not installed")
     doc = Document(str(path))
     text_chunks = [p.text for p in doc.paragraphs]
-    text = "\n\n".join(text_chunks)
+    text = _strip_bom("\n\n".join(text_chunks))
 
     level = 0
     level_match = re.search(r"(?:Level|Lvl)[:\s]*(\d+)", text, re.IGNORECASE)
@@ -295,7 +314,7 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
 
     if fmt == "html":
         html_path = output_dir / f"spellbook_export_{unique_id}.html"
-        html = _render_print_html(spells, mode, layout, character)
+        html = _render_export_html(spells, mode, layout, character, class_name)
         html_path.write_text(html, encoding="utf-8")
         return {"path": str(html_path), "format": "html"}
 
@@ -303,13 +322,7 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
         # Generate print-optimized HTML instead of PDF
         # Users can use browser "Print to PDF" for actual PDF output
         html_path = output_dir / f"spellbook_export_{unique_id}.html"
-        if mode == "character_sheet":
-            html = _render_character_sheet_html(character)
-        elif mode == "spellbook_pack":
-            html = _render_spellbook_pack_html(spells, character, class_name, layout)
-        else:
-            html = _render_print_html(spells, mode, layout, character)
-
+        html = _render_export_html(spells, mode, layout, character, class_name)
         html_path.write_text(html, encoding="utf-8")
 
         # Return HTML path with note that it's print-optimized
@@ -320,6 +333,20 @@ def handle_export(params: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     raise ValueError(f"Unsupported export format: {fmt}")
+
+
+def _render_export_html(
+    spells: List[Dict[str, Any]],
+    mode: str,
+    layout: str,
+    character: Dict[str, Any],
+    class_name: str,
+) -> str:
+    if mode == "character_sheet":
+        return _render_character_sheet_html(character)
+    if mode == "spellbook_pack":
+        return _render_spellbook_pack_html(spells, character, class_name, layout)
+    return _render_print_html(spells, mode, layout, character)
 
 
 def _render_print_html(
@@ -400,6 +427,7 @@ def _render_print_html(
     }}
   </style>
 </head>
+<body>
     {body}
 </body>
 </html>
@@ -781,6 +809,7 @@ def _render_spellbook_pack_markdown(
 
 
 def main() -> None:
+    _configure_utf8_stdio()
     try:
         request = _read_request()
         method = request.get("method")

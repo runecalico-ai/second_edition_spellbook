@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# PATH wrapper for linuxdeploy's patchelf. Skip sqlite-vec loadables so AppImage
+# ships the same unpatched vec0.* as the staged resource / .deb payload.
+set -euo pipefail
+
+is_sqlite_vec_lib() {
+  local arg="$1"
+  local base="${arg##*/}"
+  base="${base##*\\}"
+  case "$base" in
+    vec0.so | vec0.dll | vec0.dylib) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+for arg in "$@"; do
+  if is_sqlite_vec_lib "$arg"; then
+    echo "patchelf-skip-sqlite-vec: skipping $arg"
+    exit 0
+  fi
+done
+
+wrapper_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+
+new_path=""
+rest="$PATH"
+while [[ -n "$rest" ]]; do
+  dir="${rest%%:*}"
+  if [[ "$dir" == "$rest" ]]; then
+    rest=""
+  else
+    rest="${rest#*:}"
+  fi
+  if [[ -n "$dir" && "$dir" != "$wrapper_dir" ]]; then
+    if [[ -z "$new_path" ]]; then
+      new_path="$dir"
+    else
+      new_path="$new_path:$dir"
+    fi
+  fi
+done
+
+real_patchelf=""
+if [[ -n "$new_path" ]]; then
+  real_patchelf="$(PATH="$new_path" command -v patchelf || true)"
+fi
+if [[ -z "$real_patchelf" && -x /usr/bin/patchelf ]]; then
+  real_patchelf=/usr/bin/patchelf
+fi
+if [[ -z "$real_patchelf" ]]; then
+  echo "patchelf-skip-sqlite-vec: real patchelf not found on PATH or at /usr/bin/patchelf" >&2
+  exit 127
+fi
+
+if [[ "$real_patchelf" -ef "$0" ]]; then
+  echo "patchelf-skip-sqlite-vec: refused to recurse into $real_patchelf" >&2
+  exit 1
+fi
+
+exec "$real_patchelf" "$@"

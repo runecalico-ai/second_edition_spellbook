@@ -1,7 +1,10 @@
+import io
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+import spellbook_sidecar
 
 
 def _sidecar_path() -> Path:
@@ -38,6 +41,49 @@ def test_import_markdown(tmp_path: Path):
     assert spells[0]["level"] == 1
     # Task 2.2: schema_version=2 stamp on all newly produced spells
     assert spells[0].get("schema_version") == 2
+
+
+def test_import_markdown_with_utf8_bom(tmp_path: Path):
+    """Windows editors often emit a UTF-8 BOM; import must succeed and return the spell name."""
+    sample = tmp_path / "spell.md"
+    sample.write_bytes(
+        "\ufeff---\nname: Test Spell\nlevel: 1\n---\nDescription here.".encode("utf-8")
+    )
+    response = _run_sidecar(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "import",
+            "params": {"files": [str(sample)]},
+        }
+    )
+    assert "error" not in response
+    spells = response["result"]["spells"]
+    assert spells
+    assert spells[0]["name"] == "Test Spell"
+    assert spells[0]["level"] == 1
+
+
+def test_write_response_survives_bom_on_cp1252_stdout(monkeypatch):
+    """JSON-RPC stdout must not raise UnicodeEncodeError when a payload contains U+FEFF."""
+    buf = io.BytesIO()
+    fake_stdout = io.TextIOWrapper(
+        buf, encoding="cp1252", errors="strict", newline="\n"
+    )
+    monkeypatch.setattr(spellbook_sidecar.sys, "stdout", fake_stdout)
+
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"_raw_text": "\ufeff---\nname: Test Spell"},
+    }
+    spellbook_sidecar._write_response(payload)
+    fake_stdout.flush()
+
+    line = buf.getvalue().decode("utf-8")
+    parsed = json.loads(line)
+    assert parsed["result"]["_raw_text"].startswith("\ufeff")
+    assert "Test Spell" in parsed["result"]["_raw_text"]
 
 
 def test_import_spell_with_5e_casting_time_string_preserved(tmp_path: Path):

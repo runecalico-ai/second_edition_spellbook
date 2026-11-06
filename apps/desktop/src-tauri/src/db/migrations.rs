@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use tracing::{info, warn};
 
 /// Applies migration 0015: hash reference columns and indexes.
@@ -151,9 +151,51 @@ pub fn load_migrations(conn: &Connection) -> Result<(), AppError> {
         conn.execute("PRAGMA user_version = 15", [])?;
     }
 
-    info!(version = 15, "DB migration complete");
+    if version < 16 {
+        info!("Applying migration 0016");
+        let sql = include_str!("../../../../../db/migrations/0016_add_app_meta.sql");
+        conn.execute_batch(sql)?;
+        conn.execute("PRAGMA user_version = 16", [])?;
+    }
+
+    info!(version = 16, "DB migration complete");
 
     Ok(())
+}
+
+/// Rebuilds a blob-backed `spell_vec` as a sqlite-vec `vec0` table once the
+/// extension is loaded on this connection. Returns `Ok(true)` when it rebuilt.
+/// Vectors are derived data; the embeddings startup backfill repopulates them.
+pub fn repair_blob_backed_spell_vec(conn: &Connection) -> Result<bool, AppError> {
+    let table_exists = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'spell_vec'",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if !table_exists || crate::db::spell_vec_is_vec0(conn) {
+        return Ok(false);
+    }
+    if conn
+        .query_row("SELECT vec_version()", [], |row| row.get::<_, String>(0))
+        .is_err()
+    {
+        return Ok(false);
+    }
+
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
+        "DROP TABLE spell_vec;
+         CREATE VIRTUAL TABLE spell_vec USING vec0(
+           rowid INTEGER PRIMARY KEY,
+           v float[384]
+         );",
+    )?;
+    tx.commit()?;
+    warn!("sqlite-vec: rebuilt blob-backed spell_vec as vec0; embeddings will be reindexed");
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -199,7 +241,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("query user_version");
 
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         assert!(crate::db::table_has_column(
             &conn,
             "character_class_spell",
@@ -481,7 +523,7 @@ mod tests {
         let version: i32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("query user_version");
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         assert!(crate::db::table_has_column(
             &conn,
             "character_class_spell",
@@ -492,6 +534,25 @@ mod tests {
             "artifact",
             "spell_content_hash"
         ));
+    }
+
+    #[test]
+    fn test_migration_0016_creates_app_meta() {
+        let conn = Connection::open_in_memory().expect("open db");
+        load_migrations(&conn).expect("load migrations");
+
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("query user_version");
+        assert_eq!(version, 16);
+
+        assert_eq!(crate::db::get_app_meta(&conn, "k").expect("read"), None);
+        crate::db::set_app_meta(&conn, "k", "v1").expect("insert");
+        crate::db::set_app_meta(&conn, "k", "v2").expect("upsert");
+        assert_eq!(
+            crate::db::get_app_meta(&conn, "k").expect("read"),
+            Some("v2".to_string())
+        );
     }
 
     /// Benchmarks migration 0014 FTS rebuild with 10k spells; must complete in < 60s.
@@ -571,5 +632,65 @@ mod tests {
             "FTS rebuild for 10k spells must take < 60 seconds, took {:?}",
             elapsed
         );
+    }
+
+    fn spell_vec_row_count(conn: &Connection) -> i64 {
+        conn.query_row("SELECT COUNT(*) FROM spell_vec", [], |row| row.get(0))
+            .expect("count spell_vec rows")
+    }
+
+    #[test]
+    fn repair_rebuilds_blob_backed_spell_vec_when_vec0_is_available() {
+        let conn = Connection::open_in_memory().expect("open db");
+        load_migrations(&conn).expect("migrate without vec0");
+        assert!(
+            !crate::db::spell_vec_is_vec0(&conn),
+            "fixture must start blob-backed"
+        );
+        conn.execute("INSERT INTO spell_vec(rowid, v) VALUES (1, x'00')", [])
+            .expect("seed blob row");
+
+        crate::db::load_static_sqlite_vec_for_test(&conn);
+        assert!(repair_blob_backed_spell_vec(&conn).expect("repair"));
+
+        assert!(crate::db::spell_vec_is_vec0(&conn));
+        assert_eq!(spell_vec_row_count(&conn), 0);
+        let vector = serde_json::to_string(&vec![0.0_f32; 384]).expect("vector json");
+        conn.execute(
+            "INSERT INTO spell_vec(rowid, v) VALUES (1, vec_f32(?1))",
+            [vector],
+        )
+        .expect("vec0 table accepts 384-dim vectors");
+    }
+
+    #[test]
+    fn repair_leaves_blob_backed_spell_vec_when_vec0_is_unavailable() {
+        let conn = Connection::open_in_memory().expect("open db");
+        load_migrations(&conn).expect("migrate without vec0");
+        conn.execute("INSERT INTO spell_vec(rowid, v) VALUES (1, x'00')", [])
+            .expect("seed blob row");
+
+        assert!(!repair_blob_backed_spell_vec(&conn).expect("repair"));
+
+        assert!(!crate::db::spell_vec_is_vec0(&conn));
+        assert_eq!(spell_vec_row_count(&conn), 1);
+    }
+
+    #[test]
+    fn repair_is_a_noop_for_vec0_backed_spell_vec() {
+        let conn = Connection::open_in_memory().expect("open db");
+        crate::db::load_static_sqlite_vec_for_test(&conn);
+        load_migrations(&conn).expect("migrate with vec0");
+        let vector = serde_json::to_string(&vec![0.0_f32; 384]).expect("vector json");
+        conn.execute(
+            "INSERT INTO spell_vec(rowid, v) VALUES (1, vec_f32(?1))",
+            [vector],
+        )
+        .expect("seed vec0 row");
+
+        assert!(!repair_blob_backed_spell_vec(&conn).expect("repair"));
+
+        assert!(crate::db::spell_vec_is_vec0(&conn));
+        assert_eq!(spell_vec_row_count(&conn), 1);
     }
 }

@@ -7,7 +7,8 @@ This is a local desktop application to manage spells and character spellbooks fo
 - **Backend:** `cargo`
 - **Sidecar:** `venv` / `pip`
 - **Run Locally:** `pnpm tauri:dev`
-- **Build Release:** `pnpm tauri:build --debug`
+- **Debug Build (Playwright):** `pnpm tauri:build --debug` (no release staging needed)
+- **Installers:** see [Release builds](./docs/DEVELOPMENT.md#release-builds-windows-nsis-linux-appimage-and-deb) (`scripts/prepare_release_bundle.py`, then `pnpm tauri:build:win` or `pnpm tauri:build:linux`)
 
 ---
 

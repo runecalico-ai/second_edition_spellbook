@@ -1,7 +1,10 @@
 use crate::commands::embeddings::{
     cancel_spell_embedding_for_delete, enqueue_spell_embedding_if_ready, EmbeddingState,
 };
-use crate::commands::vault::export_spell_to_vault_by_hash;
+use crate::commands::vault::{
+    export_spell_to_vault_by_hash, is_content_hash_live, spell_file_path_in_root,
+    VaultMaintenanceState,
+};
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::CanonicalSpell;
@@ -980,19 +983,77 @@ pub async fn update_spell(
     Ok(spell_id)
 }
 
+/// Matches `CanonicalSpell::compute_hash` output (lowercase hex SHA-256). The stored
+/// `content_hash` becomes a file name, so anything else could escape `spells/`.
+fn is_well_formed_content_hash(hash: &str) -> bool {
+    hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+pub(crate) fn delete_spell_with_conn(
+    conn: &Connection,
+    vault_root: &std::path::Path,
+    maintenance: &VaultMaintenanceState,
+    id: i64,
+) -> Result<(), AppError> {
+    let content_hash: Option<String> = conn
+        .query_row(
+            "SELECT content_hash FROM spell WHERE id = ?1",
+            [id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+
+    conn.execute("DELETE FROM spell_vec WHERE rowid = ?", [id])?;
+    conn.execute("DELETE FROM spell WHERE id = ?", [id])?;
+
+    let Some(hash) = content_hash else {
+        return Ok(());
+    };
+    if !is_well_formed_content_hash(&hash) {
+        tracing::warn!(
+            spell_id = id,
+            "deleted spell has a malformed content_hash; leaving vault files untouched"
+        );
+        return Ok(());
+    }
+    let cleanup = maintenance.with_idle_lock(|| {
+        if is_content_hash_live(conn, &hash)? {
+            return Ok(());
+        }
+        let path = spell_file_path_in_root(vault_root, &hash);
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "failed to remove deleted spell's vault file; deferred GC will retry");
+            }
+        }
+        Ok(())
+    })?;
+    if cleanup.is_none() {
+        tracing::info!(%hash, "vault maintenance busy; leaving spell file for deferred GC");
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn delete_spell(
     state: State<'_, Arc<Pool>>,
     embedding_state: State<'_, Arc<EmbeddingState>>,
+    maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
     id: i64,
 ) -> Result<(), AppError> {
     cancel_spell_embedding_for_delete(embedding_state.inner().as_ref(), id);
     let pool = state.inner().clone();
+    let maintenance_state = maintenance_state.inner().clone();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        conn.execute("DELETE FROM spell_vec WHERE rowid = ?", [id])?;
-        conn.execute("DELETE FROM spell WHERE id = ?", [id])?;
-        Ok::<(), AppError>(())
+        let vault_root = crate::db::app_data_dir()?;
+        delete_spell_with_conn(&conn, &vault_root, maintenance_state.as_ref(), id)
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))??;
@@ -1552,6 +1613,177 @@ mod tests {
         )
         .expect("create spell test schema");
         conn
+    }
+
+    fn setup_spell_delete_test_db() -> Connection {
+        let conn = setup_spell_update_test_db();
+        conn.execute_batch("CREATE TABLE spell_vec (rowid INTEGER PRIMARY KEY, v BLOB);")
+            .expect("create spell_vec");
+        conn
+    }
+
+    fn seed_vaulted_spell(
+        conn: &Connection,
+        root: &std::path::Path,
+        id: i64,
+        name: &str,
+    ) -> String {
+        let detail = SpellDetail {
+            id: Some(id),
+            name: name.to_string(),
+            level: 1,
+            description: format!("{name} description"),
+            school: Some("Evocation".to_string()),
+            ..Default::default()
+        };
+        let (canonical, hash, json) =
+            canonicalize_spell_detail(detail.clone()).expect("canonicalize spell");
+        conn.execute(
+            "INSERT INTO spell (id, name, school, level, description, schema_version, canonical_data, content_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                id,
+                detail.name,
+                detail.school,
+                detail.level,
+                detail.description,
+                canonical.schema_version,
+                json,
+                hash,
+            ],
+        )
+        .expect("seed spell row");
+        crate::commands::vault::write_spell_json_atomically(root, &hash, &json)
+            .expect("write vault file");
+        hash
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_removes_unreferenced_vault_file() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = setup_spell_delete_test_db();
+        let hash = seed_vaulted_spell(&conn, root.path(), 1, "Lonely Spell");
+        let vault_file = spell_file_path_in_root(root.path(), &hash);
+        assert!(vault_file.exists());
+
+        delete_spell_with_conn(&conn, root.path(), &VaultMaintenanceState::default(), 1)
+            .expect("delete spell");
+
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("count spells");
+        assert_eq!(remaining, 0);
+        assert!(
+            !vault_file.exists(),
+            "unreferenced vault file must be removed"
+        );
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_keeps_file_referenced_by_other_row() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = setup_spell_delete_test_db();
+        let hash = seed_vaulted_spell(&conn, root.path(), 1, "Known Spell");
+        seed_vaulted_spell(&conn, root.path(), 2, "Other Spell");
+        conn.execute(
+            "INSERT INTO character_class_spell (spell_id, character_class_id, spell_content_hash) VALUES (2, 1, ?1)",
+            [&hash],
+        )
+        .expect("seed cross-spell hash reference");
+
+        delete_spell_with_conn(&conn, root.path(), &VaultMaintenanceState::default(), 1)
+            .expect("delete spell");
+
+        assert!(spell_file_path_in_root(root.path(), &hash).exists());
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_cascades_own_character_rows_and_removes_file() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = Connection::open_in_memory().expect("open in-memory sqlite");
+        crate::db::migrations::load_migrations(&conn).expect("load migrations");
+        conn.execute_batch("PRAGMA foreign_keys=ON;")
+            .expect("enable foreign keys");
+        let hash = seed_vaulted_spell(&conn, root.path(), 1, "Known Spell");
+        conn.execute_batch(
+            r#"
+            INSERT INTO "character" (id, name) VALUES (1, 'Elminster');
+            INSERT INTO character_class (id, character_id, class_name) VALUES (1, 1, 'Mage');
+            "#,
+        )
+        .expect("seed character parents");
+        conn.execute(
+            "INSERT INTO character_class_spell (character_class_id, spell_id, list_type, spell_content_hash) VALUES (1, 1, 'KNOWN', ?1)",
+            [&hash],
+        )
+        .expect("seed character reference");
+
+        delete_spell_with_conn(&conn, root.path(), &VaultMaintenanceState::default(), 1)
+            .expect("delete spell");
+
+        let references: i64 = conn
+            .query_row("SELECT COUNT(*) FROM character_class_spell", [], |row| {
+                row.get(0)
+            })
+            .expect("count character references");
+        assert_eq!(references, 0, "FK cascade must remove the spell's own rows");
+        assert!(!spell_file_path_in_root(root.path(), &hash).exists());
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_defers_cleanup_while_import_runs() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = setup_spell_delete_test_db();
+        let hash = seed_vaulted_spell(&conn, root.path(), 1, "Busy Spell");
+        let maintenance = VaultMaintenanceState::default();
+        let _import = maintenance.start_import().expect("start import");
+
+        delete_spell_with_conn(&conn, root.path(), &maintenance, 1).expect("delete spell");
+
+        assert!(
+            spell_file_path_in_root(root.path(), &hash).exists(),
+            "deferred GC owns cleanup while an import runs"
+        );
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_leaves_maintenance_idle() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = setup_spell_delete_test_db();
+        seed_vaulted_spell(&conn, root.path(), 1, "Brief Spell");
+        let maintenance = VaultMaintenanceState::default();
+
+        delete_spell_with_conn(&conn, root.path(), &maintenance, 1).expect("delete spell");
+
+        maintenance
+            .start_import()
+            .expect("an import can start right after a delete");
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_ignores_malformed_content_hash() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = setup_spell_delete_test_db();
+        conn.execute(
+            "INSERT INTO spell (id, name, level, description, content_hash) VALUES (1, 'Tampered', 1, 'Desc', '../escape')",
+            [],
+        )
+        .expect("seed tampered spell row");
+        std::fs::create_dir_all(root.path().join("spells")).expect("create spells dir");
+        let sentinel = root.path().join("escape.json");
+        std::fs::write(&sentinel, "{}").expect("write sentinel");
+
+        delete_spell_with_conn(&conn, root.path(), &VaultMaintenanceState::default(), 1)
+            .expect("delete spell");
+
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("count spells");
+        assert_eq!(remaining, 0);
+        assert!(
+            sentinel.exists(),
+            "a malformed hash must not map to a file outside spells/"
+        );
     }
 
     #[test]

@@ -9,7 +9,10 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
+from importlib import metadata
 from pathlib import Path
+
+from release_requirements import LOCK_PATH, Pin, parse_pins
 
 ML_DIR = Path(__file__).resolve().parent
 REPO_ROOT = ML_DIR.parent.parent
@@ -19,7 +22,6 @@ ALLOWED_HOST_TUPLES = {
     "x86_64-unknown-linux-gnu",
 }
 RUNTIME_MODULES = ("pdfminer.high_level", "docx")
-RUNTIME_PACKAGES = ("pdfminer.six>=20231228", "python-docx>=1.1.0")
 
 
 def host_tuple_from_rustc_output(raw: str) -> str:
@@ -91,31 +93,58 @@ def require_runtime_imports(
         raise SystemExit(
             "sidecar freeze requires "
             + ", ".join(missing)
-            + "; install pdfminer.six and python-docx into the freeze interpreter "
+            + "; install services/ml/requirements-release.lock into the freeze interpreter "
             "(hiddenimports cannot bundle wheels that were never installed)"
         )
 
 
-def install_runtime_packages(packages: tuple[str, ...] = RUNTIME_PACKAGES) -> None:
-    completed = subprocess.run(
-        [sys.executable, "-m", "pip", "install", *packages],
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise SystemExit(
-            f"failed to install freeze runtime packages {', '.join(packages)}"
-        )
-    importlib.invalidate_caches()
+INSTALL_LOCK_COMMAND = (
+    "python -m pip install --require-hashes --only-binary=:all: "
+    "-r services/ml/requirements-release.lock"
+)
 
 
-def ensure_runtime_packages(
-    importer: Callable[[str], object] | None = None,
-    installer: Callable[[tuple[str, ...]], None] | None = None,
+def _marker_applies(marker: str) -> bool:
+    if not marker:
+        return True
+    from packaging.markers import Marker  # installed with PyInstaller
+
+    return Marker(marker).evaluate()
+
+
+def lock_mismatches(
+    pins: list[Pin],
+    installed_version: Callable[[str], str] | None = None,
+    marker_applies: Callable[[str], bool] | None = None,
+) -> list[str]:
+    lookup = installed_version or metadata.version
+    applies = marker_applies or _marker_applies
+    problems: list[str] = []
+    for pin in pins:
+        if not applies(pin.marker):
+            continue
+        try:
+            found = lookup(pin.name)
+        except metadata.PackageNotFoundError:
+            problems.append(f"{pin.name} (not installed, lock pins {pin.version})")
+            continue
+        if found != pin.version:
+            problems.append(f"{pin.name} {found} (lock pins {pin.version})")
+    return problems
+
+
+def require_locked_versions(
+    lock_path: Path = LOCK_PATH,
+    installed_version: Callable[[str], str] | None = None,
 ) -> None:
-    if _missing_runtime_imports(importer):
-        install = installer or install_runtime_packages
-        install(RUNTIME_PACKAGES)
-    require_runtime_imports(importer=importer)
+    pins = parse_pins(lock_path.read_text(encoding="utf-8"))
+    problems = lock_mismatches(pins, installed_version)
+    if problems:
+        raise SystemExit(
+            "sidecar freeze requires the hash-pinned release packages; mismatched: "
+            + ", ".join(problems)
+            + f". Run: {INSTALL_LOCK_COMMAND}"
+        )
 
 
 def main() -> int:
@@ -127,7 +156,8 @@ def main() -> int:
     windows = sys.platform == "win32"
     dest = BINARIES_DIR / binary_filename(host_tuple(), windows)
     if not args.skip_pyinstaller:
-        ensure_runtime_packages()
+        require_locked_versions()
+        require_runtime_imports()
         spec = ML_DIR / "spellbook_sidecar.spec"
         completed = subprocess.run(
             [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(spec)],

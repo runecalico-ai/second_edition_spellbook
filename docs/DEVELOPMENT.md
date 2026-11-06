@@ -49,21 +49,23 @@ The CI list relies on build tools that GitHub runners preinstall. On a fresh Ubu
 
 Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` and `pnpm tauri:build --debug` do not: `scripts/tauri_build.mjs` adds that config only to release builds, so debug builds need no staging. Release builds run the frozen `spellbook-sidecar` installed next to the app. Debug builds run `services/ml/spellbook_sidecar.py` with the repository venv and use a frozen copy next to the exe only when the script is missing.
 
-The prepare script freezes the sidecar with PyInstaller (from `services/ml/requirements-dev.txt`) and must run under Python 3.14. Like CI, create the repository-root `.venv` before any build path (the Windows installer script also uses it). On Ubuntu 24.04, install Python 3.14 separately (system `python3` is 3.12).
+The prepare script freezes the sidecar with PyInstaller and must run under Python 3.14. The freeze refuses to run unless the venv matches `services/ml/requirements-release.lock`, the hash-pinned package set that release builds ship. Like CI, create the repository-root `.venv` before any build path (the Windows installer script also uses it). On Ubuntu 24.04, install Python 3.14 separately (system `python3` is 3.12).
 
 Python environment, Windows (PowerShell, from repository root):
 
 ```powershell
 py -3.14 -m venv .venv
-.\.venv\Scripts\python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
+.\.venv\Scripts\python -m pip install --require-hashes --only-binary=:all: -r services/ml/requirements-release.lock
 ```
 
 Python environment, Linux (bash, from repository root):
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: -r services/ml/requirements-release.lock
 ```
+
+To run the sidecar tests in the same venv, also install `services/ml/requirements-dev.txt`. pip keeps the locked versions because they already satisfy `requirements.txt`.
 
 Windows installer (from repository root):
 

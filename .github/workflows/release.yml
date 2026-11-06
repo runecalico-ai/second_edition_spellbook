@@ -71,7 +71,7 @@ jobs:
           python-version: "3.14"
           cache: ${{ github.event_name != 'push' && 'pip' || '' }}
           cache-dependency-path: |
-            services/ml/requirements*.txt
+            services/ml/requirements-release.lock
 
       - name: Install JS dependencies
         working-directory: apps/desktop
@@ -80,7 +80,7 @@ jobs:
       - name: Create Python venv and install
         run: |
           python -m venv .venv
-          .\.venv\Scripts\python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
+          .\.venv\Scripts\python -m pip install --require-hashes --only-binary=:all: -r services/ml/requirements-release.lock
 
       - name: Set version from tag
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -211,7 +211,7 @@ jobs:
           python-version: "3.14"
           cache: ${{ github.event_name != 'push' && 'pip' || '' }}
           cache-dependency-path: |
-            services/ml/requirements*.txt
+            services/ml/requirements-release.lock
 
       - name: Install JS dependencies
         working-directory: apps/desktop
@@ -220,7 +220,7 @@ jobs:
       - name: Create Python venv and install
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install -r services/ml/requirements.txt -r services/ml/requirements-dev.txt
+          .venv/bin/python -m pip install --require-hashes --only-binary=:all: -r services/ml/requirements-release.lock
 
       - name: Set version from tag
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')

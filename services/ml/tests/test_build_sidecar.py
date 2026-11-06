@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from importlib import metadata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -10,11 +11,13 @@ import pytest
 from build_sidecar import (
     ALLOWED_HOST_TUPLES,
     binary_filename,
-    ensure_runtime_packages,
     host_tuple_from_rustc_output,
+    lock_mismatches,
+    require_locked_versions,
     require_python_314,
     require_runtime_imports,
 )
+from release_requirements import Pin
 
 
 def test_require_python_314_rejects_other_versions() -> None:
@@ -41,7 +44,10 @@ def test_linux_filename() -> None:
 
 
 def test_parse_host_tuple_flag() -> None:
-    assert host_tuple_from_rustc_output("x86_64-pc-windows-msvc\n") == "x86_64-pc-windows-msvc"
+    assert (
+        host_tuple_from_rustc_output("x86_64-pc-windows-msvc\n")
+        == "x86_64-pc-windows-msvc"
+    )
 
 
 def test_parse_rustc_vv() -> None:
@@ -73,38 +79,47 @@ def test_require_runtime_imports_succeeds_when_present() -> None:
     require_runtime_imports(importer=_succeed_import)
 
 
-def test_ensure_runtime_packages_installs_then_succeeds() -> None:
-    available = {"ready": False}
-    installed: list[str] = []
+def _versions(installed: dict[str, str]):
+    def lookup(name: str) -> str:
+        try:
+            return installed[name]
+        except KeyError:
+            raise metadata.PackageNotFoundError(name) from None
 
-    def importer(name: str) -> object:
-        if not available["ready"]:
-            raise ImportError(name)
-        return object()
-
-    def installer(packages: tuple[str, ...]) -> None:
-        installed.extend(packages)
-        available["ready"] = True
-
-    ensure_runtime_packages(importer=importer, installer=installer)
-    assert "pytest" not in " ".join(installed)
-    assert any("pdfminer.six" in package for package in installed)
-    assert any("python-docx" in package for package in installed)
+    return lookup
 
 
-def test_ensure_runtime_packages_raises_when_still_missing() -> None:
-    def installer(_packages: tuple[str, ...]) -> None:
-        return None
+def test_lock_mismatches_reports_wrong_and_missing_versions() -> None:
+    pins = [Pin("lxml", "6.1.3"), Pin("altgraph", "0.17.5"), Pin("cffi", "2.1.1")]
+    problems = lock_mismatches(
+        pins,
+        installed_version=_versions({"lxml": "6.0.0", "cffi": "2.1.1"}),
+        marker_applies=lambda _marker: True,
+    )
+    assert problems == [
+        "lxml 6.0.0 (lock pins 6.1.3)",
+        "altgraph (not installed, lock pins 0.17.5)",
+    ]
 
-    with pytest.raises(SystemExit, match="pdfminer.high_level"):
-        ensure_runtime_packages(importer=_raise_import_error, installer=installer)
+
+def test_lock_mismatches_skips_pins_for_other_platforms() -> None:
+    pins = [Pin("pefile", "2024.8.26", 'sys_platform == "win32"')]
+    problems = lock_mismatches(
+        pins,
+        installed_version=_versions({}),
+        marker_applies=lambda marker: not marker,
+    )
+    assert problems == []
 
 
-def test_ensure_runtime_packages_skips_install_when_present() -> None:
-    calls = {"install": 0}
+def test_require_locked_versions_names_the_install_command(tmp_path: Path) -> None:
+    lock = tmp_path / "requirements-release.lock"
+    lock.write_text(f"lxml==6.1.3 \\\n    --hash=sha256:{'a' * 64}\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="requirements-release.lock"):
+        require_locked_versions(lock, installed_version=_versions({}))
 
-    def installer(_packages: tuple[str, ...]) -> None:
-        calls["install"] += 1
 
-    ensure_runtime_packages(importer=_succeed_import, installer=installer)
-    assert calls["install"] == 0
+def test_require_locked_versions_accepts_a_matching_install(tmp_path: Path) -> None:
+    lock = tmp_path / "requirements-release.lock"
+    lock.write_text(f"lxml==6.1.3 \\\n    --hash=sha256:{'a' * 64}\n", encoding="utf-8")
+    require_locked_versions(lock, installed_version=_versions({"lxml": "6.1.3"}))

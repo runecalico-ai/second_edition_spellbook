@@ -9,9 +9,9 @@ PyPI publishes for each pin, so one lock serves Windows and Linux builds.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import re
-import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -68,7 +68,7 @@ def release_sha256s(pin: Pin, fetch: Callable[[str], bytes] | None = None) -> li
     url = PYPI_JSON.format(name=pin.name, version=pin.version)
     try:
         files = json.loads((fetch or _fetch_url)(url)).get("urls", [])
-    except (urllib.error.URLError, ValueError) as exc:
+    except (OSError, http.client.HTTPException, ValueError) as exc:
         raise SystemExit(
             f"cannot read PyPI release data for {pin.name}=={pin.version}: {exc}"
         ) from exc

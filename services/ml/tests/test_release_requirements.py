@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import sys
 import urllib.error
@@ -135,6 +136,17 @@ def test_release_sha256s_rejects_malformed_digest(digest: object) -> None:
 def test_release_sha256s_names_pin_on_http_error() -> None:
     def fetch(url: str) -> bytes:
         raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
+
+    with pytest.raises(SystemExit, match=r"lxml==6\.1\.3"):
+        release_sha256s(Pin("lxml", "6.1.3"), fetch)
+
+
+@pytest.mark.parametrize(
+    "error", [TimeoutError("timed out"), http.client.IncompleteRead(b"")]
+)
+def test_release_sha256s_names_pin_on_read_failure(error: Exception) -> None:
+    def fetch(_url: str) -> bytes:
+        raise error
 
     with pytest.raises(SystemExit, match=r"lxml==6\.1\.3"):
         release_sha256s(Pin("lxml", "6.1.3"), fetch)

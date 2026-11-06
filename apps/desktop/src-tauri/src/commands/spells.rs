@@ -1020,21 +1020,22 @@ pub(crate) fn delete_spell_with_conn(
         );
         return Ok(());
     }
-    if is_content_hash_live(conn, &hash)? {
-        return Ok(());
-    }
-    let Ok(_gc_guard) = maintenance.start_gc() else {
-        tracing::info!(%hash, "vault maintenance busy; leaving spell file for deferred GC");
-        return Ok(());
-    };
-
-    let path = spell_file_path_in_root(vault_root, &hash);
-    match std::fs::remove_file(&path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            tracing::warn!(path = %path.display(), %error, "failed to remove deleted spell's vault file; deferred GC will retry");
+    let cleanup = maintenance.with_idle_lock(|| {
+        if is_content_hash_live(conn, &hash)? {
+            return Ok(());
         }
+        let path = spell_file_path_in_root(vault_root, &hash);
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::warn!(path = %path.display(), %error, "failed to remove deleted spell's vault file; deferred GC will retry");
+            }
+        }
+        Ok(())
+    })?;
+    if cleanup.is_none() {
+        tracing::info!(%hash, "vault maintenance busy; leaving spell file for deferred GC");
     }
     Ok(())
 }
@@ -1743,6 +1744,20 @@ mod tests {
             spell_file_path_in_root(root.path(), &hash).exists(),
             "deferred GC owns cleanup while an import runs"
         );
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_leaves_maintenance_idle() {
+        let root = tempfile::tempdir().expect("vault root");
+        let conn = setup_spell_delete_test_db();
+        seed_vaulted_spell(&conn, root.path(), 1, "Brief Spell");
+        let maintenance = VaultMaintenanceState::default();
+
+        delete_spell_with_conn(&conn, root.path(), &maintenance, 1).expect("delete spell");
+
+        maintenance
+            .start_import()
+            .expect("an import can start right after a delete");
     }
 
     #[test]

@@ -298,6 +298,7 @@ If the database is unusable, you can restore from an automatic backup.
 ### Vault Maintenance and Integrity
 
 - **Optimize Vault (GC):** Removes spell files from `spells/` that are no longer referenced by any spell in the database (e.g. after deleting spells or replacing them with new versions). The button is disabled while an import is in progress. An integrity check runs before GC; if it reports issues, resolve or acknowledge them before running Optimize Vault.
+- **Deleting a spell:** Also removes that spell's file from `spells/` when no other spell, artifact, or character entry uses the same content hash. If an import or Optimize Vault is running at that moment, the file stays until the next GC.
 - **Unrecoverable spell files:** If the integrity check finds a spell row whose vault file is missing and the row has no `canonical_data` (or it is NULL), that spell cannot be re-exported to the vault. The app reports these as "unrecoverable" in the integrity summary (e.g. in the Vault Maintenance dialog or startup warning). You can keep the row and re-add content via edit/import, or remove the spell from the library.
 - **Windows path length:** If the full path to a vault file would exceed 260 characters, the app logs a warning. Use a shorter vault base path (e.g. a data directory closer to the drive root) to avoid hitting the limit.
 

@@ -467,6 +467,23 @@ impl VaultMaintenanceState {
         drop(phase);
         Ok(VaultGcGuard { state: self })
     }
+
+    /// Runs `f` while holding the phase lock, only when no import or GC is active.
+    /// Imports and GC that start meanwhile wait for `f` instead of failing, so keep
+    /// `f` short.
+    pub(crate) fn with_idle_lock<T>(
+        &self,
+        f: impl FnOnce() -> Result<T, AppError>,
+    ) -> Result<Option<T>, AppError> {
+        let phase = self
+            .phase
+            .lock()
+            .map_err(|_| AppError::Unknown("Vault maintenance state is poisoned".to_string()))?;
+        if *phase != VaultMaintenancePhase::Idle {
+            return Ok(None);
+        }
+        f().map(Some)
+    }
 }
 
 impl Drop for VaultImportGuard<'_> {
@@ -1506,6 +1523,46 @@ mod tests {
             err.to_string().contains("Vault optimization"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_with_idle_lock_skips_while_import_active() {
+        let maintenance_state = VaultMaintenanceState::default();
+        let _import_guard = maintenance_state.start_import().expect("start import");
+
+        let ran = maintenance_state
+            .with_idle_lock(|| Ok(()))
+            .expect("lock maintenance state");
+
+        assert!(
+            ran.is_none(),
+            "closure must not run while an import is active"
+        );
+    }
+
+    #[test]
+    fn test_with_idle_lock_makes_concurrent_import_wait_instead_of_fail() {
+        let maintenance_state = VaultMaintenanceState::default();
+        std::thread::scope(|scope| {
+            let mut import = None;
+            maintenance_state
+                .with_idle_lock(|| {
+                    import = Some(scope.spawn(|| maintenance_state.start_import().map(drop)));
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    assert!(
+                        !import.as_ref().expect("import thread").is_finished(),
+                        "import must wait for the lock"
+                    );
+                    Ok(())
+                })
+                .expect("lock maintenance state")
+                .expect("maintenance state is idle");
+            import
+                .expect("import thread")
+                .join()
+                .expect("import thread panicked")
+                .expect("import starts once the lock is released");
+        });
     }
 
     #[test]

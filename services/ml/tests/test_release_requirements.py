@@ -46,7 +46,22 @@ def test_parse_pins_reads_pins_markers_and_skips_comments() -> None:
     ]
 
 
-@pytest.mark.parametrize("line", ["lxml>=6.0", "lxml", "==6.1.3"])
+def test_parse_pins_strips_inline_comment() -> None:
+    assert parse_pins("lxml==6.1.3  # note\n") == [Pin("lxml", "6.1.3")]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "lxml>=6.0",
+        "lxml",
+        "==6.1.3",
+        "pkg[x]==1.0",
+        "lxml===6.1.3",
+        "a>=1,==2",
+        "foo @ https://host/foo==1.0.whl",
+    ],
+)
 def test_parse_pins_rejects_unpinned_lines(line: str) -> None:
     with pytest.raises(SystemExit, match="pinned with =="):
         parse_pins(line + "\n")

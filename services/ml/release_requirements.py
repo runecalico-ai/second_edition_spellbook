@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -25,6 +26,9 @@ LOCK_HEADER = (
     "# Install: python -m pip install --require-hashes --only-binary=:all: "
     "-r services/ml/requirements-release.lock\n"
 )
+INLINE_COMMENT = re.compile(r"\s+#.*$")
+NAME = re.compile(r"[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?")
+VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+!_-]*")
 
 
 @dataclass(frozen=True)
@@ -44,11 +48,12 @@ def parse_pins(text: str) -> list[Pin]:
         line = raw.strip()
         if not line or line.startswith(("#", "--hash")):
             continue
-        spec, _, marker = line.removesuffix("\\").strip().partition(";")
-        name, sep, version = spec.strip().partition("==")
-        if not sep or not name.strip() or not version.strip():
+        line = INLINE_COMMENT.sub("", line).removesuffix("\\").strip()
+        spec, _, marker = line.partition(";")
+        name, sep, version = (part.strip() for part in spec.partition("=="))
+        if not sep or not NAME.fullmatch(name) or not VERSION.fullmatch(version):
             raise SystemExit(f"release requirement must be pinned with ==: {raw!r}")
-        pins.append(Pin(name.strip(), version.strip(), marker.strip()))
+        pins.append(Pin(name, version, marker.strip()))
     return pins
 
 

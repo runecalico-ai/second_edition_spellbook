@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -64,12 +65,23 @@ def _fetch_url(url: str) -> bytes:
 
 def release_sha256s(pin: Pin, fetch: Callable[[str], bytes] | None = None) -> list[str]:
     url = PYPI_JSON.format(name=pin.name, version=pin.version)
-    files = json.loads((fetch or _fetch_url)(url)).get("urls", [])
+    try:
+        files = json.loads((fetch or _fetch_url)(url)).get("urls", [])
+    except (urllib.error.URLError, ValueError) as exc:
+        raise SystemExit(
+            f"cannot read PyPI release data for {pin.name}=={pin.version}: {exc}"
+        ) from exc
     if not files:
         raise SystemExit(f"PyPI lists no files for {pin.name}=={pin.version}")
     if any(file.get("yanked") for file in files):
         raise SystemExit(f"{pin.name}=={pin.version} is yanked on PyPI")
-    return sorted(file["digests"]["sha256"] for file in files)
+    try:
+        return sorted(file["digests"]["sha256"] for file in files)
+    except (KeyError, TypeError) as exc:
+        raise SystemExit(
+            f"PyPI file entry for {pin.name}=={pin.version} has no sha256 digest: "
+            f"{exc!r}"
+        ) from exc
 
 
 def render_lock(pins: list[Pin], hashes: dict[Pin, list[str]]) -> str:

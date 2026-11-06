@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -88,6 +89,25 @@ def test_release_sha256s_rejects_yanked_release() -> None:
 def test_release_sha256s_rejects_release_without_files() -> None:
     with pytest.raises(SystemExit, match="no files"):
         release_sha256s(Pin("lxml", "6.1.3"), lambda _url: _release_json())
+
+
+def test_release_sha256s_names_pin_on_http_error() -> None:
+    def fetch(url: str) -> bytes:
+        raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
+
+    with pytest.raises(SystemExit, match=r"lxml==6\.1\.3"):
+        release_sha256s(Pin("lxml", "6.1.3"), fetch)
+
+
+def test_release_sha256s_names_pin_on_invalid_json() -> None:
+    with pytest.raises(SystemExit, match=r"lxml==6\.1\.3"):
+        release_sha256s(Pin("lxml", "6.1.3"), lambda _url: b"not json")
+
+
+def test_release_sha256s_names_pin_on_file_without_digest() -> None:
+    body = json.dumps({"urls": [{"yanked": False}]}).encode()
+    with pytest.raises(SystemExit, match=r"lxml==6\.1\.3"):
+        release_sha256s(Pin("lxml", "6.1.3"), lambda _url: body)
 
 
 def test_render_lock_writes_one_hashed_entry_per_pin_sorted_by_name() -> None:

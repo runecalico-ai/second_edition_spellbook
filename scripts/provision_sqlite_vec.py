@@ -19,8 +19,16 @@ RELEASE_BASE = "https://github.com/asg017/sqlite-vec/releases/download"
 
 # Values must match the upstream release's checksums.txt.
 ARCHIVE_SHA256: dict[tuple[str, str, str], str] = {
-    ("0.1.6", "linux", "x86_64"): "438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f",
-    ("0.1.6", "windows", "x86_64"): "f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964",
+    (
+        "0.1.6",
+        "linux",
+        "x86_64",
+    ): "438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f",
+    (
+        "0.1.6",
+        "windows",
+        "x86_64",
+    ): "f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964",
 }
 
 
@@ -76,7 +84,11 @@ def _library_candidates(dest: Path) -> list[Path]:
 
 def ensure_populated(dest: Path) -> Path:
     dest.mkdir(parents=True, exist_ok=True)
-    existing = [path for path in _library_candidates(dest) if path.is_file() and path.stat().st_size > 0]
+    existing = [
+        path
+        for path in _library_candidates(dest)
+        if path.is_file() and path.stat().st_size > 0
+    ]
     if not existing:
         raise SystemExit(f"sqlite-vec resource directory is empty: {dest}")
     return existing[0]
@@ -93,10 +105,14 @@ def stage_library(dest: Path, version: str, os_platform: str, arch: str) -> Path
             with urllib.request.urlopen(url, timeout=60) as response:
                 data = response.read()
         except (urllib.error.URLError, TimeoutError, urllib.error.HTTPError) as exc:
-            raise SystemExit(f"Failed to download sqlite-vec from {url}: {exc}") from exc
+            raise SystemExit(
+                f"Failed to download sqlite-vec from {url}: {exc}"
+            ) from exc
         actual = hashlib.sha256(data).hexdigest()
         if actual != expected:
-            raise SystemExit(f"SHA-256 mismatch for {url}: expected {expected}, got {actual}")
+            raise SystemExit(
+                f"SHA-256 mismatch for {url}: expected {expected}, got {actual}"
+            )
         archive_path.write_bytes(data)
         with tarfile.open(archive_path, "r:gz") as tar:
             tar.extractall(path=tmp, filter="data")

@@ -50,7 +50,10 @@ def _targz_with_member(name: str, content: bytes) -> bytes:
 
 
 def _pin_payload(
-    monkeypatch: pytest.MonkeyPatch, payload: bytes, os_platform: str = "windows", arch: str = "x86_64"
+    monkeypatch: pytest.MonkeyPatch,
+    payload: bytes,
+    os_platform: str = "windows",
+    arch: str = "x86_64",
 ) -> None:
     monkeypatch.setitem(
         provision_sqlite_vec.ARCHIVE_SHA256,
@@ -149,14 +152,26 @@ def test_stage_library_rejects_nested_library(
 
 def test_pinned_archive_hashes() -> None:
     assert provision_sqlite_vec.ARCHIVE_SHA256 == {
-        ("0.1.6", "linux", "x86_64"): "438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f",
-        ("0.1.6", "windows", "x86_64"): "f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964",
+        (
+            "0.1.6",
+            "linux",
+            "x86_64",
+        ): "438e0df29f3f8db3525b3aa0dcc0a199869c0bcec9d7abc5b51850469caf867f",
+        (
+            "0.1.6",
+            "windows",
+            "x86_64",
+        ): "f1c615577ad2e692d1e2fe046fe65994dafd8a8cae43e9e864f5f682dc295964",
     }
 
 
-def test_stage_library_rejects_checksum_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stage_library_rejects_checksum_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     payload = _targz_with_member("vec0.dll", b"tampered")
-    monkeypatch.setattr(urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(payload))
+    monkeypatch.setattr(
+        urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(payload)
+    )
     dest = tmp_path / "out"
     with pytest.raises(SystemExit) as exc:
         stage_library(dest, "0.1.6", "windows", "x86_64")

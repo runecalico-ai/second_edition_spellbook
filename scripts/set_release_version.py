@@ -52,7 +52,9 @@ def main() -> int:
     if not SEMVER.fullmatch(version):
         raise SystemExit(f"not a semver release version: {args.version!r}")
     _rewrite(REPO / "apps/desktop/package.json", replace_json_version, version)
-    _rewrite(REPO / "apps/desktop/src-tauri/tauri.conf.json", replace_json_version, version)
+    _rewrite(
+        REPO / "apps/desktop/src-tauri/tauri.conf.json", replace_json_version, version
+    )
     _rewrite(REPO / "apps/desktop/src-tauri/Cargo.toml", replace_cargo_version, version)
     print(version)
     return 0

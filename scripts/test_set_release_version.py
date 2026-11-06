@@ -73,7 +73,16 @@ def test_main_rewrites_all_three_files(
 
     assert main() == 0
 
-    assert pkg.read_bytes() == b'{\n  "name": "spellbook-desktop",\n  "version": "0.2.0-rc.1"\n}\n'
-    assert conf.read_bytes() == b'{\n  "productName": "Spellbook",\n  "version": "0.2.0-rc.1"\n}\n'
-    assert cargo.read_bytes() == b'[package]\nname = "spellbook-desktop"\nversion = "0.2.0-rc.1"\n'
+    assert (
+        pkg.read_bytes()
+        == b'{\n  "name": "spellbook-desktop",\n  "version": "0.2.0-rc.1"\n}\n'
+    )
+    assert (
+        conf.read_bytes()
+        == b'{\n  "productName": "Spellbook",\n  "version": "0.2.0-rc.1"\n}\n'
+    )
+    assert (
+        cargo.read_bytes()
+        == b'[package]\nname = "spellbook-desktop"\nversion = "0.2.0-rc.1"\n'
+    )
     assert capsys.readouterr().out == "0.2.0-rc.1\n"

@@ -74,7 +74,9 @@ def test_verify_checksum_rejects_bad_sidecar(tmp_path: Path, corrupt) -> None:
     asset = tmp_path / "Spellbook_0.2.0_amd64.deb"
     asset.write_bytes(b"deb")
     sidecar = tmp_path / "Spellbook_0.2.0_amd64.deb.sha256"
-    sidecar.write_bytes(corrupt(hashlib.sha256(b"deb").hexdigest(), asset.name).encode())
+    sidecar.write_bytes(
+        corrupt(hashlib.sha256(b"deb").hexdigest(), asset.name).encode()
+    )
 
     with pytest.raises(SystemExit, match="checksum verification failed"):
         verify_checksum(asset, sidecar)
@@ -97,7 +99,9 @@ def test_main_writes_sidecar_per_asset(
     deb = tmp_path / "Spellbook_0.2.0_amd64.deb"
     appimage.write_bytes(b"appimage")
     deb.write_bytes(b"deb")
-    monkeypatch.setattr(sys, "argv", ["checksum_release_assets.py", str(appimage), str(deb)])
+    monkeypatch.setattr(
+        sys, "argv", ["checksum_release_assets.py", str(appimage), str(deb)]
+    )
 
     assert main() == 0
 
@@ -105,7 +109,9 @@ def test_main_writes_sidecar_per_asset(
     assert (tmp_path / "Spellbook_0.2.0_amd64.deb.sha256").is_file()
 
 
-def test_main_missing_asset_exits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_missing_asset_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     missing = tmp_path / "Spellbook_0.2.0_x64-setup.exe"
     monkeypatch.setattr(sys, "argv", ["checksum_release_assets.py", str(missing)])
 

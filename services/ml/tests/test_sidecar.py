@@ -67,7 +67,9 @@ def test_import_markdown_with_utf8_bom(tmp_path: Path):
 def test_write_response_survives_bom_on_cp1252_stdout(monkeypatch):
     """JSON-RPC stdout must not raise UnicodeEncodeError when a payload contains U+FEFF."""
     buf = io.BytesIO()
-    fake_stdout = io.TextIOWrapper(buf, encoding="cp1252", errors="strict", newline="\n")
+    fake_stdout = io.TextIOWrapper(
+        buf, encoding="cp1252", errors="strict", newline="\n"
+    )
     monkeypatch.setattr(spellbook_sidecar.sys, "stdout", fake_stdout)
 
     payload = {

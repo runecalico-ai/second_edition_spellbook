@@ -51,7 +51,7 @@
 - Consumes: `sqlite_vec_library_name()`, `sqlite_vec_bundled_source_candidates(resource_dir, exe_dir)` (unchanged).
 - Produces: unchanged signature `fn install_sqlite_vec_if_needed(data_dir: &Path, resource_dir: Option<&Path>, exe_dir: Option<&Path>) -> Result<Option<PathBuf>, AppError>`; new private helpers `fn same_file_contents(a: &Path, b: &Path) -> bool` and `fn replace_file(source: &Path, destination: &Path) -> std::io::Result<()>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In the `tests` module of `pool.rs`, delete `install_sqlite_vec_leaves_existing_destination_in_place` and add:
 
@@ -152,12 +152,12 @@ In the `tests` module of `pool.rs`, delete `install_sqlite_vec_leaves_existing_d
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run (from `apps/desktop/src-tauri`): `cargo test install_sqlite_vec`
 Expected: `install_sqlite_vec_replaces_outdated_vault_copy` FAILS (`left: b"old-sqlite-vec"`, `right: b"fake-sqlite-vec"`). The other `install_sqlite_vec_*` tests pass.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `pool.rs`, replace `install_sqlite_vec_if_needed` with:
 
@@ -252,14 +252,14 @@ fn replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
 
 `init_db` calls this before it opens any pool connection, so this process has not loaded the old library yet. On Windows, `fs::rename` replaces an existing file. It fails only when another process holds the DLL loaded; the warning path covers that case.
 
-- [ ] **Step 4: Run the tests and the Rust gate**
+- [x] **Step 4: Run the tests and the Rust gate**
 
 Run: `cargo test install_sqlite_vec`
 Expected: all `install_sqlite_vec_*` tests pass (7: the 3 kept from before plus the 4 new ones).
 
 Run the Rust gate from Global Constraints. Expected: all exit 0.
 
-- [ ] **Step 5: Document the refresh**
+- [x] **Step 5: Document the refresh**
 
 In `apps/desktop/src-tauri/AGENTS.md`, in the `## Database` list, directly after the `- **Vector Search**: …` bullet, insert:
 
@@ -273,7 +273,7 @@ In `docs/TROUBLESHOOTING.md`, at the end of the `- **Fix**:` line of entry `### 
  After an app upgrade, startup replaces the vault copy with the newly installed library. If the log shows `sqlite-vec: could not refresh vault copy`, close every Spellbook window and start the app again.
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/db/pool.rs apps/desktop/src-tauri/AGENTS.md docs/TROUBLESHOOTING.md

@@ -210,7 +210,7 @@ def test_main_writes_lf_lock_for_input_pins(
     )
 
 
-RUNTIME_DISTRIBUTIONS = ("pdfminer.six", "python-docx")
+TEST_ONLY_DISTRIBUTIONS = ("pytest",)
 FREEZE_TOOLS = ("pyinstaller", "pyinstaller-hooks-contrib")
 
 
@@ -255,14 +255,20 @@ def test_every_locked_pin_has_a_hash() -> None:
 
 def test_lock_satisfies_runtime_requirements() -> None:
     locked = _locked()
+    test_only = {_normalize(name) for name in TEST_ONLY_DISTRIBUTIONS}
     checked = []
     for requirement in _requirements(ML_DIR / "requirements.txt"):
-        if requirement.name not in RUNTIME_DISTRIBUTIONS:
+        name = _normalize(requirement.name)
+        if name in test_only:
             continue
-        pin = locked[_normalize(requirement.name)]
+        assert name in locked, (
+            f"{requirement} is in requirements.txt but missing from "
+            "requirements-release.lock"
+        )
+        pin = locked[name]
         assert requirement.specifier.contains(pin.version), (requirement, pin)
-        checked.append(requirement.name)
-    assert sorted(checked) == sorted(RUNTIME_DISTRIBUTIONS)
+        checked.append(name)
+    assert {"pdfminer-six", "python-docx"} <= set(checked), checked
 
 
 def test_lock_matches_pinned_freeze_tools() -> None:

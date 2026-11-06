@@ -37,6 +37,7 @@
 | `apps/desktop/src-tauri/src/commands/embeddings.rs` | Forced reindex clears failed chunks' vectors; revision recorded when no stale vectors remain | 2 |
 | `apps/desktop/src-tauri/AGENTS.md` | Database section: sqlite-vec refresh; embedding index revision rule | 1, 2 |
 | `docs/TROUBLESHOOTING.md` | sqlite-vec entry: upgrades refresh the vault copy | 1 |
+| `openspec/specs/search/spec.md` | Scenario "Embedding index revision recorded" matches the new rule (added in review) | 2 |
 
 ---
 
@@ -296,7 +297,7 @@ git commit -m "fix(db): refresh the vault sqlite-vec copy after app upgrades" -m
   - `fn should_record_embedding_index_revision(force: bool, stale_vectors_remain: bool) -> bool`
   - `reindex_embeddings_internal` keeps its signature and still returns `Result<ReindexResult, AppError>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In the `tests` module of `embeddings.rs`, replace `embedding_index_revision_recorded_only_after_clean_forced_reindex` with:
 
@@ -373,12 +374,12 @@ In the `tests` module of `embeddings.rs`, replace `embedding_index_revision_reco
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run (from `apps/desktop/src-tauri`): `cargo test clear_failed_chunk_vectors`
 Expected: compile errors, `cannot find function clear_failed_chunk_vectors` and `mismatched types` for the `bool` second argument of `should_record_embedding_index_revision`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace `should_record_embedding_index_revision` with:
 
@@ -526,14 +527,14 @@ In `run_reindex_chunks`:
 
 An incremental run (`force == false`) only embeds spells that have no vector, so a failed chunk there has nothing stale to clear.
 
-- [ ] **Step 4: Run the tests and the Rust gate**
+- [x] **Step 4: Run the tests and the Rust gate**
 
 Run: `cargo test embedding_index`, then `cargo test clear_failed_chunk_vectors`, then `cargo test reindex`
 Expected: all pass. The existing reindex tests must not change behavior: `ReindexResult` values are the same as before.
 
 Run the Rust gate from Global Constraints. Expected: all exit 0.
 
-- [ ] **Step 5: Update the revision rule in AGENTS.md**
+- [x] **Step 5: Update the revision rule in AGENTS.md**
 
 In `apps/desktop/src-tauri/AGENTS.md`, in the `- **Embedding index revision**:` bullet, replace:
 
@@ -547,7 +548,7 @@ with:
 and every forced reindex records it once no older vectors remain. A chunk that fails in a forced reindex loses its old vectors, and the next startup's incremental backfill retries only those spells.
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/commands/embeddings.rs apps/desktop/src-tauri/AGENTS.md

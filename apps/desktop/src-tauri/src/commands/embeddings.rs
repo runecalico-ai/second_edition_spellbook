@@ -1076,8 +1076,34 @@ fn record_embedding_index_revision(conn: &rusqlite::Connection) -> Result<(), Ap
     Ok(())
 }
 
-fn should_record_embedding_index_revision(force: bool, result: &ReindexResult) -> bool {
-    force && result.failed == 0
+fn should_record_embedding_index_revision(force: bool, stale_vectors_remain: bool) -> bool {
+    force && !stale_vectors_remain
+}
+
+struct ReindexRun {
+    result: ReindexResult,
+    /// A forced run left vectors from an older model revision in `spell_vec`.
+    stale_vectors_remain: bool,
+}
+
+/// Forced reindex only: drops a failed chunk's old vectors so they cannot outlive a
+/// model revision change. Those spells then have no vector, and the next incremental
+/// backfill retries them. Returns `false` when old vectors may remain.
+async fn clear_failed_chunk_vectors(db: Arc<crate::db::Pool>, chunk: &[SpellEmbeddingRow]) -> bool {
+    let spell_ids: Vec<i64> = chunk.iter().map(|(id, _, _)| *id).collect();
+    match tokio::task::spawn_blocking(move || invalidate_spell_vec_rows_blocking(&db, &spell_ids))
+        .await
+    {
+        Ok(Ok(())) => true,
+        Ok(Err(error)) => {
+            tracing::warn!(?error, "failed to clear vectors of a failed reindex chunk");
+            false
+        }
+        Err(join_error) => {
+            tracing::warn!(?join_error, "clear failed reindex chunk task failed");
+            false
+        }
+    }
 }
 
 pub async fn reindex_embeddings_internal(
@@ -1087,12 +1113,12 @@ pub async fn reindex_embeddings_internal(
     force: bool,
 ) -> Result<ReindexResult, AppError> {
     ensure_no_active_embedding_download(state.as_ref())?;
-    let result = {
+    let run = {
         let _reindex_guard = ReindexInProgressGuard::try_acquire(Arc::clone(&state))?;
         run_reindex_chunks(app, Arc::clone(&state), Arc::clone(&db), force).await
     };
-    if let Ok(summary) = &result {
-        if should_record_embedding_index_revision(force, summary) {
+    if let Ok(run) = &run {
+        if should_record_embedding_index_revision(force, run.stale_vectors_remain) {
             let pool = Arc::clone(&db);
             match tokio::task::spawn_blocking(move || {
                 let conn = pool.get()?;
@@ -1111,7 +1137,7 @@ pub async fn reindex_embeddings_internal(
         }
     }
     reembed_pending_spells(Arc::clone(&state), db).await;
-    result
+    run.map(|run| run.result)
 }
 
 async fn run_reindex_chunks(
@@ -1119,7 +1145,7 @@ async fn run_reindex_chunks(
     state: Arc<EmbeddingState>,
     db: Arc<crate::db::Pool>,
     force: bool,
-) -> Result<ReindexResult, AppError> {
+) -> Result<ReindexRun, AppError> {
     let model =
         await_ready_model_with_timeout(Arc::clone(&state), std::time::Duration::from_secs(30))
             .await?;
@@ -1140,16 +1166,20 @@ async fn run_reindex_chunks(
     };
 
     if candidate_count == 0 {
-        return Ok(ReindexResult {
-            total,
-            indexed: 0,
-            skipped: initial_skipped,
-            failed: 0,
+        return Ok(ReindexRun {
+            result: ReindexResult {
+                total,
+                indexed: 0,
+                skipped: initial_skipped,
+                failed: 0,
+            },
+            stale_vectors_remain: false,
         });
     }
 
     let mut indexed = 0_u32;
     let mut failed = 0_u32;
+    let mut stale_vectors_remain = false;
 
     for (offset, chunk) in rows.chunks(EMBEDDING_INDEX_CHUNK_SIZE).enumerate() {
         let texts: Vec<String> = chunk
@@ -1158,7 +1188,7 @@ async fn run_reindex_chunks(
             .collect();
 
         let model_for_chunk = Arc::clone(&model);
-        match tokio::task::spawn_blocking(move || {
+        let chunk_ok = match tokio::task::spawn_blocking(move || {
             let mut guard = model_for_chunk
                 .lock()
                 .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
@@ -1168,21 +1198,19 @@ async fn run_reindex_chunks(
         {
             Ok(Ok(vectors)) => match upsert_embedding_chunk(Arc::clone(&db), chunk, &vectors).await
             {
-                Ok(()) => {
-                    indexed += chunk.len() as u32;
-                }
+                Ok(()) => true,
                 Err(error) => {
                     tracing::warn!(
                         ?error,
                         chunk_len = chunk.len(),
                         "reindex chunk upsert failed"
                     );
-                    failed += chunk.len() as u32;
+                    false
                 }
             },
             Ok(Err(error)) => {
                 tracing::warn!(?error, chunk_len = chunk.len(), "reindex chunk failed");
-                failed += chunk.len() as u32;
+                false
             }
             Err(join_error) => {
                 tracing::warn!(
@@ -1190,7 +1218,15 @@ async fn run_reindex_chunks(
                     chunk_len = chunk.len(),
                     "reindex chunk join failed (non-fatal)"
                 );
-                failed += chunk.len() as u32;
+                false
+            }
+        };
+        if chunk_ok {
+            indexed += chunk.len() as u32;
+        } else {
+            failed += chunk.len() as u32;
+            if force && !clear_failed_chunk_vectors(Arc::clone(&db), chunk).await {
+                stale_vectors_remain = true;
             }
         }
 
@@ -1208,11 +1244,14 @@ async fn run_reindex_chunks(
 
     let skipped = initial_skipped;
 
-    Ok(ReindexResult {
-        total,
-        indexed,
-        skipped,
-        failed,
+    Ok(ReindexRun {
+        result: ReindexResult {
+            total,
+            indexed,
+            skipped,
+            failed,
+        },
+        stale_vectors_remain,
     })
 }
 
@@ -2168,22 +2207,74 @@ mod tests {
     }
 
     #[test]
-    fn embedding_index_revision_recorded_only_after_clean_forced_reindex() {
-        let clean = ReindexResult {
-            total: 2,
-            indexed: 2,
-            skipped: 0,
-            failed: 0,
+    fn embedding_index_revision_recorded_after_forced_reindex_without_stale_vectors() {
+        assert!(should_record_embedding_index_revision(true, false));
+        assert!(!should_record_embedding_index_revision(true, true));
+        assert!(!should_record_embedding_index_revision(false, false));
+    }
+
+    fn seed_spell_vec_row_for_test(conn: &rusqlite::Connection, spell_id: i64) {
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        if conn
+            .execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![spell_id, vector_json],
+            )
+            .is_ok()
+        {
+            return;
+        }
+        let bytes: Vec<u8> = vec![0.0_f32; 384]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect();
+        conn.execute(
+            "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+            rusqlite::params![spell_id, bytes],
+        )
+        .expect("insert spell_vec row (blob fallback)");
+    }
+
+    #[tokio::test]
+    async fn clear_failed_chunk_vectors_drops_only_that_chunks_vectors() {
+        let isolated =
+            IsolatedTestPool::new("clear_failed_chunk_vectors_drops_only_that_chunks_vectors");
+        let pool = Arc::clone(&isolated.pool);
+        let ids: Vec<i64> = {
+            let conn = pool.get().expect("test db connection");
+            let first: i64 = conn
+                .query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                    row.get(0)
+                })
+                .expect("next spell id");
+            let ids = vec![first, first + 1, first + 2];
+            for id in &ids {
+                conn.execute(
+                    "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Spell', 1, 'Desc', ?2)",
+                    rusqlite::params![id, format!("hash-clear-failed-chunk-{id}")],
+                )
+                .expect("insert spell");
+                seed_spell_vec_row_for_test(&conn, *id);
+            }
+            ids
         };
-        let partial = ReindexResult {
-            total: 2,
-            indexed: 1,
-            skipped: 0,
-            failed: 1,
-        };
-        assert!(should_record_embedding_index_revision(true, &clean));
-        assert!(!should_record_embedding_index_revision(true, &partial));
-        assert!(!should_record_embedding_index_revision(false, &clean));
+        let failed_chunk: Vec<SpellEmbeddingRow> = ids[..2]
+            .iter()
+            .map(|id| (*id, "Spell".to_string(), "Desc".to_string()))
+            .collect();
+
+        assert!(clear_failed_chunk_vectors(Arc::clone(&pool), &failed_chunk).await);
+
+        let conn = pool.get().expect("test db connection");
+        let remaining: Vec<i64> = conn
+            .prepare("SELECT rowid FROM spell_vec ORDER BY rowid")
+            .expect("prepare")
+            .query_map([], |row| row.get(0))
+            .expect("query spell_vec")
+            .collect::<Result<_, _>>()
+            .expect("read rowids");
+        assert_eq!(remaining, vec![ids[2]]);
     }
 
     #[test]

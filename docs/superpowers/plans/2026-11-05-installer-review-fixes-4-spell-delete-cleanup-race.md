@@ -52,7 +52,7 @@
 - Consumes: `VaultMaintenanceState { phase: Mutex<VaultMaintenancePhase> }`, `VaultMaintenancePhase::{Idle, Import, Gc}`, `is_content_hash_live(conn, hash) -> Result<bool, AppError>`, `spell_file_path_in_root(root, hash) -> PathBuf` (all in `vault.rs`).
 - Produces: `pub(crate) fn with_idle_lock<T>(&self, f: impl FnOnce() -> Result<T, AppError>) -> Result<Option<T>, AppError>` on `VaultMaintenanceState`. It returns `Ok(None)` without running `f` when an import or GC is active.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In the `tests` module of `vault.rs`, after `test_maintenance_state_blocks_import_while_gc_active`, add:
 
@@ -116,12 +116,12 @@ In the `tests` module of `spells.rs`, after `test_delete_spell_with_conn_defers_
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run (from `apps/desktop/src-tauri`): `cargo test with_idle_lock`
 Expected: compile error, `no method named with_idle_lock found for struct VaultMaintenanceState`.
 
-- [ ] **Step 3: Add `with_idle_lock`**
+- [x] **Step 3: Add `with_idle_lock`**
 
 In `vault.rs`, inside `impl VaultMaintenanceState`, after `start_gc`, add:
 
@@ -147,7 +147,7 @@ In `vault.rs`, inside `impl VaultMaintenanceState`, after `start_gc`, add:
 Run: `cargo test with_idle_lock`
 Expected: 2 passed.
 
-- [ ] **Step 4: Move the liveness check and file removal under the lock**
+- [x] **Step 4: Move the liveness check and file removal under the lock**
 
 In `spells.rs` `delete_spell_with_conn`, replace everything from `if is_content_hash_live(conn, &hash)? {` through the end of the function with:
 
@@ -175,7 +175,7 @@ In `spells.rs` `delete_spell_with_conn`, replace everything from `if is_content_
 
 The malformed-hash guard above it (`is_well_formed_content_hash`) stays where it is, outside the lock.
 
-- [ ] **Step 5: Run the delete and maintenance tests, then the Rust gate**
+- [x] **Step 5: Run the delete and maintenance tests, then the Rust gate**
 
 Run: `cargo test delete_spell_with_conn`
 Expected: 6 passed (the 5 existing `test_delete_spell_with_conn_*` tests plus `test_delete_spell_with_conn_leaves_maintenance_idle`). `test_delete_spell_with_conn_defers_cleanup_while_import_runs` must still pass: `with_idle_lock` returns `None` while the import guard is held.
@@ -185,7 +185,7 @@ Expected: the existing import/GC exclusion tests still pass.
 
 Run the Rust gate from Global Constraints. Expected: all exit 0.
 
-- [ ] **Step 6: Document the delete cleanup**
+- [x] **Step 6: Document the delete cleanup**
 
 In `docs/TROUBLESHOOTING.md`, directly after the `- **Optimize Vault (GC):** …` bullet, insert:
 
@@ -193,7 +193,7 @@ In `docs/TROUBLESHOOTING.md`, directly after the `- **Optimize Vault (GC):** …
 - **Deleting a spell:** Also removes that spell's file from `spells/` when no other spell, artifact, or character entry uses the same content hash. If an import or Optimize Vault is running at that moment, the file stays until the next GC.
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add apps/desktop/src-tauri/src/commands/vault.rs apps/desktop/src-tauri/src/commands/spells.rs docs/TROUBLESHOOTING.md

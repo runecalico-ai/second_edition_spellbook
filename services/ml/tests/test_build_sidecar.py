@@ -10,6 +10,7 @@ import pytest
 
 from build_sidecar import (
     ALLOWED_HOST_TUPLES,
+    _marker_applies,
     binary_filename,
     host_tuple_from_rustc_output,
     lock_mismatches,
@@ -110,6 +111,20 @@ def test_lock_mismatches_skips_pins_for_other_platforms() -> None:
         marker_applies=lambda marker: not marker,
     )
     assert problems == []
+
+
+def test_lock_mismatches_names_the_install_command_without_packaging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(sys.modules, "packaging.markers", None)
+    pins = [Pin("pefile", "2024.8.26", 'sys_platform == "win32"')]
+    with pytest.raises(SystemExit, match="requirements-release.lock"):
+        lock_mismatches(pins, installed_version=_versions({}))
+
+
+def test_marker_applies_evaluates_markers() -> None:
+    assert _marker_applies("") is True
+    assert _marker_applies('sys_platform == "win32"') is (sys.platform == "win32")
 
 
 def test_require_locked_versions_names_the_install_command(tmp_path: Path) -> None:

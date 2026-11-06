@@ -107,7 +107,13 @@ INSTALL_LOCK_COMMAND = (
 def _marker_applies(marker: str) -> bool:
     if not marker:
         return True
-    from packaging.markers import Marker  # installed with PyInstaller
+    try:
+        from packaging.markers import Marker  # installed with PyInstaller
+    except ImportError:
+        raise SystemExit(
+            "sidecar freeze requires the hash-pinned release packages; "
+            f"packaging is not installed. Run: {INSTALL_LOCK_COMMAND}"
+        ) from None
 
     return Marker(marker).evaluate()
 

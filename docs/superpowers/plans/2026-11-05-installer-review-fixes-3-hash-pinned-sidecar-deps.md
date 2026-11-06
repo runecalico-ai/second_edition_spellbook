@@ -323,7 +323,7 @@ git commit -m "build(sidecar): add hash-pinned release lock generator" -m "Write
 - Consumes: `parse_pins`, `main`, `INPUT_PATH`, `LOCK_PATH`, `ML_DIR`, `Pin` from Task 1.
 - Produces: `services/ml/requirements-release.lock`. Task 3 installs it and `build_sidecar.py` reads it.
 
-- [ ] **Step 1: STOP. Get approval for the pin list**
+- [x] **Step 1: STOP. Get approval for the pin list**
 
 Do not create any file in this task until a human approves. Present this table (versions are from the root `.venv` `pip freeze` on 2026-11-05). Before you present it, open each PyPI page. Confirm the project links to the listed upstream repository and the maintainer and release history look normal (`docs/DEPENDENCY_SECURITY.md`, "Mandatory Provenance Check"). Report anything that does not match.
 
@@ -347,7 +347,7 @@ Do not create any file in this task until a human approves. Present this table (
 
 Record the approver and date. Continue only after an explicit "approved".
 
-- [ ] **Step 2: Create the pin list**
+- [x] **Step 2: Create the pin list**
 
 Create `services/ml/requirements-release.in`:
 
@@ -372,12 +372,12 @@ setuptools==84.0.0
 typing_extensions==4.16.0
 ```
 
-- [ ] **Step 3: Generate the lock**
+- [x] **Step 3: Generate the lock**
 
 Run (from the repository root, network required): `.\.venv\Scripts\python services/ml/release_requirements.py`
 Expected: prints the path of `services/ml/requirements-release.lock`. The file has 15 entries, and each entry has at least one `--hash=sha256:` line. A `yanked` or `no files` error means a pin is wrong: stop and go back to Step 1.
 
-- [ ] **Step 4: Prove the lock installs on Windows**
+- [x] **Step 4: Prove the lock installs on Windows**
 
 ```powershell
 py -3.14 -m venv .tmp\release-lock-check
@@ -390,7 +390,7 @@ Expected: the install succeeds; `pip check` prints `No broken requirements found
 
 Keep `.tmp\release-lock-check` for Task 3 Step 7.
 
-- [ ] **Step 5: Prove Linux wheels exist for every pin**
+- [x] **Step 5: Prove Linux wheels exist for every pin**
 
 Run (from the repository root):
 
@@ -401,7 +401,7 @@ Remove-Item -Recurse -Force .tmp\linux-wheels
 
 Expected: `Successfully downloaded` lists every package. `pip download` evaluates markers for this Windows host, so `pefile` and `pywin32-ctypes` download too; both are pure-Python wheels, so that is harmless. A `No matching distribution` error means a pin has no Linux cp314 wheel. Stop and report it.
 
-- [ ] **Step 6: Write the consistency tests**
+- [x] **Step 6: Write the consistency tests**
 
 In `services/ml/tests/test_release_requirements.py`, add `import re` to the stdlib imports and `from packaging.requirements import Requirement` next to `import pytest`. Add `INPUT_PATH`, `LOCK_PATH`, and `ML_DIR` to the existing `from release_requirements import (...)` block, which must stay below the `sys.path.insert` line. Then append:
 
@@ -473,7 +473,7 @@ def test_lock_matches_pinned_freeze_tools() -> None:
     assert sorted(checked) == sorted(FREEZE_TOOLS)
 ```
 
-- [ ] **Step 7: Run the tests; confirm they catch drift**
+- [x] **Step 7: Run the tests; confirm they catch drift**
 
 Run: `.\.venv\Scripts\python -m pytest services/ml/tests/test_release_requirements.py -v`
 Expected: 14 passed.
@@ -483,7 +483,7 @@ Check that the tests catch drift: in `requirements-release.in`, change `lxml==6.
 Run (from `services/ml`): `uvx ruff@0.6.9 check .` and `uvx ruff@0.6.9 format --check tests/test_release_requirements.py`
 Expected: both pass.
 
-- [ ] **Step 8: Record provenance and the pinning rule**
+- [x] **Step 8: Record provenance and the pinning rule**
 
 In `services/ml/SIDECAR_FREEZE.md`, replace the paragraph that starts `Transitive wheels (` with:
 
@@ -497,7 +497,7 @@ At the end of the `## Dependency provenance` list, append:
 - Release lock (2026-11-05): pinned the existing freeze environment, no upgrades. `altgraph 0.17.5`, `cffi 2.1.1`, `charset-normalizer 3.5.1`, `cryptography 50.0.1`, `lxml 6.1.3`, `packaging 26.3`, `pdfminer.six 20260107`, `pefile 2024.8.26`, `pycparser 3.0`, `pyinstaller 6.22.2`, `pyinstaller-hooks-contrib 2026.7`, `python-docx 1.2.0`, `pywin32-ctypes 0.2.3`, `setuptools 84.0.0`, `typing_extensions 4.16.0`. PyPI pages and upstream links: Part 3 plan, Task 2 Step 1 table. Human approval: <approver>, <date>.
 ```
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```powershell
 git add services/ml/requirements-release.in services/ml/requirements-release.lock services/ml/tests/test_release_requirements.py services/ml/SIDECAR_FREEZE.md

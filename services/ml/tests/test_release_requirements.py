@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -10,10 +11,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
+from packaging.requirements import Requirement
 
 import release_requirements
 from release_requirements import (
+    INPUT_PATH,
     LOCK_HEADER,
+    LOCK_PATH,
+    ML_DIR,
     Pin,
     main,
     parse_pins,
@@ -203,3 +208,70 @@ def test_main_writes_lf_lock_for_input_pins(
     assert set(parse_pins(raw.decode("utf-8"))) == set(
         parse_pins(source.read_text(encoding="utf-8"))
     )
+
+
+RUNTIME_DISTRIBUTIONS = ("pdfminer.six", "python-docx")
+FREEZE_TOOLS = ("pyinstaller", "pyinstaller-hooks-contrib")
+
+
+def _normalize(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _locked() -> dict[str, Pin]:
+    pins = parse_pins(LOCK_PATH.read_text(encoding="utf-8"))
+    return {_normalize(pin.name): pin for pin in pins}
+
+
+def _requirements(path: Path) -> list[Requirement]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [
+        Requirement(line.strip())
+        for line in lines
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def test_lock_pins_exactly_the_input_pins() -> None:
+    locked = set(parse_pins(LOCK_PATH.read_text(encoding="utf-8")))
+    assert locked == set(parse_pins(INPUT_PATH.read_text(encoding="utf-8")))
+
+
+def test_every_locked_pin_has_a_hash() -> None:
+    counts: dict[str, int] = {}
+    current = ""
+    for raw in LOCK_PATH.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("--hash=sha256:"):
+            counts[current] += 1
+        else:
+            current = line.removesuffix("\\").strip()
+            counts[current] = 0
+    assert counts
+    assert all(counts.values()), counts
+
+
+def test_lock_satisfies_runtime_requirements() -> None:
+    locked = _locked()
+    checked = []
+    for requirement in _requirements(ML_DIR / "requirements.txt"):
+        if requirement.name not in RUNTIME_DISTRIBUTIONS:
+            continue
+        pin = locked[_normalize(requirement.name)]
+        assert requirement.specifier.contains(pin.version), (requirement, pin)
+        checked.append(requirement.name)
+    assert sorted(checked) == sorted(RUNTIME_DISTRIBUTIONS)
+
+
+def test_lock_matches_pinned_freeze_tools() -> None:
+    locked = _locked()
+    checked = []
+    for requirement in _requirements(ML_DIR / "requirements-dev.txt"):
+        if requirement.name not in FREEZE_TOOLS:
+            continue
+        pin = locked[_normalize(requirement.name)]
+        assert str(requirement.specifier) == f"=={pin.version}", (requirement, pin)
+        checked.append(requirement.name)
+    assert sorted(checked) == sorted(FREEZE_TOOLS)

@@ -66,7 +66,7 @@ Task 2 needs Task 1. Task 3 needs Task 2.
   - `render_lock(pins: list[Pin], hashes: dict[Pin, list[str]]) -> str`
   - `main(argv: list[str] | None = None) -> int`, with `--input` and `--output` options.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `services/ml/tests/test_release_requirements.py`:
 
@@ -189,12 +189,12 @@ def test_main_writes_lf_lock_for_input_pins(
     )
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run (from the repository root): `.\.venv\Scripts\python -m pytest services/ml/tests/test_release_requirements.py -v`
 Expected: collection error, `ModuleNotFoundError: No module named 'release_requirements'`.
 
-- [ ] **Step 3: Implement the generator**
+- [x] **Step 3: Implement the generator**
 
 Create `services/ml/release_requirements.py`:
 
@@ -294,7 +294,7 @@ if __name__ == "__main__":
 
 `release_sha256s` looks up `_fetch_url` at call time on purpose: the `main` test replaces it with `monkeypatch`.
 
-- [ ] **Step 4: Run the tests and Ruff**
+- [x] **Step 4: Run the tests and Ruff**
 
 Run: `.\.venv\Scripts\python -m pytest services/ml/tests/test_release_requirements.py -v`
 Expected: 10 passed.
@@ -302,7 +302,7 @@ Expected: 10 passed.
 Run (from `services/ml`): `uvx ruff@0.6.9 check .` and `uvx ruff@0.6.9 format --check release_requirements.py tests/test_release_requirements.py`
 Expected: both pass. These code blocks were run through pytest and Ruff 0.6.9 on 2026-11-05 (10 passed, lint and format clean).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add services/ml/release_requirements.py services/ml/tests/test_release_requirements.py

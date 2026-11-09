@@ -574,7 +574,8 @@ async fn upsert_embedding_chunk(
     let owned_vectors = vectors.to_vec();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let tx = conn.unchecked_transaction()?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)?;
         for (idx, row) in owned_rows.iter().enumerate() {
             let spell_exists: bool = conn
                 .query_row(

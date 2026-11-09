@@ -799,13 +799,18 @@ pub(crate) fn run_vault_gc_with_root(
             continue;
         }
 
-        let content_hash = stem.to_string();
-        candidates.push((content_hash, path));
+        candidates.push((stem.to_string(), path));
     }
     remove_unreferenced_spell_files(conn, &candidates, &mut summary, || {})?;
 
     summary.warning_count = summary.integrity.warning_count;
     Ok(summary)
+}
+
+enum OrphanRemoval {
+    Removed,
+    Live,
+    Gone,
 }
 
 fn remove_unreferenced_spell_files(
@@ -815,18 +820,26 @@ fn remove_unreferenced_spell_files(
     mut before_remove: impl FnMut(),
 ) -> Result<(), AppError> {
     for (content_hash, path) in candidates {
-        let removed = with_vault_write_lock(conn, || {
+        let removal = with_vault_write_lock(conn, || {
             if is_content_hash_live(conn, content_hash)? {
-                return Ok(false);
+                return Ok(OrphanRemoval::Live);
             }
             before_remove();
-            fs::remove_file(path)?;
-            Ok(true)
-        })?;
-        if removed {
-            summary.deleted_count += 1;
-        } else {
-            summary.retained_count += 1;
+            match fs::remove_file(path) {
+                Ok(()) => Ok(OrphanRemoval::Removed),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    Ok(OrphanRemoval::Gone)
+                }
+                Err(error) => Err(error.into()),
+            }
+        });
+        match removal {
+            Ok(OrphanRemoval::Removed) => summary.deleted_count += 1,
+            Ok(OrphanRemoval::Live) => summary.retained_count += 1,
+            Ok(OrphanRemoval::Gone) => {}
+            Err(error) => {
+                warn!(path = %path.display(), %error, "failed to remove orphaned vault spell file; the next GC will retry");
+            }
         }
     }
     Ok(())
@@ -2032,6 +2045,56 @@ mod tests {
         );
         recreate().expect("writer succeeds after GC commits");
         assert!(path.exists(), "the recreated spell keeps its vault file");
+    }
+
+    #[test]
+    fn test_remove_unreferenced_spell_files_tolerates_file_already_removed() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        let path = temp_dir.path().join(format!("{}.json", "a".repeat(64)));
+        fs::write(&path, "{}").expect("write orphan file");
+        let mut summary = VaultGcSummary::default();
+
+        remove_unreferenced_spell_files(
+            &conn,
+            &[("a".repeat(64), path.clone())],
+            &mut summary,
+            || fs::remove_file(&path).expect("another instance removes the file"),
+        )
+        .expect("a file that is already gone is not an error");
+
+        assert_eq!(summary.deleted_count, 0);
+        assert_eq!(summary.retained_count, 0);
+    }
+
+    #[test]
+    fn test_remove_unreferenced_spell_files_continues_after_a_failed_candidate() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        let unremovable = temp_dir.path().join(format!("{}.json", "b".repeat(64)));
+        fs::create_dir(&unremovable).expect("a directory cannot be removed with remove_file");
+        let orphan = temp_dir.path().join(format!("{}.json", "c".repeat(64)));
+        fs::write(&orphan, "{}").expect("write orphan file");
+        let mut summary = VaultGcSummary::default();
+
+        remove_unreferenced_spell_files(
+            &conn,
+            &[
+                ("b".repeat(64), unremovable.clone()),
+                ("c".repeat(64), orphan.clone()),
+            ],
+            &mut summary,
+            || {},
+        )
+        .expect("one failed candidate does not fail GC");
+
+        assert!(unremovable.exists());
+        assert!(!orphan.exists(), "GC keeps going after a failed candidate");
+        assert_eq!(summary.deleted_count, 1);
+        assert!(
+            conn.is_autocommit(),
+            "each candidate's transaction is closed"
+        );
     }
 
     #[test]

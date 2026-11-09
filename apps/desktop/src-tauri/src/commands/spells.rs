@@ -3,7 +3,7 @@ use crate::commands::embeddings::{
 };
 use crate::commands::vault::{
     export_spell_to_vault_by_hash, is_content_hash_live, spell_file_path_in_root,
-    VaultMaintenanceState,
+    with_vault_write_lock, VaultMaintenanceState,
 };
 use crate::db::Pool;
 use crate::error::AppError;
@@ -998,46 +998,59 @@ pub(crate) fn delete_spell_with_conn(
     maintenance: &VaultMaintenanceState,
     id: i64,
 ) -> Result<(), AppError> {
-    let content_hash: Option<String> = conn
-        .query_row(
-            "SELECT content_hash FROM spell WHERE id = ?1",
-            [id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .optional()?
-        .flatten();
+    delete_spell_with_conn_and_hook(conn, vault_root, maintenance, id, |_| {})
+}
 
-    conn.execute("DELETE FROM spell_vec WHERE rowid = ?", [id])?;
-    conn.execute("DELETE FROM spell WHERE id = ?", [id])?;
+fn delete_spell_with_conn_and_hook(
+    conn: &Connection,
+    vault_root: &std::path::Path,
+    maintenance: &VaultMaintenanceState,
+    id: i64,
+    before_remove: impl FnOnce(&str),
+) -> Result<(), AppError> {
+    with_vault_write_lock(conn, || {
+        let content_hash: Option<String> = conn
+            .query_row(
+                "SELECT content_hash FROM spell WHERE id = ?1",
+                [id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
 
-    let Some(hash) = content_hash else {
-        return Ok(());
-    };
-    if !is_well_formed_content_hash(&hash) {
-        tracing::warn!(
-            spell_id = id,
-            "deleted spell has a malformed content_hash; leaving vault files untouched"
-        );
-        return Ok(());
-    }
-    let cleanup = maintenance.with_idle_lock(|| {
-        if is_content_hash_live(conn, &hash)? {
+        conn.execute("DELETE FROM spell_vec WHERE rowid = ?", [id])?;
+        conn.execute("DELETE FROM spell WHERE id = ?", [id])?;
+
+        let Some(hash) = content_hash else {
+            return Ok(());
+        };
+        if !is_well_formed_content_hash(&hash) {
+            tracing::warn!(
+                spell_id = id,
+                "deleted spell has a malformed content_hash; leaving vault files untouched"
+            );
             return Ok(());
         }
-        let path = spell_file_path_in_root(vault_root, &hash);
-        match std::fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                tracing::warn!(path = %path.display(), %error, "failed to remove deleted spell's vault file; deferred GC will retry");
+        let cleanup = maintenance.with_idle_lock(|| {
+            if is_content_hash_live(conn, &hash)? {
+                return Ok(());
             }
+            let path = spell_file_path_in_root(vault_root, &hash);
+            before_remove(&hash);
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    tracing::warn!(path = %path.display(), %error, "failed to remove deleted spell's vault file; deferred GC will retry");
+                }
+            }
+            Ok(())
+        })?;
+        if cleanup.is_none() {
+            tracing::info!(%hash, "vault maintenance busy; leaving spell file for deferred GC");
         }
         Ok(())
-    })?;
-    if cleanup.is_none() {
-        tracing::info!(%hash, "vault maintenance busy; leaving spell file for deferred GC");
-    }
-    Ok(())
+    })
 }
 
 #[tauri::command]
@@ -1622,6 +1635,13 @@ mod tests {
         conn
     }
 
+    fn setup_spell_delete_test_db_file(db_path: &std::path::Path) -> Connection {
+        setup_spell_delete_test_db()
+            .execute("VACUUM INTO ?1", [db_path.to_str().expect("UTF-8 db path")])
+            .expect("copy test schema to a file");
+        Connection::open(db_path).expect("open file-backed test db")
+    }
+
     fn seed_vaulted_spell(
         conn: &Connection,
         root: &std::path::Path,
@@ -1783,6 +1803,59 @@ mod tests {
         assert!(
             sentinel.exists(),
             "a malformed hash must not map to a file outside spells/"
+        );
+    }
+
+    #[test]
+    fn test_delete_spell_with_conn_blocks_spell_writers_during_file_cleanup() {
+        let root = tempfile::tempdir().expect("vault root");
+        let db_path = root.path().join("spellbook.sqlite3");
+        let conn = setup_spell_delete_test_db_file(&db_path);
+        let hash = seed_vaulted_spell(&conn, root.path(), 1, "Recreated Spell");
+        let json: String = conn
+            .query_row("SELECT canonical_data FROM spell WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("read canonical_data");
+        let writer = Connection::open(&db_path).expect("open writer connection");
+        writer
+            .busy_timeout(std::time::Duration::ZERO)
+            .expect("disable writer busy wait");
+        let recreate = || {
+            run_in_savepoint(&writer, "spell_recreate_write", || {
+                writer.execute(
+                    "INSERT INTO spell (id, name, level, description, canonical_data, content_hash)
+                     VALUES (2, 'Recreated Spell', 1, 'Recreated Spell description', ?1, ?2)",
+                    rusqlite::params![json, hash],
+                )?;
+                crate::commands::vault::write_spell_json_atomically(root.path(), &hash, &json)?;
+                Ok(())
+            })
+        };
+
+        let mut during_cleanup = None;
+        delete_spell_with_conn_and_hook(
+            &conn,
+            root.path(),
+            &VaultMaintenanceState::default(),
+            1,
+            |_| during_cleanup = Some(recreate()),
+        )
+        .expect("delete spell");
+
+        let during_cleanup = during_cleanup.expect("cleanup reached file removal");
+        assert!(
+            matches!(
+                &during_cleanup,
+                Err(AppError::Database(rusqlite::Error::SqliteFailure(error, _)))
+                    if error.code == rusqlite::ErrorCode::DatabaseBusy
+            ),
+            "a spell writer must wait until the delete commits, got {during_cleanup:?}"
+        );
+        recreate().expect("writer succeeds after the delete commits");
+        assert!(
+            spell_file_path_in_root(root.path(), &hash).exists(),
+            "the recreated spell keeps its vault file"
         );
     }
 

@@ -756,6 +756,25 @@ pub(crate) fn is_content_hash_live(
     Ok(false)
 }
 
+/// Runs `f` in a `BEGIN IMMEDIATE` transaction. Spell writers write
+/// `spells/{hash}.json` after their first row write or after commit, so while `f`
+/// runs no connection in any app instance can make a hash live. Check liveness and
+/// remove vault files inside `f`.
+pub(crate) fn with_vault_write_lock<T>(
+    conn: &rusqlite::Connection,
+    f: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    conn.execute_batch("BEGIN IMMEDIATE TRANSACTION")?;
+    let result = f().and_then(|value| {
+        conn.execute_batch("COMMIT")?;
+        Ok(value)
+    });
+    if result.is_err() && !conn.is_autocommit() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
+}
+
 pub(crate) fn run_vault_gc_with_root(
     conn: &rusqlite::Connection,
     root: &Path,
@@ -1875,6 +1894,23 @@ mod tests {
         let summary = run_vault_gc_with_root(&conn, temp_dir.path()).expect("gc should succeed");
 
         assert_eq!(summary.warning_count, 0);
+    }
+
+    #[test]
+    fn test_with_vault_write_lock_rolls_back_when_closure_fails() {
+        let conn = setup_vault_test_db(true);
+
+        let result: Result<(), AppError> = with_vault_write_lock(&conn, || {
+            conn.execute("INSERT INTO spell (id, name) VALUES (1, 'Doomed')", [])?;
+            Err(AppError::Validation("stop".to_string()))
+        });
+
+        assert!(result.is_err());
+        assert!(conn.is_autocommit(), "the transaction must be closed");
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("count spells");
+        assert_eq!(count, 0, "a failed closure must roll back its writes");
     }
 
     #[test]

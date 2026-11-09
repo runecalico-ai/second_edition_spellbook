@@ -764,15 +764,10 @@ pub(crate) fn with_vault_write_lock<T>(
     conn: &rusqlite::Connection,
     f: impl FnOnce() -> Result<T, AppError>,
 ) -> Result<T, AppError> {
-    conn.execute_batch("BEGIN IMMEDIATE TRANSACTION")?;
-    let result = f().and_then(|value| {
-        conn.execute_batch("COMMIT")?;
-        Ok(value)
-    });
-    if result.is_err() && !conn.is_autocommit() {
-        let _ = conn.execute_batch("ROLLBACK");
-    }
-    result
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
+    let value = f()?;
+    tx.commit()?;
+    Ok(value)
 }
 
 pub(crate) fn run_vault_gc_with_root(

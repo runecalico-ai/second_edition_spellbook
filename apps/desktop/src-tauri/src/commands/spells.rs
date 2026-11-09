@@ -998,7 +998,7 @@ pub(crate) fn delete_spell_with_conn(
     maintenance: &VaultMaintenanceState,
     id: i64,
 ) -> Result<(), AppError> {
-    delete_spell_with_conn_and_hook(conn, vault_root, maintenance, id, |_| {})
+    delete_spell_with_conn_and_hook(conn, vault_root, maintenance, id, || {})
 }
 
 fn delete_spell_with_conn_and_hook(
@@ -1006,7 +1006,7 @@ fn delete_spell_with_conn_and_hook(
     vault_root: &std::path::Path,
     maintenance: &VaultMaintenanceState,
     id: i64,
-    before_remove: impl FnOnce(&str),
+    before_remove: impl FnOnce(),
 ) -> Result<(), AppError> {
     with_vault_write_lock(conn, || {
         let content_hash: Option<String> = conn
@@ -1036,7 +1036,7 @@ fn delete_spell_with_conn_and_hook(
                 return Ok(());
             }
             let path = spell_file_path_in_root(vault_root, &hash);
-            before_remove(&hash);
+            before_remove();
             match std::fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -1839,7 +1839,7 @@ mod tests {
             root.path(),
             &VaultMaintenanceState::default(),
             1,
-            |_| during_cleanup = Some(recreate()),
+            || during_cleanup = Some(recreate()),
         )
         .expect("delete spell");
 
@@ -1851,6 +1851,10 @@ mod tests {
                     if error.code == rusqlite::ErrorCode::DatabaseBusy
             ),
             "a spell writer must wait until the delete commits, got {during_cleanup:?}"
+        );
+        assert!(
+            !spell_file_path_in_root(root.path(), &hash).exists(),
+            "the delete removed the unreferenced file while holding the lock"
         );
         recreate().expect("writer succeeds after the delete commits");
         assert!(

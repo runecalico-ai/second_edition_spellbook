@@ -782,6 +782,7 @@ pub(crate) fn run_vault_gc_with_root(
         ..VaultGcSummary::default()
     };
 
+    let mut candidates = Vec::new();
     for entry in fs::read_dir(spells_dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -798,12 +799,37 @@ pub(crate) fn run_vault_gc_with_root(
             continue;
         }
 
-        fs::remove_file(&path)?;
-        summary.deleted_count += 1;
+        let content_hash = stem.to_string();
+        candidates.push((content_hash, path));
     }
+    remove_unreferenced_spell_files(conn, &candidates, &mut summary, || {})?;
 
     summary.warning_count = summary.integrity.warning_count;
     Ok(summary)
+}
+
+fn remove_unreferenced_spell_files(
+    conn: &rusqlite::Connection,
+    candidates: &[(String, PathBuf)],
+    summary: &mut VaultGcSummary,
+    mut before_remove: impl FnMut(),
+) -> Result<(), AppError> {
+    for (content_hash, path) in candidates {
+        let removed = with_vault_write_lock(conn, || {
+            if is_content_hash_live(conn, content_hash)? {
+                return Ok(false);
+            }
+            before_remove();
+            fs::remove_file(path)?;
+            Ok(true)
+        })?;
+        if removed {
+            summary.deleted_count += 1;
+        } else {
+            summary.retained_count += 1;
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn optimize_vault_with_root(
@@ -1204,6 +1230,13 @@ mod tests {
             params![id, spell.name, canonical_data, content_hash],
         )
         .expect("insert spell row");
+    }
+
+    fn setup_vault_test_db_file(db_path: &Path) -> Connection {
+        setup_vault_test_db(true)
+            .execute("VACUUM INTO ?1", [db_path.to_str().expect("UTF-8 db path")])
+            .expect("copy test schema to a file");
+        Connection::open(db_path).expect("open file-backed test db")
     }
 
     #[test]
@@ -1906,6 +1939,99 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
             .expect("count spells");
         assert_eq!(count, 0, "a failed closure must roll back its writes");
+    }
+
+    #[test]
+    fn test_remove_unreferenced_spell_files_keeps_file_that_became_live() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        let mut spell = sample_spell();
+        let hash = spell.compute_hash().expect("hash");
+        spell.id = Some(hash.clone());
+        let json = serde_json::to_string(&spell).expect("serialize spell");
+        let path =
+            write_spell_json_atomically(temp_dir.path(), &hash, &json).expect("write spell file");
+        insert_spell_row(&conn, 1, &spell, &hash, Some(&json));
+        let mut summary = VaultGcSummary::default();
+
+        remove_unreferenced_spell_files(
+            &conn,
+            &[(hash.clone(), path.clone())],
+            &mut summary,
+            || {},
+        )
+        .expect("remove candidates");
+
+        assert_eq!(summary.deleted_count, 0);
+        assert_eq!(summary.retained_count, 1);
+        assert!(
+            path.exists(),
+            "a hash that is live when GC removes files keeps its file"
+        );
+    }
+
+    #[test]
+    fn test_remove_unreferenced_spell_files_blocks_spell_writers_until_removal() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("spellbook.sqlite3");
+        let conn = setup_vault_test_db_file(&db_path);
+        let mut spell = sample_spell();
+        let hash = spell.compute_hash().expect("hash");
+        spell.id = Some(hash.clone());
+        let json = serde_json::to_string(&spell).expect("serialize spell");
+        let path = write_spell_json_atomically(temp_dir.path(), &hash, &json)
+            .expect("write leftover spell file");
+        let writer = Connection::open(&db_path).expect("open writer connection");
+        writer
+            .busy_timeout(std::time::Duration::ZERO)
+            .expect("disable writer busy wait");
+        let recreate = || -> Result<(), AppError> {
+            writer.execute_batch("BEGIN")?;
+            let written = writer
+                .execute(
+                    "INSERT INTO spell (id, name, canonical_data, content_hash) VALUES (1, ?1, ?2, ?3)",
+                    params![spell.name, json, hash],
+                )
+                .map_err(AppError::from)
+                .and_then(|_| write_spell_json_atomically(temp_dir.path(), &hash, &json));
+            match written {
+                Ok(_) => {
+                    writer.execute_batch("COMMIT")?;
+                    Ok(())
+                }
+                Err(error) => {
+                    let _ = writer.execute_batch("ROLLBACK");
+                    Err(error)
+                }
+            }
+        };
+        let mut summary = VaultGcSummary::default();
+        let mut during_removal = None;
+
+        remove_unreferenced_spell_files(
+            &conn,
+            &[(hash.clone(), path.clone())],
+            &mut summary,
+            || during_removal = Some(recreate()),
+        )
+        .expect("remove candidates");
+
+        let during_removal = during_removal.expect("gc reached file removal");
+        assert!(
+            matches!(
+                &during_removal,
+                Err(AppError::Database(rusqlite::Error::SqliteFailure(error, _)))
+                    if error.code == rusqlite::ErrorCode::DatabaseBusy
+            ),
+            "a spell writer must wait until GC commits, got {during_removal:?}"
+        );
+        assert_eq!(summary.deleted_count, 1);
+        assert!(
+            !path.exists(),
+            "GC removed the orphan while holding the lock"
+        );
+        recreate().expect("writer succeeds after GC commits");
+        assert!(path.exists(), "the recreated spell keeps its vault file");
     }
 
     #[test]

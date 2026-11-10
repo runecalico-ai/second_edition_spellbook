@@ -7,6 +7,8 @@ import type {
 declare global {
   interface Window {
     __IS_PLAYWRIGHT__?: boolean;
+    /** Playwright E2E: `securitypolicyviolation` events collected by the CSP spec. */
+    __SPELLBOOK_E2E_CSP_VIOLATIONS__?: string[];
     /** Playwright E2E: optional delay (ms) before `create_spell` / `update_spell` invoke (capped at 30s). */
     __SPELLBOOK_E2E_SAVE_INVOKE_DELAY_MS?: number;
     /** Playwright E2E: optional per-query spell-picker search delays keyed as `${listType}:${query}`. */

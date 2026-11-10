@@ -11,6 +11,14 @@
     "devUrl": "http://127.0.0.1:5173"
   },
   "bundle": {
+    "targets": ["nsis", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
     "resources": ["resources/sqlite-vec/*"],
     "windows": {
       "nsis": {
@@ -26,6 +34,9 @@
         "height": 800,
         "resizable": true
       }
-    ]
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'self'"
+    }
   }
 }

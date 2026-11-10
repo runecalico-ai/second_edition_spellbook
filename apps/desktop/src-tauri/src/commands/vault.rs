@@ -467,6 +467,23 @@ impl VaultMaintenanceState {
         drop(phase);
         Ok(VaultGcGuard { state: self })
     }
+
+    /// Runs `f` while holding the phase lock, only when no import or GC is active.
+    /// Imports and GC that start meanwhile wait for `f` instead of failing, so keep
+    /// `f` short.
+    pub(crate) fn with_idle_lock<T>(
+        &self,
+        f: impl FnOnce() -> Result<T, AppError>,
+    ) -> Result<Option<T>, AppError> {
+        let phase = self
+            .phase
+            .lock()
+            .map_err(|_| AppError::Unknown("Vault maintenance state is poisoned".to_string()))?;
+        if *phase != VaultMaintenancePhase::Idle {
+            return Ok(None);
+        }
+        f().map(Some)
+    }
 }
 
 impl Drop for VaultImportGuard<'_> {
@@ -710,6 +727,49 @@ fn collect_live_content_hashes(conn: &rusqlite::Connection) -> Result<HashSet<St
     Ok(live_hashes)
 }
 
+pub(crate) fn is_content_hash_live(
+    conn: &rusqlite::Connection,
+    content_hash: &str,
+) -> Result<bool, AppError> {
+    use rusqlite::OptionalExtension;
+
+    let referenced = |sql: &str| -> Result<bool, AppError> {
+        Ok(conn
+            .query_row(sql, [content_hash], |_| Ok(()))
+            .optional()?
+            .is_some())
+    };
+
+    if referenced("SELECT 1 FROM spell WHERE content_hash = ?1 LIMIT 1")? {
+        return Ok(true);
+    }
+    if crate::db::table_has_column(conn, "artifact", "spell_content_hash")
+        && referenced("SELECT 1 FROM artifact WHERE spell_content_hash = ?1 LIMIT 1")?
+    {
+        return Ok(true);
+    }
+    if crate::db::table_has_column(conn, "character_class_spell", "spell_content_hash")
+        && referenced("SELECT 1 FROM character_class_spell WHERE spell_content_hash = ?1 LIMIT 1")?
+    {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// Runs `f` in a `BEGIN IMMEDIATE` transaction. Spell writers write
+/// `spells/{hash}.json` after their first row write or after commit, so while `f`
+/// runs no connection in any app instance can make a hash live. Check liveness and
+/// remove vault files inside `f`.
+pub(crate) fn with_vault_write_lock<T>(
+    conn: &rusqlite::Connection,
+    f: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)?;
+    let value = f()?;
+    tx.commit()?;
+    Ok(value)
+}
+
 pub(crate) fn run_vault_gc_with_root(
     conn: &rusqlite::Connection,
     root: &Path,
@@ -722,6 +782,7 @@ pub(crate) fn run_vault_gc_with_root(
         ..VaultGcSummary::default()
     };
 
+    let mut candidates = Vec::new();
     for entry in fs::read_dir(spells_dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -738,12 +799,50 @@ pub(crate) fn run_vault_gc_with_root(
             continue;
         }
 
-        fs::remove_file(&path)?;
-        summary.deleted_count += 1;
+        candidates.push((stem.to_string(), path));
     }
+    remove_unreferenced_spell_files(conn, &candidates, &mut summary, || {})?;
 
     summary.warning_count = summary.integrity.warning_count;
     Ok(summary)
+}
+
+enum OrphanRemoval {
+    Removed,
+    Live,
+    Gone,
+}
+
+fn remove_unreferenced_spell_files(
+    conn: &rusqlite::Connection,
+    candidates: &[(String, PathBuf)],
+    summary: &mut VaultGcSummary,
+    mut before_remove: impl FnMut(),
+) -> Result<(), AppError> {
+    for (content_hash, path) in candidates {
+        let removal = with_vault_write_lock(conn, || {
+            if is_content_hash_live(conn, content_hash)? {
+                return Ok(OrphanRemoval::Live);
+            }
+            before_remove();
+            match fs::remove_file(path) {
+                Ok(()) => Ok(OrphanRemoval::Removed),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    Ok(OrphanRemoval::Gone)
+                }
+                Err(error) => Err(error.into()),
+            }
+        });
+        match removal {
+            Ok(OrphanRemoval::Removed) => summary.deleted_count += 1,
+            Ok(OrphanRemoval::Live) => summary.retained_count += 1,
+            Ok(OrphanRemoval::Gone) => {}
+            Err(error) => {
+                warn!(path = %path.display(), %error, "failed to remove orphaned vault spell file; the next GC will retry");
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn optimize_vault_with_root(
@@ -1146,6 +1245,13 @@ mod tests {
         .expect("insert spell row");
     }
 
+    fn setup_vault_test_db_file(db_path: &Path) -> Connection {
+        setup_vault_test_db(true)
+            .execute("VACUUM INTO ?1", [db_path.to_str().expect("UTF-8 db path")])
+            .expect("copy test schema to a file");
+        Connection::open(db_path).expect("open file-backed test db")
+    }
+
     #[test]
     fn test_load_vault_settings_defaults_to_integrity_check_on_open() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -1480,6 +1586,46 @@ mod tests {
     }
 
     #[test]
+    fn test_with_idle_lock_skips_while_import_active() {
+        let maintenance_state = VaultMaintenanceState::default();
+        let _import_guard = maintenance_state.start_import().expect("start import");
+
+        let ran = maintenance_state
+            .with_idle_lock(|| Ok(()))
+            .expect("lock maintenance state");
+
+        assert!(
+            ran.is_none(),
+            "closure must not run while an import is active"
+        );
+    }
+
+    #[test]
+    fn test_with_idle_lock_makes_concurrent_import_wait_instead_of_fail() {
+        let maintenance_state = VaultMaintenanceState::default();
+        std::thread::scope(|scope| {
+            let mut import = None;
+            maintenance_state
+                .with_idle_lock(|| {
+                    import = Some(scope.spawn(|| maintenance_state.start_import().map(drop)));
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    assert!(
+                        !import.as_ref().expect("import thread").is_finished(),
+                        "import must wait for the lock"
+                    );
+                    Ok(())
+                })
+                .expect("lock maintenance state")
+                .expect("maintenance state is idle");
+            import
+                .expect("import thread")
+                .join()
+                .expect("import thread panicked")
+                .expect("import starts once the lock is released");
+        });
+    }
+
+    #[test]
     fn test_verify_vault_spell_json_recomputes_canonical_hash_not_raw_bytes() {
         let mut spell = sample_spell();
         let hash = spell.compute_hash().expect("hash");
@@ -1789,6 +1935,166 @@ mod tests {
         let summary = run_vault_gc_with_root(&conn, temp_dir.path()).expect("gc should succeed");
 
         assert_eq!(summary.warning_count, 0);
+    }
+
+    #[test]
+    fn test_with_vault_write_lock_rolls_back_when_closure_fails() {
+        let conn = setup_vault_test_db(true);
+
+        let result: Result<(), AppError> = with_vault_write_lock(&conn, || {
+            conn.execute("INSERT INTO spell (id, name) VALUES (1, 'Doomed')", [])?;
+            Err(AppError::Validation("stop".to_string()))
+        });
+
+        assert!(result.is_err());
+        assert!(conn.is_autocommit(), "the transaction must be closed");
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM spell", [], |row| row.get(0))
+            .expect("count spells");
+        assert_eq!(count, 0, "a failed closure must roll back its writes");
+    }
+
+    #[test]
+    fn test_remove_unreferenced_spell_files_keeps_file_that_became_live() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        let mut spell = sample_spell();
+        let hash = spell.compute_hash().expect("hash");
+        spell.id = Some(hash.clone());
+        let json = serde_json::to_string(&spell).expect("serialize spell");
+        let path =
+            write_spell_json_atomically(temp_dir.path(), &hash, &json).expect("write spell file");
+        insert_spell_row(&conn, 1, &spell, &hash, Some(&json));
+        let mut summary = VaultGcSummary::default();
+
+        remove_unreferenced_spell_files(
+            &conn,
+            &[(hash.clone(), path.clone())],
+            &mut summary,
+            || {},
+        )
+        .expect("remove candidates");
+
+        assert_eq!(summary.deleted_count, 0);
+        assert_eq!(summary.retained_count, 1);
+        assert!(
+            path.exists(),
+            "a hash that is live when GC removes files keeps its file"
+        );
+    }
+
+    #[test]
+    fn test_remove_unreferenced_spell_files_blocks_spell_writers_until_removal() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("spellbook.sqlite3");
+        let conn = setup_vault_test_db_file(&db_path);
+        let mut spell = sample_spell();
+        let hash = spell.compute_hash().expect("hash");
+        spell.id = Some(hash.clone());
+        let json = serde_json::to_string(&spell).expect("serialize spell");
+        let path = write_spell_json_atomically(temp_dir.path(), &hash, &json)
+            .expect("write leftover spell file");
+        let writer = Connection::open(&db_path).expect("open writer connection");
+        writer
+            .busy_timeout(std::time::Duration::ZERO)
+            .expect("disable writer busy wait");
+        let recreate = || -> Result<(), AppError> {
+            writer.execute_batch("BEGIN")?;
+            let written = writer
+                .execute(
+                    "INSERT INTO spell (id, name, canonical_data, content_hash) VALUES (1, ?1, ?2, ?3)",
+                    params![spell.name, json, hash],
+                )
+                .map_err(AppError::from)
+                .and_then(|_| write_spell_json_atomically(temp_dir.path(), &hash, &json));
+            match written {
+                Ok(_) => {
+                    writer.execute_batch("COMMIT")?;
+                    Ok(())
+                }
+                Err(error) => {
+                    let _ = writer.execute_batch("ROLLBACK");
+                    Err(error)
+                }
+            }
+        };
+        let mut summary = VaultGcSummary::default();
+        let mut during_removal = None;
+
+        remove_unreferenced_spell_files(
+            &conn,
+            &[(hash.clone(), path.clone())],
+            &mut summary,
+            || during_removal = Some(recreate()),
+        )
+        .expect("remove candidates");
+
+        let during_removal = during_removal.expect("gc reached file removal");
+        assert!(
+            matches!(
+                &during_removal,
+                Err(AppError::Database(rusqlite::Error::SqliteFailure(error, _)))
+                    if error.code == rusqlite::ErrorCode::DatabaseBusy
+            ),
+            "a spell writer must wait until GC commits, got {during_removal:?}"
+        );
+        assert_eq!(summary.deleted_count, 1);
+        assert!(
+            !path.exists(),
+            "GC removed the orphan while holding the lock"
+        );
+        recreate().expect("writer succeeds after GC commits");
+        assert!(path.exists(), "the recreated spell keeps its vault file");
+    }
+
+    #[test]
+    fn test_remove_unreferenced_spell_files_tolerates_file_already_removed() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        let path = temp_dir.path().join(format!("{}.json", "a".repeat(64)));
+        fs::write(&path, "{}").expect("write orphan file");
+        let mut summary = VaultGcSummary::default();
+
+        remove_unreferenced_spell_files(
+            &conn,
+            &[("a".repeat(64), path.clone())],
+            &mut summary,
+            || fs::remove_file(&path).expect("another instance removes the file"),
+        )
+        .expect("a file that is already gone is not an error");
+
+        assert_eq!(summary.deleted_count, 0);
+        assert_eq!(summary.retained_count, 0);
+    }
+
+    #[test]
+    fn test_remove_unreferenced_spell_files_continues_after_a_failed_candidate() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = setup_vault_test_db(true);
+        let unremovable = temp_dir.path().join(format!("{}.json", "b".repeat(64)));
+        fs::create_dir(&unremovable).expect("a directory cannot be removed with remove_file");
+        let orphan = temp_dir.path().join(format!("{}.json", "c".repeat(64)));
+        fs::write(&orphan, "{}").expect("write orphan file");
+        let mut summary = VaultGcSummary::default();
+
+        remove_unreferenced_spell_files(
+            &conn,
+            &[
+                ("b".repeat(64), unremovable.clone()),
+                ("c".repeat(64), orphan.clone()),
+            ],
+            &mut summary,
+            || {},
+        )
+        .expect("one failed candidate does not fail GC");
+
+        assert!(unremovable.exists());
+        assert!(!orphan.exists(), "GC keeps going after a failed candidate");
+        assert_eq!(summary.deleted_count, 1);
+        assert!(
+            conn.is_autocommit(),
+            "each candidate's transaction is closed"
+        );
     }
 
     #[test]

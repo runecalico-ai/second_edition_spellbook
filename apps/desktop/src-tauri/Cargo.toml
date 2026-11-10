@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "test"] }
+tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_json_canonicalizer = "0.3.1"
@@ -14,11 +14,11 @@ r2d2 = "0.8"
 r2d2_sqlite = "0.24"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
-# H-001: `TextEmbedding::try_new` / `InitOptions` path requires `hf-hub`; ORT
-# binaries match the prior default-runtime expectation for desktop builds.
-# Optional: compiled when the default-on `llm` feature is enabled.
+# Embeddings load the verified vault bundle via `try_new_from_user_defined`.
+# Keep `hf-hub` off so `TextEmbedding::try_new` (network download) cannot be
+# compiled in. ORT binaries match the prior default-runtime expectation for
+# desktop builds. Optional: compiled when the default-on `llm` feature is enabled.
 fastembed = { version = "=5.13.3", optional = true, default-features = false, features = [
-    "hf-hub-native-tls",
     "ort-download-binaries-native-tls",
 ] }
 llama-cpp-2 = { version = "=0.1.145", optional = true, default-features = false }
@@ -54,3 +54,5 @@ llm = ["dep:llama-cpp-2", "dep:fastembed"]
 tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
+# Mock runtime for IPC/ACL tests; must not ship in release binaries.
+tauri = { version = "2", features = ["test"] }

@@ -1095,7 +1095,7 @@ pub(crate) fn test_hooks_snapshot_for_preflight(
 }
 
 #[cfg(test)]
-pub(crate) fn test_hooks_snapshot_for_chat_harness(
+fn test_hooks_snapshot_for_chat_harness(
     preflight: ModelLoadPreflight,
     driver: Arc<dyn LlmRuntimeDriver>,
 ) -> TestHooksSnapshot {
@@ -1104,14 +1104,6 @@ pub(crate) fn test_hooks_snapshot_for_chat_harness(
         runtime_driver: Some(driver),
         inference_timeout_secs: None,
     }
-}
-
-#[cfg(test)]
-pub(crate) fn test_hooks_snapshot_for_recording_runtime_driver(
-    preflight: ModelLoadPreflight,
-    driver: Arc<RecordingRuntimeDriver>,
-) -> TestHooksSnapshot {
-    test_hooks_snapshot_for_chat_harness(preflight, driver)
 }
 
 #[cfg(test)]
@@ -1195,36 +1187,6 @@ impl Drop for TestInferenceTimeoutGuard {
     fn drop(&mut self) {
         with_llm_test_hooks_serial(|| {
             *TEST_INFERENCE_TIMEOUT_SECS.lock().unwrap() = None;
-        });
-    }
-}
-
-#[cfg(test)]
-struct TestLlmChatHarnessGuard {
-    _hooks_lock: LlmTestHooksLockGuard,
-}
-
-#[cfg(test)]
-fn install_test_llm_chat_harness(
-    preflight: ModelLoadPreflight,
-    driver: Arc<dyn LlmRuntimeDriver>,
-) -> TestLlmChatHarnessGuard {
-    let hooks_lock = acquire_llm_test_hooks_lock();
-    with_llm_test_hooks_serial(|| {
-        *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = Some(preflight);
-        *TEST_RUNTIME_DRIVER.lock().unwrap() = Some(driver);
-    });
-    TestLlmChatHarnessGuard {
-        _hooks_lock: hooks_lock,
-    }
-}
-
-#[cfg(test)]
-impl Drop for TestLlmChatHarnessGuard {
-    fn drop(&mut self) {
-        with_llm_test_hooks_serial(|| {
-            *TEST_MODEL_LOAD_PREFLIGHT.lock().unwrap() = None;
-            *TEST_RUNTIME_DRIVER.lock().unwrap() = None;
         });
     }
 }
@@ -1994,8 +1956,6 @@ async fn run_claimed_llm_chat(
 
         let preflight_result = tokio::task::spawn_blocking({
             let vault_root = vault_root.clone();
-            #[cfg(test)]
-            let injected_preflight = injected_preflight;
             move || {
                 #[cfg(test)]
                 if let Some(preflight) = injected_preflight {

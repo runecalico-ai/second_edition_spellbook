@@ -25,10 +25,18 @@ const MODEL_LABEL: Record<ModelKind, string> = {
   embeddings: "Embedding Model",
 };
 
-async function pickModelFile(): Promise<string | null> {
-  const selected = await open({ multiple: false });
+function firstSelection(selected: string | string[] | null): string | null {
   if (selected === null) return null;
   return Array.isArray(selected) ? selected[0] : selected;
+}
+
+async function pickModelFile(): Promise<string | null> {
+  return firstSelection(await open({ multiple: false }));
+}
+
+// The MiniLM bundle is a folder of five files, not a single file.
+async function pickModelFolder(): Promise<string | null> {
+  return firstSelection(await open({ directory: true, multiple: false }));
 }
 
 export function ChatPanel() {
@@ -141,7 +149,7 @@ export function ChatPanel() {
   }, [refresh]);
 
   const handleImportEmbeddings = useCallback(async () => {
-    const path = await pickModelFile();
+    const path = await pickModelFolder();
     if (path === null) return;
     try {
       await importEmbeddingsModelFile(path);

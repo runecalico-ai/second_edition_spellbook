@@ -217,9 +217,15 @@ The application SHALL provide a `reindex_embeddings` command to generate missing
 
 #### Scenario: Startup partial backfill
 - **WHEN** the application starts and the embedding model has successfully initialized
-- **THEN** the backend SHALL invoke `reindex_embeddings(force=false)` as a background task
+- **THEN** the backend SHALL invoke `reindex_embeddings(force=false)` as a background task, or `reindex_embeddings(force=true)` when the recorded embedding index revision is missing or differs from the approved embedding bundle revision
 - **AND** any spells missing vectors SHALL be silently re-indexed without user interaction
 - **AND** this operation SHALL NOT block application startup or any user-facing commands
+
+#### Scenario: Embedding index revision recorded
+- **WHEN** a forced reindex completes and no vectors from an older embedding revision remain in `spell_vec`
+- **THEN** the backend SHALL record the approved embedding bundle revision in `app_meta.embedding_index_revision`
+- **AND** when a chunk fails during a forced reindex, the backend SHALL delete that chunk's existing vectors, so those spells have no vector and the next startup's incremental backfill retries only them
+- **AND** if deleting a failed chunk's vectors fails, the backend SHALL NOT record the revision, so the next startup retries the full rebuild
 
 ## Non-Functional Requirements
 - **Search latency**: Results MUST return in < 500ms for libraries of 10k spells.

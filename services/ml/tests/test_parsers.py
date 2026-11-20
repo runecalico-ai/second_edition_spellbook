@@ -62,6 +62,16 @@ A bright streak flashes from your pointing finger...
         self.assertEqual(result["level"], 3)
         self.assertTrue("bright streak" in result["description"])
 
+    def test_spell_from_markdown_strips_leading_utf8_bom(self):
+        p = MagicMock(spec=Path)
+        p.read_text.return_value = "\ufeff---\nname: Test Spell\nlevel: 1\n---\nDesc"
+        p.stem = "spell"
+
+        result = spellbook_sidecar._spell_from_markdown(p)
+        self.assertEqual(result["name"], "Test Spell")
+        self.assertEqual(result["level"], 1)
+        self.assertFalse(result["_raw_text"].startswith("\ufeff"))
+
     @patch("spellbook_sidecar.extract_pdf_text")
     def test_spell_from_pdf(self, mock_extract):
         mock_extract.return_value = "Fireball\nLevel 3\nDescription..."

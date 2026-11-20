@@ -211,7 +211,7 @@ Chat and Library semantic mode talk to Rust through typed wrappers in `src/api/l
 | Download TinyLlama | `chat-llm-download-button` |
 | Side-load TinyLlama | `chat-llm-import-button` |
 | Download embeddings (optional for chat) | `chat-embeddings-download-button` |
-| Side-load embeddings | `chat-embeddings-import-button` |
+| Side-load embeddings (folder picker) | `chat-embeddings-import-button` |
 | Retry after classified error | `chat-provisioning-retry-button` |
 
 Download progress uses `ModelDownloadModal` (`model-download-modal`) subscribed to `llm://download-progress` / `embeddings://download-progress` with camelCase `{ bytesDownloaded, totalBytes }`. Chat can be used without the embedding model (FTS-only RAG). Embeddings are required only for Library semantic mode.

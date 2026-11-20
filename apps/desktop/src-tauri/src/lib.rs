@@ -5,6 +5,9 @@ pub mod models;
 pub mod sidecar;
 pub mod utils;
 
+#[cfg(test)]
+mod capability_tests;
+
 #[cfg(not(test))]
 use commands::vault::VaultMaintenanceState;
 #[cfg(all(feature = "llm", not(test)))]

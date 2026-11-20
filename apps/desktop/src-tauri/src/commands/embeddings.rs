@@ -1,6 +1,7 @@
 use crate::commands::{
     app_models_dir, ensure_resources_available, models_dir, LiveResourceProbe, ProvisioningState,
-    ProvisioningTarget, EMBEDDING_DESTINATION, EMBEDDING_EXPECTED_FILES, EMBEDDING_URL,
+    ProvisioningTarget, EMBEDDING_DESTINATION, EMBEDDING_EXPECTED_FILES, EMBEDDING_MANIFEST_SHA,
+    EMBEDDING_URL,
 };
 use crate::error::AppError;
 use crate::models::{
@@ -378,18 +379,50 @@ fn require_embedding_dimension(vector: &[f32]) -> Result<(), AppError> {
     Ok(())
 }
 
-/// H-001: Task 3 Step 3.3 (`TextEmbedding::try_new` + `InitOptions` / `TextInitOptions`).
+/// Loads the verified all-MiniLM-L6-v2 bundle from `{models_root}/embeddings/all-MiniLM-L6-v2/`
+/// through fastembed's user-defined model API. `TextEmbedding::try_new` must not be used here:
+/// it resolves the model through the hf-hub cache and downloads unpinned revisions.
+/// Pooling, quantization, output key, and max length mirror fastembed 5.13.3's built-in
+/// `EmbeddingModel::AllMiniLML6V2` config; L2 normalization is always applied by `embed`.
 fn load_embedding_model_blocking(
     models_root: &std::path::Path,
 ) -> Result<Arc<Mutex<fastembed::TextEmbedding>>, AppError> {
-    use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+    use fastembed::{
+        InitOptionsUserDefined, Pooling, QuantizationMode, TextEmbedding, TokenizerFiles,
+        UserDefinedEmbeddingModel,
+    };
 
-    let mut options = InitOptions::new(EmbeddingModel::AllMiniLML6V2);
-    options.cache_dir = models_root.to_path_buf();
+    let bundle_root = models_root.join(EMBEDDING_DESTINATION);
+    validate_embedding_bundle_layout(&bundle_root).map_err(|error| {
+        AppError::Search(format!(
+            "approved embedding bundle is missing or invalid at {}: {error}",
+            bundle_root.display()
+        ))
+    })?;
 
-    TextEmbedding::try_new(options)
-        .map(|model| Arc::new(Mutex::new(model)))
-        .map_err(|e| AppError::Search(format!("failed to initialize fastembed runtime: {e}")))
+    let read_bundle_file = |name: &str| {
+        std::fs::read(bundle_root.join(name)).map_err(|error| {
+            AppError::Search(format!(
+                "failed to read embedding bundle file {name}: {error}"
+            ))
+        })
+    };
+    let tokenizer_files = TokenizerFiles {
+        tokenizer_file: read_bundle_file("tokenizer.json")?,
+        config_file: read_bundle_file("config.json")?,
+        special_tokens_map_file: read_bundle_file("special_tokens_map.json")?,
+        tokenizer_config_file: read_bundle_file("tokenizer_config.json")?,
+    };
+    let model = UserDefinedEmbeddingModel::new(read_bundle_file("model.onnx")?, tokenizer_files)
+        .with_pooling(Pooling::Mean)
+        .with_quantization(QuantizationMode::None);
+
+    TextEmbedding::try_new_from_user_defined(
+        model,
+        InitOptionsUserDefined::new().with_max_length(512),
+    )
+    .map(|model| Arc::new(Mutex::new(model)))
+    .map_err(|e| AppError::Search(format!("failed to initialize fastembed runtime: {e}")))
 }
 
 async fn await_ready_model_with_timeout(
@@ -541,7 +574,8 @@ async fn upsert_embedding_chunk(
     let owned_vectors = vectors.to_vec();
     tokio::task::spawn_blocking(move || {
         let conn = pool.get()?;
-        let tx = conn.unchecked_transaction()?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)?;
         for (idx, row) in owned_rows.iter().enumerate() {
             let spell_exists: bool = conn
                 .query_row(
@@ -1030,6 +1064,49 @@ async fn reembed_pending_spells(state: Arc<EmbeddingState>, pool: Arc<crate::db:
     }
 }
 
+/// `app_meta` key holding the embedding-bundle revision that produced `spell_vec`.
+const EMBEDDING_INDEX_REVISION_KEY: &str = "embedding_index_revision";
+
+fn embedding_index_needs_full_rebuild(conn: &rusqlite::Connection) -> Result<bool, AppError> {
+    let recorded = crate::db::get_app_meta(conn, EMBEDDING_INDEX_REVISION_KEY)?;
+    Ok(recorded.as_deref() != Some(EMBEDDING_MANIFEST_SHA))
+}
+
+fn record_embedding_index_revision(conn: &rusqlite::Connection) -> Result<(), AppError> {
+    crate::db::set_app_meta(conn, EMBEDDING_INDEX_REVISION_KEY, EMBEDDING_MANIFEST_SHA)?;
+    Ok(())
+}
+
+fn should_record_embedding_index_revision(force: bool, stale_vectors_remain: bool) -> bool {
+    force && !stale_vectors_remain
+}
+
+struct ReindexRun {
+    result: ReindexResult,
+    /// A forced run left vectors from an older model revision in `spell_vec`.
+    stale_vectors_remain: bool,
+}
+
+/// Forced reindex only: drops a failed chunk's old vectors so they cannot outlive a
+/// model revision change. Those spells then have no vector, and the next incremental
+/// backfill retries them. Returns `false` when old vectors may remain.
+async fn clear_failed_chunk_vectors(db: Arc<crate::db::Pool>, chunk: &[SpellEmbeddingRow]) -> bool {
+    let spell_ids: Vec<i64> = chunk.iter().map(|(id, _, _)| *id).collect();
+    match tokio::task::spawn_blocking(move || invalidate_spell_vec_rows_blocking(&db, &spell_ids))
+        .await
+    {
+        Ok(Ok(())) => true,
+        Ok(Err(error)) => {
+            tracing::warn!(?error, "failed to clear vectors of a failed reindex chunk");
+            false
+        }
+        Err(join_error) => {
+            tracing::warn!(?join_error, "clear failed reindex chunk task failed");
+            false
+        }
+    }
+}
+
 pub async fn reindex_embeddings_internal(
     app: EmbeddingsCommandAppHandle,
     state: Arc<EmbeddingState>,
@@ -1037,12 +1114,31 @@ pub async fn reindex_embeddings_internal(
     force: bool,
 ) -> Result<ReindexResult, AppError> {
     ensure_no_active_embedding_download(state.as_ref())?;
-    let result = {
+    let run = {
         let _reindex_guard = ReindexInProgressGuard::try_acquire(Arc::clone(&state))?;
         run_reindex_chunks(app, Arc::clone(&state), Arc::clone(&db), force).await
     };
+    if let Ok(run) = &run {
+        if should_record_embedding_index_revision(force, run.stale_vectors_remain) {
+            let pool = Arc::clone(&db);
+            match tokio::task::spawn_blocking(move || {
+                let conn = pool.get()?;
+                record_embedding_index_revision(&conn)
+            })
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(?error, "failed to record embedding index revision")
+                }
+                Err(join_error) => {
+                    tracing::warn!(?join_error, "embedding index revision task failed")
+                }
+            }
+        }
+    }
     reembed_pending_spells(Arc::clone(&state), db).await;
-    result
+    run.map(|run| run.result)
 }
 
 async fn run_reindex_chunks(
@@ -1050,7 +1146,7 @@ async fn run_reindex_chunks(
     state: Arc<EmbeddingState>,
     db: Arc<crate::db::Pool>,
     force: bool,
-) -> Result<ReindexResult, AppError> {
+) -> Result<ReindexRun, AppError> {
     let model =
         await_ready_model_with_timeout(Arc::clone(&state), std::time::Duration::from_secs(30))
             .await?;
@@ -1071,16 +1167,20 @@ async fn run_reindex_chunks(
     };
 
     if candidate_count == 0 {
-        return Ok(ReindexResult {
-            total,
-            indexed: 0,
-            skipped: initial_skipped,
-            failed: 0,
+        return Ok(ReindexRun {
+            result: ReindexResult {
+                total,
+                indexed: 0,
+                skipped: initial_skipped,
+                failed: 0,
+            },
+            stale_vectors_remain: false,
         });
     }
 
     let mut indexed = 0_u32;
     let mut failed = 0_u32;
+    let mut stale_vectors_remain = false;
 
     for (offset, chunk) in rows.chunks(EMBEDDING_INDEX_CHUNK_SIZE).enumerate() {
         let texts: Vec<String> = chunk
@@ -1089,7 +1189,7 @@ async fn run_reindex_chunks(
             .collect();
 
         let model_for_chunk = Arc::clone(&model);
-        match tokio::task::spawn_blocking(move || {
+        let chunk_ok = match tokio::task::spawn_blocking(move || {
             let mut guard = model_for_chunk
                 .lock()
                 .map_err(|_| AppError::Search("embedding model lock poisoned".to_string()))?;
@@ -1099,21 +1199,19 @@ async fn run_reindex_chunks(
         {
             Ok(Ok(vectors)) => match upsert_embedding_chunk(Arc::clone(&db), chunk, &vectors).await
             {
-                Ok(()) => {
-                    indexed += chunk.len() as u32;
-                }
+                Ok(()) => true,
                 Err(error) => {
                     tracing::warn!(
                         ?error,
                         chunk_len = chunk.len(),
                         "reindex chunk upsert failed"
                     );
-                    failed += chunk.len() as u32;
+                    false
                 }
             },
             Ok(Err(error)) => {
                 tracing::warn!(?error, chunk_len = chunk.len(), "reindex chunk failed");
-                failed += chunk.len() as u32;
+                false
             }
             Err(join_error) => {
                 tracing::warn!(
@@ -1121,7 +1219,15 @@ async fn run_reindex_chunks(
                     chunk_len = chunk.len(),
                     "reindex chunk join failed (non-fatal)"
                 );
-                failed += chunk.len() as u32;
+                false
+            }
+        };
+        if chunk_ok {
+            indexed += chunk.len() as u32;
+        } else {
+            failed += chunk.len() as u32;
+            if force && !clear_failed_chunk_vectors(Arc::clone(&db), chunk).await {
+                stale_vectors_remain = true;
             }
         }
 
@@ -1139,11 +1245,14 @@ async fn run_reindex_chunks(
 
     let skipped = initial_skipped;
 
-    Ok(ReindexResult {
-        total,
-        indexed,
-        skipped,
-        failed,
+    Ok(ReindexRun {
+        result: ReindexResult {
+            total,
+            indexed,
+            skipped,
+            failed,
+        },
+        stale_vectors_remain,
     })
 }
 
@@ -1161,20 +1270,9 @@ pub async fn reindex_embeddings(
     reindex_embeddings_internal(app, state.inner().clone(), db.inner().clone(), force).await
 }
 
-fn spell_vec_uses_sqlite_vec(conn: &rusqlite::Connection) -> bool {
-    let Ok(sql): Result<String, _> = conn.query_row(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'spell_vec'",
-        [],
-        |row| row.get(0),
-    ) else {
-        return false;
-    };
-    sql.contains("vec0") || sql.contains("float[")
-}
-
 fn ensure_spell_vec_sqlite_vec_ready(pool: &crate::db::Pool) -> Result<(), AppError> {
     let conn = pool.get()?;
-    if spell_vec_uses_sqlite_vec(&conn) {
+    if crate::db::spell_vec_is_vec0(&conn) {
         Ok(())
     } else {
         Err(AppError::Search(
@@ -1231,7 +1329,34 @@ pub async fn finalize_embedding_provision(
 
     set_embeddings_status(&state, EmbeddingsStatus::Ready, None)?;
 
-    match reindex_embeddings_internal(app, Arc::clone(&state), pool, false).await {
+    let pool_for_revision = Arc::clone(&pool);
+    let full_rebuild = match tokio::task::spawn_blocking(move || {
+        let conn = pool_for_revision.get()?;
+        embedding_index_needs_full_rebuild(&conn)
+    })
+    .await
+    {
+        Ok(Ok(needed)) => needed,
+        Ok(Err(error)) => {
+            tracing::warn!(
+                ?error,
+                "embedding index revision check failed; using incremental backfill"
+            );
+            false
+        }
+        Err(join_error) => {
+            tracing::warn!(
+                ?join_error,
+                "embedding index revision task failed; using incremental backfill"
+            );
+            false
+        }
+    };
+    if full_rebuild {
+        tracing::info!("embedding model revision changed or unrecorded; re-embedding all spells");
+    }
+
+    match reindex_embeddings_internal(app, Arc::clone(&state), pool, full_rebuild).await {
         Ok(_) => {}
         Err(AppError::Validation(message))
             if message == EMBEDDING_REINDEX_ALREADY_IN_PROGRESS_MESSAGE =>
@@ -2055,6 +2180,104 @@ mod tests {
         assert_eq!(chunks[2].len(), 44);
     }
 
+    fn migrated_meta_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("open db");
+        crate::db::migrations::load_migrations(&conn).expect("migrate");
+        conn
+    }
+
+    #[test]
+    fn embedding_index_needs_full_rebuild_when_no_revision_recorded() {
+        let conn = migrated_meta_conn();
+        assert!(embedding_index_needs_full_rebuild(&conn).expect("check"));
+    }
+
+    #[test]
+    fn embedding_index_needs_full_rebuild_for_other_model_revision() {
+        let conn = migrated_meta_conn();
+        crate::db::set_app_meta(&conn, EMBEDDING_INDEX_REVISION_KEY, "d13954661f")
+            .expect("seed pre-fix revision");
+        assert!(embedding_index_needs_full_rebuild(&conn).expect("check"));
+    }
+
+    #[test]
+    fn embedding_index_skips_full_rebuild_once_revision_recorded() {
+        let conn = migrated_meta_conn();
+        record_embedding_index_revision(&conn).expect("record");
+        assert!(!embedding_index_needs_full_rebuild(&conn).expect("check"));
+    }
+
+    #[test]
+    fn embedding_index_revision_recorded_after_forced_reindex_without_stale_vectors() {
+        assert!(should_record_embedding_index_revision(true, false));
+        assert!(!should_record_embedding_index_revision(true, true));
+        assert!(!should_record_embedding_index_revision(false, false));
+    }
+
+    fn seed_spell_vec_row_for_test(conn: &rusqlite::Connection, spell_id: i64) {
+        let vector_json =
+            serde_json::to_string(&vec![0.0_f32; 384]).expect("serialize test vector");
+        if conn
+            .execute(
+                "INSERT INTO spell_vec(rowid, v) VALUES(?1, vec_f32(?2))",
+                rusqlite::params![spell_id, vector_json],
+            )
+            .is_ok()
+        {
+            return;
+        }
+        let bytes: Vec<u8> = vec![0.0_f32; 384]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect();
+        conn.execute(
+            "INSERT INTO spell_vec(rowid, v) VALUES(?1, ?2)",
+            rusqlite::params![spell_id, bytes],
+        )
+        .expect("insert spell_vec row (blob fallback)");
+    }
+
+    #[tokio::test]
+    async fn clear_failed_chunk_vectors_drops_only_that_chunks_vectors() {
+        let isolated =
+            IsolatedTestPool::new("clear_failed_chunk_vectors_drops_only_that_chunks_vectors");
+        let pool = Arc::clone(&isolated.pool);
+        let ids: Vec<i64> = {
+            let conn = pool.get().expect("test db connection");
+            let first: i64 = conn
+                .query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM spell", [], |row| {
+                    row.get(0)
+                })
+                .expect("next spell id");
+            let ids = vec![first, first + 1, first + 2];
+            for id in &ids {
+                conn.execute(
+                    "INSERT INTO spell (id, name, level, description, content_hash) VALUES (?1, 'Spell', 1, 'Desc', ?2)",
+                    rusqlite::params![id, format!("hash-clear-failed-chunk-{id}")],
+                )
+                .expect("insert spell");
+                seed_spell_vec_row_for_test(&conn, *id);
+            }
+            ids
+        };
+        let failed_chunk: Vec<SpellEmbeddingRow> = ids[..2]
+            .iter()
+            .map(|id| (*id, "Spell".to_string(), "Desc".to_string()))
+            .collect();
+
+        assert!(clear_failed_chunk_vectors(Arc::clone(&pool), &failed_chunk).await);
+
+        let conn = pool.get().expect("test db connection");
+        let remaining: Vec<i64> = conn
+            .prepare("SELECT rowid FROM spell_vec ORDER BY rowid")
+            .expect("prepare")
+            .query_map([], |row| row.get(0))
+            .expect("query spell_vec")
+            .collect::<Result<_, _>>()
+            .expect("read rowids");
+        assert_eq!(remaining, vec![ids[2]]);
+    }
+
     #[test]
     fn embeddings_status_serializes_to_spec_values() {
         assert_eq!(
@@ -2262,7 +2485,7 @@ mod tests {
             "semantic_ranking_orders_by_cosine_distance_asc_and_serializes_camel_case",
         );
         let conn = isolated.pool.get().expect("test db connection");
-        if !spell_vec_uses_sqlite_vec(&conn) {
+        if !crate::db::spell_vec_is_vec0(&conn) {
             return;
         }
 
@@ -3440,6 +3663,106 @@ mod tests {
         download_test_embedding_bundle_blocking(&cache_root)?;
         copy_directory_recursive(&cache_root, bundle_root)?;
         validate_embedding_bundle_layout(bundle_root)
+    }
+
+    fn top_level_entry_names(root: &std::path::Path) -> Vec<String> {
+        let mut names = std::fs::read_dir(root)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    fn hf_hub_cache_entries(models_root: &std::path::Path) -> Vec<String> {
+        top_level_entry_names(models_root)
+            .into_iter()
+            .filter(|name| name.starts_with("models--") || name == ".locks")
+            .collect()
+    }
+
+    #[test]
+    fn load_embedding_model_rejects_missing_vault_bundle_without_hf_hub_fallback() {
+        let models_root = tempfile::tempdir().expect("models root");
+
+        let err = load_embedding_model_blocking(models_root.path())
+            .err()
+            .expect("missing vault bundle must fail instead of downloading");
+
+        assert!(
+            matches!(err, AppError::Search(ref message) if message.contains("embedding bundle")),
+            "unexpected missing-bundle error: {err}"
+        );
+        assert!(
+            hf_hub_cache_entries(models_root.path()).is_empty(),
+            "loader must not create an hf-hub cache: {:?}",
+            top_level_entry_names(models_root.path())
+        );
+    }
+
+    #[test]
+    fn load_embedding_model_rejects_unverified_vault_bundle_without_hf_hub_fallback() {
+        let models_root = tempfile::tempdir().expect("models root");
+        let bundle_root = models_root.path().join(EMBEDDING_DESTINATION);
+        std::fs::create_dir_all(&bundle_root).expect("bundle dir");
+        for expected in EMBEDDING_EXPECTED_FILES {
+            std::fs::write(
+                bundle_root.join(expected_relative_path(expected.relative_path)),
+                b"{}",
+            )
+            .expect("write unverified bundle file");
+        }
+
+        let err = load_embedding_model_blocking(models_root.path())
+            .err()
+            .expect("unverified vault bundle must fail instead of downloading");
+
+        assert!(
+            matches!(err, AppError::Search(ref message) if message.contains("Embedding file size mismatch")),
+            "unexpected unverified-bundle error: {err}"
+        );
+        assert!(
+            hf_hub_cache_entries(models_root.path()).is_empty(),
+            "loader must not create an hf-hub cache: {:?}",
+            top_level_entry_names(models_root.path())
+        );
+    }
+
+    #[test]
+    fn load_embedding_model_reads_verified_vault_bundle_without_hf_hub_cache() {
+        let models_root = tempfile::tempdir().expect("models root");
+        let bundle_root = models_root.path().join(EMBEDDING_DESTINATION);
+        ensure_test_embedding_bundle_at(&bundle_root).expect("materialize approved bundle");
+
+        let model = load_embedding_model_blocking(models_root.path())
+            .expect("verified vault bundle must load offline");
+        let vectors = model
+            .lock()
+            .expect("embedding model lock")
+            .embed(vec!["Magic Missile\n\nA bolt of force."], None)
+            .expect("embed with vault bundle");
+
+        assert_eq!(vectors.len(), 1);
+        require_embedding_dimension(&vectors[0]).expect("MiniLM vectors are 384-dim");
+        let norm = vectors[0].iter().map(|v| v * v).sum::<f32>().sqrt();
+        assert!(
+            (norm - 1.0).abs() < 1e-3,
+            "vectors must stay L2-normalized, got norm {norm}"
+        );
+        assert!(
+            hf_hub_cache_entries(models_root.path()).is_empty(),
+            "loader must not create an hf-hub cache: {:?}",
+            top_level_entry_names(models_root.path())
+        );
+        assert_eq!(
+            top_level_entry_names(models_root.path()),
+            vec!["embeddings".to_string()],
+            "loader must only touch the provisioned embeddings bundle"
+        );
     }
 
     #[test]

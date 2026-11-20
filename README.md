@@ -27,8 +27,8 @@ pnpm tauri:dev
 > [!IMPORTANT]
 > **Debug Builds vs. Release Builds**
 > When running the app in development mode (`tauri:dev`), the Tauri window acts as a browser pointing to your local Vite server (`http://127.0.0.1:5173`).
-> **Do not launch the `.exe` directly** from the `src-tauri/target/debug` folder; it will show a blank screen unless the Vite server is already running and reachable.
-> For a standalone executable, you must use `pnpm tauri:build` to bundle the frontend assets into the binary.
+> **Do not launch the `.exe` that `tauri:dev` builds directly** (repo-root `target/debug/spellbook-desktop.exe`); it shows a blank screen unless the Vite server is already running and reachable.
+> To run without Vite, use `pnpm tauri:build --debug`: it embeds the frontend assets into the exe at the same path. That exe still runs the Python sidecar with the repository `.venv`, so it is not a distributable build. Installers need the release staging step; see [Release builds](docs/DEVELOPMENT.md#release-builds-windows-nsis-linux-appimage-and-deb).
 
 Backend runtime logging (Tauri/Rust) uses structured `tracing` logs. For local verbosity while developing, set `RUST_LOG` before starting Tauri:
 

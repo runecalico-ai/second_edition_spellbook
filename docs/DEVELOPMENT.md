@@ -29,6 +29,87 @@ pnpm install
 pnpm tauri:dev
 ```
 
+### Release builds (Windows NSIS, Linux AppImage and deb)
+
+Maintainers can produce v1 installers locally without GitHub Actions. Every installer build needs pre-build staging (`scripts/prepare_release_bundle.py`) so `resources/sqlite-vec/` is populated and `spellbook-sidecar-<target-triple>` exists under `apps/desktop/src-tauri/binaries/`. The Windows installer script runs staging itself; the direct `pnpm tauri:build:*` commands do not.
+
+Prerequisites: Node 24+, pnpm 10, Rust stable, Python 3.14.
+
+The default `llm` feature compiles `llama-cpp-2`, which needs CMake and libclang.
+
+Windows also needs MSVC, NSIS, LLVM (libclang, with `LIBCLANG_PATH` set), and CMake. See the Windows toolchain pins under [Local Model Provisioning](#local-model-provisioning).
+
+Ubuntu 24.04 also needs (same list as CI):
+
+    sudo apt-get install -y libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf file libfuse2
+
+The CI list relies on build tools that GitHub runners preinstall. On a fresh Ubuntu 24.04 install, also run:
+
+    sudo apt-get install -y build-essential cmake clang libclang-dev pkg-config libssl-dev
+
+Installer builds use `tauri.release.conf.json` (sidecar `externalBin`). `pnpm tauri:dev` and `pnpm tauri:build --debug` do not: `scripts/tauri_build.mjs` adds that config only to release builds, so debug builds need no staging. Release builds run the frozen `spellbook-sidecar` installed next to the app. Debug builds run `services/ml/spellbook_sidecar.py` with the repository venv and use a frozen copy next to the exe only when the script is missing.
+
+The prepare script freezes the sidecar with PyInstaller and must run under Python 3.14. The freeze refuses to run unless the venv matches `services/ml/requirements-release.lock`, the hash-pinned package set that release builds ship. Like CI, create the repository-root `.venv` before any build path (the Windows installer script also uses it). On Ubuntu 24.04, install Python 3.14 separately (system `python3` is 3.12).
+
+Python environment, Windows (PowerShell, from repository root):
+
+```powershell
+py -3.14 -m venv .venv
+.\.venv\Scripts\python -m pip install --require-hashes --only-binary=:all: -r services/ml/requirements-release.lock
+```
+
+Python environment, Linux (bash, from repository root):
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: -r services/ml/requirements-release.lock
+```
+
+To run the sidecar tests in the same venv, also install `services/ml/requirements-dev.txt`. pip keeps the locked versions because they already satisfy `requirements.txt`.
+
+Windows installer (from repository root):
+
+```powershell
+.\scripts\build_windows_installer.ps1
+```
+
+The script is the standalone Windows path. It runs `pnpm install --frozen-lockfile`, runs `prepare_release_bundle.py` with `.venv\Scripts\python.exe` (falls back to `python` on `PATH`), runs `tauri build`, and copies the installer to `-OutputDirectory` if given. Do not run the prepare script separately before it.
+
+Direct `pnpm tauri:build:*` commands need the prepare script first, with the venv interpreter (from repository root):
+
+```powershell
+.\.venv\Scripts\python scripts/prepare_release_bundle.py
+```
+
+```bash
+.venv/bin/python scripts/prepare_release_bundle.py
+```
+
+Or, on Windows after the prepare script (from repository root) — the same `tauri build` the script runs, without its installer copy step:
+
+```powershell
+cd apps/desktop
+pnpm install --frozen-lockfile
+pnpm tauri:build:win
+```
+
+Linux (Ubuntu 24.04, from repository root after the prepare script):
+
+```bash
+cd apps/desktop
+pnpm install --frozen-lockfile
+pnpm tauri:build:linux
+```
+
+Artifacts (this repo’s Cargo `target-dir` is the repository-root `target/`):
+
+- Windows: `target/release/bundle/nsis/` — NSIS `*setup.exe`
+- Linux: `target/release/bundle/appimage/` and `target/release/bundle/deb/`
+
+CI publishes renamed assets `Spellbook_{version}_x64-setup.exe`, `Spellbook_{version}_amd64.AppImage`, `Spellbook_{version}_amd64.deb` plus `.sha256` files. Local filenames may still be Tauri defaults until renamed.
+
+Do not add `tauri build` to pull-request CI. Tagged releases use `.github/workflows/release.yml`.
+
 ## Local Model Provisioning
 
 Approved TinyLlama and MiniLM assets are staged under the fixed path `SpellbookVault/models/` (`commands/provisioning.rs`). Paths are not configurable. After a successful download or verified side-load, chat and embeddings run offline.
@@ -75,6 +156,8 @@ Per-file inventory (`EMBEDDING_EXPECTED_FILES`):
 | `embeddings/all-MiniLM-L6-v2/special_tokens_map.json` | `695` | `5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a` |
 | `embeddings/all-MiniLM-L6-v2/tokenizer_config.json` | `1433` | `bd2e06a5b20fd1b13ca988bedc8763d332d242381b4fbc98f8fead4524158f79` |
 
+The embeddings runtime re-validates this inventory and loads these five files directly through fastembed's user-defined model API (mean pooling, L2-normalized, 384 dimensions). It never uses a Hugging Face hub cache (`models--Qdrant--…`) or contacts the network at load time; fastembed is built without its `hf-hub` feature. A missing or mismatched bundle fails the load with an error.
+
 ### Verified side-load rules
 
 1. Only the exact approved GGUF or the exact five-file MiniLM layout is accepted. Arbitrary "compatible" models are rejected.
@@ -82,7 +165,7 @@ Per-file inventory (`EMBEDDING_EXPECTED_FILES`):
 3. Validate identity (destination filename / relative paths) and SHA-256 (or the five-file inventory) before copying into `SpellbookVault/models/`.
 4. Success: LLM status becomes `ready`; embeddings status becomes `initializing` or `ready`.
 5. Failure: status unchanged; no vault write of the rejected payload.
-6. Chat UI labels this "Add Local Model" (`chat-llm-import-button` / `chat-embeddings-import-button`). Library semantic empty-state uses `library-embeddings-import-button`.
+6. In Chat, the TinyLlama action is "Add Local Model" (`chat-llm-import-button`, file picker) and the MiniLM action is "Add Local Embedding Model" (`chat-embeddings-import-button`, folder picker). Chat shows the MiniLM action only while TinyLlama is not `ready` or `loaded`. The Library semantic empty-state uses `library-embeddings-import-button` (folder picker).
 7. In-app download remains the other provisioning path (`llm_download_model` / `embeddings_download_model`) with HTTP Range resume and the same hashes.
 
 Generation cancellation is implemented (OpenSpec Outcome B): the inference worker polls an `AtomicBool` at token boundaries via `llm_cancel_generation`.

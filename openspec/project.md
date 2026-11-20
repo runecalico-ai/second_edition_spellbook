@@ -51,7 +51,6 @@ A local-only, privacy-first desktop application for managing AD&D 2nd Edition sp
 ## External Dependencies
 - **Tauri 2**: Cross-platform runtime.
 - **sqlite-vec**: Vector search extension.
-- **Pandoc**: Used for high-quality PDF/Markdown exports.
 - **sentence-transformers**: Local embedding models.
 
 ## Directory Structure

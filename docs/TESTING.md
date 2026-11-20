@@ -366,11 +366,11 @@ fn test_hash_consistency_after_recompute() {
 
 ### Running Migration Tests with Real Data
 
-For testing against production-like data:
+To test against production-like data, use the steps below. A release or installed Windows exe is a windowed program, so start it with `Start-Process -NoNewWindow -Wait` (see [CLI Recovery Tools](./TROUBLESHOOTING.md#cli-recovery-tools)).
 
 ```powershell
 # 1. Create a backup of your production database
-.\spellbook-desktop.exe --list-backups
+Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--list-backups' -NoNewWindow -Wait
 
 # 2. Copy backup to a test location
 Copy-Item "$env:APPDATA\SpellbookVault\spells_backup_*.db" "$env:TEMP\test_migration.db"
@@ -379,7 +379,7 @@ Copy-Item "$env:APPDATA\SpellbookVault\spells_backup_*.db" "$env:TEMP\test_migra
 # (Modify test to use external file path)
 
 # 4. Compare results
-.\spellbook-desktop.exe --check-integrity
+Start-Process -FilePath .\spellbook-desktop.exe -ArgumentList '--check-integrity' -NoNewWindow -Wait
 ```
 
 ### Migration Test Checklist

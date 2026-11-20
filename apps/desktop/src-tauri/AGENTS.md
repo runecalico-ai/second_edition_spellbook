@@ -84,6 +84,8 @@ use crate::sidecar::call_sidecar;
 let result = call_sidecar("action_name", json!({"key": value})).await?;
 ```
 
+`resolve_sidecar_command` picks the program. Release builds prefer the frozen `spellbook-sidecar` next to the exe. Debug builds (`pnpm tauri:dev`, `pnpm tauri:build --debug`) prefer `services/ml/spellbook_sidecar.py` with the repository venv, so Python edits apply without re-freezing.
+
 > [!CAUTION]
 > The sidecar handles **import/export only**. Do not add `embed` or `llm_answer` handlers. Local inference uses `llm_chat` in `commands/llm.rs`. Embeddings and semantic search use `commands/embeddings.rs`. Sidecar downtime must not block either path.
 
@@ -92,6 +94,19 @@ let result = call_sidecar("action_name", json!({"key": value})).await?;
 2. Add `#[tauri::command]` attribute
 3. Export from `commands/mod.rs`
 4. Register in `lib.rs` `invoke_handler` (not `main.rs`; `main.rs` only calls `lib::run()`)
+
+### Webview permissions (capabilities)
+App commands registered in `invoke_handler` need no permission. Core and plugin JS APIs do: `@tauri-apps/api/event` (`listen`), `@tauri-apps/plugin-dialog`, `@tauri-apps/plugin-fs`, window/webview APIs, and so on. Tauri v2 refuses any call not granted in `capabilities/default.json` with `Command plugin:<name>|<cmd> not allowed by ACL`, and only at runtime.
+
+When frontend code starts using a new core or plugin API:
+1. Add the narrowest permission (for example `core:window:allow-set-title`, not `core:default`) to `capabilities/default.json`.
+2. Add it to `EXPECTED_PERMISSIONS` in `src/capability_tests.rs`, plus an allow test for the new command.
+3. Run `cargo build` so `gen/schemas/capabilities.json` regenerates, then `cargo test capability`. Commit both files.
+
+Do not add static `fs` scopes: dialog-picked paths are added to the fs scope at runtime.
+
+### Content Security Policy
+`tauri.conf.json` `app.security.csp` applies to built assets (release and `pnpm tauri:build --debug`, which Playwright uses). Tauri hashes inline scripts in `dist/index.html` into `script-src` automatically. Do not add `'unsafe-eval'` or `'unsafe-inline'` to `script-src`. Loading anything from outside the app (URLs, fonts, images) needs an explicit source in the policy. `tests/content_security_policy.spec.ts` fails on any violation.
 
 ### Tauri IPC Casing
 Tauri automatically converts command parameters from Rust's `snake_case` to JavaScript's `camelCase`.
@@ -153,6 +168,10 @@ The application includes a robust parsing engine for converting legacy AD&D 2e s
 
 - **Engine**: SQLite with `rusqlite` and `r2d2_sqlite` pooling
 - **Vector Search**: `sqlite-vec` extension for semantic search
+- **Bundled sqlite-vec**: `init_db` copies the installed `resources/sqlite-vec/vec0.*` into the vault, then loads the vault copy. When the bundled file differs (an app upgrade), it stages `vec0.*.new` and renames it over the vault copy. If the rename fails (another instance has the library loaded), it keeps the old copy and retries on the next start.
+- **Blob-backed `spell_vec` repair**: Migration 0001 creates a plain BLOB `spell_vec` when vec0 is missing. `init_db` calls `migrations::repair_blob_backed_spell_vec` after migrations: once vec0 loads, it drops that table and recreates it as `vec0(rowid INTEGER PRIMARY KEY, v float[384])`. The embeddings startup backfill then re-embeds every spell. Unit tests are blob-backed unless they call `db::load_static_sqlite_vec_for_test`.
+- **Embedding index revision**: `app_meta.embedding_index_revision` (migration 0016) records the MiniLM bundle revision (`EMBEDDING_MANIFEST_SHA`) that produced `spell_vec`. The embeddings startup backfill runs a forced reindex when it is missing or different, and every forced reindex records it once no older vectors remain. A chunk that fails in a forced reindex loses its old vectors, and the next startup's incremental backfill retries only those spells. Changing the approved embedding bundle therefore re-embeds every vault once.
+- **Vault file writes and cleanup**: A spell writer writes `spells/{content_hash}.json` after its transaction's first write to `spell` (it then holds SQLite's write lock) or after it commits, never before the row write. Code that removes vault files (`delete_spell_with_conn`, vault GC) checks `is_content_hash_live` and calls `remove_file` inside one `with_vault_write_lock` (`BEGIN IMMEDIATE`) call; GC takes one such call per file so writers never wait for the whole scan. The process-local `VaultMaintenanceState` does not stop spell writers or other app instances, so it cannot replace this lock. Take the SQLite lock before `with_idle_lock`, never after. A transaction that reads before it writes gets `SQLITE_BUSY` at once on lock contention instead of waiting, so start it with `TransactionBehavior::Immediate` when it must not fail.
 
 ### Migration System
 The application uses a "Hash Backfill" system (`src/utils/migration_manager.rs`) to maintain data integrity across core updates.
@@ -163,6 +182,9 @@ The application uses a "Hash Backfill" system (`src/utils/migration_manager.rs`)
 - **Sync check**: On every spell *write* (including `update_spell`, `upsert_spell`, and import), a sync check compares flat columns to `canonical_data` and logs discrepancies (no env toggle). It is not run on read (e.g. `get_spell`).
 
 **CLI Recovery Tools**:
+
+Windows release builds use the GUI subsystem (`main.rs`). The flags below attach to the console of the terminal that started the exe. A new flag must also be added to `MAINTENANCE_FLAGS` in `main.rs`; `every_flag_main_handles_is_a_maintenance_flag` fails otherwise.
+
 - `--check-integrity`: Recompute hash from `canonical_data` for each spell and compare to stored `content_hash`; report mismatches, NULL hashes, orphan `character_class_spell` rows, and duplicate hashes.
 - `--recompute-hashes`: Force refresh of all structured data.
 - `--detect-collisions`: List duplicate `content_hash` groups; for each group compare `canonical_data` and report "Duplicate content (same spell data)" or "True hash collision (different content, same hash)".
@@ -190,6 +212,7 @@ Key crates:
 ## Testing
 
 Run `cargo check` before committing to verify compilation.
+Lint test code too: `cargo clippy --all-targets -- -D warnings` (CI runs this).
 E2E tests are in the frontend (`tests/` directory) using Playwright.
 
 ## Frontend Modal System
@@ -382,7 +405,7 @@ Do not reintroduce `search_semantic` or `chat_answer`. Chat uses `llm_chat` only
 
 `stream_id` must be non-empty. One inference at a time; a second `llm_chat` is rejected. Timeout is 120s.
 
-**Hooks already wired:** `create_spell` / `update_spell` / import completion embed in the background when the embedding model is `ready`. Failures log and must not fail the spell write. Startup runs embedding init plus `reindex_embeddings(force=false)` backfill.
+**Hooks already wired:** `create_spell` / `update_spell` / import completion embed in the background when the embedding model is `ready`. Failures log and must not fail the spell write. Startup runs embedding init plus a backfill reindex (`force=true` when `app_meta.embedding_index_revision` is missing or differs from `EMBEDDING_MANIFEST_SHA`, else `force=false`; see Database).
 
 **Vault:** `backup_vault` archives the DB, `spells/`, and `vault-settings.json` only. It never adds `models/`. `restore_vault` must leave existing model files untouched.
 

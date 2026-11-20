@@ -13,7 +13,13 @@ fn main() {
     let icon_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("icons");
     std::fs::create_dir_all(&icon_dir).expect("create icon directory");
     let icon_path = icon_dir.join("icon.png");
+    let profile = std::env::var("PROFILE").unwrap_or_default();
     if !icon_path.exists() {
+        if profile == "release" {
+            panic!(
+                "missing apps/desktop/src-tauri/icons/icon.png; commit production icons before a release build"
+            );
+        }
         let icon_bytes = [
             0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
             0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
@@ -25,7 +31,12 @@ fn main() {
     }
     let ico_path = icon_dir.join("icon.ico");
     if !ico_path.exists() {
-        // A minimal 1x1 32-bit ICO file
+        if profile == "release" {
+            panic!(
+                "missing apps/desktop/src-tauri/icons/icon.ico; commit production icons before a release build"
+            );
+        }
+        // existing 1x1 ICO bytes from the current build.rs
         let ico_bytes = [
             0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00,
             0x2c, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x01, 0x00,

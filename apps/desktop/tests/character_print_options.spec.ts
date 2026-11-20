@@ -233,4 +233,53 @@ test.describe("Character Print Options Dialog", () => {
       /Manage spells for each class independently/,
     );
   });
+
+  test("should print character sheet and spellbook pack as HTML with their own templates", async ({
+    appContext,
+  }) => {
+    const { page } = appContext;
+    const app = new SpellbookApp(page);
+    const runId = generateRunId();
+    const charName = `HtmlPrint_${runId}`;
+
+    const confirmPrintAndRead = async (savedText: RegExp): Promise<string> => {
+      await page.getByTestId("btn-confirm-print").click();
+      await expect(page.getByText(/Print Success/)).toBeVisible({ timeout: 10000 });
+      const message = await page.getByText(savedText).textContent();
+      const filePath = message?.split("saved to: ")[1]?.trim();
+      if (!filePath) throw new Error(`No output path in success message: ${message}`);
+      const content = fs.readFileSync(filePath, "utf8");
+      await page.getByRole("button", { name: "OK" }).click();
+      return content;
+    };
+
+    await test.step("Create character with a Mage class", async () => {
+      await app.createCharacter(charName);
+      await app.openCharacterEditor(charName);
+      await app.addClass("Mage");
+    });
+
+    await test.step("HTML character sheet has the sheet body", async () => {
+      await page.getByTestId("btn-print-sheet").click();
+      await expect(page.getByTestId("print-format-select")).toHaveValue("html");
+
+      const content = await confirmPrintAndRead(/Character sheet saved to:/);
+
+      expect(content).toContain("<body>");
+      expect(content).toContain(`<h1>${charName}</h1>`);
+      expect(content).toContain("STR</div>");
+      expect(content).toContain("<h2>Mage (Level");
+    });
+
+    await test.step("HTML spellbook pack has the pack heading", async () => {
+      await page.getByTestId("btn-print-pack").click();
+      await expect(page.getByTestId("print-format-select")).toHaveValue("html");
+
+      const content = await confirmPrintAndRead(/Spellbook pack saved to:/);
+
+      expect(content).toContain("<body>");
+      expect(content).toContain(`<h1>${charName}'s Spellbook</h1>`);
+      expect(content).toContain("Class: Mage");
+    });
+  });
 });

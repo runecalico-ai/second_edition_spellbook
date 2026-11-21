@@ -9,37 +9,39 @@ Any command that reads a prompt from stdin and outputs a commit message works. A
 ### Claude Code
 
 ```toml
+# ~/.config/worktrunk/config.toml
 [commit.generation]
-command = "CLAUDECODE= MAX_THINKING_TOKENS=0 claude -p --no-session-persistence --model=haiku --tools='' --disable-slash-commands --setting-sources='' --system-prompt=''"
+command = "MAX_THINKING_TOKENS=0 claude -p --no-session-persistence --model=haiku --tools='' --safe-mode --setting-sources='user' --system-prompt=''"
 ```
 
-`CLAUDECODE=` unsets the nesting guard so `claude -p` works from within a Claude Code session. `--no-session-persistence` prevents the commit conversation from polluting `claude --continue`. The other flags disable tools, skills, settings, and system prompt for fast text-only output. See [Claude Code docs](https://docs.anthropic.com/en/docs/build-with-claude/claude-code) for installation.
+`--no-session-persistence` prevents the commit conversation from polluting `claude --continue`. `--safe-mode` keeps the run hermetic — no hooks, plugins, MCP, skills, or CLAUDE.md — while leaving authentication working normally, so setups that authenticate via `apiKeyHelper` (not just OAuth or `ANTHROPIC_API_KEY`) still get a key. `--setting-sources='user'` scopes settings to your user config so a project `.claude/settings.json` can't override auth. The remaining flags disable tools, system prompt, and thinking for fast text-only output. `--safe-mode` requires Claude Code ≥ 2.1.169. See [Claude Code docs](https://code.claude.com/docs/en/setup) for installation.
 
 ### Codex
 
+Create `~/.codex/worktrunk-commit-instructions.txt` containing just `.` (no newline). Accepting Worktrunk's first-run Codex setup creates the file for you.
+
 ```toml
+# ~/.config/worktrunk/config.toml
 [commit.generation]
-command = "codex exec -m gpt-5.1-codex-mini -c model_reasoning_effort='low' -c system_prompt='' --sandbox=read-only --json - | jq -sr '[.[] | select(.item.type? == \"agent_message\")] | last.item.text'"
+command = "codex exec -m gpt-6-luna -c model_reasoning_effort='none' -c project_doc_max_bytes=0 -c skills.max_context_tokens=1 -c agents.enabled=false -c features.goals=false -c web_search=disabled -c 'model_instructions_file=\"~/.codex/worktrunk-commit-instructions.txt\"' -c features.shell_tool=false -c features.unified_exec=false -c features.apps=false -c features.plugins=false --ephemeral --sandbox=read-only --json - | jq -sr '[.[] | select(.item.type? == \"agent_message\")] | last.item.text'"
 ```
 
-Uses the fast mini model with low reasoning effort and an empty system prompt for faster output. Requires `jq` for JSON parsing. See [Codex CLI docs](https://developers.openai.com/codex/cli/).
+Requires `jq` for JSON parsing. See [Codex CLI docs](https://developers.openai.com/codex/cli/).
 
 ### Other tools
 
+Any of these replaces the `command` line above:
+
 ```toml
 # opencode — use a fast model variant
-command = "opencode run -m anthropic/claude-haiku-4.5 --variant fast"
+command = "opencode run -m anthropic/claude-haiku-5-5 --variant fast"
 
 # llm
 command = "llm -m claude-haiku-4.5"
 
 # aichat
-command = "aichat -m claude:claude-haiku-4.5"
+command = "aichat -m claude:claude-haiku-4.5 --code"
 ```
-
-## How it works
-
-When worktrunk needs a commit message, it builds a prompt from a template and pipes it to the configured command via shell (`sh -c`). Environment variables can be set inline in the command string.
 
 ## Usage
 
@@ -49,46 +51,69 @@ These examples assume a feature worktree with changes to commit.
 
 Squashes all changes (uncommitted + existing commits) into one commit with an LLM-generated message, then merges to the default branch:
 
-```bash
+```console
 $ wt merge
-<span class=c>◎</span> <span class=c>Squashing 3 commits into a single commit <span style='color:var(--bright-black,#555)'>(5 files, <span class=g>+48</span></span></span><span style='color:var(--bright-black,#555)'>)</span>...
-<span class=c>◎</span> <span class=c>Generating squash commit message...</span>
-<span style='background:var(--bright-white,#fff)'> </span> <b>feat(auth): Implement JWT authentication system</b>
-<span style='background:var(--bright-white,#fff)'> </span> ...
+◎ Squashing 3 commits into a single commit (5 files, +16)...
+◎ Generating squash commit message...
+  feat(auth): Implement JWT authentication system
+
+  Add comprehensive JWT token handling including validation, refresh
+  logic, and authentication tests.
+✓ Squashed @ a1b2c3d
+◎ Merging 1 commit to main @ a1b2c3d (no rebase needed)
+  * a1b2c3d feat(auth): Implement JWT authentication system
+   auth.rs             | 2 ++
+   auth_test.rs        | 2 ++
+   integration_test.rs | 6 ++++++
+   jwt.rs              | 3 +++
+   jwt_test.rs         | 3 +++
+   5 files changed, 16 insertions(+)
+✓ Merged to main (1 commit, 5 files, +16)
+◎ Removing feature worktree & branch in background (same commit as main, _)
+○ Switched to worktree for main @ ~/repo
 ```
 
 ### wt step commit
 
 Stages and commits with LLM-generated message:
 
-```bash
-wt step commit
+```console
+$ wt step commit
+◎ Generating commit message and committing changes... (2 files, +26)
+  feat(validation): add input validation utilities
+✓ Committed changes @ a1b2c3d
 ```
 
 ### wt step squash
 
 Squashes branch commits into one with LLM-generated message:
 
-```bash
-wt step squash
+```console
+$ wt step squash
+◎ Squashing 3 commits into a single commit (5 files, +16)...
+◎ Generating squash commit message...
+  feat(auth): Implement JWT authentication system
+
+  Add comprehensive JWT token handling including validation, refresh
+  logic, and authentication tests.
+✓ Squashed @ a1b2c3d
 ```
 
 See [`wt merge`](https://worktrunk.dev/merge/) and [`wt step`](https://worktrunk.dev/step/) for full documentation.
 
 ## Branch summaries
 
-[experimental]
-
 With `summary = true` and a `[commit.generation] command` configured, Worktrunk generates LLM branch summaries — one-line descriptions of each branch's changes since the default branch.
 
 Summaries appear in:
 
-- **`wt switch`** [interactive picker](https://worktrunk.dev/switch/#interactive-picker) — preview tab 5
+- **`wt switch`** [interactive picker](https://worktrunk.dev/switch/#interactive-picker) — the `summary` preview tab
 - **`wt list --full`** — the Summary column (see [`wt list`](https://worktrunk.dev/list/#llm-summaries))
 
 Enable in user config:
 
 ```toml
+# ~/.config/worktrunk/config.toml
 [list]
 summary = true
 ```
@@ -97,13 +122,14 @@ Summaries are cached and regenerated only when the diff changes.
 
 ## Prompt templates
 
-Worktrunk uses [minijinja](https://docs.rs/minijinja/) templates (Jinja2-like syntax) to build prompts. There are sensible defaults, but templates are fully customizable.
+Worktrunk uses [minijinja](https://docs.rs/minijinja/) templates (Jinja2-like syntax) to build prompts.
 
 ### Custom templates
 
 Override the defaults with inline templates:
 
 ```toml
+# ~/.config/worktrunk/config.toml
 [commit.generation]
 command = "llm -m claude-haiku-4.5"
 
@@ -116,9 +142,9 @@ Diff:
 """
 
 squash-template = """
-Combine these {{ commits | length }} commits into one message:
-{% for c in commits %}
-- {{ c }}
+Combine these {{ commit_details | length }} commits into one message:
+{% for c in commit_details %}
+- {{ c.subject }}
 {% endfor %}
 
 Diff:
@@ -135,22 +161,43 @@ Diff:
 | `{{ branch }}` | Current branch name |
 | `{{ repo }}` | Repository name |
 | `{{ recent_commits }}` | Recent commit subjects (for style reference) |
-| `{{ commits }}` | Commits being squashed (squash template only) |
+| `{{ commit_details }}` | Commits being squashed (squash template only); each renders as its subject and exposes `.subject` / `.body` |
 | `{{ target_branch }}` | Merge target branch (squash template only) |
+| `{{ user_guidance }}` | Rendered user `template-append` fragment (see below) |
+| `{{ project_guidance }}` | Rendered project `template-append` fragment (see below) |
 
 ### Template syntax
 
 Templates use [minijinja](https://docs.rs/minijinja/latest/minijinja/syntax/index.html), which supports:
 
 - **Variables**: `{{ branch }}`, `{{ repo | upper }}`
-- **Filters**: `{{ commits | length }}`, `{{ repo | upper }}`
+- **Filters**: `{{ commit_details | length }}`, `{{ repo | upper }}`
 - **Conditionals**: `{% if recent_commits %}...{% endif %}`
-- **Loops**: `{% for c in commits %}{{ c }}{% endfor %}`
+- **Loops**: `{% for c in commit_details %}{{ c.subject }}{% endfor %}`
 - **Loop variables**: `{{ loop.index }}`, `{{ loop.length }}`
 - **Whitespace control**: `{%- ... -%}` strips surrounding whitespace
 
 See `wt config create --help` for the full default templates.
 
+## Appending to the prompt
+
+`template-append` adds instructions to the default commit and squash prompts. Set it in user config for personal preferences or `.config/wt.toml` for shared project conventions. Fragments support the same template variables as the main prompt.
+
+```toml
+# .config/wt.toml
+[commit.generation]
+template-append = """
+- Use conventional commits (feat:, fix:, docs:, …)
+- Reference the related issue ID in the body
+"""
+```
+
+When both are configured, user instructions come before project instructions.
+
+The user fragment needs no approval — it's the developer's own config. For the project fragment, the first time the rendered text is sent to the LLM, Worktrunk shows the raw fragment in an approval prompt — the same one-shot gate as project-defined hooks. Subsequent commits don't re-prompt unless the fragment changes. Declining is non-fatal: the LLM runs with just the user fragment (if any).
+
+Custom user templates that don't reference `{{ user_guidance }}` / `{{ project_guidance }}` opt out of the appended blocks — the rendered values are injected only where the template places them.
+
 ## Fallback behavior
 
-When no LLM is configured, worktrunk generates deterministic messages based on changed filenames (e.g., "Changes to auth.rs & config.rs").
+When no LLM is configured, worktrunk generates deterministic messages: commits name the changed files (e.g., "Changes to auth.rs & config.rs"), and squashes get the subject `Squash commits from <branch>` with the combined commits listed in the body.

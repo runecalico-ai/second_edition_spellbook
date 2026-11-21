@@ -1,0 +1,8 @@
+{
+  "name": "spellbook-openspec-cli",
+  "private": true,
+  "description": "Pinned OpenSpec CLI for Copilot setup. Canonical name @fission-ai/openspec is the package named in https://github.com/Fission-AI/OpenSpec/blob/main/docs/installation.md. The npm registry repository is git+https://github.com/Fission-AI/OpenSpec.git.",
+  "dependencies": {
+    "@fission-ai/openspec": "2.1.1"
+  }
+}

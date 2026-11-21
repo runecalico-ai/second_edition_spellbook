@@ -1,29 +1,86 @@
-# Claude Code Integration
+# Agent Integration
 
-The worktrunk Claude Code plugin provides three features:
+Worktrunk ships a plugin for each supported agent CLI. What a plugin provides depends on the hooks that CLI exposes:
 
-1. **Configuration skill** — Documentation Claude Code can read, so it can help set up LLM commits, hooks, and troubleshoot issues
-2. **Worktree isolation** — When Claude Code agents create isolated worktrees, the plugin routes creation and removal through `wt` instead of raw `git`
-3. **Activity tracking** — Status markers in `wt list` showing which worktrees have active Claude sessions (🤖 working, 💬 waiting)
+| Capability | Claude Code | Codex | OpenCode | Pi | oh-my-pi | Gemini CLI |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| Configuration skill | ✓ | ✓ |  |  |  | ✓ |
+| Activity tracking (🤖/💬 in `wt list`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Worktree isolation | ✓ |  | ✓ |  |  |  |
+| `/wt-switch-create` skill | ✓ |  |  |  |  |  |
+| `/wt-diff` pane | ✓ |  |  |  |  |  |
+
+The configuration skill is documentation the agent reads to help set up LLM commits, hooks, and troubleshooting. Activity tracking shows which worktrees have running sessions. Worktree isolation needs worktree-lifecycle hooks, which only Claude Code and OpenCode 2 expose, so Codex, Pi, oh-my-pi, and Gemini users invoke `wt switch --create` and `wt remove` directly.
 
 ## Installation
 
-Recommended:
+### Claude Code
 
 ```bash
 wt config plugins claude install
 ```
 
+Manual equivalent (Claude Code 2.1.292 or later):
+
+```bash
+claude plugin install worktrunk --marketplace max-sixty/worktrunk
+```
+
+`wt config plugins claude uninstall` removes the plugin and its marketplace entry.
+
+### Codex
+
+```bash
+wt config plugins codex install
+```
+
 Manual equivalent:
 
 ```bash
-claude plugin marketplace add max-sixty/worktrunk
-claude plugin install worktrunk@worktrunk
+codex plugin marketplace add max-sixty/worktrunk
+codex plugin add worktrunk@worktrunk
+codex plugin add worktrunk-markers@worktrunk
 ```
+
+`worktrunk` carries the skills; `worktrunk-markers` carries only the activity-marker hooks, so skill updates don't make Codex ask to approve the hooks again. An install that predates the split has only `worktrunk`, whose markers stop once it updates; add the markers with `codex plugin add worktrunk-markers@worktrunk`.
+
+`wt config plugins codex uninstall` removes both plugins and their marketplace entry.
+
+### OpenCode
+
+```bash
+wt config plugins opencode install
+```
+
+This writes the plugin to OpenCode's global plugins directory, `~/.config/opencode/plugins/worktrunk.ts` (honoring `$OPENCODE_CONFIG_DIR` and `$XDG_CONFIG_HOME`). `wt config plugins opencode uninstall` removes it.
+
+### Pi
+
+```bash
+wt config plugins pi install
+```
+
+This writes the activity extension to `~/.pi/agent/extensions/worktrunk.ts`, where Pi discovers it on startup; `$PI_CODING_AGENT_DIR` replaces the agent directory. `wt config plugins pi uninstall` removes the extension.
+
+### oh-my-pi
+
+```bash
+wt config plugins omp install
+```
+
+oh-my-pi (`omp`) is a Pi-derived agent with its own config root and hook API, so it takes a separate command. This writes the activity hook to `~/.omp/agent/hooks/pre/worktrunk.ts`. Named `$OMP_PROFILE` or `$PI_PROFILE` profiles use `~/.omp/profiles/<profile>/agent`, `$PI_CONFIG_DIR` changes the `.omp` config root, and `$PI_CODING_AGENT_DIR` overrides the agent directory for the default profile. `wt config plugins omp uninstall` removes the hook.
+
+### Gemini CLI
+
+```bash
+gemini extensions install https://github.com/max-sixty/worktrunk
+```
+
+Gemini loads the extension natively from the repository, so there is no `wt` wrapper. `gemini extensions uninstall worktrunk` removes it.
 
 ## Configuration skill
 
-The plugin includes a skill — documentation that Claude Code can read — covering worktrunk's configuration system. After installation, Claude Code can help with:
+With the `/worktrunk` skill, the agent can help with:
 
 - Setting up LLM-generated commit messages
 - Adding project hooks (pre-start, pre-merge, pre-commit)
@@ -34,47 +91,87 @@ Claude Code is designed to load the skill automatically when it detects worktrun
 
 ## Activity tracking
 
-The plugin tracks Claude sessions with status markers in `wt list`:
+Every plugin tracks agent sessions with status markers in `wt list`:
 
-```bash
+```console
 $ wt list
-  <b>Branch</b>       <b>Status</b>        <b>HEAD±</b>    <b>main↕</b>  <b>Remote⇅</b>  <b>Path</b>                 <b>Commit</b>    <b>Age</b>   <b>Message</b>
-@ main             <span class=d>^</span><span class=d>⇡</span>                         <span class=g>⇡1</span>      .                    <span class=d>33323bc1</span>  <span class=d>1d</span>    <span class=d>Initial commit</span>
-+ feature-api      <span class=d>↑</span> 🤖              <span class=g>↑1</span>               ../repo.feature-api  <span class=d>70343f03</span>  <span class=d>1d</span>    <span class=d>Add REST API endpoints</span>
-+ review-ui      <span class=c>?</span> <span class=d>↑</span> 💬              <span class=g>↑1</span>               ../repo.review-ui    <span class=d>a585d6ed</span>  <span class=d>1d</span>    <span class=d>Add dashboard component</span>
-+ wip-docs       <span class=c>?</span> <span class=d>–</span>                                  ../repo.wip-docs     <span class=d>33323bc1</span>  <span class=d>1d</span>    <span class=d>Initial commit</span>
+  Branch       Status       @±        ^↕        ^…±     Remote⇅  Commit    Age  Message
+@ main             ^⇡                                    ⇡1      33323bc    1d  Initial commit
++ feature-api      ↑ 🤖              ↑1        +1                70343f0    1d  Add REST API endpo…
++ review-ui      ? ↑ 💬    +1        ↑1        +1                a585d6e    1d  Add dashboard comp…
++ wip-docs       ? –       +1                                    33323bc    1d  Initial commit
 
-<span class=d>○</span> <span class=d>Showing 4 worktrees, 2 with changes, 2 ahead</span>
+○ Showing 4 worktrees, 2 with changes, 2 ahead, hidden: Path
 ```
 
-- 🤖 — Claude is working
-- 💬 — Claude is waiting for input
+- 🤖 — agent is working
+- 💬 — agent is waiting or idle
+
+Every plugin clears the marker when a session ends. A stale marker can remain if the agent process is killed before its session-end hook runs. In every case, `wt config state marker clear` removes a marker manually.
 
 ### Manual status markers
 
 Set status markers manually for any workflow:
 
-```bash
+```console
 $ wt config state marker set "🚧"                   # Current branch
 $ wt config state marker set "✅" --branch feature  # Specific branch
 $ git config worktrunk.state.feature.marker '{"marker":"💬","set_at":0}'  # Direct
 ```
 
-## Worktree isolation
+### Agent CLIs without a plugin
 
-Claude Code agents can run in isolated worktrees (`isolation: "worktree"`). By default, Claude Code creates these with `git worktree add`. The plugin's `WorktreeCreate` and `WorktreeRemove` hooks route this through `wt switch --create` and `wt remove` instead, so worktrees created by agents get worktrunk's naming conventions, hooks, and lifecycle management.
+For other agent CLIs, configure these commands to run on session events:
 
-## Statusline
+| Host event | Command |
+|---|---|
+| Session starts, or the agent resumes work | `wt config state marker set "🤖"` |
+| Agent finishes a turn and waits for input | `wt config state marker set "💬"` |
+| Session ends | `wt config state marker clear` |
 
-`wt list statusline --format=claude-code` outputs a single-line status for the Claude Code statusline. This may fetch CI status from the network when the cache is stale (often ~1–2 seconds), making it suitable for async statuslines but too slow for synchronous shell prompts. If a faster version would be helpful, please [open an issue](https://github.com/max-sixty/worktrunk/issues).
+## Worktree isolation (Claude Code and OpenCode)
 
-<code>~/w/myproject.feature-auth  !🤖  @<span style='color:#0a0'>+42</span> <span style='color:#a00'>-8</span>  <span style='color:#0a0'>↑3</span>  <span style='color:#0a0'>⇡1</span>  <span style='color:#0a0'>●</span>  | Opus 🌔 65%</code>
+Claude Code agents can run in isolated worktrees (`isolation: "worktree"`). By default, Claude Code creates these with `git worktree add`. The plugin's `WorktreeCreate` and `WorktreeRemove` hooks route this through `wt switch --create` and `wt remove` instead, so worktrees created by agents get worktrunk's naming conventions, hooks, and lifecycle management. If the branch already exists, the hook runs `wt switch` without `--create`, which returns the branch's worktree, creating one if it has none. New branches start from the default branch: Claude Code's hook input names the worktree but no base, so its `worktree.baseRef` setting has no effect.
 
-When Claude Code provides context window usage via stdin JSON, a moon phase gauge appears (🌕→🌑 as context fills).
+The Claude desktop app creates worktree sessions itself and doesn't run plugin `WorktreeCreate` or `WorktreeRemove` hooks, so those worktrees bypass `wt` ([anthropics/claude-code#29716](https://github.com/anthropics/claude-code/issues/29716)).
+
+Under OpenCode 2, the plugin registers a `worktrunk` worktree strategy, so worktrees OpenCode creates and removes go through the same commands. Each gets a branch named after the worktree name OpenCode chooses, at the path from `worktree-path`; OpenCode's `worktree.directory` setting is ignored. New branches start from the default branch (or the starting ref OpenCode passes), not the current checkout's HEAD. A dirty worktree fails removal with worktrunk's message rather than an offer to force.
+
+## `/wt-switch-create` skill (Claude Code only)
+
+`/wt-switch-create [<branch>] [<repo>] [-- <task>]` starts a task in a fresh worktree without leaving the session: it creates the worktree, switches into it, and runs the task (all arguments optional). The worktree shows up in `wt list`; merge or remove it with `wt merge` / `wt remove`.
+
+Claude Code asks for confirmation before a session enters an existing worktree by path outside `.claude/worktrees/`, which in worktrunk's default layout is every worktree. The plugin's `PermissionRequest` hook answers yes for a worktree of the repository the session is working in that sits where `worktree-path` puts its branch, so a background session doesn't stop at that prompt. Entering any other worktree still asks.
+
+## `/wt-diff` pane (Claude Code only)
+
+`/wt-diff` opens a pane beside the conversation that lists the worktrees the session has worked in, with the selected one's [`wt step diff`](https://worktrunk.dev/step/#wt-step-diff) below: everything since the branch left the default branch, committed, uncommitted, and untracked. `/wt-diff <branch>` selects another worktree.
+
+A worktree joins the list when the session starts or moves into it, or when the session or one of its subagents edits a file there or runs a command there that isn't read-only. Until the pane first opens, the pane only notes those directories, without running `git` or `wt`.
+
+| Key | Action |
+|---|---|
+| `1`–`9` | Select a worktree |
+| `j` / `k` | Next or previous file |
+| `ctrl+↓` / `ctrl+↑` | Next or previous file, from the prompt |
+| `r` | Refresh |
+| ↑ ↓, PageUp, PageDown | Scroll |
+
+The other keys work while the pane has the keyboard, which it takes when it opens. Running `/wt-diff` again gives it back, as does `ctrl+x tab`, which moves focus from the prompt to the line above it when another plugin draws one, then to the pane. `esc` returns to the prompt.
+
+The pane needs a Claude Code release that loads plugin hooks modules; earlier releases load the rest of the plugin without it.
+
+## Statusline (Claude Code only)
+
+`wt list statusline --format=claude-code` outputs a single-line status for the Claude Code statusline. Claude Code runs it in the background, which is what makes the occasional 1–2 second CI fetch invisible.
+
+<code>~/w/myproject.feature-auth  !🤖  @<span style='color:#0a0'>+42</span> <span style='color:#a00'>-8</span>  <span style='color:#0a0'>↑3</span>  <span style='color:#0a0'>⇡1</span>  <span style='color:#0a0'>#3035</span>  Opus  🌔 65%  <span style='color:#a70'>1.4×(10am–3pm)</span></code>
+
+The statusline shows worktree status, model, context usage, and rate-limit pace. See [`wt list statusline`](https://worktrunk.dev/list/#wt-list-statusline) for details.
 
 Add to `~/.claude/settings.json`:
 
-```json
+```json title="~/.claude/settings.json"
 {
   "statusLine": {
     "type": "command",

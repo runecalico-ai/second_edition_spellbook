@@ -1,4 +1,7 @@
 schema: spec-driven
+skillsScope: project
+githubCopilot:
+  cloudAgent: true
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.

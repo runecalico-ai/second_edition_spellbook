@@ -75,3 +75,6 @@ apps/desktop/src-tauri/binaries/spellbook-sidecar-*
 
 # AI Generated Temp directories
 .tmp/
+
+# Local SpellScribe examples
+.spellscribe-examples/

@@ -97,7 +97,7 @@ fn test_editor_compat_no_and_first_match_wins() {
 }
 ```
 
-In `spell_parser.rs` tests, add (matching the `test_facade_*` pattern):
+In `spell_parser.rs` tests, add (matching the `test_facade_*` pattern; add `use crate::models::{MagicResistanceKind, SavingThrowKind};` to that test module — the file's top-level imports don't include them):
 
 ```rust
 #[test]
@@ -160,7 +160,7 @@ assert_eq!(mr.kind, MagicResistanceKind::Special);
 assert_eq!(mr.special_rule.as_deref(), Some("50% only"));
 ```
 
-Then delete the old local functions/tests (Step 3) — before that, this test passes against old code; it is a regression guard for the rewire, so run it now to confirm the baseline.
+This test passes against the current code (verified while planning). It is a regression guard for the rewire in Step 3, so run it first to confirm the baseline.
 
 - [ ] **Step 2: Run baseline**
 

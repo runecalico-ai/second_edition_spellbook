@@ -12,9 +12,11 @@
 //! - **duration**: Rounds, turns, levels, special durations (instantaneous, permanent).
 //! - **components**: V, S, M, casting times, and material cost extraction.
 //! - **mechanics**: Saving throws, magic resistance, damage, and experience costs.
+//! - **legacy_mechanics**: Editor-compatible saving throw / magic resistance mappers (lockstep with the Spell Editor).
 
 pub mod area;
 pub mod components;
 pub mod duration;
+pub mod legacy_mechanics;
 pub mod mechanics;
 pub mod range;

@@ -19,6 +19,7 @@ When a legacy string is parsed, the original value is unconditionally stored in 
 | `DurationParser` | `duration.rs` | Time units, scaling, conditions |
 | `ComponentsParser` | `components.rs` | V/S/M/DF parsing, casting time |
 | `MechanicsParser` | `mechanics.rs` | Damage, saves, MR, XP costs |
+| legacy_mechanics (editor-compat) | `legacy_mechanics.rs` | Saving throw / MR mapping identical to the Spell Editor's legacy mappers; used by source-list import |
 
 ---
 

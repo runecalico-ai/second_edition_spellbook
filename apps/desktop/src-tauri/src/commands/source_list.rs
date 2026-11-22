@@ -8,14 +8,7 @@ use crate::models::canonical_spell::{
 };
 use crate::models::damage::DamageKind;
 use crate::models::duration_spec::DurationKind;
-use crate::models::magic_resistance::{
-    MagicResistanceKind, MagicResistanceSpec, MrAppliesTo, MrPartialScope, MrPartialSpec,
-};
 use crate::models::range_spec::RangeKind;
-use crate::models::saving_throw::{
-    SaveAppliesTo, SaveOutcomeEffect, SaveResult, SaveTiming, SaveType, SaveVs, SavingThrowKind,
-    SavingThrowSpec, SingleSave,
-};
 use crate::models::scalar::{ScalarMode, SpellScalar};
 use crate::models::{
     AreaSpec, DurationSpec, ImportSpellJsonFailure, RangeSpec, SpellCastingTime, SpellDamageSpec,
@@ -26,7 +19,6 @@ use regex::Regex;
 use std::path::Path;
 use std::sync::OnceLock;
 
-const SAVING_THROW_NOTES_MAX_CHARS: usize = 2_048;
 const MAX_SOURCE_LIST_SPELLS: usize = 10_000;
 
 const CANONICAL_SCHOOLS: &[&str] = &[
@@ -339,188 +331,6 @@ pub(crate) fn parse_damage_with_editor_fallback(
     }
 }
 
-fn normalize_legacy_text(value: &str) -> String {
-    static RE_PUNCT: OnceLock<Regex> = OnceLock::new();
-    static RE_WS: OnceLock<Regex> = OnceLock::new();
-    let re_punct = RE_PUNCT.get_or_init(|| Regex::new(r"[()\[\],.;:]+").expect("static regex"));
-    let re_ws = RE_WS.get_or_init(|| Regex::new(r"[\s_-]+").expect("static regex"));
-
-    let lower = value.trim().to_lowercase();
-    let no_punct = re_punct.replace_all(&lower, " ");
-    re_ws.replace_all(&no_punct, " ").trim().to_string()
-}
-
-pub(crate) fn map_legacy_saving_throw(legacy: &str) -> SavingThrowSpec {
-    static RE_NONE: OnceLock<Regex> = OnceLock::new();
-    static RE_PARALY: OnceLock<Regex> = OnceLock::new();
-    static RE_POISON: OnceLock<Regex> = OnceLock::new();
-    static RE_BREATH: OnceLock<Regex> = OnceLock::new();
-    static RE_ROD_STAFF_WAND: OnceLock<Regex> = OnceLock::new();
-    static RE_POLY_PETRIF: OnceLock<Regex> = OnceLock::new();
-    static RE_POLY: OnceLock<Regex> = OnceLock::new();
-    static RE_SPECIAL: OnceLock<Regex> = OnceLock::new();
-    static RE_NEGATES: OnceLock<Regex> = OnceLock::new();
-    static RE_HALF: OnceLock<Regex> = OnceLock::new();
-    static RE_PARTIAL: OnceLock<Regex> = OnceLock::new();
-
-    let re_none = RE_NONE.get_or_init(|| {
-        Regex::new(r"^(none|no|n/a|na|nil|—|-)$|\bno save\b").expect("static regex")
-    });
-    let re_paraly = RE_PARALY
-        .get_or_init(|| Regex::new(r"\bparaly\b|\bpoison\b|\bdeath\b").expect("static regex"));
-    let re_poison = RE_POISON.get_or_init(|| Regex::new(r"\bpoison\b").expect("static regex"));
-    let re_breath = RE_BREATH.get_or_init(|| Regex::new(r"\bbreath\b").expect("static regex"));
-    let re_rod_staff_wand = RE_ROD_STAFF_WAND
-        .get_or_init(|| Regex::new(r"\brod\b|\bstaff\b|\bwand\b").expect("static regex"));
-    let re_poly_petrif =
-        RE_POLY_PETRIF.get_or_init(|| Regex::new(r"\bpoly\b|\bpetrif\b").expect("static regex"));
-    let re_poly = RE_POLY.get_or_init(|| Regex::new(r"\bpoly\b").expect("static regex"));
-    let re_special = RE_SPECIAL.get_or_init(|| Regex::new(r"\bspecial\b").expect("static regex"));
-    let re_negates =
-        RE_NEGATES.get_or_init(|| Regex::new(r"\bnegat(?:e|es|ed|ing)?\b").expect("static regex"));
-    let re_half =
-        RE_HALF.get_or_init(|| Regex::new(r"\bhalf\b|\b1\s*/\s*2\b").expect("static regex"));
-    let re_partial = RE_PARTIAL.get_or_init(|| Regex::new(r"\bpartial\b").expect("static regex"));
-
-    let normalized = normalize_legacy_text(legacy);
-    if normalized.is_empty() || re_none.is_match(&normalized) {
-        return SavingThrowSpec {
-            kind: SavingThrowKind::None,
-            raw_legacy_value: None,
-            ..Default::default()
-        };
-    }
-
-    // 6-row save_type/save_vs matrix matching editor mapLegacySavingThrow (first match wins).
-    let (save_type, save_vs) = if re_paraly.is_match(&normalized) {
-        (
-            SaveType::ParalyzationPoisonDeath,
-            if re_poison.is_match(&normalized) {
-                SaveVs::Poison
-            } else {
-                SaveVs::DeathMagic
-            },
-        )
-    } else if re_breath.is_match(&normalized) {
-        (SaveType::BreathWeapon, SaveVs::Breath)
-    } else if re_rod_staff_wand.is_match(&normalized) {
-        (SaveType::RodStaffWand, SaveVs::Other)
-    } else if re_poly_petrif.is_match(&normalized) {
-        (
-            SaveType::PetrificationPolymorph,
-            if re_poly.is_match(&normalized) {
-                SaveVs::Polymorph
-            } else {
-                SaveVs::Petrification
-            },
-        )
-    } else if re_special.is_match(&normalized) {
-        (SaveType::Special, SaveVs::Spell)
-    } else {
-        (SaveType::Spell, SaveVs::Spell)
-    };
-
-    let on_success_result = if re_negates.is_match(&normalized) {
-        SaveResult::NoEffect
-    } else if re_half.is_match(&normalized) {
-        SaveResult::ReducedEffect
-    } else if re_partial.is_match(&normalized) {
-        SaveResult::PartialNonDamageOnly
-    } else {
-        let (notes, _) = truncate_chars(legacy, SAVING_THROW_NOTES_MAX_CHARS);
-        return SavingThrowSpec {
-            kind: SavingThrowKind::DmAdjudicated,
-            single: None,
-            multiple: None,
-            raw_legacy_value: Some(legacy.to_string()),
-            legacy_dm_guidance: None,
-            notes: Some(notes),
-        };
-    };
-
-    SavingThrowSpec {
-        kind: SavingThrowKind::Single,
-        single: Some(SingleSave {
-            id: None,
-            save_type,
-            save_vs,
-            modifier: 0,
-            applies_to: SaveAppliesTo::EachTarget,
-            timing: SaveTiming::OnEffect,
-            on_success: SaveOutcomeEffect {
-                result: on_success_result,
-                notes: None,
-            },
-            on_failure: SaveOutcomeEffect {
-                result: SaveResult::FullEffect,
-                notes: None,
-            },
-        }),
-        multiple: None,
-        raw_legacy_value: Some(legacy.to_string()),
-        legacy_dm_guidance: None,
-        notes: None,
-    }
-}
-
-pub(crate) fn map_legacy_magic_resistance(legacy: &str) -> MagicResistanceSpec {
-    static RE_YES: OnceLock<Regex> = OnceLock::new();
-    static RE_NO: OnceLock<Regex> = OnceLock::new();
-    static RE_PARTIAL: OnceLock<Regex> = OnceLock::new();
-
-    let re_yes = RE_YES
-        .get_or_init(|| Regex::new(r"\byes\b|\bapplies\b|\ballowed\b").expect("static regex"));
-    let re_no = RE_NO.get_or_init(|| {
-        Regex::new(r"\bno\b|\bdoes not apply\b|\bbypassed\b|\bignore[sd]?\b").expect("static regex")
-    });
-    let re_partial = RE_PARTIAL.get_or_init(|| Regex::new(r"\bpartial\b").expect("static regex"));
-
-    let normalized = normalize_legacy_text(legacy);
-    if normalized.is_empty() {
-        return MagicResistanceSpec {
-            kind: MagicResistanceKind::Unknown,
-            ..Default::default()
-        };
-    }
-
-    if re_yes.is_match(&normalized) {
-        return MagicResistanceSpec {
-            kind: MagicResistanceKind::Normal,
-            applies_to: MrAppliesTo::WholeSpell,
-            ..Default::default()
-        };
-    }
-
-    if re_no.is_match(&normalized) {
-        return MagicResistanceSpec {
-            kind: MagicResistanceKind::IgnoresMr,
-            applies_to: MrAppliesTo::WholeSpell,
-            ..Default::default()
-        };
-    }
-
-    if re_partial.is_match(&normalized) {
-        return MagicResistanceSpec {
-            kind: MagicResistanceKind::Partial,
-            applies_to: MrAppliesTo::WholeSpell,
-            partial: Some(MrPartialSpec {
-                scope: MrPartialScope::DamageOnly,
-                part_ids: None,
-            }),
-            ..Default::default()
-        };
-    }
-
-    let (truncated, _) = truncate_chars(legacy, SAVING_THROW_NOTES_MAX_CHARS);
-    MagicResistanceSpec {
-        kind: MagicResistanceKind::Special,
-        applies_to: MrAppliesTo::WholeSpell,
-        special_rule: Some(truncated.clone()),
-        source_text: Some(truncated),
-        ..Default::default()
-    }
-}
-
 fn match_canonical_school(token: &str) -> Option<&'static str> {
     let trimmed = token.trim();
     CANONICAL_SCHOOLS
@@ -728,10 +538,10 @@ pub(crate) fn map_source_list_record(
         .map(|raw| parse_area_with_editor_fallback(&parser, &raw));
     let damage = non_empty_trimmed(record.damage.as_deref())
         .map(|raw| parse_damage_with_editor_fallback(&parser, &raw));
-    let saving_throw =
-        non_empty_trimmed(record.saving_throw.as_deref()).map(|raw| map_legacy_saving_throw(&raw));
+    let saving_throw = non_empty_trimmed(record.saving_throw.as_deref())
+        .map(|raw| parser.parse_saving_throw_editor_compat(&raw));
     let magic_resistance = non_empty_trimmed(record.magic_resistance.as_deref())
-        .map(|raw| map_legacy_magic_resistance(&raw));
+        .map(|raw| parser.parse_magic_resistance_editor_compat(&raw));
 
     let reversible = match record.reversible {
         Some(true) => Some(1),
@@ -1433,71 +1243,32 @@ mod tests {
     use crate::models::area_spec::AreaShapeUnit;
     use crate::models::damage::{DamageCombineMode, DamagePart, DamageType, DicePool, DiceTerm};
     use crate::models::duration_spec::DurationUnit;
+    use crate::models::magic_resistance::MagicResistanceKind;
     use crate::models::range_spec::RangeUnit;
+    use crate::models::saving_throw::SavingThrowKind;
 
     #[test]
-    fn test_map_legacy_saving_throw_special_and_none() {
-        let special = map_legacy_saving_throw("Special");
-        assert_eq!(special.kind, SavingThrowKind::DmAdjudicated);
-        assert_eq!(special.raw_legacy_value.as_deref(), Some("Special"));
-        assert_eq!(special.notes.as_deref(), Some("Special"));
-        assert!(special.single.is_none());
+    fn test_map_source_list_record_uses_editor_compat_mechanics() {
+        let md = "## Arcane Bolt
 
-        for none_case in ["None", "none", "NONE", "No save", "N/A", "—", "-"] {
-            let mapped = map_legacy_saving_throw(none_case);
-            assert_eq!(
-                mapped.kind,
-                SavingThrowKind::None,
-                "expected None kind for {none_case}"
-            );
-            assert_eq!(
-                mapped.raw_legacy_value, None,
-                "expected raw_legacy_value None for {none_case}"
-            );
-        }
+- Tradition: arcane
+- Class: Wizard
+- Level: 1
+- School: Evocation
+- Saving Throw: Special
+- Magic Resistance: 50% only
 
-        let negates = map_legacy_saving_throw("Save vs. Spell negates");
-        assert_eq!(negates.kind, SavingThrowKind::Single);
-        let single = negates.single.expect("single save");
-        assert_eq!(single.save_type, SaveType::Spell);
-        assert_eq!(single.on_success.result, SaveResult::NoEffect);
-
-        let breath_half = map_legacy_saving_throw("Save vs. Breath Weapon for half");
-        assert_eq!(breath_half.kind, SavingThrowKind::Single);
-        let single = breath_half.single.expect("single breath save");
-        assert_eq!(single.save_type, SaveType::BreathWeapon);
-        assert_eq!(single.save_vs, SaveVs::Breath);
-        assert_eq!(single.on_success.result, SaveResult::ReducedEffect);
-
-        let poison_partial = map_legacy_saving_throw("Poison (partial)");
-        let single = poison_partial.single.expect("single poison save");
-        assert_eq!(single.save_type, SaveType::ParalyzationPoisonDeath);
-        assert_eq!(single.save_vs, SaveVs::Poison);
-        assert_eq!(single.on_success.result, SaveResult::PartialNonDamageOnly);
-    }
-
-    #[test]
-    fn test_map_legacy_magic_resistance_parity() {
-        assert_eq!(
-            map_legacy_magic_resistance("").kind,
-            MagicResistanceKind::Unknown
-        );
-        assert_eq!(
-            map_legacy_magic_resistance("Yes").kind,
-            MagicResistanceKind::Normal
-        );
-        assert_eq!(
-            map_legacy_magic_resistance("No").kind,
-            MagicResistanceKind::IgnoresMr
-        );
-        let partial = map_legacy_magic_resistance("Partial (damage)");
-        assert_eq!(partial.kind, MagicResistanceKind::Partial);
-        assert_eq!(partial.partial.unwrap().scope, MrPartialScope::DamageOnly);
-
-        let special = map_legacy_magic_resistance("50% only");
-        assert_eq!(special.kind, MagicResistanceKind::Special);
-        assert_eq!(special.special_rule.as_deref(), Some("50% only"));
-        assert_eq!(special.source_text.as_deref(), Some("50% only"));
+A bolt.
+";
+        let classified = parse_markdown_spell_list("bolt.md", md).expect("valid list");
+        assert!(classified.failures.is_empty());
+        let spell = classified.spells[0].spell.clone();
+        let st = spell.saving_throw.expect("saving throw");
+        assert_eq!(st.kind, SavingThrowKind::DmAdjudicated);
+        assert_eq!(st.raw_legacy_value.as_deref(), Some("Special"));
+        let mr = spell.magic_resistance.expect("magic resistance");
+        assert_eq!(mr.kind, MagicResistanceKind::Special);
+        assert_eq!(mr.special_rule.as_deref(), Some("50% only"));
     }
 
     #[test]

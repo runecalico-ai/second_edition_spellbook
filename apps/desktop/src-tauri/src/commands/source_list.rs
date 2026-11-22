@@ -3,8 +3,8 @@ use crate::commands::spells::validate_epic_and_quest_spells;
 use crate::error::AppError;
 use crate::models::area_spec::AreaKind;
 use crate::models::canonical_spell::{
-    validate_tradition_school_sphere_consistency, CanonicalSpell, CastingTimeUnit, SourceRef,
-    CURRENT_SCHEMA_VERSION, SOURCE_REF_NOTE_MAX_CHARS,
+    CanonicalSpell, CastingTimeUnit, SourceRef, SpellComponents, CURRENT_SCHEMA_VERSION,
+    SOURCE_REF_NOTE_MAX_CHARS,
 };
 use crate::models::damage::DamageKind;
 use crate::models::duration_spec::DurationKind;
@@ -19,6 +19,7 @@ use crate::models::saving_throw::{
 use crate::models::scalar::{ScalarMode, SpellScalar};
 use crate::models::{
     AreaSpec, DurationSpec, ImportSpellJsonFailure, RangeSpec, SpellCastingTime, SpellDamageSpec,
+    SpellDetail,
 };
 use crate::utils::spell_parser::SpellParser;
 use regex::Regex;
@@ -704,21 +705,6 @@ pub(crate) fn map_source_list_record(
     let raw_components = non_empty_trimmed(record.components.as_deref());
     let raw_materials = non_empty_trimmed(record.material_components.as_deref());
 
-    let components = raw_components.as_deref().and_then(|comp_str| {
-        let parsed = parser.parse_components(comp_str);
-        if !parsed.verbal
-            && !parsed.somatic
-            && !parsed.material
-            && !parsed.focus
-            && !parsed.divine_focus
-            && !parsed.experience
-        {
-            None
-        } else {
-            Some(parsed)
-        }
-    });
-
     let material_list = if let Some(mat_str) = raw_materials.as_deref() {
         parser.parse_material_components(mat_str)
     } else if let Some(comp_str) = raw_components.as_deref() {
@@ -805,43 +791,93 @@ pub(crate) fn map_source_list_record(
         Vec::new()
     };
 
-    let mut spell = CanonicalSpell::new(name.clone(), level, tradition, description);
-    spell.school = primary_school;
+    let flat_classes = if class_list.is_empty() {
+        None
+    } else {
+        Some(class_list.join(", "))
+    };
+    let flat_tags = if tags.is_empty() {
+        None
+    } else {
+        Some(tags.join(", "))
+    };
+
+    // Route through CanonicalSpell::try_from(SpellDetail) per apps/desktop/src-tauri/AGENTS.md
+    // so shared conversions (such as parse_experience_cost -> spell.experience_cost) run,
+    // then apply source-list-specific overrides.
+    let detail = SpellDetail {
+        id: None,
+        name: name.clone(),
+        school: primary_school,
+        sphere,
+        class_list: flat_classes.clone(),
+        level,
+        range: non_empty_trimmed(record.range.as_deref()),
+        components: raw_components,
+        material_components: raw_materials,
+        casting_time: non_empty_trimmed(record.casting_time.as_deref()),
+        duration: non_empty_trimmed(record.duration.as_deref()),
+        area: non_empty_trimmed(record.area_of_effect.as_deref()),
+        saving_throw: non_empty_trimmed(record.saving_throw.as_deref()),
+        damage: non_empty_trimmed(record.damage.as_deref()),
+        magic_resistance: non_empty_trimmed(record.magic_resistance.as_deref()),
+        reversible,
+        description,
+        tags: flat_tags,
+        source: None,
+        edition: non_empty_trimmed(record.edition.as_deref()),
+        author: non_empty_trimmed(record.author.as_deref()),
+        license: non_empty_trimmed(record.license.as_deref()),
+        is_quest_spell: is_quest_spell.unwrap_or(0),
+        is_cantrip: is_cantrip.unwrap_or(0),
+        schema_version: Some(CURRENT_SCHEMA_VERSION),
+        artifacts: None,
+        canonical_data: None,
+        content_hash: None,
+        range_spec: range,
+        components_spec: None,
+        material_components_spec: None,
+        casting_time_spec: casting_time,
+        duration_spec: duration,
+        area_spec: area,
+        saving_throw_spec: saving_throw,
+        damage_spec: damage,
+        magic_resistance_spec: magic_resistance,
+    };
+
+    let mut spell = CanonicalSpell::try_from(detail).map_err(&fail)?;
+    spell.tradition = tradition;
     spell.subschools = subschools;
-    spell.sphere = sphere;
     spell.class_list = class_list;
-    spell.range = range;
-    spell.components = components;
-    spell.material_components = material_components;
-    spell.casting_time = casting_time;
-    spell.duration = duration;
-    spell.area = area;
-    spell.damage = damage;
-    spell.magic_resistance = magic_resistance;
-    spell.saving_throw = saving_throw;
-    spell.reversible = reversible;
     spell.tags = tags;
+    spell.material_components = material_components;
+    if spell.experience_cost.is_some() {
+        spell
+            .components
+            .get_or_insert(SpellComponents {
+                verbal: false,
+                somatic: false,
+                material: false,
+                focus: false,
+                divine_focus: false,
+                experience: true,
+            })
+            .experience = true;
+    }
+    spell.components = spell.components.filter(|parsed| {
+        parsed.verbal
+            || parsed.somatic
+            || parsed.material
+            || parsed.focus
+            || parsed.divine_focus
+            || parsed.experience
+    });
+    spell.reversible = reversible;
     spell.source_refs = source_refs;
-    spell.edition = non_empty_trimmed(record.edition.as_deref());
-    spell.author = non_empty_trimmed(record.author.as_deref());
-    spell.license = non_empty_trimmed(record.license.as_deref());
     spell.is_quest_spell = is_quest_spell;
     spell.is_cantrip = is_cantrip;
     spell.schema_version = CURRENT_SCHEMA_VERSION;
 
-    validate_tradition_school_sphere_consistency(
-        &spell.name,
-        &spell.tradition,
-        spell.school.as_deref(),
-        spell.sphere.as_deref(),
-    )
-    .map_err(&fail)?;
-
-    let flat_classes = if spell.class_list.is_empty() {
-        None
-    } else {
-        Some(spell.class_list.join(", "))
-    };
     validate_epic_and_quest_spells(
         spell.level,
         &flat_classes,
@@ -1630,5 +1666,122 @@ mod tests {
         // Front-matter document returns Err when sent directly to spell-list parser
         let fm = "---\nname: Single\n---\n\n## Sub\nText";
         assert!(parse_markdown_spell_list("single.md", fm).is_err());
+    }
+
+    #[test]
+    fn test_source_list_extracts_experience_cost_via_try_from_and_distinguishes_hashes() {
+        use crate::models::experience::ExperienceKind;
+
+        let json_500 = r#"[{
+            "name": "Permanency Variant",
+            "tradition": "Arcane",
+            "class_list": ["Wizard"],
+            "level": 5,
+            "school": "Alteration",
+            "range": "Special",
+            "components": "V, S, XP (500 XP)",
+            "material_components": null,
+            "casting_time": "2 rounds",
+            "duration": "Permanent",
+            "area_of_effect": "Special",
+            "saving_throw": "None",
+            "damage": null,
+            "magic_resistance": "No",
+            "reversible": false,
+            "description": "Makes a spell effect permanent at an experience cost.",
+            "edition": "AD&D 2e",
+            "source_document": "Tome of Magic",
+            "source_page": 42
+        }]"#;
+
+        let json_1000 = json_500.replace("V, S, XP (500 XP)", "V, S, XP (1,000 XP)");
+
+        let arr_500: Vec<serde_json::Value> =
+            serde_json::from_str(json_500).expect("valid json array 500 XP");
+        let arr_1000: Vec<serde_json::Value> =
+            serde_json::from_str(&json_1000).expect("valid json array 1000 XP");
+        let parsed_500 = parse_spellscribe_json_list(&arr_500).expect("parse 500 XP list");
+        let parsed_1000 = parse_spellscribe_json_list(&arr_1000).expect("parse 1000 XP list");
+        assert!(parsed_500.failures.is_empty());
+        assert!(parsed_1000.failures.is_empty());
+
+        let spell_500 = parsed_500.spells[0].spell.clone();
+        let spell_1000 = parsed_1000.spells[0].spell.clone();
+
+        // 1) Experience flag and structured experience_cost are both populated
+        let comp_500 = spell_500.components.as_ref().expect("components present");
+        assert!(comp_500.verbal);
+        assert!(comp_500.somatic);
+        assert!(!comp_500.material);
+        assert!(comp_500.experience);
+
+        let xp_500 = spell_500
+            .experience_cost
+            .as_ref()
+            .expect("experience_cost must be populated by CanonicalSpell::try_from");
+        assert_eq!(xp_500.kind, ExperienceKind::Fixed);
+        assert_eq!(xp_500.amount_xp, Some(500));
+
+        let xp_1000 = spell_1000
+            .experience_cost
+            .as_ref()
+            .expect("experience_cost must be populated for 1000 XP");
+        assert_eq!(xp_1000.kind, ExperienceKind::Fixed);
+        assert_eq!(xp_1000.amount_xp, Some(1000));
+
+        // 2) Source-list overrides remain intact alongside CanonicalSpell::try_from
+        assert_eq!(
+            spell_500
+                .saving_throw
+                .as_ref()
+                .map(|st| (&st.kind, &st.raw_legacy_value)),
+            Some((&SavingThrowKind::None, &None))
+        );
+        assert_eq!(
+            spell_500.magic_resistance.as_ref().map(|mr| &mr.kind),
+            Some(&MagicResistanceKind::IgnoresMr)
+        );
+        assert_eq!(spell_500.reversible, None);
+        assert_eq!(spell_500.source_refs.len(), 1);
+        assert_eq!(spell_500.source_refs[0].book, "Tome of Magic");
+        assert_eq!(spell_500.source_refs[0].page, Some(serde_json::json!(42)));
+
+        // 3) Content hashes and normalized canonical JSON differ for 500 XP vs 1000 XP
+        let hash_500 = spell_500.compute_hash().expect("hash 500 XP");
+        let hash_1000 = spell_1000.compute_hash().expect("hash 1000 XP");
+        assert_ne!(
+            hash_500, hash_1000,
+            "spells differing only by experience_cost amount must produce distinct content_hash values"
+        );
+
+        // 4) Markdown spell list with XP cost matches JSON list hash
+        let md_500 = "## Permanency Variant\n\
+            - Tradition: Arcane\n\
+            - Class: Wizard\n\
+            - Level: 5\n\
+            - School: Alteration\n\
+            - Range: Special\n\
+            - Components: V, S, XP (500 XP)\n\
+            - Casting Time: 2 rounds\n\
+            - Duration: Permanent\n\
+            - Area of Effect: Special\n\
+            - Saving Throw: None\n\
+            - Magic Resistance: No\n\
+            - Reversible: No\n\
+            - Source: Tome of Magic, p. 42\n\n\
+            Makes a spell effect permanent at an experience cost.\n";
+        let md_parsed =
+            parse_markdown_spell_list("Tome of Magic.md", md_500).expect("parse md 500 XP");
+        assert!(md_parsed.failures.is_empty());
+        let md_spell = md_parsed.spells[0].spell.clone();
+        assert_eq!(
+            md_spell
+                .experience_cost
+                .as_ref()
+                .and_then(|xp| xp.amount_xp),
+            Some(500)
+        );
+        let md_hash = md_spell.compute_hash().expect("hash md 500 XP");
+        assert_eq!(hash_500, md_hash);
     }
 }

@@ -6625,4 +6625,107 @@ mod tests {
         .expect("replace rich spell");
         assert_rich_metadata("Rich Metadata Spell", "Book C", 9, "Rep note", "Author C");
     }
+
+    #[test]
+    fn test_source_list_import_preserves_experience_cost_and_prevents_false_dedup() {
+        use crate::models::experience::ExperienceKind;
+
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        // Two otherwise-identical spells in a source-list JSON array differing only in XP cost
+        let payload = r#"{
+            "spellscribe_version": "1.0",
+            "spells": [
+                {
+                    "name": "Limited Wish XP Test",
+                    "tradition": "Arcane",
+                    "class_list": ["Wizard"],
+                    "level": 7,
+                    "school": "Conjuration/Summoning",
+                    "range": "Unlimited",
+                    "components": "V, S, XP (500 XP)",
+                    "casting_time": "1 round",
+                    "duration": "Special",
+                    "area_of_effect": "Special",
+                    "saving_throw": "Special",
+                    "magic_resistance": "Yes",
+                    "reversible": false,
+                    "description": "Fulfills a limited request at an experience cost.",
+                    "source_document": "PHB",
+                    "source_page": 230
+                },
+                {
+                    "name": "Limited Wish XP Test",
+                    "tradition": "Arcane",
+                    "class_list": ["Wizard"],
+                    "level": 7,
+                    "school": "Conjuration/Summoning",
+                    "range": "Unlimited",
+                    "components": "V, S, XP (1000 XP)",
+                    "casting_time": "1 round",
+                    "duration": "Special",
+                    "area_of_effect": "Special",
+                    "saving_throw": "Special",
+                    "magic_resistance": "Yes",
+                    "reversible": false,
+                    "description": "Fulfills a limited request at an experience cost.",
+                    "source_document": "PHB",
+                    "source_page": 230
+                }
+            ]
+        }"#;
+
+        let classified =
+            classify_import_input(Some(payload.to_string()), None).expect("classify xp list");
+        let preview = preview_classified_payload(classified, SourceRefUrlPolicy::DropRef);
+
+        assert!(preview.failures.is_empty());
+        assert_eq!(
+            preview.spells.len(),
+            2,
+            "both spells with different XP costs must appear in preview"
+        );
+        assert_ne!(
+            preview.spells[0].content_hash,
+            preview.spells[1].content_hash
+        );
+
+        // Apply both spells: 500 XP imports, and 1000 XP surfaces as a name conflict rather than deduplicating
+        let apply_res = apply_import_spell_json_impl(&conn, preview.spells, None)
+            .expect("apply 500 XP and 1000 XP spells");
+        assert_eq!(apply_res.imported_count, 1);
+        assert_eq!(
+            apply_res.duplicates_skipped.total, 0,
+            "1000 XP spell must not deduplicate against 500 XP spell"
+        );
+        assert_eq!(
+            apply_res.conflicts.len(),
+            1,
+            "different-XP spell with same name should surface as a name conflict, not a duplicate"
+        );
+
+        let flat_components: Option<String> = conn
+            .query_row(
+                "SELECT components FROM spell WHERE name = 'Limited Wish XP Test'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query flat components column");
+        assert_eq!(flat_components.as_deref(), Some("V, S, XP"));
+
+        let (db_canon, vault_canon, _) =
+            read_persisted_spell_from_db_and_vault(&conn, temp_dir.path(), "Limited Wish XP Test");
+        for canon in [&db_canon, &vault_canon] {
+            let xp = canon
+                .experience_cost
+                .as_ref()
+                .expect("persisted canonical spell must retain experience_cost");
+            assert_eq!(xp.kind, ExperienceKind::Fixed);
+            assert_eq!(xp.amount_xp, Some(500));
+            assert_eq!(canon.components.as_ref().map(|c| c.experience), Some(true));
+        }
+    }
 }

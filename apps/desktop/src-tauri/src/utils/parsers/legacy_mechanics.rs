@@ -4,6 +4,14 @@
 //! `src/ui/hooks/useSpellParser.ts` and MUST change in lockstep with them. They
 //! intentionally differ from [`super::mechanics::MechanicsParser`], which performs
 //! richer (non-editor) parsing.
+//!
+//! The Rust output is a superset of the editor's: it adds extra fields (`notes` on
+//! `dm_adjudicated`, default `save_vs`/`modifier`/`applies_to`/`timing`) and truncates
+//! notes/`special_rule`/`source_text` to 2048 chars.
+//!
+//! The `\bparaly\b`, `\bpoly\b`, and `\bpetrif\b` patterns are intentionally kept
+//! identical to the TS editor for parity, so change them only together with
+//! `apps/desktop/src/ui/hooks/useSpellParser.ts`.
 
 use crate::models::canonical_spell::SAVING_THROW_NOTES_MAX_CHARS;
 use crate::models::magic_resistance::{

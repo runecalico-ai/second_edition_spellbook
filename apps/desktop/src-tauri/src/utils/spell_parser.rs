@@ -76,12 +76,18 @@ impl SpellParser {
         self.mechanics.parse_saving_throw(input)
     }
 
-    /// Saving throw mapping identical to the Spell Editor's legacy mapper.
+    /// Saving throw mapping with the same classification as the Spell Editor's legacy
+    /// mapper. It is a superset: Rust additionally sets `notes` on `dm_adjudicated`,
+    /// truncates notes/`special_rule`/`source_text` to 2048 chars, and fills default
+    /// fields (`save_vs: Spell` for spell/special rows, `modifier`, `applies_to`, `timing`).
     pub fn parse_saving_throw_editor_compat(&self, input: &str) -> SavingThrowSpec {
         legacy_mechanics::map_editor_saving_throw(input)
     }
 
-    /// Magic resistance mapping identical to the Spell Editor's legacy mapper.
+    /// Magic resistance mapping with the same classification as the Spell Editor's legacy
+    /// mapper. It is a superset: Rust additionally sets `notes` on `dm_adjudicated`,
+    /// truncates notes/`special_rule`/`source_text` to 2048 chars, and fills default
+    /// fields (`modifier`, `applies_to`, `timing`).
     pub fn parse_magic_resistance_editor_compat(&self, input: &str) -> MagicResistanceSpec {
         legacy_mechanics::map_editor_magic_resistance(input)
     }
@@ -117,6 +123,7 @@ mod tests {
     // - utils/parsers/area.rs
     // - utils/parsers/duration.rs
     // - utils/parsers/mechanics.rs
+    // - utils/parsers/legacy_mechanics.rs
     // - utils/parsers/components.rs
 
     #[test]

@@ -14,6 +14,7 @@ import type {
   HashImportConflict,
   HashImportResult,
   HashPreviewResult,
+  ImportMarkdownFile,
 } from "../types/import-types";
 
 type ImportFile = {
@@ -183,15 +184,111 @@ const conflictFieldLabels: Record<string, string> = {
 const getConflictKey = (conflict: SpellConflict, index: number) =>
   conflict.existing.id ? `${conflict.existing.id}-${index}` : `${conflict.incoming.name}-${index}`;
 
-/** Returns the import mode for a file selection, or "mixed" if files span types. */
+function normalizeMarkdownNewlines(content: string): string {
+  const withoutBom = content.startsWith("\uFEFF") ? content.slice(1) : content;
+  return withoutBom.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+/** Returns true when Markdown starts with a closed YAML front-matter block (`--- ... ---`/`...`). */
+export function hasLeadingYamlFrontMatter(content: string): boolean {
+  const normalized = normalizeMarkdownNewlines(content);
+  const lines = normalized.split("\n");
+  if (lines.length === 0 || lines[0].trimEnd() !== "---") {
+    return false;
+  }
+  for (let i = 1; i < lines.length; i += 1) {
+    const trimmed = lines[i].trimEnd();
+    if (trimmed === "---" || trimmed === "...") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function advanceMarkdownFenceState(
+  line: string,
+  activeFence: { char: "`" | "~"; len: number } | null,
+): { inFence: boolean; nextFence: { char: "`" | "~"; len: number } | null } {
+  let leadingSpaces = 0;
+  while (leadingSpaces < line.length && line[leadingSpaces] === " ") {
+    leadingSpaces += 1;
+  }
+  const trimmed = line.slice(leadingSpaces);
+  if (activeFence !== null) {
+    if (leadingSpaces <= 3) {
+      let count = 0;
+      while (count < trimmed.length && trimmed[count] === activeFence.char) {
+        count += 1;
+      }
+      if (count >= activeFence.len && trimmed.slice(count).trim().length === 0) {
+        return { inFence: true, nextFence: null };
+      }
+    }
+    return { inFence: true, nextFence: activeFence };
+  }
+
+  if (leadingSpaces <= 3 && (trimmed[0] === "`" || trimmed[0] === "~")) {
+    const ch = trimmed[0];
+    let count = 0;
+    while (count < trimmed.length && trimmed[count] === ch) {
+      count += 1;
+    }
+    if (count >= 3) {
+      const info = trimmed.slice(count);
+      if (ch === "~" || !info.includes("`")) {
+        return { inFence: true, nextFence: { char: ch, len: count } };
+      }
+    }
+  }
+
+  return { inFence: false, nextFence: null };
+}
+
+/**
+ * Returns true when Markdown has no leading YAML front matter and contains at least one
+ * unindented `## ` heading outside fenced code blocks.
+ */
+export function isMarkdownSpellListContent(content: string): boolean {
+  if (hasLeadingYamlFrontMatter(content)) {
+    return false;
+  }
+  const normalized = normalizeMarkdownNewlines(content);
+  let activeFence: { char: "`" | "~"; len: number } | null = null;
+  for (const line of normalized.split("\n")) {
+    const { inFence, nextFence } = advanceMarkdownFenceState(line, activeFence);
+    activeFence = nextFence;
+    if (inFence) {
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export async function readFileText(file: File): Promise<string> {
+  if (typeof file.text === "function") {
+    return file.text();
+  }
+  if (typeof FileReader !== "undefined") {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+      reader.readAsText(file);
+    });
+  }
+  return new Response(file).text();
+}
+
+/** Returns the import mode for a file selection, or "mixed" if files span JSON and non-JSON. */
 export function detectImportFileType(files: File[]): "json" | "markdown" | "mixed" {
   if (files.length === 0) return "markdown";
   const allJson = files.every((f) => f.name.toLowerCase().endsWith(".json"));
   if (allJson) return "json";
-  const allMd = files.every(
-    (f) => f.name.toLowerCase().endsWith(".md") || f.name.toLowerCase().endsWith(".txt"),
-  );
-  if (allMd) return "markdown";
+  const noneJson = files.every((f) => !f.name.toLowerCase().endsWith(".json"));
+  if (noneJson) return "markdown";
   return "mixed";
 }
 
@@ -224,9 +321,12 @@ export default function ImportWizard() {
   const [showHighLevelWarning, setShowHighLevelWarning] = useState(false);
   const [suppressWarning, setSuppressWarning] = useState(false);
 
-  // ── JSON import state ───────────────────────────────────────────────────
-  const [isJsonImport, setIsJsonImport] = useState(false);
+  // ── Canonical (JSON / Markdown spell-list) import state ────────────────
+  const [canonicalImportFormat, setCanonicalImportFormat] = useState<"json" | "markdown" | null>(
+    null,
+  );
   const [jsonPayload, setJsonPayload] = useState<string>("");
+  const [markdownFiles, setMarkdownFiles] = useState<ImportMarkdownFile[]>([]);
   const [jsonPreviewResult, setJsonPreviewResult] = useState<HashPreviewResult | null>(null);
   const [jsonImportResult, setJsonImportResult] = useState<HashImportResult | null>(null);
   const [jsonConflicts, setJsonConflicts] = useState<HashImportConflict[]>([]);
@@ -237,6 +337,8 @@ export default function ImportWizard() {
   const [bulkAction, setBulkAction] = useState<BulkConflictAction | null>(null);
   const [fileTypeError, setFileTypeError] = useState<string | null>(null);
   const loadingRef = useRef(false);
+  const selectionSeqRef = useRef(0);
+  const isCanonicalImport = canonicalImportFormat !== null;
 
   const hasLowConfidence = (spells: ParsedSpell[]): boolean => {
     return spells.some((spell) => {
@@ -444,10 +546,33 @@ export default function ImportWizard() {
     return merged;
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const resetCanonicalState = () => {
+    setCanonicalImportFormat(null);
+    setJsonPayload("");
+    setMarkdownFiles([]);
+    setJsonPreviewResult(null);
+    setJsonImportResult(null);
+    setJsonConflicts([]);
+    setJsonConflictIndex(0);
+    setJsonResolutions([]);
+    setBulkAction(null);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
+    const seq = ++selectionSeqRef.current;
     const selectedFiles = Array.from(e.target.files);
     const fileType = detectImportFileType(selectedFiles);
+
+    setResult(null);
+    setStep("select");
+    resetCanonicalState();
+
+    if (selectedFiles.length === 0) {
+      setFileTypeError(null);
+      setFiles([]);
+      return;
+    }
 
     if (fileType === "mixed") {
       setFileTypeError("Please select files of one type only (.json or .md).");
@@ -455,19 +580,66 @@ export default function ImportWizard() {
       return;
     }
 
+    if (fileType === "json") {
+      setFileTypeError(null);
+      setFiles(selectedFiles);
+      setCanonicalImportFormat("json");
+      return;
+    }
+
+    const hasMdFiles = selectedFiles.some((f) => f.name.toLowerCase().endsWith(".md"));
+    if (!hasMdFiles) {
+      setFileTypeError(null);
+      setFiles(selectedFiles);
+      return;
+    }
+
+    setFiles([]);
     setFileTypeError(null);
-    setFiles(selectedFiles);
-    setResult(null);
-    setStep("select");
-    setIsJsonImport(fileType === "json");
-    // Reset JSON state on new selection
-    setJsonPayload("");
-    setJsonPreviewResult(null);
-    setJsonImportResult(null);
-    setJsonConflicts([]);
-    setJsonConflictIndex(0);
-    setJsonResolutions([]);
-    setBulkAction(null);
+
+    try {
+      const classified = await Promise.all(
+        selectedFiles.map(async (f) => {
+          const isMd = f.name.toLowerCase().endsWith(".md");
+          if (!isMd) {
+            return { file: f, isSpellList: false, text: "" };
+          }
+          const text = await readFileText(f);
+          return { file: f, isSpellList: isMarkdownSpellListContent(text), text };
+        }),
+      );
+      if (seq !== selectionSeqRef.current) {
+        return;
+      }
+
+      const spellListItems = classified.filter((item) => item.isSpellList);
+      if (spellListItems.length === 0) {
+        setFileTypeError(null);
+        setFiles(selectedFiles);
+        return;
+      }
+
+      if (spellListItems.length < classified.length) {
+        setFileTypeError(
+          "Cannot mix Markdown spell lists with single-spell notes. Please import spell lists separately from single-spell notes.",
+        );
+        setFiles([]);
+        return;
+      }
+
+      setFileTypeError(null);
+      setFiles(selectedFiles);
+      setCanonicalImportFormat("markdown");
+      setMarkdownFiles(
+        spellListItems.map((item) => ({ name: item.file.name, content: item.text })),
+      );
+    } catch (err) {
+      if (seq !== selectionSeqRef.current) {
+        return;
+      }
+      setFileTypeError(`Failed to read selected Markdown file(s): ${err}`);
+      setFiles([]);
+    }
   };
 
   const withLoadingGuard = async (work: () => Promise<void>) => {
@@ -501,20 +673,48 @@ export default function ImportWizard() {
     }
   };
 
-  const confirmLargeJsonPreview = async (file: File): Promise<boolean> => {
-    if (file.size <= JSON_IMPORT_WARNING_THRESHOLD_BYTES) {
+  const confirmLargeCanonicalPreview = async (
+    totalBytes: number,
+    displayName: string,
+  ): Promise<boolean> => {
+    if (totalBytes <= JSON_IMPORT_WARNING_THRESHOLD_BYTES) {
       return true;
     }
 
-    const sizeInMegabytes = (file.size / (1024 * 1024)).toFixed(2);
+    const sizeInMegabytes = (totalBytes / (1024 * 1024)).toFixed(2);
     return modalConfirm(
       [
-        `${file.name} is ${sizeInMegabytes} MB and exceeds the 10 MB preview warning threshold.`,
-        "Previewing a large JSON import may take longer.",
-        "Files over 100 MB are still rejected by the backend.",
+        `${displayName} is ${sizeInMegabytes} MB and exceeds the 10 MB preview warning threshold.`,
+        "Previewing a large import may take longer.",
+        "Payloads over 100 MB are still rejected by the backend.",
       ],
       "Large Import Warning",
     );
+  };
+
+  const buildCanonicalIpcArgs = (overridePayload?: string) => {
+    if (canonicalImportFormat === "markdown") {
+      return {
+        markdownFiles,
+        sourceRefUrlPolicy,
+      };
+    }
+    return {
+      payload: overridePayload ?? jsonPayload,
+      sourceRefUrlPolicy,
+    };
+  };
+
+  const applyCanonicalPreview = (preview: HashPreviewResult) => {
+    setJsonPreviewResult(preview);
+    const hasHighLevel = preview.spells.some(
+      (item) =>
+        (item.spell.level ?? 0) >= 10 ||
+        item.spell.isQuestSpell === 1 ||
+        item.spell.is_quest_spell === 1,
+    );
+    setShowHighLevelWarning(hasHighLevel && !suppressWarning);
+    setStep("json-preview");
   };
 
   const goToJsonPreview = async () => {
@@ -522,25 +722,41 @@ export default function ImportWizard() {
     try {
       await withLoadingGuard(async () => {
         await runWithImportActivity(async () => {
+          if (canonicalImportFormat === "markdown") {
+            const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+            const displayName =
+              files.length === 1 ? files[0].name : `${files.length} Markdown files`;
+            const shouldContinue = await confirmLargeCanonicalPreview(totalBytes, displayName);
+            if (!shouldContinue) {
+              return;
+            }
+            const preview = await invoke<HashPreviewResult>(
+              "preview_import_spell_json",
+              buildCanonicalIpcArgs(),
+            );
+            applyCanonicalPreview(preview);
+            return;
+          }
+
           const jsonFile = files.find((f) => f.name.toLowerCase().endsWith(".json"));
           if (!jsonFile) return;
-          const shouldContinue = await confirmLargeJsonPreview(jsonFile);
+          const shouldContinue = await confirmLargeCanonicalPreview(jsonFile.size, jsonFile.name);
           if (!shouldContinue) {
             return;
           }
-          const text = await jsonFile.text();
+          const text = await readFileText(jsonFile);
           setJsonPayload(text);
-          const preview = await invoke<HashPreviewResult>("preview_import_spell_json", {
-            payload: text,
-            sourceRefUrlPolicy,
-          });
-          setJsonPreviewResult(preview);
-          setStep("json-preview");
+          const preview = await invoke<HashPreviewResult>(
+            "preview_import_spell_json",
+            buildCanonicalIpcArgs(text),
+          );
+          applyCanonicalPreview(preview);
         });
       });
     } catch (e) {
-      console.error("JSON preview failed:", e);
-      await modalAlert(`JSON preview failed: ${e}`, "Preview Error", "error");
+      const label = canonicalImportFormat === "markdown" ? "Markdown" : "JSON";
+      console.error(`${label} preview failed:`, e);
+      await modalAlert(`${label} preview failed: ${e}`, "Preview Error", "error");
     }
   };
 
@@ -548,10 +764,10 @@ export default function ImportWizard() {
     try {
       await withLoadingGuard(async () => {
         await runWithImportActivity(async () => {
-          const result = await invoke<HashImportResult>("import_spell_json", {
-            payload: jsonPayload,
-            sourceRefUrlPolicy,
-          });
+          const result = await invoke<HashImportResult>(
+            "import_spell_json",
+            buildCanonicalIpcArgs(),
+          );
           setJsonImportResult(result);
           if (result.conflicts.length === 0) {
             setStep("result");
@@ -565,8 +781,9 @@ export default function ImportWizard() {
         });
       });
     } catch (e) {
-      console.error("JSON import failed:", e);
-      await modalAlert(`JSON import failed: ${e}`, "Import Error", "error");
+      const label = canonicalImportFormat === "markdown" ? "Markdown" : "JSON";
+      console.error(`${label} import failed:`, e);
+      await modalAlert(`${label} import failed: ${e}`, "Import Error", "error");
     }
   };
 
@@ -594,8 +811,7 @@ export default function ImportWizard() {
             action: mappedAction,
           }));
           const result = await invoke<HashImportResult>("resolve_import_spell_json", {
-            payload: jsonPayload,
-            sourceRefUrlPolicy,
+            ...buildCanonicalIpcArgs(),
             resolveOptions: {
               resolutions,
               defaultAction: null,
@@ -638,8 +854,7 @@ export default function ImportWizard() {
       await withLoadingGuard(async () => {
         await runWithImportActivity(async () => {
           const result = await invoke<HashImportResult>("resolve_import_spell_json", {
-            payload: jsonPayload,
-            sourceRefUrlPolicy,
+            ...buildCanonicalIpcArgs(),
             resolveOptions: {
               resolutions: allResolutions,
               defaultAction: null,
@@ -769,6 +984,7 @@ export default function ImportWizard() {
   };
 
   const reset = () => {
+    selectionSeqRef.current += 1;
     setStep("select");
     setFiles([]);
     setFileTypeError(null);
@@ -781,20 +997,23 @@ export default function ImportWizard() {
     setSpellConflicts([]);
     setConflictSelections({});
     setResolveResult(null);
-    // Reset JSON state
-    setIsJsonImport(false);
-    setJsonPayload("");
-    setJsonPreviewResult(null);
-    setJsonImportResult(null);
-    setJsonConflicts([]);
-    setJsonConflictIndex(0);
-    setJsonResolutions([]);
-    setBulkAction(null);
+    setShowHighLevelWarning(false);
+    resetCanonicalState();
   };
 
   const previewParseConflicts = parseConflicts(previewConflicts);
   const resultParseConflicts = result ? parseConflicts(result.conflicts) : [];
   const combinedWarnings = result ? [...result.warnings, ...(resolveResult?.warnings ?? [])] : [];
+  const canonicalFormatLabel = canonicalImportFormat === "markdown" ? "Markdown" : "JSON";
+  const canonicalPerSpellWarningKeys = new Set(
+    (jsonPreviewResult?.spells ?? []).flatMap((item) => {
+      const spellName = item.spell.name ?? "";
+      return item.warnings.flatMap((warning) => [warning, `Spell '${spellName}': ${warning}`]);
+    }),
+  );
+  const canonicalGlobalWarnings = (jsonPreviewResult?.warnings ?? []).filter(
+    (warning) => !canonicalPerSpellWarningKeys.has(warning),
+  );
 
   return (
     <div className="space-y-4">
@@ -802,7 +1021,7 @@ export default function ImportWizard() {
       <div className="flex gap-2 text-xs flex-wrap">
         {(Object.keys(STEP_TITLES) as ImportStep[])
           .filter((s) =>
-            isJsonImport
+            isCanonicalImport
               ? ["select", "json-preview", "resolve-json", "result"].includes(s)
               : !["json-preview", "resolve-json"].includes(s),
           )
@@ -813,7 +1032,9 @@ export default function ImportWizard() {
                 s === step ? "bg-blue-600 text-white" : "bg-neutral-800 text-neutral-500"
               }`}
             >
-              {STEP_TITLES[s]}
+              {s === "json-preview" && canonicalImportFormat === "markdown"
+                ? "2. Markdown Preview"
+                : STEP_TITLES[s]}
             </div>
           ))}
       </div>
@@ -875,7 +1096,7 @@ export default function ImportWizard() {
               <button
                 type="button"
                 data-testid="btn-preview-import"
-                onClick={isJsonImport ? goToJsonPreview : goToPreview}
+                onClick={isCanonicalImport ? goToJsonPreview : goToPreview}
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 disabled:opacity-50"
               >
@@ -886,12 +1107,12 @@ export default function ImportWizard() {
         </div>
       )}
 
-      {/* Step JSON-2: JSON Preview (only for .json files) */}
+      {/* Step JSON-2: Canonical Preview (JSON or Markdown spell lists) */}
       {step === "json-preview" && (
         <div className="space-y-4">
           <div className="p-3 bg-neutral-900/50 border border-neutral-800 rounded">
-            <div className="text-sm font-semibold">
-              Found {jsonPreviewResult?.spells.length ?? 0} spell(s) in JSON
+            <div className="text-sm font-semibold" data-testid="canonical-preview-summary">
+              Found {jsonPreviewResult?.spells.length ?? 0} spell(s) in {canonicalFormatLabel}
             </div>
             {jsonPreviewResult && jsonPreviewResult.failures.length > 0 && (
               <div className="text-xs text-red-400 mt-1">
@@ -900,17 +1121,105 @@ export default function ImportWizard() {
             )}
           </div>
 
-          {jsonPreviewResult && jsonPreviewResult.warnings.length > 0 && (
-            <div className="p-3 bg-yellow-900/20 border border-yellow-900 rounded text-yellow-400 text-sm">
-              ⚠️ {jsonPreviewResult.warnings.join("; ")}
+          {showHighLevelWarning && (
+            <div
+              className="p-4 bg-purple-900/20 border border-purple-900 rounded-lg space-y-3"
+              data-testid="high-level-magic-notice"
+            >
+              <div className="flex items-center gap-2 text-purple-200 font-semibold">
+                <span className="text-xl">✨</span>
+                High-Level Magic Detected
+              </div>
+              <p className="text-sm text-neutral-300">
+                This import contains Epic (10th-12th Circle) or Quest spells. These spells are
+                extremely powerful and may require specific character levels or divine intervention.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="suppressWarningCanonical"
+                  data-testid="chk-suppress-high-level-warning"
+                  checked={suppressWarning}
+                  onChange={(e) => setSuppressWarning(e.target.checked)}
+                  className="rounded border-neutral-700 bg-neutral-900 text-purple-600 focus:ring-purple-500"
+                />
+                <label
+                  htmlFor="suppressWarningCanonical"
+                  className="text-xs text-neutral-400 cursor-pointer"
+                >
+                  Don't show this warning again this session
+                </label>
+                <button
+                  type="button"
+                  data-testid="btn-dismiss-high-level-warning"
+                  onClick={() => setShowHighLevelWarning(false)}
+                  className="ml-auto px-2 py-1 bg-purple-900/40 text-purple-200 rounded text-xs hover:bg-purple-900/60"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          {canonicalGlobalWarnings.length > 0 && (
+            <div
+              className="p-3 bg-yellow-900/20 border border-yellow-900 rounded text-yellow-400 text-sm"
+              data-testid="canonical-preview-warnings"
+            >
+              ⚠️ {canonicalGlobalWarnings.join("; ")}
+            </div>
+          )}
+
+          {jsonPreviewResult && jsonPreviewResult.spells.length > 0 && (
+            <div
+              className="max-h-60 overflow-auto bg-neutral-950 border border-neutral-800 rounded p-2 space-y-2"
+              data-testid="canonical-preview-spells"
+            >
+              {jsonPreviewResult.spells.map((item, idx) => {
+                const spellName = item.spell.name ?? `Spell ${idx + 1}`;
+                const levelText =
+                  item.spell.level !== undefined ? `Level ${item.spell.level}` : undefined;
+                const traditionText = item.spell.tradition;
+                const metaParts = [traditionText, levelText, item.spell.school, item.spell.sphere]
+                  .filter(Boolean)
+                  .join(" • ");
+                return (
+                  <div
+                    key={`${item.contentHash}-${spellName}-${idx}`}
+                    className="text-xs border-b border-neutral-900 pb-2 last:border-b-0 last:pb-0"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-neutral-200 font-medium">
+                      <span>{spellName}</span>
+                      {metaParts && <span className="text-neutral-400">{metaParts}</span>}
+                    </div>
+                    {item.warnings.length > 0 && (
+                      <ul
+                        className="mt-1 space-y-0.5 text-yellow-400 list-disc list-inside"
+                        data-testid="canonical-preview-spell-warnings"
+                      >
+                        {item.warnings.map((warning, wIdx) => (
+                          <li key={`${item.contentHash}-warn-${warning}-${wIdx}`}>{warning}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {jsonPreviewResult && jsonPreviewResult.failures.length > 0 && (
-            <div className="max-h-32 overflow-auto bg-neutral-950 border border-red-900/50 rounded p-2">
+            <div
+              className="max-h-32 overflow-auto bg-neutral-950 border border-red-900/50 rounded p-2"
+              data-testid="canonical-preview-failures"
+            >
               <div className="text-xs text-red-400 font-semibold mb-1">Validation failures:</div>
               {jsonPreviewResult.failures.map((f, i) => (
-                <div key={`${i}-${f.spellName}`} className="text-xs text-red-300">
+                <div
+                  key={`${i}-${f.spellName}-${f.reason}`}
+                  className="text-xs text-red-300"
+                  data-testid="canonical-preview-failure-item"
+                >
                   <span className="font-medium">{f.spellName}</span>: {f.reason}
                 </div>
               ))}
@@ -1324,8 +1633,8 @@ export default function ImportWizard() {
           );
         })()}
 
-      {/* Step 6a: Result — JSON import */}
-      {step === "result" && isJsonImport && jsonImportResult && (
+      {/* Step 6a: Result — Canonical JSON / Markdown spell-list import */}
+      {step === "result" && isCanonicalImport && jsonImportResult && (
         <div className="space-y-4">
           <div className="p-3 bg-green-900/20 border border-green-900 rounded">
             <div className="text-sm font-semibold text-green-200">Import Complete</div>
@@ -1352,11 +1661,26 @@ export default function ImportWizard() {
             </div>
           </div>
 
+          {jsonImportResult.warnings.length > 0 && (
+            <div
+              className="max-h-32 overflow-auto bg-yellow-900/20 border border-yellow-900 rounded p-2 text-xs text-yellow-300 space-y-1"
+              data-testid="canonical-result-warnings"
+            >
+              <div className="text-yellow-400 font-semibold">Warnings:</div>
+              {jsonImportResult.warnings.map((warning, i) => (
+                <div key={`${i}-${warning}`}>{warning}</div>
+              ))}
+            </div>
+          )}
+
           {jsonImportResult.failures.length > 0 && (
-            <div className="max-h-32 overflow-auto bg-neutral-950 border border-red-900/50 rounded p-2">
+            <div
+              className="max-h-32 overflow-auto bg-neutral-950 border border-red-900/50 rounded p-2"
+              data-testid="canonical-result-failures"
+            >
               <div className="text-xs text-red-400 font-semibold mb-1">Failures:</div>
               {jsonImportResult.failures.map((f, i) => (
-                <div key={`${i}-${f.spellName}`} className="text-xs text-red-300">
+                <div key={`${i}-${f.spellName}-${f.reason}`} className="text-xs text-red-300">
                   <span className="font-medium">{f.spellName}</span>: {f.reason}
                 </div>
               ))}
@@ -1375,7 +1699,7 @@ export default function ImportWizard() {
       )}
 
       {/* Step 6b: Result — legacy import (md/pdf/docx) */}
-      {step === "result" && !isJsonImport && result && (
+      {step === "result" && !isCanonicalImport && result && (
         <div className="space-y-4">
           <div className="p-3 bg-green-900/20 border border-green-900 rounded text-green-400">
             Imported spells: {result.spells.length}

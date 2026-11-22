@@ -9,15 +9,16 @@ use crate::commands::vault::{
 use crate::db::Pool;
 use crate::error::AppError;
 use crate::models::canonical_spell::{
-    validate_tradition_school_sphere_consistency, CanonicalSpell, SourceRef, BUNDLE_FORMAT_VERSION,
-    CURRENT_SCHEMA_VERSION,
+    validate_tradition_school_sphere_consistency, CanonicalSpell, SourceRef, SpellComponents,
+    BUNDLE_FORMAT_VERSION, CURRENT_SCHEMA_VERSION,
 };
 use crate::models::{
     ConflictsResolved, DuplicatesSkipped, ImportArtifact, ImportConflict, ImportConflictField,
-    ImportConflictResolution, ImportFile, ImportResult, ImportSpell, ImportSpellJsonConflict,
-    ImportSpellJsonConflictResolution, ImportSpellJsonFailure, ImportSpellJsonResolveOptions,
-    ImportSpellJsonResult, ParseConflict, PreviewImportSpellJsonResult, PreviewResult,
-    PreviewSpell, PreviewSpellJsonItem, ResolveImportResult, SpellDetail, SpellUpdate,
+    ImportConflictResolution, ImportFile, ImportMarkdownFile, ImportResult, ImportSpell,
+    ImportSpellJsonConflict, ImportSpellJsonConflictResolution, ImportSpellJsonFailure,
+    ImportSpellJsonResolveOptions, ImportSpellJsonResult, MaterialComponentSpec, ParseConflict,
+    PreviewImportSpellJsonResult, PreviewResult, PreviewSpell, PreviewSpellJsonItem,
+    ResolveImportResult, SpellDetail, SpellUpdate,
 };
 use crate::sidecar::call_sidecar;
 use crate::utils::migration_manager;
@@ -104,34 +105,76 @@ fn validate_import_payload_guardrails(payload: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+macro_rules! ignore_scalar_visits {
+    () => {
+        fn visit_bool<E>(self, _v: bool) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_i64<E>(self, _v: i64) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_u64<E>(self, _v: u64) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_i128<E>(self, _v: i128) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_u128<E>(self, _v: u128) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_f64<E>(self, _v: f64) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_str<E>(self, _v: &str) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+    };
+}
+
 struct SpellCountSeed;
 
 impl<'de> de::DeserializeSeed<'de> for SpellCountSeed {
-    type Value = usize;
+    type Value = Option<usize>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_seq(SpellCountVisitor)
+        deserializer.deserialize_any(SpellCountVisitor)
     }
 }
 
 struct SpellCountVisitor;
 
 impl<'de> Visitor<'de> for SpellCountVisitor {
-    type Value = usize;
+    type Value = Option<usize>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a spells array")
+        formatter.write_str("a JSON value")
     }
+
+    ignore_scalar_visits!();
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
     where
         A: SeqAccess<'de>,
     {
         let mut count = 0usize;
-        while (seq.next_element::<IgnoredAny>()?).is_some() {
+        while seq.next_element::<IgnoredAny>()?.is_some() {
             count += 1;
             if count > MAX_IMPORT_BUNDLE_SPELLS {
                 return Err(de::Error::custom(format!(
@@ -140,7 +183,15 @@ impl<'de> Visitor<'de> for SpellCountVisitor {
                 )));
             }
         }
-        Ok(count)
+        Ok(Some(count))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        while map.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {}
+        Ok(None)
     }
 }
 
@@ -150,7 +201,17 @@ impl<'de> Visitor<'de> for TopLevelBundleSpellCountVisitor {
     type Value = Option<usize>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a top-level import payload object")
+        formatter.write_str("a JSON value")
+    }
+
+    ignore_scalar_visits!();
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        while seq.next_element::<IgnoredAny>()?.is_some() {}
+        Ok(None)
     }
 
     fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -161,7 +222,7 @@ impl<'de> Visitor<'de> for TopLevelBundleSpellCountVisitor {
 
         while let Some(key) = map.next_key::<String>()? {
             if key == "spells" {
-                spell_count = Some(map.next_value_seed(SpellCountSeed)?);
+                spell_count = map.next_value_seed(SpellCountSeed)?;
             } else {
                 let _: IgnoredAny = map.next_value()?;
             }
@@ -175,6 +236,9 @@ fn validate_import_bundle_spell_count(payload: &str) -> Result<(), AppError> {
     let mut deserializer = serde_json::Deserializer::from_str(payload);
     let spell_count = deserializer
         .deserialize_any(TopLevelBundleSpellCountVisitor)
+        .map_err(|e| AppError::Import(format!("Invalid JSON: {}", e)))?;
+    deserializer
+        .end()
         .map_err(|e| AppError::Import(format!("Invalid JSON: {}", e)))?;
 
     if let Some(count) = spell_count {
@@ -336,10 +400,28 @@ fn normalize_truncate_metadata(spell: &mut CanonicalSpell) {
     spell.source_refs = out;
 }
 
-/// Parse JSON payload and classify as bundle (top-level `spells` array) or single spell.
-/// Bundle: requires bundle_format_version; rejects if missing or > supported; rejects if spells not array.
-/// Returns flat list of CanonicalSpell (one for single, or bundle.spells for bundle).
-fn parse_and_classify_payload(payload: &str) -> Result<Vec<CanonicalSpell>, AppError> {
+#[derive(Debug)]
+pub(crate) struct ClassifiedSpell {
+    pub spell: CanonicalSpell,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ClassifiedImportPayload {
+    pub spells: Vec<ClassifiedSpell>,
+    pub failures: Vec<ImportSpellJsonFailure>,
+}
+
+/// Parse JSON payload and classify as SpellScribe list, canonical bundle, or single spell.
+/// Classification order:
+/// 1. `spells` present and not an array -> reject.
+/// 2. `spellscribe_version` and `bundle_format_version`/`bundleFormatVersion` both present -> reject as ambiguous.
+/// 3. `spellscribe_version` present and `spells` absent -> reject naming missing `spells` array.
+/// 4. `spellscribe_version` present and not a major-version-1 string -> reject before spell mapping.
+/// 5. `spellscribe_version` (major 1) and `spells` array -> SpellScribe source list.
+/// 6. `spells` array without `spellscribe_version` -> canonical bundle (requires `bundle_format_version`).
+/// 7. Neither -> single-spell `CanonicalSpell`.
+fn parse_and_classify_payload(payload: &str) -> Result<ClassifiedImportPayload, AppError> {
     validate_import_bundle_spell_count(payload)?;
 
     let value: serde_json::Value = serde_json::from_str(payload)
@@ -349,15 +431,61 @@ fn parse_and_classify_payload(payload: &str) -> Result<Vec<CanonicalSpell>, AppE
         .as_object()
         .ok_or_else(|| AppError::Import("Payload must be a JSON object".into()))?;
 
-    if let Some(spells_val) = obj.get("spells") {
-        // Bundle: spells must be array
-        let arr = spells_val.as_array().ok_or_else(|| {
+    let spells_val = obj.get("spells");
+    // Step 1: `spells` present and not an array.
+    let spells_arr = match spells_val {
+        Some(v) => Some(v.as_array().ok_or_else(|| {
             AppError::Import("Bundle format requires 'spells' to be an array".into())
+        })?),
+        None => None,
+    };
+
+    let spellscribe_val = obj.get("spellscribe_version");
+    let bundle_ver_val = obj
+        .get("bundle_format_version")
+        .or_else(|| obj.get("bundleFormatVersion"));
+
+    // Step 2: Both `spellscribe_version` and `bundle_format_version` (or camelCase alias) present.
+    if spellscribe_val.is_some() && bundle_ver_val.is_some() {
+        return Err(AppError::Import(
+            "Ambiguous import envelope: payload contains both 'spellscribe_version' and 'bundle_format_version'"
+                .into(),
+        ));
+    }
+
+    // Steps 3–5: `spellscribe_version` present.
+    if let Some(sv_val) = spellscribe_val {
+        let Some(arr) = spells_arr else {
+            return Err(AppError::Import(
+                "SpellScribe source list requires a 'spells' array".into(),
+            ));
+        };
+
+        let sv_str = sv_val.as_str().ok_or_else(|| {
+            AppError::Import(
+                "Unsupported SpellScribe version: 'spellscribe_version' must be a string".into(),
+            )
         })?;
-        let version = obj
-            .get("bundle_format_version")
-            .or(obj.get("bundleFormatVersion"));
-        let version = version.ok_or_else(|| {
+        let major_str = sv_str.split('.').next().unwrap_or("");
+        let major = if !major_str.is_empty() && major_str.bytes().all(|b| b.is_ascii_digit()) {
+            major_str.parse::<u64>().ok()
+        } else {
+            None
+        };
+        if major != Some(1) {
+            return Err(AppError::Import(format!(
+                "Unsupported SpellScribe version '{}' (only major version 1 is supported)",
+                sv_str
+            )));
+        }
+
+        // Step 5: SpellScribe source list.
+        return crate::commands::source_list::parse_spellscribe_json_list(arr);
+    }
+
+    // Step 6: Canonical bundle (`spells` array without `spellscribe_version`).
+    if let Some(arr) = spells_arr {
+        let version = bundle_ver_val.ok_or_else(|| {
             AppError::Import("Bundle format requires 'bundle_format_version'".into())
         })?;
         let version = version
@@ -373,14 +501,26 @@ fn parse_and_classify_payload(payload: &str) -> Result<Vec<CanonicalSpell>, AppE
         for (i, item) in arr.iter().enumerate() {
             let spell: CanonicalSpell = serde_json::from_value(item.clone())
                 .map_err(|e| AppError::Import(format!("Spell at index {}: {}", i, e)))?;
-            spells.push(spell);
+            spells.push(ClassifiedSpell {
+                spell,
+                warnings: Vec::new(),
+            });
         }
-        Ok(spells)
+        Ok(ClassifiedImportPayload {
+            spells,
+            failures: Vec::new(),
+        })
     } else {
-        // Single spell (re-use the parsed object as Value)
+        // Step 7: Single spell (re-use the parsed object as Value)
         let spell: CanonicalSpell = serde_json::from_value(value)
             .map_err(|e| AppError::Import(format!("Single spell: {}", e)))?;
-        Ok(vec![spell])
+        Ok(ClassifiedImportPayload {
+            spells: vec![ClassifiedSpell {
+                spell,
+                warnings: Vec::new(),
+            }],
+            failures: Vec::new(),
+        })
     }
 }
 
@@ -508,20 +648,20 @@ fn process_spell(spell: &mut CanonicalSpell) -> Result<(String, Vec<String>), Ap
     Ok((hash, warnings))
 }
 
-#[tauri::command]
-pub async fn preview_import_spell_json(
-    payload: String,
-    source_ref_url_policy: Option<String>,
-) -> Result<PreviewImportSpellJsonResult, AppError> {
-    validate_import_payload_guardrails(&payload)?;
-    let policy = parse_source_ref_url_policy(source_ref_url_policy.as_deref());
-    let mut spells = parse_and_classify_payload(&payload)?;
+fn preview_classified_payload(
+    classified: ClassifiedImportPayload,
+    policy: SourceRefUrlPolicy,
+) -> PreviewImportSpellJsonResult {
     let mut global_warnings = Vec::new();
-    let mut items = Vec::with_capacity(spells.len());
-    let mut failures = Vec::new();
-    for spell in &mut spells {
+    let mut items = Vec::with_capacity(classified.spells.len());
+    let mut failures = classified.failures;
+    for ClassifiedSpell {
+        mut spell,
+        warnings: mut item_warnings,
+    } in classified.spells
+    {
         let mut url_warnings = Vec::new();
-        if process_source_ref_urls(spell, policy, &mut url_warnings).is_err() {
+        if process_source_ref_urls(&mut spell, policy, &mut url_warnings).is_err() {
             let reason = url_warnings
                 .last()
                 .cloned()
@@ -534,13 +674,20 @@ pub async fn preview_import_spell_json(
             continue;
         }
         global_warnings.extend(url_warnings);
-        normalize_truncate_metadata(spell);
-        match process_spell(spell) {
-            Ok((content_hash, warnings)) => {
+        normalize_truncate_metadata(&mut spell);
+        match process_spell(&mut spell) {
+            Ok((content_hash, proc_warnings)) => {
+                for w in &item_warnings {
+                    global_warnings.push(format!("Spell '{}': {}", spell.name, w));
+                }
+                for pw in &proc_warnings {
+                    global_warnings.push(pw.clone());
+                }
+                item_warnings.extend(proc_warnings);
                 items.push(PreviewSpellJsonItem {
-                    spell: spell.clone(),
+                    spell,
                     content_hash,
-                    warnings,
+                    warnings: item_warnings,
                 });
             }
             Err(e) => {
@@ -553,11 +700,156 @@ pub async fn preview_import_spell_json(
             }
         }
     }
-    Ok(PreviewImportSpellJsonResult {
+    PreviewImportSpellJsonResult {
         spells: items,
         warnings: global_warnings,
         failures,
-    })
+    }
+}
+
+fn classify_import_input(
+    payload: Option<String>,
+    markdown_files: Option<Vec<ImportMarkdownFile>>,
+) -> Result<ClassifiedImportPayload, AppError> {
+    let md_files = markdown_files.filter(|files| !files.is_empty());
+    match (payload, md_files) {
+        (Some(_), Some(_)) => Err(AppError::Import(
+            "Provide either payload or markdownFiles, not both".to_string(),
+        )),
+        (None, None) => Err(AppError::Import(
+            "Provide either payload or non-empty markdownFiles".to_string(),
+        )),
+        (Some(json_payload), None) => {
+            validate_import_payload_guardrails(&json_payload)?;
+            parse_and_classify_payload(&json_payload)
+        }
+        (None, Some(files)) => {
+            let mut total_bytes: usize = 0;
+            for file in &files {
+                total_bytes = total_bytes.saturating_add(file.content.len());
+                if total_bytes > MAX_IMPORT_PAYLOAD_BYTES {
+                    return Err(AppError::Import(format!(
+                        "Import payload exceeds maximum allowed size of 100 MB (received {} bytes)",
+                        total_bytes
+                    )));
+                }
+            }
+
+            let mut total_sections: usize = 0;
+            for file in &files {
+                total_sections = total_sections.saturating_add(
+                    crate::commands::source_list::count_markdown_spell_sections(
+                        &file.name,
+                        &file.content,
+                    )?,
+                );
+                if total_sections > MAX_IMPORT_BUNDLE_SPELLS {
+                    return Err(AppError::Import(format!(
+                        "Bundle exceeds maximum of 10,000 spells (received {})",
+                        total_sections
+                    )));
+                }
+            }
+
+            let mut all_spells = Vec::new();
+            let mut all_failures = Vec::new();
+            for file in &files {
+                let parsed = crate::commands::source_list::parse_markdown_spell_list(
+                    &file.name,
+                    &file.content,
+                )?;
+                all_spells.extend(parsed.spells);
+                all_failures.extend(parsed.failures);
+            }
+
+            Ok(ClassifiedImportPayload {
+                spells: all_spells,
+                failures: all_failures,
+            })
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn preview_import_spell_json(
+    payload: Option<String>,
+    markdown_files: Option<Vec<ImportMarkdownFile>>,
+    source_ref_url_policy: Option<String>,
+) -> Result<PreviewImportSpellJsonResult, AppError> {
+    let policy = parse_source_ref_url_policy(source_ref_url_policy.as_deref());
+    let classified = classify_import_input(payload, markdown_files)?;
+    Ok(preview_classified_payload(classified, policy))
+}
+
+fn format_flat_components(components: Option<&SpellComponents>) -> Option<String> {
+    let comp = components?;
+    let mut parts = Vec::new();
+    if comp.verbal {
+        parts.push("V");
+    }
+    if comp.somatic {
+        parts.push("S");
+    }
+    if comp.material {
+        parts.push("M");
+    }
+    if comp.focus {
+        parts.push("F");
+    }
+    if comp.divine_focus {
+        parts.push("DF");
+    }
+    if comp.experience {
+        // ComponentsParser::parse_components parses an undelimited single token
+        // char-by-char except "df"; emit "E" when experience is the sole flag so
+        // sync_check_spell round-trips cleanly.
+        if parts.is_empty() {
+            parts.push("E");
+        } else {
+            parts.push("XP");
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(", "))
+    }
+}
+
+fn format_flat_material_components(materials: Option<&[MaterialComponentSpec]>) -> Option<String> {
+    let items = materials.filter(|list| !list.is_empty())?;
+    let formatted: Vec<String> = items
+        .iter()
+        .map(|m| {
+            let q = m.quantity.unwrap_or(1.0);
+            let qty_str = if (q - 1.0).abs() > f64::EPSILON {
+                if q.fract() == 0.0 {
+                    format!(" x{}", q as i64)
+                } else {
+                    format!(" x{}", q)
+                }
+            } else {
+                String::new()
+            };
+            let gp_str = match m.gp_value {
+                Some(gp) => {
+                    if gp.fract() == 0.0 {
+                        format!(" ({} gp)", gp as i64)
+                    } else {
+                        format!(" ({} gp)", gp)
+                    }
+                }
+                None => String::new(),
+            };
+            let consumed_str = if m.is_consumed.unwrap_or(false) {
+                " (consumed)"
+            } else {
+                ""
+            };
+            format!("{}{}{}{}", m.name, qty_str, gp_str, consumed_str)
+        })
+        .collect();
+    Some(formatted.join("; "))
 }
 
 /// Build flat column values from CanonicalSpell for INSERT (name, level, description, etc.).
@@ -625,6 +917,8 @@ fn canonical_spell_to_flat_row(
         .saving_throw
         .as_ref()
         .and_then(|s| s.raw_legacy_value.clone());
+    let components = format_flat_components(spell.components.as_ref());
+    let material_components = format_flat_material_components(spell.material_components.as_deref());
     let source = spell.source_refs.first().map(|r| r.book.clone());
     (
         spell.name.clone(),
@@ -633,8 +927,8 @@ fn canonical_spell_to_flat_row(
         class_list,
         spell.level,
         range,
-        None, // components
-        None, // material_components
+        components,
+        material_components,
         casting_time,
         duration,
         area,
@@ -694,6 +988,9 @@ fn diff_canonical_vs_detail(
         .saving_throw
         .as_ref()
         .and_then(|s| s.raw_legacy_value.clone());
+    let components = format_flat_components(incoming.components.as_ref());
+    let material_components =
+        format_flat_material_components(incoming.material_components.as_deref());
     let source = incoming.source_refs.first().map(|r| r.book.clone());
     let rev = incoming.reversible.unwrap_or(0);
     let q = incoming.is_quest_spell.unwrap_or(0);
@@ -728,6 +1025,13 @@ fn diff_canonical_vs_detail(
         ));
     }
     push_opt(&mut changes, "range", &old.range, &range);
+    push_opt(&mut changes, "components", &old.components, &components);
+    push_opt(
+        &mut changes,
+        "material_components",
+        &old.material_components,
+        &material_components,
+    );
     push_opt(
         &mut changes,
         "casting_time",
@@ -845,25 +1149,46 @@ fn find_unique_name_for_keep_both(
     }
 }
 
+/// Normalize a clone of `spell`, preserve `schema_version`, set `id = Some(hash)`,
+/// and serialize the full `CanonicalSpell` JSON for SQLite `canonical_data` and vault storage.
+fn serialize_full_normalized_canonical_spell(
+    spell: &CanonicalSpell,
+    hash: &str,
+) -> Result<String, AppError> {
+    let mut normalized = spell.clone();
+    let res = normalized.normalize(None);
+    if res.notes_truncated {
+        return Err(AppError::Import(
+            "Saving throw notes truncated during migration (exceeded limit)".into(),
+        ));
+    }
+    if normalized.schema_version < CURRENT_SCHEMA_VERSION {
+        normalized.schema_version = CURRENT_SCHEMA_VERSION;
+    }
+    normalized.id = Some(hash.to_string());
+    serde_json::to_string(&normalized).map_err(|e| AppError::Import(e.to_string()))
+}
+
 /// Replace existing spell row with incoming data; cascade spell_content_hash if columns exist; log changes.
 /// Fails if new content_hash already exists as a different spell. Call inside an open transaction.
-/// Returns the stored content_hash (from spell's compute_hash) so callers can refresh the vault for that hash.
+/// Returns `(stored_hash, canonical_json)` (with `stored_hash` from spell's `compute_hash` and
+/// `canonical_json` as full normalized JSON) so callers can refresh the vault for that hash.
 fn replace_with_new_impl(
     tx: &rusqlite::Connection,
     existing_id: i64,
     old_hash: Option<&str>,
     _incoming_hash_unused: &str,
     item: &PreviewSpellJsonItem,
-) -> Result<String, AppError> {
+) -> Result<(String, String), AppError> {
     if existing_id <= 0 {
         return Err(AppError::Import(
             "replace_with_new: invalid existing_id".into(),
         ));
     }
-    let canonical_json = item.spell.to_canonical_json().map_err(AppError::Import)?;
     // We recompute the hash from the canonical payload rather than trusting _incoming_hash_unused
     // to ensure complete integrity before saving to the DB and vault.
     let stored_hash = item.spell.compute_hash().map_err(AppError::Import)?;
+    let canonical_json = serialize_full_normalized_canonical_spell(&item.spell, &stored_hash)?;
     let conflicting_row: Option<(i64, String)> = tx
         .query_row(
             "SELECT id, name FROM spell WHERE content_hash = ? AND id != ?",
@@ -887,8 +1212,8 @@ fn replace_with_new_impl(
         class_list,
         level_f,
         range,
-        _c,
-        _mc,
+        components,
+        material_components,
         casting_time,
         duration,
         area,
@@ -920,8 +1245,8 @@ fn replace_with_new_impl(
             class_list,
             level_f,
             range,
-            None::<String>,
-            None::<String>,
+            components,
+            material_components,
             casting_time,
             duration,
             area,
@@ -963,7 +1288,7 @@ fn replace_with_new_impl(
         }
     }
     log_changes(tx, existing_id, changes)?;
-    Ok(stored_hash)
+    Ok((stored_hash, canonical_json))
 }
 
 /// Resolve action for one conflict: from resolution list or default_action.
@@ -1136,15 +1461,13 @@ fn apply_import_spell_json_impl(
                             }
                             "replace_with_new" => {
                                 let old_h = existing_hash.as_deref();
-                                let stored_hash = replace_with_new_impl(
+                                let (stored_hash, canon_json) = replace_with_new_impl(
                                     &sp,
                                     existing_id,
                                     old_h,
                                     &content_hash,
                                     &item,
                                 )?;
-                                let canon_json =
-                                    item.spell.to_canonical_json().map_err(AppError::Import)?;
                                 seen_hash_in_batch.insert(stored_hash.clone(), existing_id);
                                 conflicts_resolved.replace_count += 1;
                                 vault_spell_json_to_refresh.insert(stored_hash.clone(), canon_json);
@@ -1161,9 +1484,10 @@ fn apply_import_spell_json_impl(
                                 spell_clone.name = unique_name;
                                 spell_clone.id = None;
                                 let (keep_both_hash, _warnings) = process_spell(&mut spell_clone)?;
-                                spell_clone.id = Some(keep_both_hash.clone());
-                                let canon_json =
-                                    spell_clone.to_canonical_json().map_err(AppError::Import)?;
+                                let canon_json = serialize_full_normalized_canonical_spell(
+                                    &spell_clone,
+                                    &keep_both_hash,
+                                )?;
                                 let row = canonical_spell_to_flat_row(&spell_clone);
                                 sp.execute(
                                     "INSERT INTO spell (name, school, sphere, class_list, level, range, components,
@@ -1214,8 +1538,8 @@ fn apply_import_spell_json_impl(
                 }
             }
 
-            // 4) New spell: INSERT. Use processed JSON and computed hash.
-            let canon_json = item.spell.to_canonical_json().map_err(AppError::Import)?;
+            // 4) New spell: INSERT. Use processed full normalized JSON and computed hash.
+            let canon_json = serialize_full_normalized_canonical_spell(&item.spell, &content_hash)?;
             let stored_hash = content_hash.clone();
             let row = canonical_spell_to_flat_row(&item.spell);
             sp.execute(
@@ -1725,10 +2049,11 @@ pub async fn import_spell_json(
     state: State<'_, Arc<Pool>>,
     embedding_state: State<'_, Arc<EmbeddingState>>,
     maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
-    payload: String,
+    payload: Option<String>,
+    markdown_files: Option<Vec<ImportMarkdownFile>>,
     source_ref_url_policy: Option<String>,
 ) -> Result<ImportSpellJsonResult, AppError> {
-    let preview = preview_import_spell_json(payload, source_ref_url_policy).await?;
+    let preview = preview_import_spell_json(payload, markdown_files, source_ref_url_policy).await?;
     if preview.spells.is_empty() && preview.failures.is_empty() {
         return Ok(ImportSpellJsonResult {
             imported_count: 0,
@@ -1780,18 +2105,19 @@ pub async fn import_spell_json(
     Ok(out)
 }
 
-/// Resolve JSON import conflicts: same payload as import_spell_json, plus resolutions and optional default_action.
+/// Resolve JSON import conflicts: same payload/markdownFiles as import_spell_json, plus resolutions and optional default_action.
 /// Runs preview then apply with the given resolve options (per-conflict resolutions and/or skip_all/replace_all/keep_all).
 #[tauri::command]
 pub async fn resolve_import_spell_json(
     state: State<'_, Arc<Pool>>,
     embedding_state: State<'_, Arc<EmbeddingState>>,
     maintenance_state: State<'_, Arc<VaultMaintenanceState>>,
-    payload: String,
+    payload: Option<String>,
+    markdown_files: Option<Vec<ImportMarkdownFile>>,
     resolve_options: ImportSpellJsonResolveOptions,
     source_ref_url_policy: Option<String>,
 ) -> Result<ImportSpellJsonResult, AppError> {
-    let preview = preview_import_spell_json(payload, source_ref_url_policy).await?;
+    let preview = preview_import_spell_json(payload, markdown_files, source_ref_url_policy).await?;
     if preview.spells.is_empty() && preview.failures.is_empty() {
         return Ok(ImportSpellJsonResult {
             imported_count: 0,
@@ -3090,9 +3416,10 @@ mod tests {
     #[test]
     fn test_parse_classify_single() {
         let json = minimal_spell_json("Single Spell");
-        let spells = parse_and_classify_payload(&json).unwrap();
-        assert_eq!(spells.len(), 1);
-        assert_eq!(spells[0].name, "Single Spell");
+        let classified = parse_and_classify_payload(&json).unwrap();
+        assert_eq!(classified.spells.len(), 1);
+        assert!(classified.failures.is_empty());
+        assert_eq!(classified.spells[0].spell.name, "Single Spell");
     }
 
     #[test]
@@ -3101,19 +3428,19 @@ mod tests {
             r#"{{"bundle_format_version":1,"spells":[{}]}}"#,
             minimal_spell_json("A")
         );
-        let spells = parse_and_classify_payload(&json).unwrap();
-        assert_eq!(spells.len(), 1);
-        assert_eq!(spells[0].name, "A");
+        let classified = parse_and_classify_payload(&json).unwrap();
+        assert_eq!(classified.spells.len(), 1);
+        assert_eq!(classified.spells[0].spell.name, "A");
 
         let json2 = format!(
             r#"{{"bundle_format_version":1,"spells":[{},{}]}}"#,
             minimal_spell_json("A"),
             minimal_spell_json("B")
         );
-        let spells2 = parse_and_classify_payload(&json2).unwrap();
-        assert_eq!(spells2.len(), 2);
-        assert_eq!(spells2[0].name, "A");
-        assert_eq!(spells2[1].name, "B");
+        let classified2 = parse_and_classify_payload(&json2).unwrap();
+        assert_eq!(classified2.spells.len(), 2);
+        assert_eq!(classified2.spells[0].spell.name, "A");
+        assert_eq!(classified2.spells[1].spell.name, "B");
     }
 
     #[test]
@@ -3138,7 +3465,168 @@ mod tests {
     fn test_parse_classify_bundle_spells_not_array() {
         let json = r#"{"bundle_format_version":1,"spells":"not-an-array"}"#;
         let err = parse_and_classify_payload(json).unwrap_err();
-        assert!(err.to_string().contains("array"));
+        assert_eq!(
+            err.to_string(),
+            "Import error: Bundle format requires 'spells' to be an array"
+        );
+    }
+
+    #[test]
+    fn test_classify_spellscribe_list_without_bundle_format_version() {
+        let json = r#"{"version":"1.1","exported_at":"2026-06-18T13:11:31Z","spellscribe_version":"1.0.3","spells":[]}"#;
+        let classified = parse_and_classify_payload(json)
+            .expect("SpellScribe 1.0.3 envelope without bundle_format_version should be accepted");
+        assert!(classified.spells.is_empty());
+        assert!(classified.failures.is_empty());
+    }
+
+    #[test]
+    fn test_classify_spells_without_spellscribe_or_bundle_version_fails() {
+        let json = format!(r#"{{"spells":[{}]}}"#, minimal_spell_json("X"));
+        let err = parse_and_classify_payload(&json).unwrap_err();
+        assert!(
+            err.to_string().contains("bundle_format_version"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_classify_rejects_ambiguous_envelope_snake_and_camel() {
+        for key in ["bundle_format_version", "bundleFormatVersion"] {
+            let json = format!(r#"{{"spellscribe_version":"1.0.3","{key}":1,"spells":[]}}"#);
+            let err = parse_and_classify_payload(&json)
+                .expect_err("envelope with both version keys must be rejected as ambiguous");
+            assert!(
+                err.to_string().to_lowercase().contains("ambiguous"),
+                "expected ambiguous error for {key}, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_classify_rejects_invalid_spellscribe_version_before_mapping() {
+        let cases = [
+            r#"{"spellscribe_version":1,"spells":[{"bad":"spell"}]}"#,
+            r#"{"spellscribe_version":1.0,"spells":[{"bad":"spell"}]}"#,
+            r#"{"spellscribe_version":null,"spells":[{"bad":"spell"}]}"#,
+            r#"{"spellscribe_version":"abc.0.0","spells":[{"bad":"spell"}]}"#,
+            r#"{"spellscribe_version":"","spells":[{"bad":"spell"}]}"#,
+            r#"{"spellscribe_version":".1.0","spells":[{"bad":"spell"}]}"#,
+            r#"{"spellscribe_version":"2.0.0","spells":[{"bad":"spell"}]}"#,
+            r#"{"spellscribe_version":"0.9.0","spells":[{"bad":"spell"}]}"#,
+        ];
+
+        for json in cases {
+            let err = parse_and_classify_payload(json)
+                .expect_err("unsupported spellscribe_version must reject before mapping");
+            let msg = err.to_string().to_lowercase();
+            assert!(
+                msg.contains("spellscribe") && msg.contains("version"),
+                "expected unsupported SpellScribe version error for {json}, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_classify_rejects_spellscribe_without_spells_array() {
+        let json = r#"{"spellscribe_version":"1.0.3","name":"Single","tradition":"ARCANE","level":1,"description":"X","school":"Abjuration"}"#;
+        let err = parse_and_classify_payload(json)
+            .expect_err("spellscribe_version without spells must not fall through to single spell");
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("spells") && msg.contains("array"),
+            "expected missing spells array error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_classify_rejects_non_array_spells_with_and_without_spellscribe() {
+        for json in [
+            r#"{"spellscribe_version":"1.0.3","spells":"not-an-array"}"#,
+            r#"{"spellscribe_version":"1.0.3","spells":null}"#,
+            r#"{"spellscribe_version":"1.0.3","spells":{"a":1}}"#,
+            r#"{"spellscribe_version":"1.0.3","spells":123}"#,
+            r#"{"spellscribe_version":"1.0.3","spells":true}"#,
+            r#"{"bundle_format_version":1,"spells":"not-an-array"}"#,
+            r#"{"bundle_format_version":1,"spells":null}"#,
+            r#"{"bundle_format_version":1,"spells":{"nested":[1,2]},"extra":"after"}"#,
+            r#"{"bundle_format_version":1,"spells":-5}"#,
+            r#"{"bundle_format_version":1,"spells":1.5}"#,
+            r#"{"bundle_format_version":1,"spells":false}"#,
+            r#"{"spells":"not-an-array"}"#,
+            r#"{"bundle_format_version":1,"spells":[],"spells":"not-an-array"}"#,
+        ] {
+            let err =
+                parse_and_classify_payload(json).expect_err("non-array spells must be rejected");
+            assert_eq!(
+                err.to_string(),
+                "Import error: Bundle format requires 'spells' to be an array",
+                "expected Bundle format spells-array error for {json}, got: {err}"
+            );
+        }
+
+        let dup_valid = r#"{"bundle_format_version":1,"spells":"not-an-array","spells":[]}"#;
+        let classified = parse_and_classify_payload(dup_valid)
+            .expect("duplicate spells key ending in empty array should parse as empty bundle");
+        assert!(classified.spells.is_empty());
+    }
+
+    #[test]
+    fn test_parse_classify_rejects_non_object_json_roots() {
+        for json in [
+            "[]",
+            r#"[1,{"spells":[1,2]}]"#,
+            r#""text""#,
+            "123",
+            "-5",
+            "1.5",
+            "null",
+            "true",
+            "false",
+        ] {
+            let err = parse_and_classify_payload(json)
+                .expect_err("non-object JSON root must be rejected");
+            assert_eq!(
+                err.to_string(),
+                "Import error: Payload must be a JSON object",
+                "expected JSON object error for {json}, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_classify_rejects_invalid_json_syntax() {
+        for json in [
+            "",
+            "{",
+            "[1, 2",
+            "{} trailing",
+            "[] trailing",
+            r#"{"spells":[1,]}"#,
+            r#"{"spells":{"a":}}"#,
+        ] {
+            let err =
+                parse_and_classify_payload(json).expect_err("invalid JSON syntax must be rejected");
+            assert!(
+                err.to_string().starts_with("Import error: Invalid JSON:"),
+                "expected Invalid JSON error for {json}, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_classify_canonical_single_and_bundle_still_deny_unknown_fields() {
+        let single_err = parse_and_classify_payload(
+            r#"{"name":"Single","tradition":"ARCANE","level":1,"description":"X","school":"Abjuration","extra_unknown":1}"#,
+        )
+        .expect_err("canonical single spell must continue rejecting unknown fields");
+        assert!(single_err.to_string().contains("unknown field"));
+
+        let bundle_err = parse_and_classify_payload(
+            r#"{"bundle_format_version":1,"spells":[{"name":"Bundled","tradition":"ARCANE","level":1,"description":"X","school":"Abjuration","extra_unknown":1}]}"#,
+        )
+        .expect_err("canonical bundle spell must continue rejecting unknown fields");
+        assert!(bundle_err.to_string().contains("unknown field"));
     }
 
     #[test]
@@ -3261,7 +3749,8 @@ mod tests {
     fn test_preview_drop_ref_policy_invalid_url() {
         let json = r#"{"name":"WithBadUrl","tradition":"ARCANE","level":1,"description":"X","school":"Abjuration","sourceRefs":[{"book":"PHB","url":"javascript:alert(1)"}]}"#.to_string();
         let result = tauri::async_runtime::block_on(preview_import_spell_json(
-            json,
+            Some(json),
+            None,
             Some("drop-ref".to_string()),
         ))
         .unwrap();
@@ -3278,7 +3767,8 @@ mod tests {
     fn test_preview_reject_spell_policy_invalid_url() {
         let json = r#"{"name":"RejectMe","tradition":"ARCANE","level":1,"description":"X","school":"Abjuration","sourceRefs":[{"book":"PHB","url":"data:text/html,evil"}]}"#.to_string();
         let result = tauri::async_runtime::block_on(preview_import_spell_json(
-            json,
+            Some(json),
+            None,
             Some("reject-spell".to_string()),
         ))
         .unwrap();
@@ -3291,7 +3781,9 @@ mod tests {
     #[test]
     fn test_preview_default_policy_accepts_valid_urls() {
         let json = r#"{"name":"Good","tradition":"ARCANE","level":1,"description":"X","school":"Abjuration","sourceRefs":[{"book":"PHB","url":"https://example.com/ref"}]}"#.to_string();
-        let result = tauri::async_runtime::block_on(preview_import_spell_json(json, None)).unwrap();
+        let result =
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(json), None, None))
+                .unwrap();
         assert_eq!(result.spells.len(), 1);
         assert_eq!(result.spells[0].spell.source_refs.len(), 1);
         assert_eq!(
@@ -3304,8 +3796,9 @@ mod tests {
     fn test_preview_rejects_payload_larger_than_100_mb() {
         let payload = payload_with_exact_bytes((100 * 1024 * 1024) + 1);
 
-        let err = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
-            .expect_err("payloads over 100 MB should be rejected");
+        let err =
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(payload), None, None))
+                .expect_err("payloads over 100 MB should be rejected");
 
         assert!(
             err.to_string().contains("100 MB"),
@@ -3317,8 +3810,9 @@ mod tests {
     fn test_preview_accepts_payload_just_below_100_mb() {
         let payload = payload_with_exact_bytes((100 * 1024 * 1024) - 1);
 
-        let result = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
-            .expect("payload just below 100 MB should be accepted");
+        let result =
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(payload), None, None))
+                .expect("payload just below 100 MB should be accepted");
 
         assert_eq!(result.spells.len(), 1);
         assert!(
@@ -3332,8 +3826,9 @@ mod tests {
     fn test_preview_accepts_payload_exactly_100_mb() {
         let payload = payload_with_exact_bytes(100 * 1024 * 1024);
 
-        let result = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
-            .expect("payload at exactly 100 MB should be accepted");
+        let result =
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(payload), None, None))
+                .expect("payload at exactly 100 MB should be accepted");
 
         assert_eq!(result.spells.len(), 1);
         assert!(
@@ -3384,7 +3879,8 @@ mod tests {
 
         for (field_name, payload, expected_path) in cases {
             let result = tauri::async_runtime::block_on(preview_import_spell_json(
-                payload.to_string(),
+                Some(payload.to_string()),
+                None,
                 None,
             ))
             .expect("preview should classify oversized fields as failures");
@@ -3475,7 +3971,8 @@ mod tests {
 
         for (field_name, payload, expected_path) in cases {
             let result = tauri::async_runtime::block_on(preview_import_spell_json(
-                payload.to_string(),
+                Some(payload.to_string()),
+                None,
                 None,
             ))
             .expect("preview should classify oversized SourceRef fields as failures");
@@ -3523,7 +4020,8 @@ mod tests {
         }];
 
         let preview = tauri::async_runtime::block_on(preview_import_spell_json(
-            serde_json::to_string(&spell).expect("serialize boundary spell"),
+            Some(serde_json::to_string(&spell).expect("serialize boundary spell")),
+            None,
             None,
         ))
         .expect("preview should accept exact-boundary spell");
@@ -3642,18 +4140,86 @@ mod tests {
     fn test_parse_and_classify_payload_accepts_bundle_with_10000_spells() {
         let payload = bundle_payload_with_spell_count(10_000);
 
-        let spells = parse_and_classify_payload(&payload)
+        let classified = parse_and_classify_payload(&payload)
             .expect("bundle at 10,000 spells should be accepted");
 
-        assert_eq!(spells.len(), 10_000);
+        assert_eq!(classified.spells.len(), 10_000);
+        assert!(classified.failures.is_empty());
+    }
+
+    #[test]
+    fn test_canonical_spell_to_flat_row_populates_components_and_roundtrips_sync_check() {
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        let mut spell = test_spell("Component Roundtrip", 3, "VSM test");
+        spell.components = Some(SpellComponents {
+            verbal: true,
+            somatic: true,
+            material: true,
+            focus: false,
+            divine_focus: false,
+            experience: false,
+        });
+        spell.material_components = Some(vec![MaterialComponentSpec {
+            name: "a pinch of sulfur".to_string(),
+            quantity: Some(1.0),
+            unit: None,
+            gp_value: Some(50.0),
+            is_consumed: Some(true),
+            description: None,
+        }]);
+
+        let row = canonical_spell_to_flat_row(&spell);
+        assert_eq!(row.6.as_deref(), Some("V, S, M"));
+        assert_eq!(
+            row.7.as_deref(),
+            Some("a pinch of sulfur (50 gp) (consumed)")
+        );
+
+        let result = apply_import_spell_json_impl(&conn, vec![preview_item_for_test(spell)], None)
+            .expect("apply import");
+        assert_eq!(result.imported_count, 1);
+
+        let (stored_components, stored_materials): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT components, material_components FROM spell WHERE name = 'Component Roundtrip'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("query inserted flat components");
+        assert_eq!(stored_components.as_deref(), Some("V, S, M"));
+        assert_eq!(
+            stored_materials.as_deref(),
+            Some("a pinch of sulfur (50 gp) (consumed)")
+        );
+
+        // Verify sole-experience component formats as "E" so SpellParser::parse_components roundtrips.
+        let exp_only = SpellComponents {
+            verbal: false,
+            somatic: false,
+            material: false,
+            focus: false,
+            divine_focus: false,
+            experience: true,
+        };
+        let exp_flat = format_flat_components(Some(&exp_only)).expect("sole experience");
+        assert_eq!(exp_flat, "E");
+        assert_eq!(
+            crate::utils::spell_parser::SpellParser::new().parse_components(&exp_flat),
+            exp_only
+        );
     }
 
     #[test]
     fn test_preview_rejects_json_nesting_deeper_than_50_levels() {
         let payload = payload_with_total_json_depth(51);
 
-        let err = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
-            .expect_err("json deeper than 50 levels should be rejected");
+        let err =
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(payload), None, None))
+                .expect_err("json deeper than 50 levels should be rejected");
 
         assert!(err.to_string().contains("depth"), "unexpected error: {err}");
         assert!(err.to_string().contains("50"), "unexpected error: {err}");
@@ -3796,11 +4362,14 @@ mod tests {
         let json_camel = serde_json::to_string(&val_camel).unwrap();
 
         let res_id =
-            tauri::async_runtime::block_on(preview_import_spell_json(json_id, None)).unwrap();
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(json_id), None, None))
+                .unwrap();
         let res_hash =
-            tauri::async_runtime::block_on(preview_import_spell_json(json_hash, None)).unwrap();
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(json_hash), None, None))
+                .unwrap();
         let res_camel =
-            tauri::async_runtime::block_on(preview_import_spell_json(json_camel, None)).unwrap();
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(json_camel), None, None))
+                .unwrap();
 
         assert!(
             res_id.failures.is_empty(),
@@ -4466,8 +5035,9 @@ mod tests {
         incoming_spell.id = Some("x".repeat(64));
         let payload = serde_json::to_string(&incoming_spell).expect("serialize incoming spell");
 
-        let preview = tauri::async_runtime::block_on(preview_import_spell_json(payload, None))
-            .expect("preview import");
+        let preview =
+            tauri::async_runtime::block_on(preview_import_spell_json(Some(payload), None, None))
+                .expect("preview import");
 
         assert_eq!(preview.spells.len(), 1);
         let stored_spell = &preview.spells[0].spell;
@@ -4779,12 +5349,21 @@ mod tests {
         let stored_spell: CanonicalSpell =
             serde_json::from_str(&stored_json).expect("deserialize keep_both spell");
 
-        // Ensure the computed hash matches the one stored in `content_hash`
+        // Ensure the computed hash and stored metadata match the renamed spell's DB content_hash
         let recomputed_hash = stored_spell.compute_hash().expect("compute keep_both hash");
         assert_eq!(
             stored_hash,
             recomputed_hash,
             "keep_both should compute the renamed spell hash matching the recomputed DB content_hash"
+        );
+        assert_eq!(
+            stored_spell.id.as_deref(),
+            Some(stored_hash.as_str()),
+            "keep_both canonical_data should store the renamed hash in id"
+        );
+        assert_eq!(
+            stored_spell.schema_version, CURRENT_SCHEMA_VERSION,
+            "keep_both canonical_data should retain CURRENT_SCHEMA_VERSION"
         );
     }
 
@@ -5105,5 +5684,945 @@ mod tests {
         let (spell_id, path) = resolve_artifact_spell_id(&conn, 1).expect("resolve ok");
         assert_eq!(spell_id, 5);
         assert_eq!(path, "legacy.md");
+    }
+
+    #[test]
+    fn test_spellscribe_netheril_json_karsus_and_proctiv_parity() {
+        let payload = include_str!(
+            "../../tests/fixtures/source-lists/Nethril - Empire of Magic - Wizard.json"
+        );
+        let classified =
+            parse_and_classify_payload(payload).expect("Nethril SpellScribe JSON should classify");
+        assert_eq!(
+            classified.spells.len(),
+            9,
+            "expected all 9 Netheril spells to succeed"
+        );
+        assert!(
+            classified.failures.is_empty(),
+            "expected 0 failures in Netheril JSON, got {:?}",
+            classified.failures
+        );
+
+        let parser = crate::utils::spell_parser::SpellParser::new();
+
+        // Karsus's Avatar (first spell)
+        let karsus_entry = &classified.spells[0];
+        let karsus = &karsus_entry.spell;
+        assert_eq!(karsus.name, "Karsus's Avatar");
+        assert_eq!(karsus.tradition, "ARCANE");
+        assert_eq!(karsus.level, 12);
+        assert_eq!(karsus.school.as_deref(), Some("Invocation/Evocation"));
+        assert_eq!(
+            karsus.subschools,
+            vec!["Enchantment/Charm".to_string(), "Alteration".to_string()]
+        );
+        assert_eq!(karsus.class_list, vec!["Wizard".to_string()]);
+        let comps = karsus.components.as_ref().expect("components parsed");
+        assert!(comps.verbal && comps.somatic && comps.material);
+        assert!(
+            karsus.material_components.is_none(),
+            "Netheril V/S/M spell must not mine material components from description prose"
+        );
+        assert_eq!(
+            karsus.casting_time,
+            Some(
+                crate::commands::source_list::parse_casting_time_with_editor_fallback(
+                    &parser, "6 hours"
+                )
+            )
+        );
+        assert_eq!(karsus.reversible, None);
+        let save = karsus.saving_throw.as_ref().expect("saving_throw present");
+        assert_eq!(
+            save.kind,
+            crate::models::saving_throw::SavingThrowKind::DmAdjudicated
+        );
+        assert_eq!(save.raw_legacy_value.as_deref(), Some("Special"));
+        assert_eq!(karsus.source_refs.len(), 1);
+        assert_eq!(karsus.source_refs[0].book, "Nethril - Empire of Magic");
+        assert_eq!(karsus.source_refs[0].page, Some(serde_json::json!(10)));
+        let note = karsus.source_refs[0]
+            .note
+            .as_deref()
+            .expect("review_notes stored in SourceRef.note");
+        assert!(note.contains("Field: Mentalism"));
+        assert!(
+            karsus_entry.warnings.iter().any(|w| w.contains(note)),
+            "warnings must include review note: {:?}",
+            karsus_entry.warnings
+        );
+        assert!(
+            !karsus.description.contains("Field: Mentalism"),
+            "review_notes must be excluded from spell description"
+        );
+
+        // SpellParser parity across Netheril spells (range, duration, casting_time, area)
+        assert_eq!(
+            karsus.range,
+            Some(
+                crate::commands::source_list::parse_range_with_editor_fallback(
+                    &parser,
+                    "Unlimited"
+                )
+            )
+        );
+        assert_eq!(
+            karsus.duration,
+            Some(
+                crate::commands::source_list::parse_duration_with_editor_fallback(
+                    &parser,
+                    "Unlimited"
+                )
+            )
+        );
+        assert_eq!(
+            karsus.area,
+            Some(crate::commands::source_list::parse_area_with_editor_fallback(&parser, "One god"))
+        );
+
+        // Lefeber's Weave Mythal: "3 days" casting time
+        let lefeber = &classified.spells[1].spell;
+        assert_eq!(lefeber.name, "Lefeber's Weave Mythal");
+        assert_eq!(
+            lefeber.casting_time,
+            Some(parser.parse_casting_time("3 days"))
+        );
+        assert_eq!(
+            lefeber.casting_time.as_ref().and_then(|c| c.per_level),
+            None
+        );
+
+        // Proctiv's Breach Crystal Sphere: "1 turn" casting time + reversible == Some(1)
+        let proctiv = &classified.spells[5].spell;
+        assert_eq!(proctiv.name, "Proctiv's Breach Crystal Sphere");
+        assert_eq!(
+            proctiv.casting_time,
+            Some(parser.parse_casting_time("1 turn"))
+        );
+        assert_eq!(
+            proctiv.casting_time.as_ref().and_then(|c| c.per_level),
+            None
+        );
+        assert_eq!(proctiv.reversible, Some(1));
+
+        // Explicit check that "6 hours per level" matches SpellParser::parse_casting_time with no added per_level
+        let per_level_json = r#"{
+            "spellscribe_version": "1.0.0",
+            "spells": [{
+                "name": "Per Level Duration Casting Check",
+                "tradition": "Arcane",
+                "level": 3,
+                "school": ["Alteration"],
+                "casting_time": "6 hours per level",
+                "description": "Test."
+            }]
+        }"#;
+        let per_level_classified =
+            parse_and_classify_payload(per_level_json).expect("valid per-level casting check");
+        let parsed_ct = per_level_classified.spells[0]
+            .spell
+            .casting_time
+            .as_ref()
+            .expect("casting_time present");
+        let expected_ct = parser.parse_casting_time("6 hours per level");
+        assert_eq!(parsed_ct, &expected_ct);
+        assert_eq!(parsed_ct.per_level, None);
+    }
+
+    #[test]
+    fn test_spellscribe_edge_cases_divine_tradition_flags_materials_truncation_warnings() {
+        let long_note = "R".repeat(crate::models::canonical_spell::SOURCE_REF_NOTE_MAX_CHARS + 50);
+        let payload = serde_json::json!({
+            "spellscribe_version": "1.0.3",
+            "spells": [
+                {
+                    "name": "Omitted Arcane Inference",
+                    "level": "cantrip",
+                    "school": ["Abjuration", "NotASchool"],
+                    "components": "V, S, M (a diamond)",
+                    "description": "Cantrip with inferred Arcane tradition and dropped unknown school.",
+                    "review_notes": long_note,
+                    "extra_meta": "ignored"
+                },
+                {
+                    "name": "Omitted Divine Quest",
+                    "level": "quest",
+                    "sphere": "All",
+                    "class_list": ["Priest"],
+                    "description": "Quest spell with inferred Divine tradition."
+                },
+                {
+                    "name": "Divine Numeric Quest",
+                    "tradition": "Divine",
+                    "level": 8,
+                    "sphere": "Healing",
+                    "description": "Divine level 8 maps to quest spell."
+                },
+                {
+                    "name": "No Material Line Prose",
+                    "tradition": "Arcane",
+                    "level": 1,
+                    "school": "Evocation",
+                    "components": ["V", "S", "M"],
+                    "description": "Requires a pinch of sulfur in prose only."
+                }
+            ]
+        })
+        .to_string();
+
+        let classified = parse_and_classify_payload(&payload).expect("classify edge cases");
+        assert!(classified.failures.is_empty());
+        assert_eq!(classified.spells.len(), 4);
+
+        // 1. Omitted tradition -> ARCANE, cantrip, dropped school warning, M (...) material extraction, >2048 note truncation, Unknown book fallback
+        let s0 = &classified.spells[0];
+        assert_eq!(s0.spell.tradition, "ARCANE");
+        assert_eq!(s0.spell.level, 0);
+        assert_eq!(s0.spell.is_cantrip, Some(1));
+        assert_eq!(s0.spell.school.as_deref(), Some("Abjuration"));
+        assert!(s0.spell.subschools.is_empty());
+        assert!(s0
+            .warnings
+            .iter()
+            .any(|w| w.contains("NotASchool") && w.contains("unrecognized")));
+        let mats = s0
+            .spell
+            .material_components
+            .as_ref()
+            .expect("M (a diamond) must extract material");
+        assert!(mats.iter().any(|m| m.name.contains("diamond")));
+        assert_eq!(s0.spell.source_refs.len(), 1);
+        assert_eq!(s0.spell.source_refs[0].book, "Unknown");
+        let stored_note = s0.spell.source_refs[0]
+            .note
+            .as_deref()
+            .expect("note stored");
+        assert_eq!(
+            stored_note.chars().count(),
+            crate::models::canonical_spell::SOURCE_REF_NOTE_MAX_CHARS
+        );
+        assert!(s0.warnings.iter().any(|w| w.contains("truncated")));
+
+        // 2. Omitted tradition with sphere -> DIVINE + quest level
+        let s1 = &classified.spells[1];
+        assert_eq!(s1.spell.tradition, "DIVINE");
+        assert_eq!(s1.spell.level, 8);
+        assert_eq!(s1.spell.is_quest_spell, Some(1));
+        assert_eq!(s1.spell.sphere.as_deref(), Some("All"));
+
+        // 3. Explicit Divine level 8 -> is_quest_spell = Some(1)
+        let s2 = &classified.spells[2];
+        assert_eq!(s2.spell.tradition, "DIVINE");
+        assert_eq!(s2.spell.level, 8);
+        assert_eq!(s2.spell.is_quest_spell, Some(1));
+
+        // 4. Plain M component without explicit material_components or M (...) parenthetical does not mine description prose
+        let s3 = &classified.spells[3];
+        assert!(s3.spell.components.as_ref().is_some_and(|c| c.material));
+        assert!(s3.spell.material_components.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_spellscribe_synthetic_partial_failure_preview() {
+        let payload =
+            include_str!("../../tests/fixtures/source-lists/synthetic-spellscribe-partial.json");
+        let preview = preview_import_spell_json(Some(payload.to_string()), None, None)
+            .await
+            .expect("partial SpellScribe list should return preview instead of hard error");
+
+        assert_eq!(preview.spells.len(), 2, "2 of 3 synthetic spells succeed");
+        assert_eq!(preview.spells[0].spell.name, "Synthetic Spark");
+        assert!(preview.spells[0]
+            .warnings
+            .iter()
+            .any(|w| w.contains("Needs review (flagged by source)")));
+        assert!(preview.spells[0]
+            .warnings
+            .iter()
+            .any(|w| w.contains("Check casting time.")));
+        assert_eq!(preview.spells[1].spell.name, "Synthetic Balm");
+        assert_eq!(preview.spells[1].spell.tradition, "DIVINE");
+
+        assert_eq!(
+            preview.failures.len(),
+            1,
+            "Synthetic Broken Arcane should fail"
+        );
+        assert_eq!(preview.failures[0].spell_name, "Synthetic Broken Arcane");
+        assert!(!preview.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_ipc_markdown_input_guardrails_and_no_json_depth_limit() {
+        let md = "## Plain Spell\n- Tradition: Arcane\n- Level: 1\n- School: Abjuration\n\nBody.\n";
+        let md_files = vec![ImportMarkdownFile {
+            name: "plain.md".to_string(),
+            content: md.to_string(),
+        }];
+
+        // Reject both payload and markdown_files
+        let both_err =
+            preview_import_spell_json(Some(minimal_spell_json("X")), Some(md_files.clone()), None)
+                .await
+                .expect_err("providing both payload and markdownFiles must fail");
+        assert!(both_err.to_string().contains("not both"));
+
+        // Reject neither / empty markdown_files
+        let none_err = preview_import_spell_json(None, None, None)
+            .await
+            .expect_err("providing neither input must fail");
+        assert!(none_err.to_string().contains("either"));
+
+        let empty_md_err = preview_import_spell_json(None, Some(vec![]), None)
+            .await
+            .expect_err("empty markdownFiles must fail");
+        assert!(empty_md_err.to_string().contains("either"));
+
+        // Reject combined Markdown > 100 MB across files
+        let half_over = "a".repeat((50 * 1024 * 1024) + 1);
+        let oversized_files = vec![
+            ImportMarkdownFile {
+                name: "one.md".to_string(),
+                content: format!(
+                    "## One\n- Tradition: Arcane\n- Level: 1\n- School: Abjuration\n\n{half_over}"
+                ),
+            },
+            ImportMarkdownFile {
+                name: "two.md".to_string(),
+                content: format!(
+                    "## Two\n- Tradition: Arcane\n- Level: 1\n- School: Abjuration\n\n{half_over}"
+                ),
+            },
+        ];
+        let size_err = preview_import_spell_json(None, Some(oversized_files), None)
+            .await
+            .expect_err("combined markdown > 100 MB must fail");
+        assert!(size_err.to_string().contains("100 MB"));
+
+        // Reject combined Markdown > 10,000 spells across multiple files
+        let make_n_spells = |prefix: &str, count: usize| {
+            (0..count)
+                .map(|i| {
+                    format!(
+                        "## {prefix} {i}\n- Tradition: Arcane\n- Level: 1\n- School: Abjuration\n\nBody.\n"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let too_many_md = vec![
+            ImportMarkdownFile {
+                name: "part1.md".to_string(),
+                content: make_n_spells("PartA", 6_000),
+            },
+            ImportMarkdownFile {
+                name: "part2.md".to_string(),
+                content: make_n_spells("PartB", 4_001),
+            },
+        ];
+        let cap_err = preview_import_spell_json(None, Some(too_many_md), None)
+            .await
+            .expect_err("combined markdown > 10,000 spells must fail");
+        assert!(cap_err.to_string().contains("10,000"));
+
+        // Deep JSON-like braces inside Markdown description must NOT trigger JSON depth rejection
+        let deep_braces = format!("{}{}", "{".repeat(65), "}".repeat(65));
+        let brace_md = vec![ImportMarkdownFile {
+            name: "braces.md".to_string(),
+            content: format!(
+                "## Deep Braces\n- Tradition: Arcane\n- Level: 1\n- School: Abjuration\n\nText {deep_braces} end.\n"
+            ),
+        }];
+        let ok_preview = preview_import_spell_json(None, Some(brace_md), None)
+            .await
+            .expect("markdown must bypass JSON depth check");
+        assert_eq!(ok_preview.spells.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_multifile_markdown_preview_apply_sync_check_and_conflict_resolution() {
+        let file1 = ImportMarkdownFile {
+            name: "Book One.md".to_string(),
+            content: "## First Spell\n- Tradition: Arcane\n- Class: Wizard\n- Level: 2\n- School: Evocation\n- Range: 30 yards\n- Components: V, S, M (a sapphire)\n- Duration: 1 round/level\n- Casting Time: 2 segments\n- Area of Effect: 10' radius\n- Saving Throw: Half\n- Source: markdown.md, p. 4\n\nFirst body.\n".to_string(),
+        };
+        let file2 = ImportMarkdownFile {
+            name: "Book Two.md".to_string(),
+            content: "## Second Spell\n- Tradition: Divine\n- Class: Priest\n- Level: 3\n- Sphere: Healing\n- Components: V, S\n- Source: markdown.md, p. 19\n\nSecond body.\n".to_string(),
+        };
+
+        let preview = preview_import_spell_json(None, Some(vec![file1, file2]), None)
+            .await
+            .expect("multi-file markdown preview succeeds");
+        assert!(preview.failures.is_empty());
+        assert_eq!(preview.spells.len(), 2);
+        assert_eq!(preview.spells[0].spell.name, "First Spell");
+        assert_eq!(preview.spells[0].spell.source_refs[0].book, "Book One");
+        assert_eq!(
+            preview.spells[0].spell.source_refs[0].page,
+            Some(serde_json::json!(4))
+        );
+        assert_eq!(preview.spells[1].spell.name, "Second Spell");
+        assert_eq!(preview.spells[1].spell.source_refs[0].book, "Book Two");
+        assert_eq!(
+            preview.spells[1].spell.source_refs[0].page,
+            Some(serde_json::json!(19))
+        );
+
+        let _temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        let first_apply = apply_import_spell_json_impl(&conn, preview.spells, None)
+            .expect("apply multi-file markdown spells");
+        assert_eq!(first_apply.imported_count, 2);
+        assert!(first_apply.conflicts.is_empty());
+
+        let (id1, comp1, mat1): (i64, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT id, components, material_components FROM spell WHERE name = 'First Spell'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .expect("query inserted First Spell");
+        assert_eq!(comp1.as_deref(), Some("V, S, M"));
+        assert_eq!(mat1.as_deref(), Some("a sapphire"));
+        migration_manager::sync_check_spell(&conn, id1);
+
+        // Re-import modified "First Spell" across all three conflict resolutions
+        let updated_md = vec![ImportMarkdownFile {
+            name: "Book One.md".to_string(),
+            content: "## First Spell\n- Tradition: Arcane\n- Class: Wizard\n- Level: 2\n- School: Evocation\n- Range: 30 yards\n- Components: V, S\n- Duration: Instantaneous\n- Casting Time: 1 segment\n- Area of Effect: One creature\n- Saving Throw: None\n- Source: Book One, p. 5\n\nUpdated body.\n".to_string(),
+        }];
+        let updated_preview = preview_import_spell_json(None, Some(updated_md), None)
+            .await
+            .expect("updated markdown preview");
+        let incoming_hash = updated_preview.spells[0].content_hash.clone();
+
+        let conflict_res =
+            apply_import_spell_json_impl(&conn, updated_preview.spells.clone(), None)
+                .expect("conflict detection");
+        assert_eq!(conflict_res.conflicts.len(), 1);
+        assert_eq!(conflict_res.conflicts[0].existing_id, id1);
+
+        // keep_existing
+        let keep_existing = apply_import_spell_json_impl(
+            &conn,
+            updated_preview.spells.clone(),
+            Some(ImportSpellJsonResolveOptions {
+                resolutions: vec![ImportSpellJsonConflictResolution {
+                    existing_id: id1,
+                    incoming_content_hash: incoming_hash.clone(),
+                    action: "keep_existing".to_string(),
+                }],
+                default_action: None,
+            }),
+        )
+        .expect("keep_existing resolution");
+        assert_eq!(
+            keep_existing
+                .conflicts_resolved
+                .as_ref()
+                .expect("resolved")
+                .keep_existing_count,
+            1
+        );
+
+        // keep_both
+        let keep_both = apply_import_spell_json_impl(
+            &conn,
+            updated_preview.spells.clone(),
+            Some(ImportSpellJsonResolveOptions {
+                resolutions: vec![ImportSpellJsonConflictResolution {
+                    existing_id: id1,
+                    incoming_content_hash: incoming_hash.clone(),
+                    action: "keep_both".to_string(),
+                }],
+                default_action: None,
+            }),
+        )
+        .expect("keep_both resolution");
+        assert_eq!(
+            keep_both
+                .conflicts_resolved
+                .as_ref()
+                .expect("resolved")
+                .keep_both_count,
+            1
+        );
+
+        // replace_with_new
+        let replace_res = apply_import_spell_json_impl(
+            &conn,
+            updated_preview.spells,
+            Some(ImportSpellJsonResolveOptions {
+                resolutions: vec![ImportSpellJsonConflictResolution {
+                    existing_id: id1,
+                    incoming_content_hash: incoming_hash,
+                    action: "replace_with_new".to_string(),
+                }],
+                default_action: None,
+            }),
+        )
+        .expect("replace_with_new resolution");
+        assert_eq!(
+            replace_res
+                .conflicts_resolved
+                .as_ref()
+                .expect("resolved")
+                .replace_count,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn test_markdown_netheril_fixture_and_cross_format_hash_parity() {
+        let md =
+            include_str!("../../tests/fixtures/source-lists/Nethril - Empire of Magic - Wizard.md");
+        let json = include_str!(
+            "../../tests/fixtures/source-lists/Nethril - Empire of Magic - Wizard.json"
+        );
+
+        let md_preview = preview_import_spell_json(
+            None,
+            Some(vec![ImportMarkdownFile {
+                name: "Nethril - Empire of Magic - Wizard.md".to_string(),
+                content: md.to_string(),
+            }]),
+            None,
+        )
+        .await
+        .expect("Netheril markdown preview succeeds");
+
+        assert!(
+            md_preview.failures.is_empty(),
+            "expected 0 failures in Netheril markdown, got {:?}",
+            md_preview.failures
+        );
+        assert_eq!(md_preview.spells.len(), 9);
+        assert_eq!(md_preview.spells[0].spell.name, "Karsus's Avatar");
+        assert_eq!(md_preview.spells[8].spell.name, "Valdick's Spheresail");
+
+        let karsus = &md_preview.spells[0];
+        assert!(karsus
+            .spell
+            .description
+            .contains("Karsus spent well over a decade researching this spell."));
+        assert!(!karsus.spell.description.contains("### Review"));
+        assert!(!karsus.spell.description.contains("Field: Mentalism"));
+        assert_eq!(karsus.spell.source_refs.len(), 1);
+        assert_eq!(
+            karsus.spell.source_refs[0].book,
+            "Nethril - Empire of Magic - Wizard"
+        );
+        assert_eq!(
+            karsus.spell.source_refs[0].page,
+            Some(serde_json::json!(10))
+        );
+        let karsus_note = karsus.spell.source_refs[0]
+            .note
+            .as_deref()
+            .expect("Karsus review note stored");
+        assert!(karsus_note.contains("Field: Mentalism"));
+        assert!(karsus.warnings.iter().any(|w| w.contains(karsus_note)));
+
+        let worldweave = md_preview
+            .spells
+            .iter()
+            .find(|item| item.spell.name == "Mavin's Worldweave")
+            .expect("Mavin's Worldweave present");
+        assert!(worldweave
+            .spell
+            .description
+            .contains("| | Tropic | Subtropic | Temperate | Subarctic |"));
+        assert!(worldweave
+            .spell
+            .description
+            .contains("| Arctic | 4 | 3 | 2 | 1 |"));
+
+        let json_preview = preview_import_spell_json(Some(json.to_string()), None, None)
+            .await
+            .expect("Netheril JSON preview succeeds");
+        assert_eq!(json_preview.spells.len(), 9);
+
+        let json_by_name: HashMap<&str, &PreviewSpellJsonItem> = json_preview
+            .spells
+            .iter()
+            .map(|item| (item.spell.name.as_str(), item))
+            .collect();
+
+        for md_item in &md_preview.spells {
+            let name = md_item.spell.name.as_str();
+            let json_item = json_by_name
+                .get(name)
+                .unwrap_or_else(|| panic!("missing spell '{name}' in JSON preview"));
+
+            if name == "Proctiv's Breach Crystal Sphere" {
+                assert_eq!(json_item.spell.reversible, Some(1));
+                assert_eq!(md_item.spell.reversible, None);
+                assert_ne!(
+                    json_item.content_hash, md_item.content_hash,
+                    "Proctiv differs on reversible flag between JSON and Markdown"
+                );
+            } else {
+                assert_eq!(
+                    json_item.content_hash, md_item.content_hash,
+                    "Spell '{name}' must produce identical content_hash across JSON and Markdown"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_markdown_synthetic_partial_failure_and_front_matter_exclusion() {
+        let md = include_str!("../../tests/fixtures/source-lists/synthetic-markdown-partial.md");
+        let preview = preview_import_spell_json(
+            None,
+            Some(vec![ImportMarkdownFile {
+                name: "synthetic-markdown-partial.md".to_string(),
+                content: md.to_string(),
+            }]),
+            None,
+        )
+        .await
+        .expect("partial markdown preview should succeed with named failure");
+
+        assert_eq!(preview.spells.len(), 2);
+        assert_eq!(preview.spells[0].spell.name, "Synthetic Ember");
+        assert_eq!(
+            preview.spells[0].spell.source_refs[0].book,
+            "synthetic-markdown-partial"
+        );
+        assert_eq!(
+            preview.spells[0].spell.source_refs[0].page,
+            Some(serde_json::json!(5))
+        );
+
+        assert_eq!(preview.spells[1].spell.name, "Synthetic Ward");
+        assert_eq!(preview.spells[1].spell.tradition, "DIVINE");
+        assert_eq!(
+            preview.spells[1].spell.sphere.as_deref(),
+            Some("Protection")
+        );
+        assert_eq!(
+            preview.spells[1].spell.source_refs[0].book,
+            "Synthetic Tome, Vol. 2"
+        );
+        assert_eq!(
+            preview.spells[1].spell.source_refs[0].page,
+            Some(serde_json::json!(19))
+        );
+        let ward_note = preview.spells[1].spell.source_refs[0]
+            .note
+            .as_deref()
+            .expect("Synthetic Ward review note present");
+        assert!(ward_note.contains("Verify sphere assignment against the supplement table."));
+        assert!(preview.spells[1]
+            .warnings
+            .iter()
+            .any(|w| w.contains(ward_note)));
+
+        assert_eq!(preview.failures.len(), 1);
+        assert_eq!(preview.failures[0].spell_name, "Synthetic Invalid Section");
+
+        // Front-matter Markdown (with or without ## subheadings) is excluded from spell-list mode
+        let fm_with_h2 = "---\nname: Single Note\n---\n\n## Subheading\nBody.\n";
+        let fm_plain = "---\nname: Single Note\n---\n\nBody.\n";
+        for content in [fm_with_h2, fm_plain] {
+            assert!(!crate::commands::source_list::is_markdown_spell_list(
+                content
+            ));
+            assert!(preview_import_spell_json(
+                None,
+                Some(vec![ImportMarkdownFile {
+                    name: "single.md".to_string(),
+                    content: content.to_string(),
+                }]),
+                None,
+            )
+            .await
+            .is_err());
+        }
+    }
+
+    fn read_persisted_spell_from_db_and_vault(
+        conn: &Connection,
+        vault_root: &std::path::Path,
+        spell_name: &str,
+    ) -> (CanonicalSpell, CanonicalSpell, String) {
+        let (canonical_data, content_hash): (String, String) = conn
+            .query_row(
+                "SELECT canonical_data, content_hash FROM spell WHERE name = ?",
+                params![spell_name],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap_or_else(|e| panic!("query persisted spell '{spell_name}': {e}"));
+        let db_canon: CanonicalSpell = serde_json::from_str(&canonical_data)
+            .unwrap_or_else(|e| panic!("deserialize DB canonical_data for '{spell_name}': {e}"));
+        let vault_path = vault_root
+            .join("spells")
+            .join(format!("{content_hash}.json"));
+        let vault_raw = std::fs::read_to_string(&vault_path).unwrap_or_else(|e| {
+            panic!(
+                "read vault file '{}' for '{spell_name}': {e}",
+                vault_path.display()
+            )
+        });
+        let vault_canon: CanonicalSpell = serde_json::from_str(&vault_raw)
+            .unwrap_or_else(|e| panic!("deserialize vault JSON for '{spell_name}': {e}"));
+
+        assert_eq!(db_canon.id.as_deref(), Some(content_hash.as_str()));
+        assert_eq!(vault_canon.id.as_deref(), Some(content_hash.as_str()));
+        assert_eq!(db_canon.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(vault_canon.schema_version, CURRENT_SCHEMA_VERSION);
+        (db_canon, vault_canon, content_hash)
+    }
+
+    #[test]
+    fn test_apply_import_retains_metadata_and_source_refs_across_insert_keep_both_and_replace() {
+        let netheril_json = include_str!(
+            "../../tests/fixtures/source-lists/Nethril - Empire of Magic - Wizard.json"
+        );
+        let netheril_md =
+            include_str!("../../tests/fixtures/source-lists/Nethril - Empire of Magic - Wizard.md");
+        let replace_karsus_md = "## Karsus's Avatar\n\n- Tradition: Arcane\n- Class: Wizard\n- Level: 12\n- School: Invocation/Evocation, Enchantment/Charm, Alteration\n- Range: Unlimited\n- Components: V, S, M\n- Duration: Unlimited\n- Casting Time: 6 hours\n- Area of Effect: One god\n- Saving Throw: Special\n- Source: Updated Markdown, p. 42\n\nUpdated description for replace verification.\n\n### Review\nUpdated review note for replace.\n";
+
+        let json_preview = tauri::async_runtime::block_on(preview_import_spell_json(
+            Some(netheril_json.to_string()),
+            None,
+            None,
+        ))
+        .expect("Netheril JSON preview succeeds");
+        let md_preview = tauri::async_runtime::block_on(preview_import_spell_json(
+            None,
+            Some(vec![ImportMarkdownFile {
+                name: "Nethril - Empire of Magic - Wizard.md".to_string(),
+                content: netheril_md.to_string(),
+            }]),
+            None,
+        ))
+        .expect("Netheril MD preview succeeds");
+        let replace_md_preview = tauri::async_runtime::block_on(preview_import_spell_json(
+            None,
+            Some(vec![ImportMarkdownFile {
+                name: "Updated Markdown.md".to_string(),
+                content: replace_karsus_md.to_string(),
+            }]),
+            None,
+        ))
+        .expect("replace MD preview succeeds");
+
+        let temp_dir = VaultTestEnvGuard::new_temp().expect("create isolated vault env");
+        let conn = setup_import_apply_test_db();
+        create_change_log_table(&conn);
+        create_hash_reference_tables(&conn);
+
+        // 1) New insert from Netheril JSON list
+        let insert_res = apply_import_spell_json_impl(&conn, json_preview.spells, None)
+            .expect("insert Netheril JSON spells");
+        assert_eq!(insert_res.imported_count, 9);
+
+        let (karsus_db, karsus_vault, _) =
+            read_persisted_spell_from_db_and_vault(&conn, temp_dir.path(), "Karsus's Avatar");
+        for canon in [&karsus_db, &karsus_vault] {
+            assert_eq!(canon.source_refs.len(), 1);
+            assert_eq!(canon.source_refs[0].book, "Nethril - Empire of Magic");
+            assert_eq!(canon.source_refs[0].page, Some(serde_json::json!(10)));
+            assert!(canon.source_refs[0]
+                .note
+                .as_deref()
+                .is_some_and(|n| n.contains("Field: Mentalism")));
+        }
+
+        // 2) keep_both from Netheril Markdown list (Proctiv conflicts due to reversible flag difference)
+        let md_proctiv = md_preview
+            .spells
+            .into_iter()
+            .find(|item| item.spell.name == "Proctiv's Breach Crystal Sphere")
+            .expect("Proctiv in MD preview");
+        let md_proctiv_hash = md_proctiv.content_hash.clone();
+        let existing_proctiv_id: i64 = conn
+            .query_row(
+                "SELECT id FROM spell WHERE name = ?",
+                params!["Proctiv's Breach Crystal Sphere"],
+                |row| row.get(0),
+            )
+            .expect("query existing Proctiv id");
+        let keep_both_res = apply_import_spell_json_impl(
+            &conn,
+            vec![md_proctiv],
+            Some(ImportSpellJsonResolveOptions {
+                resolutions: vec![ImportSpellJsonConflictResolution {
+                    existing_id: existing_proctiv_id,
+                    incoming_content_hash: md_proctiv_hash,
+                    action: "keep_both".to_string(),
+                }],
+                default_action: None,
+            }),
+        )
+        .expect("keep_both MD Proctiv");
+        assert_eq!(keep_both_res.imported_count, 1);
+
+        let (proctiv_kb_db, proctiv_kb_vault, _) = read_persisted_spell_from_db_and_vault(
+            &conn,
+            temp_dir.path(),
+            "Proctiv's Breach Crystal Sphere (1)",
+        );
+        for canon in [&proctiv_kb_db, &proctiv_kb_vault] {
+            assert_eq!(canon.source_refs.len(), 1);
+            assert_eq!(
+                canon.source_refs[0].book,
+                "Nethril - Empire of Magic - Wizard"
+            );
+            assert_eq!(canon.source_refs[0].page, Some(serde_json::json!(11)));
+            assert!(canon.source_refs[0]
+                .note
+                .as_deref()
+                .is_some_and(|n| n.contains("reverse of the spell was used")));
+        }
+
+        // 3) replace_with_new from Markdown list with ### Review
+        let existing_karsus_id: i64 = conn
+            .query_row(
+                "SELECT id FROM spell WHERE name = ?",
+                params!["Karsus's Avatar"],
+                |row| row.get(0),
+            )
+            .expect("query existing Karsus id");
+        let replace_item = replace_md_preview.spells.into_iter().next().unwrap();
+        let replace_hash = replace_item.content_hash.clone();
+        let replace_res = apply_import_spell_json_impl(
+            &conn,
+            vec![replace_item],
+            Some(ImportSpellJsonResolveOptions {
+                resolutions: vec![ImportSpellJsonConflictResolution {
+                    existing_id: existing_karsus_id,
+                    incoming_content_hash: replace_hash,
+                    action: "replace_with_new".to_string(),
+                }],
+                default_action: None,
+            }),
+        )
+        .expect("replace_with_new Karsus");
+        assert_eq!(
+            replace_res
+                .conflicts_resolved
+                .as_ref()
+                .expect("resolved")
+                .replace_count,
+            1
+        );
+
+        let (karsus_rep_db, karsus_rep_vault, _) =
+            read_persisted_spell_from_db_and_vault(&conn, temp_dir.path(), "Karsus's Avatar");
+        for canon in [&karsus_rep_db, &karsus_rep_vault] {
+            assert_eq!(canon.source_refs.len(), 1);
+            assert_eq!(canon.source_refs[0].book, "Updated Markdown");
+            assert_eq!(canon.source_refs[0].page, Some(serde_json::json!(42)));
+            assert_eq!(
+                canon.source_refs[0].note.as_deref(),
+                Some("Updated review note for replace.")
+            );
+        }
+
+        // 4) Non-hashed metadata (author, edition, license, source_text) also survives insert, keep_both, and replace_with_new
+        let make_rich_item = |desc: &str, book: &str, page: i64, note: &str, author: &str| {
+            let mut s = test_spell("Rich Metadata Spell", 3, desc);
+            s.author = Some(author.to_string());
+            s.edition = Some("AD&D 2e".to_string());
+            s.license = Some("OGL-1.0".to_string());
+            s.source_refs = vec![SourceRef {
+                system: Some("AD&D 2e".to_string()),
+                book: book.to_string(),
+                page: Some(serde_json::json!(page)),
+                note: Some(note.to_string()),
+                url: None,
+            }];
+            s.magic_resistance = Some(crate::models::magic_resistance::MagicResistanceSpec {
+                kind: crate::models::magic_resistance::MagicResistanceKind::Normal,
+                source_text: Some("Yes (MR applies)".to_string()),
+                ..Default::default()
+            });
+            preview_item_for_test(s)
+        };
+
+        let assert_rich_metadata = |spell_name: &str,
+                                    expected_book: &str,
+                                    expected_page: i64,
+                                    expected_note: &str,
+                                    expected_author: &str| {
+            let (db_c, vault_c, _) =
+                read_persisted_spell_from_db_and_vault(&conn, temp_dir.path(), spell_name);
+            for canon in [&db_c, &vault_c] {
+                assert_eq!(canon.author.as_deref(), Some(expected_author));
+                assert_eq!(canon.edition.as_deref(), Some("AD&D 2e"));
+                assert_eq!(canon.license.as_deref(), Some("OGL-1.0"));
+                assert_eq!(canon.source_refs[0].book, expected_book);
+                assert_eq!(
+                    canon.source_refs[0].page,
+                    Some(serde_json::json!(expected_page))
+                );
+                assert_eq!(canon.source_refs[0].note.as_deref(), Some(expected_note));
+                assert_eq!(
+                    canon
+                        .magic_resistance
+                        .as_ref()
+                        .and_then(|mr| mr.source_text.as_deref()),
+                    Some("Yes (MR applies)")
+                );
+            }
+        };
+
+        let rich_base = make_rich_item("Base desc", "Book A", 5, "Base note", "Author A");
+        apply_import_spell_json_impl(&conn, vec![rich_base], None).expect("insert rich spell");
+        assert_rich_metadata("Rich Metadata Spell", "Book A", 5, "Base note", "Author A");
+        let rich_id: i64 = conn
+            .query_row(
+                "SELECT id FROM spell WHERE name = 'Rich Metadata Spell'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query rich spell id");
+
+        let rich_kb = make_rich_item("KB desc", "Book B", 7, "KB note", "Author B");
+        let rich_kb_hash = rich_kb.content_hash.clone();
+        apply_import_spell_json_impl(
+            &conn,
+            vec![rich_kb],
+            Some(ImportSpellJsonResolveOptions {
+                resolutions: vec![ImportSpellJsonConflictResolution {
+                    existing_id: rich_id,
+                    incoming_content_hash: rich_kb_hash,
+                    action: "keep_both".to_string(),
+                }],
+                default_action: None,
+            }),
+        )
+        .expect("keep_both rich spell");
+        assert_rich_metadata(
+            "Rich Metadata Spell (1)",
+            "Book B",
+            7,
+            "KB note",
+            "Author B",
+        );
+
+        let rich_rep = make_rich_item("Rep desc", "Book C", 9, "Rep note", "Author C");
+        let rich_rep_hash = rich_rep.content_hash.clone();
+        apply_import_spell_json_impl(
+            &conn,
+            vec![rich_rep],
+            Some(ImportSpellJsonResolveOptions {
+                resolutions: vec![ImportSpellJsonConflictResolution {
+                    existing_id: rich_id,
+                    incoming_content_hash: rich_rep_hash,
+                    action: "replace_with_new".to_string(),
+                }],
+                default_action: None,
+            }),
+        )
+        .expect("replace rich spell");
+        assert_rich_metadata("Rich Metadata Spell", "Book C", 9, "Rep note", "Author C");
     }
 }

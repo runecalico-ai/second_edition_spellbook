@@ -19,6 +19,7 @@ When a legacy string is parsed, the original value is unconditionally stored in 
 | `DurationParser` | `duration.rs` | Time units, scaling, conditions |
 | `ComponentsParser` | `components.rs` | V/S/M/DF parsing, casting time |
 | `MechanicsParser` | `mechanics.rs` | Damage, saves, MR, XP costs |
+| legacy_mechanics (editor-compat) | `legacy_mechanics.rs` | Saving throw / MR mapping with the same classification as the Spell Editor's legacy mappers, as a superset (Rust also sets `notes` on `dm_adjudicated`, truncates notes/`special_rule`/`source_text` to 2048 chars, and fills default fields such as `save_vs: Spell`, `modifier`, `applies_to`, `timing`); used by source-list import |
 
 ---
 

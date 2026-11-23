@@ -294,3 +294,12 @@ pub struct ImportSpellJsonResult {
     pub failures: Vec<ImportSpellJsonFailure>,
     pub warnings: Vec<String>,
 }
+
+/// One Markdown spell-list file submitted to canonical preview/import/resolve commands.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(crate = "serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ImportMarkdownFile {
+    pub name: String,
+    pub content: String,
+}

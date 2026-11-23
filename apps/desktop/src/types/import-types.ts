@@ -87,9 +87,26 @@ export interface HashImportResult {
 // Preview type
 // ---------------------------------------------------------------------------
 
+/** Markdown spell-list file submitted to canonical import commands. */
+export interface ImportMarkdownFile {
+  name: string;
+  content: string;
+}
+
+/** Normalized canonical spell summary returned by `preview_import_spell_json`. */
+export interface PreviewCanonicalSpell {
+  name?: string;
+  level?: number;
+  tradition?: string;
+  isQuestSpell?: number | null;
+  is_quest_spell?: number | null;
+  school?: string | null;
+  sphere?: string | null;
+}
+
 /** Mirrors PreviewImportSpellJsonResult (Rust). */
 export interface HashPreviewResult {
-  spells: Array<{ spell: unknown; contentHash: string; warnings: string[] }>;
+  spells: Array<{ spell: PreviewCanonicalSpell; contentHash: string; warnings: string[] }>;
   warnings: string[];
   failures: ImportSpellJsonFailure[];
 }

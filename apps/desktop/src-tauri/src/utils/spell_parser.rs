@@ -4,7 +4,7 @@ use crate::models::{
     SavingThrowSpec, SpellCastingTime, SpellComponents, SpellDamageSpec,
 };
 use crate::utils::parsers::{
-    area::AreaParser, components::ComponentsParser, duration::DurationParser,
+    area::AreaParser, components::ComponentsParser, duration::DurationParser, legacy_mechanics,
     mechanics::MechanicsParser, range::RangeParser,
 };
 
@@ -76,6 +76,22 @@ impl SpellParser {
         self.mechanics.parse_saving_throw(input)
     }
 
+    /// Saving throw mapping with the same classification as the Spell Editor's legacy
+    /// mapper. It is a superset: Rust additionally sets `notes` on `dm_adjudicated`,
+    /// truncates notes/`special_rule`/`source_text` to 2048 chars, and fills default
+    /// fields (`save_vs: Spell` for spell/special rows, `modifier`, `applies_to`, `timing`).
+    pub fn parse_saving_throw_editor_compat(&self, input: &str) -> SavingThrowSpec {
+        legacy_mechanics::map_editor_saving_throw(input)
+    }
+
+    /// Magic resistance mapping with the same classification as the Spell Editor's legacy
+    /// mapper. It is a superset: Rust additionally sets `notes` on `dm_adjudicated`,
+    /// truncates notes/`special_rule`/`source_text` to 2048 chars, and fills default
+    /// fields (`modifier`, `applies_to`, `timing`).
+    pub fn parse_magic_resistance_editor_compat(&self, input: &str) -> MagicResistanceSpec {
+        legacy_mechanics::map_editor_magic_resistance(input)
+    }
+
     pub fn parse_experience_cost(&self, input: &str) -> ExperienceComponentSpec {
         self.mechanics.parse_experience_cost(input)
     }
@@ -99,7 +115,7 @@ impl SpellParser {
 mod tests {
     use super::*;
     use crate::models::duration_spec::DurationUnit;
-    use crate::models::{AreaKind, RangeKind};
+    use crate::models::{AreaKind, MagicResistanceKind, RangeKind, SavingThrowKind};
 
     // Integration tests for the Facade
     // Detailed unit tests have been moved to:
@@ -107,6 +123,7 @@ mod tests {
     // - utils/parsers/area.rs
     // - utils/parsers/duration.rs
     // - utils/parsers/mechanics.rs
+    // - utils/parsers/legacy_mechanics.rs
     // - utils/parsers/components.rs
 
     #[test]
@@ -136,5 +153,18 @@ mod tests {
         let res = parser.parse_components("V, S");
         assert!(res.verbal);
         assert!(res.somatic);
+    }
+
+    #[test]
+    fn test_facade_editor_compat_mechanics_delegation() {
+        let parser = SpellParser::new();
+        assert_eq!(
+            parser.parse_saving_throw_editor_compat("Special").kind,
+            SavingThrowKind::DmAdjudicated
+        );
+        assert_eq!(
+            parser.parse_magic_resistance_editor_compat("Yes").kind,
+            MagicResistanceKind::Normal
+        );
     }
 }

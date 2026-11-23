@@ -2,6 +2,7 @@ pub mod characters;
 pub mod export;
 pub mod import;
 pub mod search;
+pub(crate) mod source_list;
 pub mod spells;
 pub mod vault;
 
